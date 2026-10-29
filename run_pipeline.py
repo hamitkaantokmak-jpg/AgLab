@@ -3,18 +3,19 @@
 import argparse, datetime, json, os, pathlib, shutil, subprocess, sys, tempfile, time, zipfile
 ROOT=pathlib.Path(__file__).resolve().parent
 TESTS=['test_aglab_import.py','test_aglab_cli_vlan.py','test_aglab_status.py','test_aglab_subinterfaces.py','test_aglab_v7.py','test_aglab_v11_routing.py','test_aglab_v12_gateway.py','test_aglab_v13_router_ping.py','test_aglab_v15_local_ping.py','test_aglab_v17_ping_validation.py']
-ARTIFACTS=['AgLab_Final_PKT_Import.html','convert_pkt_to_aglab.py','restore_pkt_from_aglab_json.py','static-routing-two-routers.aglab.json','static-routing-two-routers-import-report.json','AgLab_PKT_Import_Kullanim.md','static-routing-two-routers(1).pkt','decoded_source.xml']
+ARTIFACTS=['AgLab_Final_PKT_Import.html','convert_pkt_to_aglab.py','restore_pkt_from_aglab_json.py','static-routing-two-routers.aglab.json','static-routing-two-routers-import-report.json','AgLab_PKT_Import_Kullanim.md','static-routing-two-routers(1).pkt' ]
 def run():
  p=argparse.ArgumentParser();p.add_argument('--out',default='dist');p.add_argument('--skip-browser',action='store_true');p.add_argument('--timeout',type=int,default=100);a=p.parse_args()
  out=(ROOT/a.out).resolve();out.mkdir(parents=True,exist_ok=True)
- browser=shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
+ browser=None
  if not browser:
   try:
    from playwright.sync_api import sync_playwright
    with sync_playwright() as pw:
     candidate=pathlib.Path(pw.chromium.executable_path)
     if candidate.is_file():browser=str(candidate)
-  except (ImportError, Exception):pass
+  except Exception:pass
+ if not browser:browser=shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
  report={'date_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'browser':browser,'tests':[],'passed':False}
  required=ARTIFACTS+TESTS
  missing=[f for f in required if not (ROOT/f).is_file()]
@@ -23,6 +24,10 @@ def run():
  else:
   with tempfile.TemporaryDirectory(prefix='aglab-ci-') as tmp:
    stage=pathlib.Path(tmp)
+   # The decoded XML is stored inside the imported JSON; reconstruct for portable CI.
+   import base64
+   source=json.loads((ROOT/'static-routing-two-routers.aglab.json').read_text(encoding='utf-8'))
+   (stage/'decoded_source.xml').write_bytes(base64.b64decode(source['sourceArchive']['decodedXmlBase64']))
    for name in required:
     src=ROOT/name;dest=stage/name
     if name.endswith('.py'):
@@ -53,6 +58,7 @@ def run():
   zpath=out/'AgLab_Otomatik_Dogrulanmis_Paket.zip'
   with zipfile.ZipFile(zpath,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
    for f in ARTIFACTS+TESTS:z.write(ROOT/f,f)
+   z.writestr('decoded_source.xml',base64.b64decode(source['sourceArchive']['decodedXmlBase64']))
    z.write(out/'test-report.md','test-report.md');z.write(out/'test-results.json','test-results.json')
   with zipfile.ZipFile(zpath) as z:assert z.testzip() is None
   print('PASS: all tests; verified ZIP:',zpath)
