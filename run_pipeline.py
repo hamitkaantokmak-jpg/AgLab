@@ -2,7 +2,7 @@
 """Portable AğLab test, quality gate, report and release pipeline."""
 import argparse, datetime, json, os, pathlib, shutil, subprocess, sys, tempfile, time, zipfile
 ROOT=pathlib.Path(__file__).resolve().parent
-TESTS=['test_aglab_import.py','test_aglab_cli_vlan.py','test_aglab_status.py','test_aglab_subinterfaces.py','test_aglab_v7.py','test_aglab_v11_routing.py','test_aglab_v12_gateway.py','test_aglab_v13_router_ping.py','test_aglab_v15_local_ping.py','test_aglab_v17_ping_validation.py']
+TESTS=['test_aglab_import.py','test_aglab_cli_vlan.py','test_aglab_status.py','test_aglab_subinterfaces.py','test_aglab_v7.py','test_aglab_v11_routing.py','test_aglab_v12_gateway.py','test_aglab_v13_router_ping.py','test_aglab_v15_local_ping.py','test_aglab_v17_ping_validation.py','test_aglab_academy.py']
 ARTIFACTS=['AgLab_Final_PKT_Import.html','convert_pkt_to_aglab.py','restore_pkt_from_aglab_json.py','static-routing-two-routers.aglab.json','static-routing-two-routers-import-report.json','AgLab_PKT_Import_Kullanim.md','static-routing-two-routers(1).pkt' ]
 def run():
  p=argparse.ArgumentParser();p.add_argument('--out',default='dist');p.add_argument('--skip-browser',action='store_true');p.add_argument('--timeout',type=int,default=100);a=p.parse_args()
@@ -35,7 +35,8 @@ def run():
      content=content.replace("executable_path='/usr/bin/chromium'",'executable_path='+repr(browser or '/usr/bin/chromium'))
      dest.write_text(content,encoding='utf-8')
     else:shutil.copy2(src,dest)
-   env=os.environ.copy();env['PYTHONPATH']=str(stage)
+   shutil.copytree(ROOT/'academy',stage/'academy')
+   env=os.environ.copy();env['PYTHONPATH']=str(stage)+os.pathsep+env.get('PYTHONPATH','');env['PYTHONIOENCODING']='utf-8';env['PYTHONUTF8']='1'
    for name in TESTS:
     if a.skip_browser:
      report['tests'].append({'name':name,'status':'SKIPPED'});continue
@@ -43,7 +44,7 @@ def run():
      report['tests'].append({'name':name,'status':'FAIL','error':'Chromium bulunamadı. Çalıştırın: python -m playwright install chromium'});continue
     started=time.monotonic()
     try:
-     r=subprocess.run([sys.executable,str(stage/name)],cwd=stage,env=env,capture_output=True,text=True,timeout=a.timeout)
+     r=subprocess.run([sys.executable,str(stage/name)],cwd=stage,env=env,capture_output=True,text=True,encoding='utf-8',timeout=a.timeout)
      entry={'name':name,'status':'PASS' if r.returncode==0 else 'FAIL','duration_s':round(time.monotonic()-started,2),'exit_code':r.returncode,'stdout':r.stdout[-8000:],'stderr':r.stderr[-8000:]}
     except subprocess.TimeoutExpired:
      entry={'name':name,'status':'FAIL','error':f'timed out after {a.timeout}s'}
@@ -60,12 +61,22 @@ def run():
    for f in ARTIFACTS+TESTS:z.write(ROOT/f,f)
    z.writestr('decoded_source.xml',base64.b64decode(source['sourceArchive']['decodedXmlBase64']))
    z.write(out/'test-report.md','test-report.md');z.write(out/'test-results.json','test-results.json')
+   for f in (ROOT/'academy/student').glob('*.json'):z.write(f,'academy/student/'+f.name)
+   z.write(ROOT/'AKADEMI.md','AKADEMI.md')
   with zipfile.ZipFile(zpath) as z:assert z.testzip() is None
+  teacher=out/'AgLab_Akademi_Ogretmen.zip'
+  with zipfile.ZipFile(teacher,'w',zipfile.ZIP_DEFLATED) as z:
+   for folder in ['teacher','source']:
+    for f in (ROOT/'academy'/folder).glob('*.json'):z.write(f,'academy/'+folder+'/'+f.name)
+   z.write(ROOT/'AKADEMI.md','AKADEMI.md')
   print('PASS: all tests; verified ZIP:',zpath)
  else:
   stale=out/'AgLab_Otomatik_Dogrulanmis_Paket.zip'
   if stale.exists():stale.unlink()
+  teacher=out/'AgLab_Akademi_Ogretmen.zip'
+  if teacher.exists():teacher.unlink()
   print('FAIL: no verified release generated; see',out/'test-report.md')
  for t in report['tests']:print(t['status'],t['name'])
  return 0 if report['passed'] else 1
 if __name__=='__main__':sys.exit(run())
+
