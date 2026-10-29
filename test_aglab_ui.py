@@ -1,0 +1,85 @@
+"""Student journeys in real Chromium; runs in the release quality gate."""
+import pathlib
+from playwright.sync_api import sync_playwright, expect
+
+ROOT = pathlib.Path(__file__).resolve().parent
+with sync_playwright() as pw:
+    browser = pw.chromium.launch(headless=True)
+    page = browser.new_page(viewport={"width": 1440, "height": 1000})
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    page.goto((ROOT / 'AgLab_Final_PKT_Import.html').as_uri())
+    expect(page.locator('#journeyHome')).to_be_visible()
+    expect(page.locator('.workspace.active')).to_have_count(0)
+    page.locator('[data-area="learn"]').focus()
+    page.keyboard.press('Enter')
+    expect(page.locator('[data-area="learn"]')).to_have_attribute('aria-current', 'page')
+    page.click('[data-area="learn"]')
+    expect(page.locator('#lessonNav')).to_be_visible()
+    expect(page.locator('#lessonContent')).not_to_be_visible()
+    for level in ['beginner', 'intermediate', 'advanced']:
+        page.click(f'[data-level="{level}"]')
+        page.locator('[data-lesson]').first.click()
+        expect(page.locator('#lessonContent')).to_be_visible()
+        page.click('#lessonTestBtn')
+        expect(page.locator('#quizPanel')).to_be_visible()
+        page.locator('[data-answer]').first.click()
+        expect(page.locator('#quizFeedback')).not_to_be_empty()
+        page.click('#quitQuiz')
+        page.click('#topicsBack')
+    page.locator('[data-lesson]').first.click()
+    page.click('#lessonPractice')
+    expect(page.locator('#ptWorkbench')).to_be_visible()
+    expect(page.locator('#academyPanel')).not_to_be_visible()
+    snapshot = page.evaluate('academyEngine.snapshot()')
+    page.click('#modeAcademy')
+    expect(page.locator('#academyPanel')).to_be_visible()
+    page.select_option('#academySelect', 'AGL-005')
+    page.click('#academyStart')
+    page.select_option('#ptCliDevice', 'SW1')
+    for cmd in ['enable', 'configure terminal', 'interface fa0/2', 'no shutdown', 'end']:
+        page.fill('#ptCliInput', cmd)
+        page.press('#ptCliInput', 'Enter')
+    page.click('#academyCheck')
+    expect(page.locator('#academyResult')).to_contain_text('100/100')
+    state = page.evaluate('academyEngine.snapshot()')
+    page.click('#modeFree')
+    assert state == page.evaluate('academyEngine.snapshot()'), 'Mode switch lost work'
+    page.locator('#fileTopologyDetails > summary').focus()
+    page.keyboard.press('Enter')
+    expect(page.locator('#ptExport')).to_be_visible()
+    page.click('#fileTopologyDetails > summary')
+    page.click('#homeLink')
+    page.click('[data-area="troubleshoot"]')
+    expect(page.locator('#diagnosticFlow')).to_be_visible()
+    expect(page.locator('#mission')).to_be_visible()
+    page.fill('#command', 'help')
+    page.press('#command', 'Enter')
+    expect(page.locator('#terminal')).not_to_be_empty()
+    page.locator('#options button').first.click()
+    expect(page.locator('#diagnosis')).not_to_be_empty()
+    for width in [360, 390, 768, 1440]:
+        page.set_viewport_size({'width': width, 'height': 900})
+        for area in ['home', 'learn', 'lab', 'troubleshoot']:
+            if page.locator('#homeLink').is_visible():
+                page.click('#homeLink')
+            if area != 'home':
+                page.click(f'[data-area="{area}"]')
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), (width, area)
+        page.click('#homeLink')
+        page.keyboard.press('Tab')
+        assert page.evaluate('document.activeElement.tagName') in ['BUTTON', 'A']
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.click('[data-area="troubleshoot"]')
+    expect(page.locator('#scenarioList')).not_to_be_visible()
+    page.click('#scenarioPicker > summary')
+    page.locator('#scenarioList button').first.click()
+    expect(page.locator('#scenarioList')).not_to_be_visible()
+    expect(page.locator('#mission')).to_be_visible()
+    page.click('#themeToggle')
+    expect(page.locator('html')).to_have_attribute('data-theme', 'light')
+    page.click('#themeToggle')
+    expect(page.locator('html')).to_have_attribute('data-theme', 'dark')
+    assert not errors, errors
+    browser.close()
+print('PASS UI: home, levels, lessons, quizzes, practice, Academy CLI, state, diagnosis, responsive widths')
