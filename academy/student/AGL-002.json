@@ -1,0 +1,275 @@
+{
+  "id": "AGL-002",
+  "order": 2,
+  "module_id": "M1",
+  "title": "Cihaz rolleri ve uç IP ayarı",
+  "language": "tr-TR",
+  "duration_minutes": 20,
+  "prerequisites": [
+    "AGL-001"
+  ],
+  "learning_objectives": [
+    "Uç ve ara cihazı tanımak",
+    "Eksik IP ayarını tamamlamak"
+  ],
+  "theory": "PC uygulama trafiğini üretir; Katman 2 switch aynı VLAN içinde MAC adreslerine göre çerçeve iletir; router farklı IP ağları arasında paket yönlendirir. IP ayarı fiziksel kablonun yerine geçmez.",
+  "scenario": "Aşağıdaki başlangıç durumunu kullanarak cihaz rolleri ve uç ip ayarı görevini tamamla.",
+  "initial_topology": {
+    "app": "AgLab",
+    "version": 23,
+    "devices": [
+      {
+        "id": "PC1",
+        "name": "PC1",
+        "type": "PC",
+        "x": 80,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.1.10",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC2",
+        "name": "PC2",
+        "type": "PC",
+        "x": 260,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "SW1",
+        "name": "SW1",
+        "type": "Switch",
+        "x": 440,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1
+        ]
+      }
+    ],
+    "links": [
+      {
+        "a": "PC1",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/1",
+        "up": true
+      },
+      {
+        "a": "PC2",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/2",
+        "up": true
+      }
+    ],
+    "nextId": 4,
+    "selected": "PC1"
+  },
+  "steps": [
+    {
+      "order": 1,
+      "text": "PC2’ye 192.168.1.20 ve 255.255.255.0 gir."
+    },
+    {
+      "order": 2,
+      "text": "Her iki gateway alanını boş bırak."
+    },
+    {
+      "order": 3,
+      "text": "PC1 → PC2 ping dene."
+    },
+    {
+      "order": 4,
+      "text": "Uç cihaz, Katman 2 iletim cihazı ve ağlar arası iletim cihazını seçeneklerden eşleştir."
+    }
+  ],
+  "expected_result": "PC2 yapılandırılır ve yerel erişim sağlanır.",
+  "assessment": {
+    "max_points": 100,
+    "criteria": [
+      {
+        "kind": "state.equals",
+        "target": "devices.PC2.ip",
+        "expected": "192.168.1.20",
+        "label": "Eksik IP tamamlandı",
+        "points": 20,
+        "id": "AGL-002-C01",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "state.equals",
+        "target": "devices.PC2.mask",
+        "expected": "255.255.255.0",
+        "label": "Maske doğru",
+        "points": 20,
+        "id": "AGL-002-C02",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "probe.icmp",
+        "target": {
+          "source": "PC1",
+          "destination": "PC2"
+        },
+        "expected": true,
+        "label": "PC1 → PC2: erişim var",
+        "points": 20,
+        "probe_policy": "icmp-5-v1",
+        "id": "AGL-002-C03",
+        "required_capabilities": [
+          "icmp_probe"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "answer.equals",
+        "target": "answers.l2_device",
+        "expected": "switch",
+        "label": "Katman 2 cihazı",
+        "points": 20,
+        "id": "AGL-002-C04",
+        "required_capabilities": [
+          "answer_input"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "answer.equals",
+        "target": "answers.inter_network_device",
+        "expected": "router",
+        "label": "Ağlar arası cihaz",
+        "points": 20,
+        "id": "AGL-002-C05",
+        "required_capabilities": [
+          "answer_input"
+        ],
+        "on_unavailable": "not_evaluated"
+      }
+    ]
+  },
+  "hints": [
+    "Katman 2 iletim ve IP yönlendirme ayrı görevlerdir."
+  ],
+  "support": [
+    {
+      "feature": "ipv4",
+      "status": "DOGRULANMADI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "icmp",
+      "status": "DOGRULANMADI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "automatic_grader",
+      "status": "ENTEGRASYON_GEREKLI",
+      "reason": "Bu paket içeriktir. Puanlayıcı, durum bağdaştırıcısı ve probe çalıştırıcısı ayrı geliştirilir."
+    }
+  ],
+  "content_status": "HAZIR",
+  "execution_status": "MOTORDE_CALISTIRILMADI"
+}

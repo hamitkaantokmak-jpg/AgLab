@@ -41,3 +41,11 @@ jobs:
           name: aglab-dogrulanmis-paket
           path: dist/AgLab_Otomatik_Dogrulanmis_Paket.zip
           if-no-files-found: error
+      - name: Ayrı öğretmen paketini sakla
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aglab-akademi-ogretmen
+          path: dist/AgLab_Akademi_Ogretmen.zip
+          if-no-files-found: error
+
