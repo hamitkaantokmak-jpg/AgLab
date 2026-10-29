@@ -11,4 +11,4 @@ else:
  anchor=" try{const saved=localStorage.getItem('aglab-topology-v23')"
  assert anchor in h
  h=h.replace(anchor,code+anchor,1)
-p.write_text(h,encoding='utf-8')
+p.write_text(h,encoding='utf-8',newline='\n')
