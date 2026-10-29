@@ -21,9 +21,8 @@ jobs:
           python-version: '3.11'
       - name: Chromium ve Playwright kur
         run: |
-          sudo apt-get update
-          sudo apt-get install -y chromium
           python -m pip install playwright
+          python -m playwright install --with-deps chromium
       - name: Testleri çalıştır ve başarılıysa ZIP üret
         run: python run_pipeline.py
       - name: Test raporlarını sakla
