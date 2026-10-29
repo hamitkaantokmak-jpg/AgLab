@@ -157,6 +157,55 @@ html[data-theme="light"] input,html[data-theme="light"] select,html[data-theme="
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 <script>(function(){try{document.documentElement.dataset.theme=localStorage.getItem('aglab-theme')==='light'?'light':'dark'}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+<style>
+/* Student journey presentation; no simulation semantics. */
+.workspace{background:transparent!important}
+#scenarioList{max-height:560px;overflow:auto;overscroll-behavior:contain}
+#scenarioPicker{margin:0;align-self:start}#scenarioPicker>.panel{border:0}
+.lesson-tab b{font-size:15px}.lesson-tab small{font-size:12px}
+.aglab-theme-toggle{position:static;margin:16px 24px 20px auto;display:block}
+html[data-theme="light"] .journey-fold,html[data-theme="light"] .journey-modes button,html[data-theme="light"] #learningHub .lesson-tab{background:var(--panel);color:var(--text)}
+[hidden]{display:none!important}
+.app{max-width:1320px}.top{flex-wrap:wrap}.top .status{margin-left:auto}
+#homeLink{border-color:var(--blue)}
+.hero{min-height:220px;background:linear-gradient(125deg,#142844,#111b2d)}
+.area-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}
+.area-tab{min-height:96px}.area-tab b{font-size:19px}.area-tab small{font-size:13px}
+.app[data-journey="home"] .area-tab{min-height:180px;align-items:flex-start;flex-direction:column;justify-content:space-between;padding:24px}
+.app[data-journey="home"] .area-tab b{font-size:25px}
+.journey-fold{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:14px;margin:14px 0}
+.journey-fold>summary{cursor:pointer;font-weight:650;color:var(--text);min-height:30px;line-height:30px}
+.journey-fold[open]>summary{margin-bottom:14px}
+.journey-fold .panel{margin-bottom:0}
+.journey-modes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 12px}
+.journey-modes button{text-align:left;padding:20px;background:var(--panel);border:1px solid var(--line)}
+.journey-modes b,.journey-modes span{display:block}.journey-modes b{font-size:18px}.journey-modes span{color:var(--muted);font-size:13px;margin-top:5px}
+[aria-pressed="true"]{border-color:var(--blue)!important;background:#1b3557!important;color:#f1f5ff!important}
+.journey-note{color:var(--muted);font-size:13px;line-height:1.7;margin:10px 0 20px}
+#academyPanel{padding:22px;margin-bottom:20px;line-height:1.8}
+#academyPanel h2{margin:0 0 14px;font-size:22px}
+#academyPanel select{max-width:100%}#academyPanel button{margin:5px}#academyAnswers label{display:block;margin:10px 0}
+#learningHub:not(.reading) #lessonContent,#learningHub:not(.reading) #topicsBack,#learningHub:not(.reading) .learn-actions{display:none}
+#learningHub .learn-grid{display:block}
+#learningHub:not(.reading) #lessonNav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:20px}
+#learningHub .lesson-tab{min-width:0;min-height:115px;border:1px solid var(--line);border-radius:12px;padding:18px;background:var(--panel2)}
+#learningHub.reading #lessonNav{display:none}#topicsBack{margin:18px 24px}
+#lessonContent{max-width:880px;margin:auto;line-height:1.85}#lessonContent h3{font-size:28px}
+.journey-flow{display:flex;gap:12px;list-style-position:inside;padding:16px 20px;margin:0 0 20px;border:1px solid var(--line);border-radius:12px;color:var(--muted);flex-wrap:wrap}
+.journey-flow li{flex:1;min-width:150px}
+button,summary,a,input,select{scroll-margin:24px}button,select,input{min-height:44px}
+:focus-visible{outline:3px solid var(--cyan)!important;outline-offset:4px!important}
+button:disabled{opacity:.55}button,summary{touch-action:manipulation}
+.journey-tools{display:flex;gap:8px;flex-wrap:wrap}
+.pt-head-actions .journey-fold{flex-basis:100%;margin:4px 0}
+.pt-head-actions{max-width:460px}.pt-workgrid{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)}
+.panel,.workspace,.layout,.maincol,.workgrid,.pt-workgrid,.pt-head>div,.level-card>span{min-width:0}
+select{max-width:100%}p,code,.journey-note{overflow-wrap:anywhere}
+@media(max-width:900px){.pt-workgrid{grid-template-columns:1fr}.layout,.workgrid{grid-template-columns:1fr!important}#learningHub:not(.reading) #lessonNav{grid-template-columns:repeat(2,minmax(0,1fr))}.pt-head-actions{max-width:none}}
+@media(max-width:600px){.app{padding:14px}.status{display:none}.hero{padding:22px;min-height:200px}.hero .progress{display:none}.area-tabs{grid-template-columns:1fr;gap:8px}.area-tab,.app[data-journey="home"] .area-tab{flex-direction:row;align-items:center;justify-content:flex-start;min-height:78px;padding:16px}.app[data-journey="home"] .area-tab b{font-size:21px}.area-tab small{font-size:12px}.level-picker,.journey-modes{grid-template-columns:1fr!important}#learningHub:not(.reading) #lessonNav{grid-template-columns:1fr;padding:14px}.lesson-content{padding:18px!important}.panel-head{flex-wrap:wrap}.pt-cli-form{flex-wrap:wrap}.pt-cli-form input{width:50%}.pt-head-actions{width:100%}.pt-connectgroup{flex-wrap:wrap}.prompt{flex-wrap:wrap}.prompt input{width:50%;min-width:0}.journey-flow{display:grid;gap:10px}.quiz-controls{flex-wrap:wrap}.learn-actions{flex-wrap:wrap}#academyPanel{padding:16px}#academySelect{width:100%}.lab-heading h2{font-size:25px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+</style>
 </head>
 <body>
 <div class="app">
@@ -1780,5 +1829,117 @@ scenarios.forEach((s,i)=>state[i]=clone(s.start));load(0);
 
 
 <script>(function(){const root=document.documentElement,btn=document.createElement('button');btn.type='button';btn.id='themeToggle';btn.className='aglab-theme-toggle';function apply(t){root.dataset.theme=t;btn.textContent=t==='light'?'☾ Koyu tema':'☀ Açık tema';btn.setAttribute('aria-pressed',String(t==='light'));btn.setAttribute('aria-label','Renk temasını değiştir')}btn.addEventListener('click',()=>{const t=root.dataset.theme==='light'?'dark':'light';try{localStorage.setItem('aglab-theme',t)}catch(e){}apply(t)});document.body.appendChild(btn);apply(root.dataset.theme||'dark');const terminal=document.getElementById('terminal'),command=document.getElementById('command'),toast=document.getElementById('toast');if(terminal){terminal.setAttribute('role','log');terminal.setAttribute('aria-label','Terminal çıktısı')}if(command&&!command.getAttribute('aria-label'))command.setAttribute('aria-label','Komut girişi');if(toast){toast.setAttribute('role','status');toast.setAttribute('aria-live','polite')}})();</script>
+<script>
+// Presentation only: existing simulation, assessment and import APIs stay intact.
+(() => {
+  const byId = id => document.getElementById(id);
+  const make = (tag, text, cls) => {
+    const el = document.createElement(tag);
+    if (text) el.textContent = text;
+    if (cls) el.className = cls;
+    return el;
+  };
+  const fold = (el, title, id) => {
+    const details = make('details', '', 'journey-fold');
+    if (id) details.id = id;
+    details.append(make('summary', title));
+    el.before(details); details.append(el);
+    return details;
+  };
+  const hero = document.querySelector('.hero');
+  hero.id = 'journeyHome';
+  hero.querySelector('.eyebrow').textContent = 'ADIM ADIM AĞ ÖĞRENİMİ';
+  hero.querySelector('h2').textContent = 'Bugün nereden başlamak istersin?';
+  hero.querySelector('p').textContent = 'Bir yol seç. Konuyu öğren, kendi ağında uygula veya bir arızanın izini sür.';
+  document.querySelector('[data-area="lab"] b').textContent = 'Laboratuvar';
+  document.querySelector('.brand p').textContent = 'Öğren · Laboratuvar · Sorun Çöz';
+  const home = make('button', '← Başlangıç'); home.id = 'homeLink';
+  document.querySelector('.top').append(home);
+  const oldShowArea = showArea;
+  showArea = name => {
+    oldShowArea(name);
+    hero.hidden = name !== 'home';
+    document.querySelector('.app').dataset.journey = name;
+    document.querySelectorAll('[data-area]').forEach(b => {
+      if (b.dataset.area === name) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+    });
+    home.hidden = name === 'home';
+    if (name !== 'home') {
+      const heading = document.querySelector('#area-' + name + ' h2, #area-' + name + ' h3');
+      heading.tabIndex = -1; heading.focus({preventScroll: true});
+    }
+  };
+  home.onclick = () => { showArea('home'); document.querySelector('[data-area]').focus(); };
+  const hub = byId('learningHub');
+  const back = make('button', '← Konu kartlarına dön'); back.id = 'topicsBack';
+  byId('lessonContent').before(back);
+  const oldRenderLesson = renderLesson;
+  const cardView = () => {
+    hub.classList.remove('reading'); byId('quizPanel').hidden = true;
+    document.querySelectorAll('[data-level]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.level === activeLevel)));
+  };
+  renderLesson = () => {
+    oldRenderLesson();
+    const practice = make('button', 'Laboratuvarda uygula →', 'primary'); practice.id = 'lessonPractice';
+    const note = make('p', 'Serbest çalışma alanını açar; mevcut topolojini korur. Rehberli Akademi’de beş başlangıç görevini ayrıca seçebilirsin.', 'journey-note');
+    practice.onclick = () => { setMode('free'); showArea('lab'); };
+    byId('lessonContent').append(note, practice);
+    const deep = byId('lessonContent').querySelector('.deep-learning');
+    fold(deep, 'Konuyu derinleştir · komutlar ve uygulamalı soru');
+  };
+  byId('lessonNav').addEventListener('click', e => {
+    if (!e.target.closest('[data-lesson]')) return;
+    hub.classList.add('reading'); byId('quizPanel').hidden = true;
+    byId('lessonContent').tabIndex = -1; byId('lessonContent').focus();
+  });
+  document.querySelectorAll('[data-level]').forEach(b => b.addEventListener('click', cardView));
+  back.onclick = () => { cardView(); byId('lessonNav').querySelector('.active').focus(); };
+  fold(byId('routeWorkshop'), 'İleri atölyeler · routing, erişim ve protokol modelleri', 'advancedWorkshops');
+  const modes = make('div', '', 'journey-modes'); modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'Laboratuvar çalışma biçimi');
+  modes.innerHTML = '<button id="modeAcademy" aria-pressed="true"><b>Rehberli Akademi</b><span>5 görev · adımlar, ipuçları ve puanlama</span></button><button id="modeFree" aria-pressed="false"><b>Serbest çalışma</b><span>Kendi topolojin · cihazlar ve komutlar</span></button>';
+  byId('academyPanel').before(modes);
+  const modeNote = make('p', 'Çalışma biçimini değiştirmek topolojini silmez. Akademi’de Başlat veya Sıfırla mevcut ağı değiştirir.', 'journey-note');
+  modes.after(modeNote);
+  function setMode(mode) {
+    byId('academyPanel').hidden = mode !== 'academy';
+    byId('modeAcademy').setAttribute('aria-pressed', String(mode === 'academy'));
+    byId('modeFree').setAttribute('aria-pressed', String(mode === 'free'));
+    document.querySelector('#area-lab .lab-heading h2').textContent = mode === 'academy' ? 'Rehberle ilerle, ağında uygula' : 'Kendi ağını kur ve dene';
+  }
+  byId('modeAcademy').onclick = () => setMode('academy');
+  byId('modeFree').onclick = () => setMode('free');
+  const actions = document.querySelector('.pt-head-actions');
+  const extra = make('div', '', 'journey-tools');
+  ['ptExport','ptImport','ptDeleteDevice','ptReset'].forEach(id => extra.append(byId(id)));
+  actions.append(extra); fold(extra, 'Dosya ve topoloji işlemleri', 'fileTopologyDetails');
+  fold(document.querySelector('.pt-quickstart'), 'İlk ağını kur · dört adımlı rehber');
+  fold(document.querySelector('.pt-import-note'), 'Packet Tracer dosyası nasıl aktarılır?');
+  fold(byId('sharedScenarioPanel'), 'Hazır arıza senaryoları ve kontroller', 'sharedScenarioDetails');
+  fold(document.querySelector('.pt-shortcuts'), 'Komut kısayolları');
+  fold(document.querySelector('.pt-bottom-note'), 'Simülasyon hakkında');
+  const taskFold = fold(byId('topologyTaskCard'), 'Kendi topolojimdeki bulguları incele', 'topologyTaskDetails');
+  ['loadTopologyTask','runTopologyAuditTask','verifyTopologyTask'].forEach(id => byId(id).addEventListener('click', () => { taskFold.open = true; }));
+  const scenarioPicker = fold(document.querySelector('#area-troubleshoot .layout > aside'), 'Arıza senaryosu seç', 'scenarioPicker');
+  const narrow = matchMedia('(max-width:900px)');
+  scenarioPicker.open = !narrow.matches;
+  narrow.addEventListener('change', () => { scenarioPicker.open = !narrow.matches; });
+  byId('scenarioList').addEventListener('click', e => {
+    if (narrow.matches && e.target.closest('button')) scenarioPicker.open = false;
+  });
+  const flow = make('ol', '', 'journey-flow'); flow.id = 'diagnosticFlow';
+  ['Senaryo seç', 'Komutlarla kanıt topla', 'Teşhis koy', 'Düzelt ve doğrula'].forEach(t => flow.append(make('li', t)));
+  document.querySelector('#area-troubleshoot .lab-heading').after(flow);
+  // Reveal folded destinations before existing cross-panel shortcuts focus them.
+  document.addEventListener('click', e => {
+    if (e.target.closest('#scenarioList')) byId('sharedScenarioDetails').open = true;
+    if (e.target.closest('#ptQuickTroubleshoot')) taskFold.open = true;
+  }, true);
+  const labels = {ptCliInput:'Seçili cihaza komut',ptCliDevice:'Komut çalıştırılacak cihaz',ptRenameInput:'Yeni cihaz adı',ptSource:'Kablo kaynağı',ptTarget:'Kablo hedefi'};
+  Object.entries(labels).forEach(([id, label]) => byId(id).setAttribute('aria-label', label));
+  renderLesson(); cardView(); setMode('academy'); showArea('home');
+})();
+
+</script>
 </body>
 </html>
