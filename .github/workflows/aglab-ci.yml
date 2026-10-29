@@ -1,0 +1,44 @@
+name: AğLab doğrulama ve paketleme
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Chromium ve Playwright kur
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium
+          python -m pip install playwright
+      - name: Testleri çalıştır ve başarılıysa ZIP üret
+        run: python run_pipeline.py
+      - name: Test raporlarını sakla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aglab-test-raporlari
+          path: |
+            dist/test-report.md
+            dist/test-results.json
+          if-no-files-found: warn
+      - name: Başarılı ZIP'i sakla
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aglab-dogrulanmis-paket
+          path: dist/AgLab_Otomatik_Dogrulanmis_Paket.zip
+          if-no-files-found: error
