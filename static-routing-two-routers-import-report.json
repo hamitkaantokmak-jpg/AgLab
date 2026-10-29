@@ -1,0 +1,519 @@
+{
+  "sourceRoot": "PACKETTRACER5",
+  "sourceVersion": "9.0.1.0858",
+  "sourceDeviceCount": 9,
+  "devicesImported": 8,
+  "unsupportedDevices": [
+    "Power Distribution Device0 (Power Distribution Device)"
+  ],
+  "sourceLinkCount": 7,
+  "linksImported": 7,
+  "skippedLinks": [],
+  "sourceLinks": [
+    {
+      "index": 1,
+      "from": "PC1",
+      "fromPort": "eth0",
+      "to": "SW1",
+      "toPort": "fa0/1",
+      "functional": true,
+      "imported": true
+    },
+    {
+      "index": 2,
+      "from": "PC2",
+      "fromPort": "eth0",
+      "to": "SW1",
+      "toPort": "fa0/2",
+      "functional": true,
+      "imported": true
+    },
+    {
+      "index": 3,
+      "from": "PC3",
+      "fromPort": "eth0",
+      "to": "SW2",
+      "toPort": "fa0/1",
+      "functional": true,
+      "imported": true
+    },
+    {
+      "index": 4,
+      "from": "PC4",
+      "fromPort": "eth0",
+      "to": "SW2",
+      "toPort": "fa0/2",
+      "functional": true,
+      "imported": true
+    },
+    {
+      "index": 5,
+      "from": "SW1",
+      "fromPort": "fa0/3",
+      "to": "R1",
+      "toPort": "g0/0",
+      "functional": true,
+      "imported": true
+    },
+    {
+      "index": 6,
+      "from": "R1",
+      "fromPort": "g0/1",
+      "to": "R2",
+      "toPort": "g0/0",
+      "functional": true,
+      "imported": true
+    },
+    {
+      "index": 7,
+      "from": "SW2",
+      "fromPort": "fa0/3",
+      "to": "R2",
+      "toPort": "g0/1",
+      "functional": true,
+      "imported": true
+    }
+  ],
+  "notes": [],
+  "unmodeledConfigLineCount": 72,
+  "unmodeledConfigLines": [
+    {
+      "device": "R1",
+      "line": 2,
+      "command": "version 15.1"
+    },
+    {
+      "device": "R1",
+      "line": 3,
+      "command": "no service timestamps log datetime msec"
+    },
+    {
+      "device": "R1",
+      "line": 4,
+      "command": "no service timestamps debug datetime msec"
+    },
+    {
+      "device": "R1",
+      "line": 5,
+      "command": "no service password-encryption"
+    },
+    {
+      "device": "R1",
+      "line": 7,
+      "command": "hostname R1"
+    },
+    {
+      "device": "R1",
+      "line": 16,
+      "command": "ip cef"
+    },
+    {
+      "device": "R1",
+      "line": 17,
+      "command": "no ipv6 cef"
+    },
+    {
+      "device": "R1",
+      "line": 22,
+      "command": "license udi pid CISCO2911/K9 sn FTX1524978E-"
+    },
+    {
+      "device": "R1",
+      "line": 36,
+      "command": "spanning-tree mode pvst"
+    },
+    {
+      "device": "R1",
+      "line": 45,
+      "command": "duplex auto"
+    },
+    {
+      "device": "R1",
+      "line": 46,
+      "command": "speed auto"
+    },
+    {
+      "device": "R1",
+      "line": 50,
+      "command": "duplex auto"
+    },
+    {
+      "device": "R1",
+      "line": 51,
+      "command": "speed auto"
+    },
+    {
+      "device": "R1",
+      "line": 54,
+      "command": "no ip address"
+    },
+    {
+      "device": "R1",
+      "line": 55,
+      "command": "duplex auto"
+    },
+    {
+      "device": "R1",
+      "line": 56,
+      "command": "speed auto"
+    },
+    {
+      "device": "R1",
+      "line": 60,
+      "command": "no ip address"
+    },
+    {
+      "device": "R1",
+      "line": 63,
+      "command": "ip classless"
+    },
+    {
+      "device": "R1",
+      "line": 66,
+      "command": "ip flow-export version 9"
+    },
+    {
+      "device": "R1",
+      "line": 74,
+      "command": "line con 0"
+    },
+    {
+      "device": "R1",
+      "line": 76,
+      "command": "line aux 0"
+    },
+    {
+      "device": "R1",
+      "line": 78,
+      "command": "line vty 0 4"
+    },
+    {
+      "device": "R1",
+      "line": 79,
+      "command": "login"
+    },
+    {
+      "device": "R2",
+      "line": 2,
+      "command": "version 15.1"
+    },
+    {
+      "device": "R2",
+      "line": 3,
+      "command": "no service timestamps log datetime msec"
+    },
+    {
+      "device": "R2",
+      "line": 4,
+      "command": "no service timestamps debug datetime msec"
+    },
+    {
+      "device": "R2",
+      "line": 5,
+      "command": "no service password-encryption"
+    },
+    {
+      "device": "R2",
+      "line": 7,
+      "command": "hostname R2"
+    },
+    {
+      "device": "R2",
+      "line": 16,
+      "command": "ip cef"
+    },
+    {
+      "device": "R2",
+      "line": 17,
+      "command": "no ipv6 cef"
+    },
+    {
+      "device": "R2",
+      "line": 22,
+      "command": "license udi pid CISCO2911/K9 sn FTX152427RZ-"
+    },
+    {
+      "device": "R2",
+      "line": 36,
+      "command": "spanning-tree mode pvst"
+    },
+    {
+      "device": "R2",
+      "line": 45,
+      "command": "duplex auto"
+    },
+    {
+      "device": "R2",
+      "line": 46,
+      "command": "speed auto"
+    },
+    {
+      "device": "R2",
+      "line": 50,
+      "command": "duplex auto"
+    },
+    {
+      "device": "R2",
+      "line": 51,
+      "command": "speed auto"
+    },
+    {
+      "device": "R2",
+      "line": 54,
+      "command": "no ip address"
+    },
+    {
+      "device": "R2",
+      "line": 55,
+      "command": "duplex auto"
+    },
+    {
+      "device": "R2",
+      "line": 56,
+      "command": "speed auto"
+    },
+    {
+      "device": "R2",
+      "line": 60,
+      "command": "no ip address"
+    },
+    {
+      "device": "R2",
+      "line": 63,
+      "command": "ip classless"
+    },
+    {
+      "device": "R2",
+      "line": 66,
+      "command": "ip flow-export version 9"
+    },
+    {
+      "device": "R2",
+      "line": 74,
+      "command": "line con 0"
+    },
+    {
+      "device": "R2",
+      "line": 76,
+      "command": "line aux 0"
+    },
+    {
+      "device": "R2",
+      "line": 78,
+      "command": "line vty 0 4"
+    },
+    {
+      "device": "R2",
+      "line": 79,
+      "command": "login"
+    },
+    {
+      "device": "SW1",
+      "line": 2,
+      "command": "version 15.0"
+    },
+    {
+      "device": "SW1",
+      "line": 3,
+      "command": "no service timestamps log datetime msec"
+    },
+    {
+      "device": "SW1",
+      "line": 4,
+      "command": "no service timestamps debug datetime msec"
+    },
+    {
+      "device": "SW1",
+      "line": 5,
+      "command": "no service password-encryption"
+    },
+    {
+      "device": "SW1",
+      "line": 7,
+      "command": "hostname SW1"
+    },
+    {
+      "device": "SW1",
+      "line": 14,
+      "command": "spanning-tree mode pvst"
+    },
+    {
+      "device": "SW1",
+      "line": 15,
+      "command": "spanning-tree extend system-id"
+    },
+    {
+      "device": "SW1",
+      "line": 70,
+      "command": "no ip address"
+    },
+    {
+      "device": "SW1",
+      "line": 76,
+      "command": "line con 0"
+    },
+    {
+      "device": "SW1",
+      "line": 78,
+      "command": "line vty 0 4"
+    },
+    {
+      "device": "SW1",
+      "line": 79,
+      "command": "login"
+    },
+    {
+      "device": "SW1",
+      "line": 80,
+      "command": "line vty 5 15"
+    },
+    {
+      "device": "SW1",
+      "line": 81,
+      "command": "login"
+    },
+    {
+      "device": "SW2",
+      "line": 2,
+      "command": "version 15.0"
+    },
+    {
+      "device": "SW2",
+      "line": 3,
+      "command": "no service timestamps log datetime msec"
+    },
+    {
+      "device": "SW2",
+      "line": 4,
+      "command": "no service timestamps debug datetime msec"
+    },
+    {
+      "device": "SW2",
+      "line": 5,
+      "command": "no service password-encryption"
+    },
+    {
+      "device": "SW2",
+      "line": 7,
+      "command": "hostname SW2"
+    },
+    {
+      "device": "SW2",
+      "line": 14,
+      "command": "spanning-tree mode pvst"
+    },
+    {
+      "device": "SW2",
+      "line": 15,
+      "command": "spanning-tree extend system-id"
+    },
+    {
+      "device": "SW2",
+      "line": 70,
+      "command": "no ip address"
+    },
+    {
+      "device": "SW2",
+      "line": 76,
+      "command": "line con 0"
+    },
+    {
+      "device": "SW2",
+      "line": 78,
+      "command": "line vty 0 4"
+    },
+    {
+      "device": "SW2",
+      "line": 79,
+      "command": "login"
+    },
+    {
+      "device": "SW2",
+      "line": 80,
+      "command": "line vty 5 15"
+    },
+    {
+      "device": "SW2",
+      "line": 81,
+      "command": "login"
+    }
+  ],
+  "runningConfigPreservedFor": {
+    "R1": true,
+    "R2": true,
+    "PC1": false,
+    "PC2": false,
+    "PC3": false,
+    "PC4": false,
+    "SW1": true,
+    "SW2": true
+  },
+  "simulationCoverage": {
+    "modeled": "Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, PC IPv4/mask/gateway, router fiziksel arayüz IPv4/mask/shutdown, IPv4 statik rota, switch access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa).",
+    "preservedButNotFullySimulated": "Tam running-config metni config.runningConfig alanında saklanır; bu, tüm IOS komutlarının AğLab motorunda çalıştığı anlamına gelmez.",
+    "notModeled": [
+      "IOS sürüm/feature davranışları",
+      "duplex/speed ve kablo türü/medya ayrıntıları",
+      "STP zamanlaması ve tüm STP durum geçişleri",
+      "VLAN SVI arayüzleri",
+      "güç dağıtım cihazının davranışı",
+      "kaynak dosyada yer alıp AğLab modeline eşlenmeyen diğer cihaz/protokol özellikleri"
+    ]
+  },
+  "routerRoutes": {
+    "R1": [
+      {
+        "network": "192.168.2.0",
+        "mask": "255.255.255.0",
+        "nextHop": "10.0.0.2",
+        "distance": 1
+      }
+    ],
+    "R2": [
+      {
+        "network": "192.168.1.0",
+        "mask": "255.255.255.0",
+        "nextHop": "10.0.0.1",
+        "distance": 1
+      }
+    ]
+  },
+  "endpoints": [
+    {
+      "name": "PC1",
+      "type": "PC",
+      "ip": "192.168.1.2",
+      "mask": "255.255.255.0",
+      "gateway": "192.168.1.1"
+    },
+    {
+      "name": "PC2",
+      "type": "PC",
+      "ip": "192.168.1.3",
+      "mask": "255.255.255.0",
+      "gateway": "192.168.1.1"
+    },
+    {
+      "name": "PC3",
+      "type": "PC",
+      "ip": "192.168.2.2",
+      "mask": "255.255.255.0",
+      "gateway": "192.168.2.1"
+    },
+    {
+      "name": "PC4",
+      "type": "PC",
+      "ip": "192.168.2.3",
+      "mask": "255.255.255.0",
+      "gateway": "192.168.2.1"
+    }
+  ],
+  "sourceArchive": {
+    "format": "Cisco Packet Tracer .pkt + decoded PACKETTRACER5 XML",
+    "originalPacketBytes": 55929,
+    "originalPacketSha256": "1ab6243c53bebecbe228c2579171c468bf57bcc034303cad46c33ab14776785b",
+    "decodedXmlBytes": 960939,
+    "decodedXmlSha256": "b0ee4df8683420a5142aab1b6e2bc4ce091f5f454cb3909e5cbcb407edccf0b7",
+    "preservationNote": "Arşiv kaynak veriyi korur; AğLab simülasyon motorunun tüm Packet Tracer özelliklerini uyguladığı anlamına gelmez."
+  }
+}
