@@ -160,9 +160,9 @@ function switchManagementGatewayCheck(owner,address,remoteIp,path){
  if(!router||!activeRouterInterfaces(router).some(([,i])=>i.ip===owner.gateway&&inNetwork(address.ip,i.ip,i.mask)))return {ok:false,why:'Switch yönetim gateway adresi yerel erişilebilir router arayüzüyle eşleşmiyor.'};
  return {ok:true};
 }
-function learnManagementEndpoints(src,dst,path,sourceIp,targetIp){
+function learnManagementEndpoints(src,dst,path,sourceIp,targetIp,replyPath=null){
  if(!path.length)return;
- for(const [owner,peer,ownerIp,peerIp,edge,vlan] of [[src,dst,sourceIp,targetIp,path[0],path.vlans?.[0]],[dst,src,targetIp,sourceIp,path.at(-1),path.vlans?.at(-1)]]){
+ for(const [owner,peer,ownerIp,peerIp,edge,vlan] of [[src,dst,sourceIp,targetIp,path[0],path.vlans?.[0]],[dst,src,targetIp,sourceIp,replyPath?.[0]||path.at(-1),replyPath?.vlans?.[0]??path.vlans?.at(-1)]]){
   if(owner.type!=='Switch')continue;
   const address=activeSwitchSvis(owner).find(([,i])=>i.ip===ownerIp)?.[1];if(!address)continue;
   let neighbor=peer,neighborIp=peerIp;
