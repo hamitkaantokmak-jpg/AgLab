@@ -68,3 +68,9 @@ AğLab CLI'daki `switchport trunk allowed vlan all` da 1–4094 aralığını ka
 CLI, içe aktarılan topolojideki bağımsız alt arayüz/VLAN eşlemesini korur: örneğin `interface g0/0.200` altında `encapsulation dot1q 20` geçerlidir. Yeni alt arayüzler mevcut fiziksel parent üzerinden oluşturulur; `GigabitEthernet1/0.5000` gibi tam adlar normalleştirilir ve mantıksal arayüz fiziksel kablo portları listesine eklenmez. Bu modelde alt arayüz numarası 1–4294967295, VLAN etiketi ise ayrıca 1–4094 aralığındadır. Yeni alt arayüz, geçerli encapsulation ve IP yapılandırılana kadar yönlendirmeye katılmaz.
 
 Desteklenen komut yalnızca `encapsulation dot1q <VLAN>` biçimidir. `native`, ISL, eksik/fazla parametre veya geçersiz VLAN etiketi hata verir ve önceki eşlemeyi değiştirmez. JSON dışa/içe aktarımı bu bilgileri korur. Bu kapsam tam IOS uyumluluğu anlamına gelmez.
+
+## Tarayıcı kaydı ve aktarım raporu
+
+İçe aktarılan topolojinin özgün `.pkt`/XML arşivi ve `importReport` kapsam raporu, otomatik tarayıcı kaydında ve JSON dışa aktarımında birlikte korunur. Sayfa yeniden açıldığında model dışı CLI ve desteklenmeyen cihaz uyarıları tekrar gösterilir; rapor, kaynak içe aktarma anını açıklar ve sonraki düzenlemeler için yeni bir doğrulama raporu değildir.
+
+Tarayıcı depolaması dolarsa uyarı gösterilir; son başarılı kayıt korunur ve bellekteki güncel topoloji Dışa aktar ile kurtarılabilir. Sıfırlama veya yeni hazır eğitim topolojisine geçme eski kaynak arşivini ve aktarım raporunu yeni senaryoya eklemez.

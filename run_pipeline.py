@@ -5,6 +5,7 @@ ROOT=pathlib.Path(__file__).resolve().parent
 TESTS=['test_aglab_pkt_trunk.py','test_aglab_import.py','test_aglab_cli_vlan.py','test_aglab_status.py','test_aglab_subinterfaces.py','test_aglab_v7.py','test_aglab_v11_routing.py','test_aglab_v12_gateway.py','test_aglab_v13_router_ping.py','test_aglab_v15_local_ping.py','test_aglab_v17_ping_validation.py','test_aglab_academy.py','test_aglab_ui.py']
 TESTS.append('test_aglab_trunk_defaults.py')
 TESTS.append('test_aglab_pkt_dot1q.py')
+TESTS.append('test_aglab_persistence.py')
 ARTIFACTS=['AgLab_Final_PKT_Import.html','convert_pkt_to_aglab.py','restore_pkt_from_aglab_json.py','static-routing-two-routers.aglab.json','static-routing-two-routers-import-report.json','AgLab_PKT_Import_Kullanim.md','static-routing-two-routers(1).pkt' ]
 def run():
  p=argparse.ArgumentParser();p.add_argument('--out',default='dist');p.add_argument('--skip-browser',action='store_true');p.add_argument('--timeout',type=int,default=100);a=p.parse_args()

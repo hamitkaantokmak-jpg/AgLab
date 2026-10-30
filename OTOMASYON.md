@@ -1,6 +1,6 @@
 # AğLab otomatik test ve sürüm altyapısı
 
-`python run_pipeline.py` komutu on mevcut regresyon testini Chromium üzerinde çalıştırır, JSON/Markdown raporlarını üretir ve **yalnızca tüm testler geçerse** doğrulanmış ZIP paketi oluşturur. Test başarısızsa eski doğrulanmış ZIP silinir ve komut başarısız kodla çıkar.
+`python run_pipeline.py` komutu mevcut regresyon testlerini Chromium üzerinde çalıştırır, JSON/Markdown raporlarını üretir ve **yalnızca tüm testler geçerse** doğrulanmış ZIP paketi oluşturur. Test başarısızsa eski doğrulanmış ZIP silinir ve komut başarısız kodla çıkar.
 
 ## Yerel kurulum
 
@@ -12,7 +12,7 @@ Projeyi GitHub deposuna yükleyin. `.github/workflows/aglab-ci.yml` her push, pu
 
 ## Kapsam sınırı
 
-Bu altyapı otomatik test, raporlama ve paketlemeyi sağlar; kendi başına yeni ağ özellikleri **yazmaz**. Mevcut on test grubunun geçmesi Packet Tracer'ın tüm `.pkt` formatlarını, OSPF/RIP, ACL/NAT veya tarayıcı yeniden açılışında kalıcılığı doğrulamaz. Yeni özellikler için yeni testler eklenmeli. Tarayıcı kalıcılığı şu an kalite kapısına dahil değildir.
+Bu altyapı otomatik test, raporlama ve paketlemeyi sağlar; kendi başına yeni ağ özellikleri **yazmaz**. Mevcut test gruplarının geçmesi Packet Tracer'ın tüm `.pkt` formatlarını, OSPF/RIP, ACL/NAT veya büyük topolojilerde performansı doğrulamaz. Yeni özellikler için yeni testler eklenmeli. Tarayıcı kalıcılığı `test_aglab_persistence.py` ile kalite kapısına dahildir: gerçek HTTP origin, diskte saklanan tarayıcı profili, sayfa yenileme, yeni Chromium süreci, VLAN/port yapılandırması, kaynak arşivi ve aktarım raporu, geçersiz JSON reddi ve depolama kotası hatasında dışa aktarım kontrol edilir. Bu, farklı tarayıcılar veya gizli gezinme oturumları arasında otomatik veri aktarımı sağlamaz.
 
 ## Windows düzeltmesi (2026-10-29)
 `run_pipeline.py` artık Windows'ta Playwright'ın kurduğu Chromium'u da bulur; sistemde `chromium` komutunun PATH üzerinde olması gerekmez.
