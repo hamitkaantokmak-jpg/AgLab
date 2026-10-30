@@ -26,7 +26,7 @@ with sync_playwright() as pw:
   assert page.evaluate('academyEngine.snapshot()')==lab['initial_topology']
   result=page.evaluate('academy.check()')
   assert result['earned_points']<100,result
-  assert result['status']=='complete' or lab.get('probe_health'),result
+  assert result['status']=='complete' or student.get('probe_health'),result
   page.click('#academyHint');assert page.locator('#academyHints').inner_text()
   # Use real simulator import and grader, never replace ping with a test double.
   page.evaluate('t=>academyEngine.load(t)',lab['target_topology'])
