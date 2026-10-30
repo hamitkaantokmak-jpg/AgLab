@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "scope": "Tek izinli gerçek PKT örneği ve özgün sentetik XML senaryoları; genel Packet Tracer uyumluluk sertifikası değildir.",
+  "cases": [
+    {
+      "id": "real-static-routing",
+      "sourceKind": "pkt",
+      "file": "static-routing-two-routers(1).pkt",
+      "sha256": "1ab6243c53bebecbe228c2579171c468bf57bcc034303cad46c33ab14776785b",
+      "archive": "static-routing-two-routers.aglab.json",
+      "expected": {
+        "sourceDeviceCount": 9,
+        "devicesImported": 8,
+        "sourceLinkCount": 7,
+        "linksImported": 7,
+        "unsupportedDevices": [
+          "Power Distribution Device0 (Power Distribution Device)"
+        ]
+      },
+      "coverage": [
+        "şifreli dosyanın bütünlük doğrulamalı çözülmesi",
+        "kaynak XML arşivi",
+        "cihaz/bağlantı envanteri",
+        "statik rota aktarımı"
+      ],
+      "limitations": [
+        "Power Distribution Device simüle edilmez",
+        "model dışı IOS komutları raporlanır"
+      ]
+    },
+    {
+      "id": "synthetic-switch-state",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Switch",
+      "config": [
+        "vlan 20",
+        "spanning-tree vlan 20 priority 8192",
+        "interface GigabitEthernet0/1",
+        "switchport mode trunk",
+        "switchport trunk allowed vlan 1,20",
+        "switchport trunk native vlan 20",
+        "shutdown"
+      ],
+      "expectedDevice": {
+        "vlans": [
+          1,
+          20
+        ],
+        "stpPriorities": {
+          "20": 8192
+        },
+        "interfaces": {
+          "gi0/1": {
+            "enabled": false,
+            "mode": "trunk",
+            "allowed": [
+              1,
+              20
+            ],
+            "nativeVlan": 20
+          }
+        }
+      },
+      "coverage": [
+        "VLAN veritabanı",
+        "trunk/native VLAN alan aktarımı",
+        "shutdown",
+        "STP priority alan aktarımı"
+      ],
+      "limitations": [
+        "tam STP zamanlaması veya Cisco donanım davranışı doğrulanmaz"
+      ]
+    },
+    {
+      "id": "synthetic-router-route",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Router",
+      "config": [
+        "interface GigabitEthernet0/0",
+        "ip address 10.0.0.1 255.255.255.0",
+        "shutdown",
+        "ip route 192.168.20.0 255.255.255.0 10.0.0.2 5"
+      ],
+      "expectedDevice": {
+        "interfaces": {
+          "g0/0": {
+            "ip": "10.0.0.1",
+            "mask": "255.255.255.0",
+            "enabled": false
+          }
+        },
+        "staticRoutes": [
+          {
+            "network": "192.168.20.0",
+            "mask": "255.255.255.0",
+            "nextHop": "10.0.0.2",
+            "distance": 5
+          }
+        ]
+      },
+      "coverage": [
+        "fiziksel arayüz IP/mask/shutdown",
+        "statik rota ve administrative distance"
+      ],
+      "limitations": [
+        "bu sentetik örnek tek başına paket iletimini doğrulamaz"
+      ]
+    }
+  ]
+}
