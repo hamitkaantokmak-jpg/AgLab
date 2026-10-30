@@ -6,7 +6,7 @@ TESTS=['test_aglab_pkt_trunk.py','test_aglab_import.py','test_aglab_cli_vlan.py'
 TESTS.append('test_aglab_trunk_defaults.py')
 TESTS.append('test_aglab_pkt_dot1q.py')
 TESTS.append('test_aglab_persistence.py')
-TESTS.extend(['test_aglab_large_topology.py','test_aglab_pkt_matrix.py','test_aglab_endpoint_ports.py'])
+TESTS.extend(['test_aglab_large_topology.py','test_aglab_pkt_matrix.py','test_aglab_endpoint_ports.py','test_aglab_student_journey.py'])
 ARTIFACTS=['AgLab_Final_PKT_Import.html','convert_pkt_to_aglab.py','restore_pkt_from_aglab_json.py','static-routing-two-routers.aglab.json','static-routing-two-routers-import-report.json','AgLab_PKT_Import_Kullanim.md','static-routing-two-routers(1).pkt' ]
 ARTIFACTS.extend(['pkt-sample-matrix.json','PKT_ORNEK_MATRISI.md'])
 def run():
