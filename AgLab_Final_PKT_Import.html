@@ -1329,7 +1329,33 @@ $('labDeviceSelect').addEventListener('change',()=>{$('labPromptLabel').textCont
  function endpointVlan(sourceId,fallback=null){const src=get(sourceId);let vlan=Number(fallback??src?.vlan??10)||10;if(!src||!['PC','Server'].includes(src.type))return vlan;for(const l of links.filter(x=>linkUp(x)&&(x.a===sourceId||x.b===sourceId))){const other=get(l.a===sourceId?l.b:l.a);if(other?.type!=='Switch')continue;const port=portState(other,l.a===other.id?l.portA:l.portB);if(port?.mode==='access'&&Number.isInteger(Number(port.vlan))&&Number(port.vlan)>=1&&Number(port.vlan)<=4094)return Number(port.vlan);}return vlan}
  function routerEgressVlan(router,link,targetIp,fallback){const lookup=routeLookup(router,targetIp);if(!lookup.ok)return fallback;const ifaceName=lookup.route.iface,iface=router.interfaces?.[ifaceName];if(!iface)return null;const physical=iface.parent||(ifaceName.includes('.')?ifaceName.split('.')[0]:ifaceName);if(linkPort(link,router.id)!==physical)return null;if(iface.encapsulation==='dot1q')return Number(iface.vlan)||Number(ifaceName.split('.').pop())||fallback;const other=get(link.a===router.id?link.b:link.a);if(other?.type==='Switch'){const swPort=portState(other,linkPort(link,other.id));if(swPort?.mode==='access')return Number(swPort.vlan)||fallback;if(swPort?.mode==='trunk')return Number(swPort.nativeVlan??1);}return fallback}
 
- function macOf(d){let n=Number(String(d.id).replace(/\D/g,''))||1;return '02:00:00:'+((n>>16)&255).toString(16).padStart(2,'0')+':'+((n>>8)&255).toString(16).padStart(2,'0')+':'+(n&255).toString(16).padStart(2,'0')}
+// BEGIN MAC ADDRESS GENERATED
+// Stable synthetic device MACs. Preserve canonical dN addresses used by imported labs.
+const AgLabMacAddress=(()=>{
+ function createResolver(){
+  let topology=null,count=-1,addresses=new Map();
+  return (device,devices)=>{
+   if(topology!==devices||count!==devices.length){
+    topology=devices;count=devices.length;addresses=new Map();const occupied=new Set();
+    for(const id of devices.map(d=>String(d.id)).sort()){
+     const match=/^d([1-9]\d*)$/.exec(id),legacy=match&&Number(match[1])<=0xffffff;
+     let n=legacy?Number(match[1]):2166136261;
+     if(!legacy)for(let i=0;i<id.length;i++)n=Math.imul(n^id.charCodeAt(i),16777619)>>>0;
+     // Non-legacy IDs have their own namespace; resolve hash collisions in ID order.
+     const address=()=>legacy?'02:00:00:'+[(n>>>16)&255,(n>>>8)&255,n&255].map(v=>v.toString(16).padStart(2,'0')).join(':'):'02:01:'+[(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255].map(v=>v.toString(16).padStart(2,'0')).join(':');
+     while(occupied.has(address()))n=(n+1)>>>0;
+     const mac=address();occupied.add(mac);addresses.set(id,mac);
+    }
+   }
+   const result=addresses.get(String(device.id));if(!result)throw new Error('MAC için cihaz topolojide bulunamadı.');return result;
+  };
+ }
+ return {createResolver,resolve:createResolver()};
+})();
+if(typeof module!=='undefined'&&module.exports)module.exports=AgLabMacAddress;
+
+// END MAC ADDRESS GENERATED
+ function macOf(d){return AgLabMacAddress.resolve(d,devices)}
  function macFmt(m){return m.toLowerCase().replace(/:/g,'').match(/.{1,4}/g).join('.')}
  function pathVlan(src,path){let vlan=Number(src?.vlan)||10;for(const l of path){let a=get(l.a),b=get(l.b);if(a?.type==='Switch'){let p=portState(a,l.a===a.id?l.portA:l.portB);if(p?.mode==='access')vlan=Number(p.vlan)||vlan;break;}if(b?.type==='Switch'){let p=portState(b,l.a===b.id?l.portA:l.portB);if(p?.mode==='access')vlan=Number(p.vlan)||vlan;break;}}return vlan;}
  function learnOnPath(srcId,dstId,path,sourceAddress=null,targetAddress=null,replyPath=null){const src=get(srcId),dst=get(dstId);if(!src||!dst)return;const fallback=pathVlan(src,path),sourceIp=sourceAddress||src.ip,destinationIp=targetAddress||dst.ip;arpTables.set(srcId,arpTables.get(srcId)||new Map());arpTables.set(dstId,arpTables.get(dstId)||new Map());if(destinationIp)arpTables.get(srcId).set(destinationIp,macOf(dst));if(sourceIp)arpTables.get(dstId).set(sourceIp,macOf(src));learnPathMacs(src,path,fallback);const reverse=replyPath||[...path].reverse();if(!replyPath)reverse.vlans=[...(path.vlans||[])].reverse();learnPathMacs(dst,reverse,fallback);learnManagementEndpoints(src,dst,path,sourceIp,destinationIp,replyPath);}

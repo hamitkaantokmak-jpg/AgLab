@@ -65,6 +65,15 @@ Node sağlık kapısı testi CI'da ayrıca çalışır.
 
 ## Dördüncü grup: AGL-031–040
 
+Bu grubun Chromium testi, PC1/R1/SW1 gibi aynı sayısal son eke sahip
+kimliklerin aynı otomatik MAC adresini aldığını ortaya çıkardı. MAC üretimi
+tam cihaz kimliğine göre ayrı ad alanı ve çakışma çözümü kullanır. Eski
+kanonik d1, d2 vb. adresleri korunur; diğer kimliklerin otomatik adresleri
+değişir. Kaynak topolojiler veya özgün PKT değiştirilmez. Bu düzeltme
+ARP yanıtlarının switch tarafından yanlış porta filtrelenmesini giderir.
+Node testi aynı son ekleri, sayısız kimlikleri, hash çakışmasını, sıralamayı
+ve 3000 cihazda benzersizliği; Chromium routing görevleri gerçek teslimi sınar.
+
 Doğrudan bağlı routing, gateway, /30 transit, çift yönlü statik rota,
 eksik dönüş rotası, yanlış next-hop, varsayılan rota, en uzun önek ve
 üç routerlı çok atlamalı sorun giderme görevleri özgün kaynaklarından eklenir.

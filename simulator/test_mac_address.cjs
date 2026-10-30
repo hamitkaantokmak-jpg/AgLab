@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const api=require('./mac-address.js');
+const devices=['PC1','R1','SW1','PC2','R2','SW2','alpha','beta','costarring','liquid','d0','d01','d1','d2','d16777216'].map(id=>({id}));
+const resolve=api.createResolver(),macs=devices.map(d=>resolve(d,devices));
+assert.equal(new Set(macs).size,devices.length);
+assert.equal(resolve({id:'d1'},devices),'02:00:00:00:00:01');
+assert.equal(resolve({id:'d2'},devices),'02:00:00:00:00:02');
+const reversed=[...devices].reverse();for(const d of devices)assert.equal(resolve(d,reversed),macs[devices.indexOf(d)]);
+const enlarged=[...devices,{id:'new-router'}];for(const d of devices)assert.equal(resolve(d,enlarged),macs[devices.indexOf(d)]);
+const large=Array.from({length:3000},(_,i)=>({id:(i%2?'R':'PC')+i}));
+assert.equal(new Set(large.map(d=>resolve(d,large))).size,large.length);
+const html=fs.readFileSync(require('node:path').join(__dirname,'../AgLab_Final_PKT_Import.html'),'utf8');
+assert(html.includes('// BEGIN MAC ADDRESS GENERATED\n'+fs.readFileSync(require('node:path').join(__dirname,'mac-address.js'),'utf8')+'\n// END MAC ADDRESS GENERATED\n'));
+const fn=html.split('\n').find(l=>l.includes('function macOf(d)'));
+const context=vm.createContext({AgLabMacAddress:api,devices});vm.runInContext(fn,context);
+assert.notEqual(context.macOf({id:'PC1'}),context.macOf({id:'R1'}));
+console.log('PASS full device-ID MAC uniqueness, legacy addresses, order and embedded binding');
