@@ -101,6 +101,19 @@ def parse_vlan_list(value):
             vals.append(int(part))
     return list(dict.fromkeys(vals))
 
+def parse_trunk_allowed(value):
+    """Return an operation and VLANs, or None for unsupported/invalid syntax."""
+    match=re.fullmatch(r'(?:(add|remove)\s+)?(.+)',value.strip(),re.I)
+    if not match: return None
+    action=(match.group(1) or 'set').lower(); value=match.group(2).lower()
+    if value=='all': return action,list(range(1,4095))
+    if value=='none': return action,[]
+    for part in value.split(','):
+        if not re.fullmatch(r'\s*\d+(?:\s*-\s*\d+)?\s*',part): return None
+        bounds=[int(v) for v in part.split('-')]
+        if not all(1 <= v <= 4094 for v in bounds) or bounds[0]>bounds[-1]: return None
+    return action,parse_vlan_list(value)
+
 def convert(xml_bytes, original_pkt=None):
     # PT config may contain raw control characters; parse with recovery via replacement if needed.
     root=ET.fromstring(xml_bytes)
@@ -184,9 +197,13 @@ def convert(xml_bytes, original_pkt=None):
                 if re.match(r'\s*switchport mode access\s*$',line,re.I): interfaces[current]['mode']='access'
                 m=re.match(r'\s*switchport trunk allowed vlan\s+(.+)',line,re.I)
                 if m:
-                    parsed=parse_vlan_list(m.group(1))
-                    if parsed:
-                        interfaces[current]['allowed']=parsed
+                    parsed=parse_trunk_allowed(m.group(1))
+                    if parsed is not None:
+                        action,values=parsed
+                        existing=set(interfaces[current]['allowed'])
+                        if action=='add': values=existing | set(values)
+                        elif action=='remove': values=existing - set(values)
+                        interfaces[current]['allowed']=sorted(set(values))
                 m=re.match(r'\s*switchport trunk native vlan\s+(\d+)',line,re.I)
                 if m:
                     vid=int(m.group(1))
@@ -254,6 +271,8 @@ def convert(xml_bytes, original_pkt=None):
                 modeled=bool(re.match(r'^(?:interface\s+\S+|ip address\s+\d+(?:\.\d+){3}\s+\d+(?:\.\d+){3}|shutdown|no shutdown|ip route\s+\d+(?:\.\d+){3}\s+\d+(?:\.\d+){3}\s+\d+(?:\.\d+){3}(?:\s+\d+)?)$',raw,re.I))
             elif current_kind=='Switch':
                 modeled=bool(re.match(r'^(?:interface\s+\S+|vlan\s+\d+|switchport access vlan\s+\d+|switchport mode (?:access|trunk)|switchport trunk allowed vlan\s+[\d, -]+|switchport trunk native vlan\s+\d+|shutdown|no shutdown|spanning-tree vlan\s+[\d, -]+\s+priority\s+\d+)$',raw,re.I))
+                trunk=re.match(r'^switchport trunk allowed vlan\s+(.+)$',raw,re.I)
+                if trunk: modeled=parse_trunk_allowed(trunk.group(1)) is not None
             if not modeled:
                 unmodeled_config_lines.append({'device':d['name'],'line':line_no,'command':raw})
     report={

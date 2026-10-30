@@ -46,3 +46,7 @@ python restore_pkt_from_aglab_json.py static-routing-two-routers.aglab.json -o r
 ```
 
 Betik SHA-256 değerini doğrular. Geri çıkarılan dosya kaynak `.pkt` ile bayt bazında aynı olmalıdır. `importReport.unmodeledConfigLines` alanı, simülasyon modeline eşlenmeyen CLI satırlarını ve kaynak satır numaralarını listeler.
+
+## Trunk VLAN listesi aktarımı
+
+Dönüştürücü, açık `switchport trunk allowed vlan` komutlarında sayısal liste/aralık, `all`, `none`, `add` ve `remove` işlemlerini kaynak sırasıyla uygular. `all`, VLAN veritabanında bulunmayanlar dahil 1–4094 aralığını kapsar; trunk referansları VLAN veritabanına kayıt eklemez. Boş liste korunur. Geçersiz veya desteklenmeyen `except` gibi sözdizimleri önceki listeyi değiştirmez ve model dışı CLI raporuna girer. Bu kapsam, diğer IOS trunk komutlarının veya tüm Packet Tracer özelliklerinin desteklendiği anlamına gelmez.
