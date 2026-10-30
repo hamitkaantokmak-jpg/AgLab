@@ -1,4 +1,4 @@
-// Local Ethernet delivery. Routers terminate frames; L3 and SVI keep their existing path engine.
+// Shared Ethernet delivery. Routers terminate each frame; routed execution starts a new segment.
 let ethernetEvents=[],ethernetEventOverflow=0;
 function beginEthernetEvents(){ethernetEvents=[];ethernetEventOverflow=0}
 function ethernetEvent(text){if(ethernetEvents.length<256)ethernetEvents.push(text);else ethernetEventOverflow++}
@@ -14,18 +14,24 @@ function ethernetLinkEligible(link,vlan,context){
  for(const [d,p,other,op] of [[a,pa,b,pb],[b,pb,a,pa]])if(d?.type==='Switch'&&p?.mode==='trunk'&&(other?.type==='PC'||other?.type==='Server'||other?.type==='Switch'&&op?.mode==='access')&&Number(p.nativeVlan??1)!==Number(vlan))return false;
  return true;
 }
-function transmitEthernet(source,destinationMac,vlan,kind,context){
+function transmitEthernet(source,destinationMac,vlan,kind,context,options={}){
  const delivered=new Set(),seen=new Set(),queue=[{device:source,ingress:null}],broadcast=destinationMac==='ff:ff:ff:ff:ff:ff';
  ethernetEvent('frame '+kind+' src '+source.id+' dst '+destinationMac+' vlan '+vlan);
  for(let index=0;index<queue.length;index++){
   const {device,ingress}=queue[index];if(!device||device.enabled===false||seen.has(device.id))continue;seen.add(device.id);
   if(ingress&&device.type!=='Switch'){
    ethernetEvent('receive '+device.id+' '+kind+' vlan '+vlan);
+   if(options.targetId===device.id&&options.targetPort&&linkPort(ingress,device.id)!==options.targetPort){ethernetEvent('discard '+device.id+' ingress-port');continue;}
    if(broadcast||macOf(device)===destinationMac)delivered.add(device.id);else ethernetEvent('discard '+device.id+' destination-mac');
    continue; // Endpoints and routers do not bridge Ethernet frames.
   }
-  if(ingress&&device.type==='Switch')learnSwitchMac(device,source,vlan,linkPort(ingress,device.id));
-  const candidates=(context.adjacency.get(device.id)||[]).filter(link=>ethernetLinkEligible(link,vlan,context));
+  if(ingress&&device.type==='Switch'){
+   learnSwitchMac(device,source,vlan,linkPort(ingress,device.id));
+   if(activeSwitchSvis(device).some(([,iface])=>Number(iface.vlan)===Number(vlan))&&(broadcast||macOf(device)===destinationMac)){
+    delivered.add(device.id);ethernetEvent('receive '+device.id+' '+kind+' svi vlan '+vlan);if(!broadcast)continue;
+   }
+  }
+  const candidates=(context.adjacency.get(device.id)||[]).filter(link=>(ingress||!options.sourcePort||linkPort(link,device.id)===options.sourcePort)&&ethernetLinkEligible(link,vlan,context));
   let outputs=candidates.filter(link=>link!==ingress),reason=broadcast?'broadcast':'unknown-unicast';
   if(device.type==='Switch'&&!broadcast){
    const table=switchMacTable(device),key=switchMacKey(vlan,destinationMac),known=table.get(key);
@@ -60,7 +66,7 @@ function localEthernetPing(source,target,vlan){
 function ethernetCommand(d,p,out){
  if(p[0]==='show'&&p[1]==='ethernet'&&p[2]==='events'){
   if(p.length!==3){out('Kullanım: show ethernet events','outerr');return true}
-  out('Son yerel Ethernet işlemi (en çok 256 olay):');if(!ethernetEvents.length)out('Henüz yerel Ethernet olayı yok.');ethernetEvents.forEach(line=>out(line));if(ethernetEventOverflow)out('Ek olay sayısı: '+ethernetEventOverflow);return true;
+  out('Son Ethernet işlemi (en çok 256 olay):');if(!ethernetEvents.length)out('Henüz Ethernet olayı yok.');ethernetEvents.forEach(line=>out(line));if(ethernetEventOverflow)out('Ek olay sayısı: '+ethernetEventOverflow);return true;
  }
  if(p[0]!=='test'||p[1]!=='ethernet')return false;
  if(!['PC','Server'].includes(d.type)||d.enabled===false){out('Ethernet testi etkin PC/Server üzerinde desteklenir.','outerr');return true}
