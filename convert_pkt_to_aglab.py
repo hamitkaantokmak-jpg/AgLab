@@ -180,22 +180,37 @@ def convert(xml_bytes, original_pkt=None):
         elif kind=='Switch':
             ports=[f'fa0/{i}' for i in range(1,25)]+['gi0/1','gi0/2']; interfaces={p:{'mode':'access','vlan':1,'allowed':[1],'enabled':True} for p in ports}
             # Parse explicit access/trunk commands and VLAN database from the source config.
-            current=None; vlans={1}; ignored_interfaces=[]; stp_priorities={}; explicit_allowed=set()
+            current=None; vlans={1}; ignored_interfaces=[]; stp_priorities={}; explicit_allowed=set(); vlan_names={}; vlan_context=None; management_gateway=''
             for line in cfg.splitlines():
+                if line.strip() in ('!','exit','end'):
+                    current=None; vlan_context=None; continue
+                gw=re.fullmatch(r'\s*ip default-gateway\s+(\d+(?:\.\d+){3})\s*',line,re.I)
+                if gw:
+                    management_gateway=gw.group(1); current=None; vlan_context=None; continue
                 m=re.match(r'\s*interface\s+(\S+)',line,re.I)
                 if m:
-                    current=norm_port(m.group(1),kind)
+                    current=norm_port(m.group(1),kind); vlan_context=None
                     if current.startswith('vlan'):
-                        ignored_interfaces.append(m.group(1)); current=None; continue
+                        vid=current[4:]
+                        if vid.isdigit() and 1 <= int(vid) <= 4094:
+                            current='vlan'+str(int(vid)); interfaces.setdefault(current,{'ip':'','mask':'255.255.255.0','enabled':False,'vlan':int(vid)})
+                        else: ignored_interfaces.append(m.group(1)); current=None
+                        continue
                     if current not in interfaces:
                         interfaces[current]={'mode':'access','vlan':1,'allowed':[1],'enabled':True}
                         ports.append(current)
                     continue
-                vm=re.match(r'\s*vlan\s+(\d+)',line,re.I)
+                vm=re.fullmatch(r'\s*vlan\s+(\d+)\s*',line,re.I)
                 if vm:
                     vid=int(vm.group(1))
-                    if 1 <= vid <= 4094: vlans.add(vid)
+                    if 1 <= vid <= 4094: vlans.add(vid); vlan_context=vid
+                    else: vlan_context=None
                     current=None; continue
+                vn=re.fullmatch(r'\s*name\s+(.+)',line,re.I)
+                if vn and vlan_context is not None:
+                    value=vn.group(1).strip()
+                    if 1 <= len(value) <= 32 and not re.search(r'[\x00-\x1f\x7f]',value): vlan_names[str(vlan_context)]=value
+                    continue
                 sm=re.match(r'\s*spanning-tree vlan\s+([\d, -]+)\s+priority\s+(\d+)',line,re.I)
                 if sm:
                     priority=int(sm.group(2))
@@ -204,6 +219,12 @@ def convert(xml_bytes, original_pkt=None):
                             stp_priorities[str(vid)]=priority
                     current=None; continue
                 if current not in interfaces: continue
+                if current.startswith('vlan'):
+                    address=re.fullmatch(r'\s*ip address\s+(\d+(?:\.\d+){3})\s+(\d+(?:\.\d+){3})\s*',line,re.I)
+                    if address: interfaces[current]['ip'],interfaces[current]['mask']=address.groups()
+                    if re.fullmatch(r'\s*shutdown\s*',line,re.I): interfaces[current]['enabled']=False
+                    if re.fullmatch(r'\s*no shutdown\s*',line,re.I): interfaces[current]['enabled']=True
+                    continue
                 m=re.match(r'\s*switchport access vlan\s+(\d+)',line,re.I)
                 if m:
                     vid=int(m.group(1))
@@ -229,9 +250,10 @@ def convert(xml_bytes, original_pkt=None):
                 if re.match(r'\s*shutdown\s*$',line,re.I): interfaces[current]['enabled']=False
                 if re.match(r'\s*no shutdown\s*$',line,re.I): interfaces[current]['enabled']=True
             for port,iface in interfaces.items():
-                if iface['mode']=='trunk' and port not in explicit_allowed:
+                if iface.get('mode')=='trunk' and port not in explicit_allowed:
                     iface['allowed']=list(range(1,4095))
-            d={'id':f'd{len(raw_devices)+1}','name':name,'type':kind,'x':x,'y':y,'w':112,'h':72,'ip':'','mask':'','gateway':'','vlans':sorted(vlans),'stpPriorities':stp_priorities,'ports':list(dict.fromkeys(ports)),'enabled':text(eng,'POWER','true').lower()!='false','mode':'user','config':{'packetTracerModel':model,'runningConfig':cfg,'displayName':display,'unmodeledInterfaces':ignored_interfaces},'interfaces':interfaces}
+            d={'id':f'd{len(raw_devices)+1}','name':name,'type':kind,'x':x,'y':y,'w':112,'h':72,'ip':'','mask':'','gateway':management_gateway,'vlans':sorted(vlans),'stpPriorities':stp_priorities,'ports':list(dict.fromkeys(ports)),'enabled':text(eng,'POWER','true').lower()!='false','mode':'user','config':{'packetTracerModel':model,'runningConfig':cfg,'displayName':display,'unmodeledInterfaces':ignored_interfaces},'interfaces':interfaces}
+            if vlan_names: d['vlanNames']=vlan_names
         else:
             # Bind endpoint state to one physical wired NIC, never an unrelated
             # service/Bluetooth IP found through an unrestricted recursive scan.
@@ -294,12 +316,15 @@ def convert(xml_bytes, original_pkt=None):
         cfg=d.get('config',{}).get('runningConfig','')
         if not cfg: continue
         current_kind=d['type']
-        current_interface=None
+        current_interface=None; report_vlan=None
         for line_no,line in enumerate(cfg.splitlines(),1):
             raw=line.strip()
             interface=re.fullmatch(r'interface\s+(\S+)',raw,re.I)
-            if interface: current_interface=norm_port(interface.group(1),current_kind)
-            if not raw or raw in ('!','end','exit'): continue
+            if interface: current_interface=norm_port(interface.group(1),current_kind); report_vlan=None
+            vlan_line=re.fullmatch(r'vlan\s+(\d+)',raw,re.I)
+            if vlan_line: report_vlan=int(vlan_line.group(1)); current_interface=None
+            if not raw or raw in ('!','end','exit'):
+                current_interface=None; report_vlan=None; continue
             modeled=False
             if current_kind=='Router':
                 modeled=bool(re.match(r'^(?:interface\s+\S+|ip address\s+\d+(?:\.\d+){3}\s+\d+(?:\.\d+){3}|shutdown|no shutdown|ip route\s+\d+(?:\.\d+){3}\s+\d+(?:\.\d+){3}\s+\d+(?:\.\d+){3}(?:\s+\d+)?)$',raw,re.I))
@@ -309,6 +334,12 @@ def convert(xml_bytes, original_pkt=None):
                 modeled=bool(re.match(r'^(?:interface\s+\S+|vlan\s+\d+|switchport access vlan\s+\d+|switchport mode (?:access|trunk)|switchport trunk allowed vlan\s+[\d, -]+|switchport trunk native vlan\s+\d+|shutdown|no shutdown|spanning-tree vlan\s+[\d, -]+\s+priority\s+\d+)$',raw,re.I))
                 trunk=re.match(r'^switchport trunk allowed vlan\s+(.+)$',raw,re.I)
                 if trunk: modeled=parse_trunk_allowed(trunk.group(1)) is not None
+                if current_interface and current_interface.startswith('vlan'):
+                    modeled=current_interface in d['interfaces'] and bool(re.fullmatch(r'(?:interface\s+\S+|ip address\s+\d+(?:\.\d+){3}\s+\d+(?:\.\d+){3}|shutdown|no shutdown)',raw,re.I))
+                if re.fullmatch(r'ip default-gateway\s+\d+(?:\.\d+){3}',raw,re.I): modeled=True
+                named=re.fullmatch(r'name\s+(.+)',raw,re.I)
+                if named: modeled=report_vlan in d['vlans'] and 1 <= len(named.group(1)) <= 32 and not re.search(r'[\x00-\x1f\x7f]',named.group(1))
+
             if not modeled:
                 unmodeled_config_lines.append({'device':d['name'],'line':line_no,'command':raw})
     report={
@@ -321,9 +352,9 @@ def convert(xml_bytes, original_pkt=None):
       'unmodeledConfigLines':unmodeled_config_lines,
       'runningConfigPreservedFor':{d['name']:bool(d.get('config',{}).get('runningConfig')) for d in raw_devices},
       'simulationCoverage':{
-        'modeled':'Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, tek Ethernet NIC PC/Server IPv4/mask/gateway ve port POWER, router fiziksel ve etiketli 802.1Q alt arayüz IPv4/mask/shutdown, alt arayüz parent/VLAN eşlemesi, IPv4 statik rota, switch access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.',
+        'modeled':'Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, tek Ethernet NIC PC/Server IPv4/mask/gateway ve port POWER, router fiziksel ve etiketli 802.1Q alt arayüz IPv4/mask/shutdown, alt arayüz parent/VLAN eşlemesi, IPv4 statik rota, switch yönetim SVI IP/mask/shutdown ve default-gateway, VLAN isimleri, switch access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.',
         'preservedButNotFullySimulated':'Tam running-config metni config.runningConfig alanında saklanır; bu, tüm IOS komutlarının AğLab motorunda çalıştığı anlamına gelmez.',
-        'notModeled':['IOS sürüm/feature davranışları','duplex/speed ve kablo türü/medya ayrıntıları','STP zamanlaması, root bridge seçim algoritmasının tam davranışı ve tüm STP durum geçişleri','Çoklu NIC ve Ethernet dışı endpoint arayüzleri','VLAN SVI arayüzleri','Router alt arayüzlerinde native VLAN ve ISL encapsulation','güç dağıtım cihazının davranışı','kaynak dosyada yer alıp AğLab modeline eşlenmeyen diğer cihaz/protokol özellikleri']
+        'notModeled':['IOS sürüm/feature davranışları','duplex/speed ve kablo türü/medya ayrıntıları','STP zamanlaması, root bridge seçim algoritmasının tam davranışı ve tüm STP durum geçişleri','Çoklu NIC ve Ethernet dışı endpoint arayüzleri','Layer 3 switch routing (SVI yalnız yönetim endpointidir)','Router alt arayüzlerinde native VLAN ve ISL encapsulation','güç dağıtım cihazının davranışı','kaynak dosyada yer alıp AğLab modeline eşlenmeyen diğer cihaz/protokol özellikleri']
       },
       'routerRoutes':{d['name']:d.get('staticRoutes',[]) for d in raw_devices if d['type']=='Router'},
       'endpoints':[{k:d.get(k) for k in ['name','type','ip','mask','gateway']} for d in raw_devices if d['type'] in ('PC','Server')]
