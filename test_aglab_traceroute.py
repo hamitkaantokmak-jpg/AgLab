@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  print('PASS: silent router stays hidden while a later reply still completes the trace',flush=True)
  load();out=cmd('d3','trace 192.168.2.2 max-hops 1');assert len(rows(out))==1 and 'doğrulanamadı' in out and 'Echo Reply' not in out,out
  # Unknown host on an existing destination LAN still exposes the reachable routers.
- out=cmd('d3','trace 192.168.2.99 max-hops 4');hops=rows(out);assert len(hops)==4 and '192.168.1.1' in hops[0] and '10.0.0.2' in hops[1] and hops[2].strip()=='3  *' and 'Hedefe ulaşılabilir' not in out,out
+ out=cmd('d3','trace 192.168.2.99 max-hops 4');hops=rows(out);assert len(hops)==3 and '192.168.1.1' in hops[0] and '10.0.0.2' in hops[1] and '!H' in hops[2] and 'Hedefe ulaşılabilir' not in out,out
  # A forwarding loop must consume real TTL, not vanish at topology prevalidation.
  loop=copy.deepcopy(base);loop['devices'][0]['staticRoutes'].append(dict(network='198.51.100.0',mask='255.255.255.0',nextHop='10.0.0.2',distance=1));loop['devices'][1]['staticRoutes'].append(dict(network='198.51.100.0',mask='255.255.255.0',nextHop='10.0.0.1',distance=1));load(loop)
  out=cmd('d3','trace 198.51.100.2 max-hops 5');hops=rows(out);assert len(hops)==5 and '192.168.1.1' in hops[0] and '10.0.0.2' in hops[1] and '192.168.1.1' in hops[2] and 'Echo Reply' not in out,out
@@ -49,7 +49,7 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  load();assert len(rows(cmd('d3','trace 192.168.2.1 max-hops 4')))==2
  # A later missing route must not prevent earlier returned Time Exceeded replies.
  missing=copy.deepcopy(base);missing['devices'][0]['staticRoutes'].append(dict(network='198.51.100.0',mask='255.255.255.0',nextHop='10.0.0.2',distance=1));load(missing)
- out=cmd('d3','trace 198.51.100.2 max-hops 3');hops=rows(out);assert len(hops)==3 and '192.168.1.1' in hops[0] and '10.0.0.2' in hops[1] and hops[2].strip()=='3  *',out
+ out=cmd('d3','trace 198.51.100.2 max-hops 3');hops=rows(out);assert len(hops)==3 and '192.168.1.1' in hops[0] and '10.0.0.2' in hops[1] and '!N' in hops[2],out
  nat=copy.deepcopy(base);r1=nat['devices'][0];r1['interfaces']['g0/0']['natRole']='inside';r1['interfaces']['g0/1']['natRole']='outside';r1['natOverload']=dict(aclId='1',outsideInterface='g0/1');r1['acls']=[dict(id='1',action='permit',protocol='ip',srcType='network',src='192.168.1.0',wildcard='0.0.0.255',dstType='any')];load(nat)
  out=cmd('d3','trace 192.168.2.2 max-hops 4');assert 'henüz desteklenmiyor' in out and 'Hedefe ulaşılabilir' not in out,out
  assert 'tablosu boş' in cmd('d1','show ip nat translations')

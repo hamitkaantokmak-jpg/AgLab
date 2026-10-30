@@ -1303,7 +1303,7 @@ $('labDeviceSelect').addEventListener('change',()=>{$('labPromptLabel').textCont
   let s=get(src);if(!s)return {ok:false,why:'Kaynak cihaz bulunamadı.'};
   if(!validIP(target))return {ok:false,why:'Ping hedefi geçerli bir IPv4 adresi olmalı.'};
   let dst=devices.find(d=>d.ip===target||Object.values(d.interfaces||{}).some(i=>i.ip===target));
-  if(!dst)return {ok:false,why:'Hedef IP topolojide yapılandırılmış bir cihaza ait değil.'};
+  if(!dst){if(s.enabled===false)return {ok:false,why:'Kaynak cihaz kapalı.'};return probePingFallback(s,target,requestTtl);}
   if(s.enabled===false||dst.enabled===false)return {ok:false,why:'Kaynak veya hedef cihaz kapalı.'};
   if(src===dst.id&&s.type==='Switch'){const own=switchManagementAddress(s,target,true);return own?{ok:true,why:'Etkin yerel SVI hedefi.'}:{ok:false,why:'Hedef SVI etkin değil: VLAN ve forwarding portlarını kontrol et.'};}
   if(src===dst.id){
@@ -1328,7 +1328,7 @@ $('labDeviceSelect').addEventListener('change',()=>{$('labPromptLabel').textCont
   if(firstSwitchLink&&s.type!=='Switch'){let sw=get(firstSwitchLink.a).type==='Switch'?get(firstSwitchLink.a):get(firstSwitchLink.b),sp=portState(sw,firstSwitchLink.a===sw.id?firstSwitchLink.portA:firstSwitchLink.portB);if(sp?.mode==='access'){vlan=Number(sp.vlan)||vlan;}}
   if(sameSubnet&&['PC','Server'].includes(s.type)&&['PC','Server'].includes(dst.type))return localEthernetPing(s,dst,vlan,requestTtl);
   if(!sameSubnet&&['PC','Server'].includes(s.type)){if(!s.gateway)return {ok:false,why:'Kaynak cihazda varsayılan gateway yapılandırılmamış.'};if(!inNetwork(s.gateway,si.ip,si.mask))return {ok:false,why:'Kaynak cihazın varsayılan gateway adresi yerel alt ağda değil.'};}
-  const path=findPath(src,dst.id,vlan,target,managementFlow,managementFlow?{management:true,...(dst.type==='Switch'?{targetVlan:di.vlan}:{})}:{});if(!path)return {ok:false,why:'VLAN '+vlan+' başlangıçlı L2/STP segmentlerinde kaynak ve hedef arasında aktif yol yok; port rolleri, router çıkış arayüzü, seçili next-hop ve VLAN yapılandırmasını kontrol et.'};if(s.type!=='Router'&&dst.type!=='Router'&&sameSubnet&&path.some(l=>get(l.a)?.type==='Router'||get(l.b)?.type==='Router'))return {ok:false,why:'Kaynak subnet maskesine göre hedef yerel ağda görünüyor; kaynak doğrudan ARP bekler. Hedef aynı L2 segmentinde bulunmadığı için router üzerinden yönlendirme yapılmaz. IP/maskeyi veya VLAN tasarımını kontrol et.'};
+  const path=findPath(src,dst.id,vlan,target,managementFlow,managementFlow?{management:true,...(dst.type==='Switch'?{targetVlan:di.vlan}:{})}:{});if(!path)return probePingFallback(s,target,requestTtl);if(s.type!=='Router'&&dst.type!=='Router'&&sameSubnet&&path.some(l=>get(l.a)?.type==='Router'||get(l.b)?.type==='Router'))return {ok:false,why:'Kaynak subnet maskesine göre hedef yerel ağda görünüyor; kaynak doğrudan ARP bekler. Hedef aynı L2 segmentinde bulunmadığı için router üzerinden yönlendirme yapılmaz. IP/maskeyi veya VLAN tasarımını kontrol et.'};
   if((options.explicitTtl||requestTtl!==64)&&ttlUnsupportedNatPath(path,src))return {ok:false,why:'NAT/PAT çevrili akışlarda özel TTL henüz desteklenmiyor.'};
   if(managementFlow){const forwardGateway=switchManagementGatewayCheck(s,si,di.ip,path);if(!forwardGateway.ok)return forwardGateway;}
   for(let idx=0;idx<path.length;idx++){const l=path[idx],edgeVlan=path.vlans?.[idx]??vlan;if(get(l.a).type!=='Switch'&&get(l.b).type!=='Switch')continue;let r=linkCarriesVlan(l,edgeVlan);if(!r.ok)return r;let otherSwitch=get(l.a).type==='Switch'&&get(l.b).type==='Switch';if(otherSwitch){let pa=portState(get(l.a),l.portA),pb=portState(get(l.b),l.portB);if(pa.mode==='access'&&pb.mode==='access'&&Number(pa.vlan)!==Number(pb.vlan))return {ok:false,why:'Switchler arası access VLAN uyuşmazlığı.'}}}
@@ -1964,22 +1964,22 @@ function deliverRoutedFrames(source,path,sourceIp,targetIp,kind,context,packet={
    if(ttl<=0)return icmpTimeExceeded(sender,source,sourceIp,targetIp,segments[index-1].neighborIp,context,kind);
   }
   const policy=aclPathDecision(segment.path,sender.id,target.id,sourceIp,targetIp,'icmp',null);
-  if(!policy.ok){ethernetEvent('icmp-policy-drop '+policy.why);return policy;}
+  if(!policy.ok){ethernetEvent('icmp-policy-drop '+policy.why);return {...policy,failure:'policy'};}
   const options={sourcePort:sender.type==='Switch'?null:sourcePort,targetId:target.id,targetPort:target.type==='Switch'?null:targetPort};
   const reverse={sourcePort:target.type==='Switch'?null:targetPort,targetId:sender.id,targetPort:sender.type==='Switch'?null:sourcePort};
   const arp=arpTables.get(sender.id)||new Map(),neighborArp=arpTables.get(target.id)||new Map();
   if(sender.type==='Router')ethernetEvent('forward '+sender.id+' egress '+sourcePort+' next-hop '+neighborIp+' ip '+sourceIp+' -> '+targetIp);
   if(arp.get(neighborIp)!==macOf(target)){
    const request=transmitEthernet(sender,'ff:ff:ff:ff:ff:ff',vlan,'arp-request',context,options);
-   if(!request.has(target.id))return {ok:false,why:sender.name+' → '+target.name+' ARP isteği seçili komşuya ulaşmadı ('+neighborIp+').'};
+   if(!request.has(target.id))return {ok:false,failure:'arp',why:sender.name+' → '+target.name+' ARP isteği seçili komşuya ulaşmadı ('+neighborIp+').'};
    neighborArp.set(localIp,macOf(sender));arpTables.set(target.id,neighborArp);
    const reply=transmitEthernet(target,macOf(sender),vlan,'arp-reply',context,reverse);
-   if(!reply.has(sender.id))return {ok:false,why:target.name+' ARP yanıtı '+sender.name+' cihazına ulaşmadı.'};
+   if(!reply.has(sender.id))return {ok:false,failure:'arp',why:target.name+' ARP yanıtı '+sender.name+' cihazına ulaşmadı.'};
    arp.set(neighborIp,macOf(target));arpTables.set(sender.id,arp);
   }
   ethernetEvent('packet '+kind+' ip '+sourceIp+' -> '+targetIp+' neighbor '+neighborIp+' ttl '+ttl);
   const delivered=transmitEthernet(sender,arp.get(neighborIp),vlan,kind,context,options);
-  if(!delivered.has(target.id))return {ok:false,why:sender.name+' → '+target.name+' Ethernet '+kind+' frame seçili komşuya ulaşmadı; MAC/VLAN/port çıkışını kontrol et.'};
+  if(!delivered.has(target.id))return {ok:false,failure:'frame',why:sender.name+' → '+target.name+' Ethernet '+kind+' frame seçili komşuya ulaşmadı; MAC/VLAN/port çıkışını kontrol et.'};
  }
  return {ok:true};
 }
@@ -1992,17 +1992,41 @@ function parsePingCommand(parts){
  if(!validIP(parts[1])||!(parts.length===2||parts.length===4&&parts[2]==='ttl'&&/^[1-9]\d{0,2}$/.test(parts[3])&&ttl<=255))return {error:'Kullanım: ping <IPv4> [ttl <1-255>]'};
  return {target:parts[1],ttl,explicitTtl:parts.length===4};
 }
-function icmpTimeExceeded(router,origin,sourceIp,targetIp,incomingIp,context,kind){
- ethernetEvent('ttl-expired '+router.id+' quote '+sourceIp+' -> '+targetIp);
- if(kind==='icmp-time-exceeded')return {ok:false,expired:true,why:'ICMP hata paketinin TTL süresi doldu; yeni ICMP hata yanıtı üretilmedi.'};
+function icmpErrorReply(router,origin,sourceIp,targetIp,incomingIp,context,kind,type,code){
+ const expired=type===11,errorKind=expired?'icmp-time-exceeded':'icmp-destination-unreachable';
+ const label=expired?'Time Exceeded':code===0?'Network Unreachable':'Host Unreachable';
+ const flags={ok:false,expired,unreachable:type===3,icmpCode:code};
+ const nonUnicast=ip=>validIP(ip)&&(Number(ip.split('.')[0])>=224||devices.some(device=>{
+  const addresses=device.type==='Router'?activeRouterInterfaces(device).map(([,iface])=>iface):device.type==='Switch'?activeSwitchSvis(device).map(([,iface])=>iface):[device];
+  return addresses.some(iface=>prefixLen(iface.mask)>0&&prefixLen(iface.mask)<31&&validIP(iface.ip)&&((ipNum(iface.ip)|~ipNum(iface.mask))>>>0)===ipNum(ip));
+ }));
+ if(kind==='icmp-time-exceeded'||kind==='icmp-destination-unreachable'||nonUnicast(targetIp)||nonUnicast(sourceIp)||sourceIp==='0.0.0.0'){
+  ethernetEvent('icmp-error-suppressed '+errorKind+' quote '+sourceIp+' -> '+targetIp);
+  return {...flags,icmpDelivered:false,why:'Bu paket için ICMP hata yanıtı üretilmedi.'};
+ }
  const lookup=routeLookup(router,sourceIp),errorIp=router.interfaces?.[lookup.route?.iface]?.ip||incomingIp;
  const management=origin.type==='Switch',svi=management?switchManagementAddress(origin,sourceIp,true):null;
- const path=findPath(router.id,origin.id,endpointVlan(router.id),sourceIp,true,management?{management:true,targetVlan:svi?.vlan}:{});
- ethernetEvent('icmp-time-exceeded type 11 code 0 from '+router.id+' '+errorIp+' to '+sourceIp);
+ ethernetEvent(errorKind+' type '+type+' code '+code+' from '+router.id+' '+errorIp+' to '+sourceIp+' quote '+sourceIp+' -> '+targetIp);
  let delivered={ok:false,why:'ICMP dönüş rotası/komşuluğu yok.'};
- if(path?.length)delivered=deliverRoutedFrames(router,path,errorIp,sourceIp,'icmp-time-exceeded',context,{ttl:64});
+ if(router.id===origin.id&&activeRouterInterfaces(router).some(([,iface])=>iface.ip===sourceIp)){delivered={ok:true};ethernetEvent('icmp-local-delivery '+origin.id);}
+ else{
+  const path=findPath(router.id,origin.id,endpointVlan(router.id),sourceIp,true,management?{management:true,targetVlan:svi?.vlan}:{});
+  if(path?.length)delivered=deliverRoutedFrames(router,path,errorIp,sourceIp,errorKind,context,{ttl:64});
+ }
  ethernetEvent((delivered.ok?'icmp-delivered ':'icmp-undelivered ')+origin.id+(delivered.ok?'':' '+delivered.why));
- return {ok:false,expired:true,routerId:router.id,routerIp:errorIp,icmpDelivered:delivered.ok,why:'TTL süresi '+router.name+' üzerinde doldu. ICMP Time Exceeded (type 11 code 0) '+(delivered.ok?errorIp+' adresinden kaynağa ulaştı.':'kaynağa ulaşmadı: '+delivered.why)};
+ const description=expired?'Time Exceeded':'Destination Unreachable / '+label;
+ return {...flags,routerId:router.id,routerIp:errorIp,icmpDelivered:delivered.ok,why:(expired?'TTL süresi '+router.name+' üzerinde doldu. ':'')+'ICMP '+description+' (type '+type+' code '+code+') '+(delivered.ok?errorIp+' adresinden kaynağa ulaştı.':'kaynağa ulaşmadı: '+delivered.why)};
+}
+function icmpTimeExceeded(router,origin,sourceIp,targetIp,incomingIp,context,kind){
+ ethernetEvent('ttl-expired '+router.id+' quote '+sourceIp+' -> '+targetIp);
+ return icmpErrorReply(router,origin,sourceIp,targetIp,incomingIp,context,kind,11,0);
+}
+function icmpDestinationUnreachable(router,origin,sourceIp,targetIp,incomingIp,context,code=0){
+ return icmpErrorReply(router,origin,sourceIp,targetIp,incomingIp,context,'icmp-request',3,code);
+}
+function probePingFallback(source,target,ttl){
+ const result=traceProbe(source,target,ttl);
+ return {...result,ok:!!result.ok,why:result.why||(result.ok?'ICMP Echo Reply gerçek ağ iletimiyle kaynağa ulaştı.':'ICMP Echo Reply veya erişilememe yanıtı kaynağa ulaşmadı.')};
 }
 
 function ttlUnsupportedNatPath(path,sourceId){
@@ -2023,6 +2047,12 @@ function traceUnresolvedArp(sender,address,vlan,port,context){
  ethernetEvent('arp-unresolved '+sender.id+' target '+address);
  transmitEthernet(sender,'ff:ff:ff:ff:ff:ff',vlan,'arp-request',context,{sourcePort:sender.type==='Switch'?null:port});
 }
+function traceCachedNoReply(sender,address,mac,vlan,port,sourceIp,targetIp,ttl,context){
+ ethernetEvent('packet icmp-request ip '+sourceIp+' -> '+targetIp+' neighbor '+address+' ttl '+ttl);
+ transmitEthernet(sender,mac,vlan,'icmp-request',context,{sourcePort:port});
+ ethernetEvent('cached-neighbor-no-reply '+sender.id+' target '+address);
+ return {ok:false};
+}
 function traceProbe(origin,targetIp,initialTtl){
  const source=origin.type==='Switch'?switchManagementAddress(origin,targetIp):origin.type==='Router'?origin.interfaces?.[routeLookup(origin,targetIp).route?.iface]||activeRouterInterfaces(origin).find(([,iface])=>iface.ip===targetIp)?.[1]:origin;
  if(!source?.ip||!validIP(source.ip)||prefixLen(source.mask)<0)return {localError:true,why:'Kaynakta etkin ve geçerli IP/SVI veya çıkış rotası yok.'};
@@ -2038,12 +2068,21 @@ function traceProbe(origin,targetIp,initialTtl){
   let hop,expectedPort=null;
   if(current.type==='Router'){
    if(step>0){const previous=ttl;ttl--;ethernetEvent('ttl-forward '+current.id+' '+previous+' -> '+ttl);if(ttl<=0)return icmpTimeExceeded(current,origin,sourceIp,targetIp,incomingIp,context,'icmp-request');}
-   const lookup=routeLookup(current,targetIp);if(!lookup.ok){ethernetEvent('trace-no-route '+current.id+' target '+targetIp);return {ok:false};}
-   const egress=traceRouterVlan(current,lookup.route,targetIp,vlan);if(!egress.edge)return {ok:false};
+   const lookup=routeLookup(current,targetIp);if(!lookup.ok){ethernetEvent('trace-no-route '+current.id+' target '+targetIp);return icmpDestinationUnreachable(current,origin,sourceIp,targetIp,incomingIp,context,0);}
+   const egress=traceRouterVlan(current,lookup.route,targetIp,vlan);if(!egress.edge)return icmpDestinationUnreachable(current,origin,sourceIp,targetIp,incomingIp,context,0);
    expectedPort=egress.physical;vlan=egress.vlan;
-   if(incomingPort&&current.interfaces?.[incomingPort]?.natRole==='inside'&&(current.interfaces?.[lookup.route.iface]?.natRole||current.interfaces?.[egress.physical]?.natRole)==='outside')return {unsupported:true,why:'NAT/PAT çevrili akışlarda TTL traceroute henüz desteklenmiyor.'};
+   if(incomingPort&&current.interfaces?.[incomingPort]?.natRole==='inside'&&(current.interfaces?.[lookup.route.iface]?.natRole||current.interfaces?.[egress.physical]?.natRole)==='outside')return {unsupported:true,why:'NAT/PAT çevrili akışlarda artımlı probe iletimi henüz desteklenmiyor.'};
    hop=routingWireHop(current,targetIp);
-   if(!hop){const leaf=traceRouteLeaf(lookup.route),address=leaf.type==='connected'?targetIp:leaf.nextHop;traceUnresolvedArp(current,address,vlan,expectedPort,context);return {ok:false};}
+   if(!hop){
+    const leaf=traceRouteLeaf(lookup.route),address=leaf.type==='connected'?targetIp:leaf.nextHop,cached=arpTables.get(current.id)?.get(address);
+    if(cached)return traceCachedNoReply(current,address,cached,vlan,expectedPort,sourceIp,targetIp,ttl,context);
+    const bindings=routingIpBindings(address).filter(binding=>binding.id!==current.id);
+    if(bindings.length>1)return {unsupported:true,why:'Next-hop IP adresinin birden fazla etkin sahibi var; komşu seçimi belirsiz.'};
+    if(bindings.length===1){
+     if(get(bindings[0].id)?.type==='Switch')return {unsupported:true,why:'SVI yönetim uç noktası transit IP next-hop olarak desteklenmiyor.'};
+     hop=bindings[0];
+    }else{traceUnresolvedArp(current,address,vlan,expectedPort,context);return icmpDestinationUnreachable(current,origin,sourceIp,targetIp,incomingIp,context,1);}
+   }
   }else{
    const local=inNetwork(targetIp,source.ip,source.mask),address=local?targetIp:current.gateway;
    if(!local&&(!address||!inNetwork(address,source.ip,source.mask)))return {localError:true,why:'Uzak hedef için yerel alt ağda bir varsayılan gateway gerekli.'};
@@ -2053,10 +2092,18 @@ function traceProbe(origin,targetIp,initialTtl){
   }
   const target=get(hop.id),management=current.type==='Switch'||target?.type==='Switch';
   const segment=findPath(current.id,hop.id,vlan,hop.ip,true,management?{management:true,...(target.type==='Switch'?{targetVlan:hop.vlan}:{})}:{});
-  if(!segment?.length||expectedPort&&(linkPort(segment[0],current.id)!==expectedPort||Number(segment.vlans?.[0])!==Number(vlan)))return {ok:false};
+  if(!segment?.length){
+   if(current.type==='Router'){
+    const cached=arpTables.get(current.id)?.get(hop.ip);if(cached)return traceCachedNoReply(current,hop.ip,cached,vlan,expectedPort,sourceIp,targetIp,ttl,context);
+    traceUnresolvedArp(current,hop.ip,vlan,expectedPort,context);return icmpDestinationUnreachable(current,origin,sourceIp,targetIp,incomingIp,context,1);
+   }
+   return {ok:false};
+  }
+  if(expectedPort&&(linkPort(segment[0],current.id)!==expectedPort||Number(segment.vlans?.[0])!==Number(vlan)))return {ok:false};
   if(orderedPathNodes(current.id,segment).slice(1,-1).some(device=>device.type!=='Switch'))return {ok:false};
   if(hop.physical&&linkPort(segment.at(-1),hop.id)!==hop.physical)return {ok:false};
-  const delivered=deliverRoutedFrames(current,segment,sourceIp,targetIp,'icmp-request',context,{ttl});if(!delivered.ok)return {ok:false};
+  const delivered=deliverRoutedFrames(current,segment,sourceIp,targetIp,'icmp-request',context,{ttl});if(!delivered.ok){if(current.type==='Router'&&delivered.failure==='arp')return icmpDestinationUnreachable(current,origin,sourceIp,targetIp,incomingIp,context,1);return {ok:false};}
+  if(['PC','Server'].includes(target.type)&&target.ip!==targetIp){ethernetEvent('trace-nonforwarding-next-hop '+target.id);return {ok:false};}
   incomingPort=linkPort(segment.at(-1),hop.id);incomingIp=hop.ip;vlan=segment.vlans?.at(-1)??vlan;current=target;
  }
  return {ok:false};
@@ -2073,6 +2120,7 @@ function tracerouteCommand(device,parts,out){
   ethernetEvent('trace-probe ttl '+ttl+' target '+parts[1]);const result=traceProbe(device,parts[1],ttl);
   if(result.unsupported||result.localError){out(result.why,'outerr');return true;}
   if(result.ok){out(ttl+'  '+parts[1]+'  Echo Reply','outok');out('Hedefe ulaşılabilir. Echo Reply kaynağa ulaştı.','outok');return true;}
+  if(result.unreachable&&result.icmpDelivered){out(ttl+'  '+result.routerIp+'  '+get(result.routerId)?.name+'  '+(result.icmpCode===0?'!N Network Unreachable':'!H Host Unreachable'),'outerr');out('İzleme erişilememe yanıtıyla sonlandı; hedefe ulaşılamadı.','outerr');return true;}
   if(result.expired&&result.icmpDelivered)out(ttl+'  '+result.routerIp+'  '+get(result.routerId)?.name+'  Time Exceeded','outinfo');
   else out(ttl+'  *','outinfo');
  }

@@ -35,22 +35,22 @@ function deliverRoutedFrames(source,path,sourceIp,targetIp,kind,context,packet={
    if(ttl<=0)return icmpTimeExceeded(sender,source,sourceIp,targetIp,segments[index-1].neighborIp,context,kind);
   }
   const policy=aclPathDecision(segment.path,sender.id,target.id,sourceIp,targetIp,'icmp',null);
-  if(!policy.ok){ethernetEvent('icmp-policy-drop '+policy.why);return policy;}
+  if(!policy.ok){ethernetEvent('icmp-policy-drop '+policy.why);return {...policy,failure:'policy'};}
   const options={sourcePort:sender.type==='Switch'?null:sourcePort,targetId:target.id,targetPort:target.type==='Switch'?null:targetPort};
   const reverse={sourcePort:target.type==='Switch'?null:targetPort,targetId:sender.id,targetPort:sender.type==='Switch'?null:sourcePort};
   const arp=arpTables.get(sender.id)||new Map(),neighborArp=arpTables.get(target.id)||new Map();
   if(sender.type==='Router')ethernetEvent('forward '+sender.id+' egress '+sourcePort+' next-hop '+neighborIp+' ip '+sourceIp+' -> '+targetIp);
   if(arp.get(neighborIp)!==macOf(target)){
    const request=transmitEthernet(sender,'ff:ff:ff:ff:ff:ff',vlan,'arp-request',context,options);
-   if(!request.has(target.id))return {ok:false,why:sender.name+' → '+target.name+' ARP isteği seçili komşuya ulaşmadı ('+neighborIp+').'};
+   if(!request.has(target.id))return {ok:false,failure:'arp',why:sender.name+' → '+target.name+' ARP isteği seçili komşuya ulaşmadı ('+neighborIp+').'};
    neighborArp.set(localIp,macOf(sender));arpTables.set(target.id,neighborArp);
    const reply=transmitEthernet(target,macOf(sender),vlan,'arp-reply',context,reverse);
-   if(!reply.has(sender.id))return {ok:false,why:target.name+' ARP yanıtı '+sender.name+' cihazına ulaşmadı.'};
+   if(!reply.has(sender.id))return {ok:false,failure:'arp',why:target.name+' ARP yanıtı '+sender.name+' cihazına ulaşmadı.'};
    arp.set(neighborIp,macOf(target));arpTables.set(sender.id,arp);
   }
   ethernetEvent('packet '+kind+' ip '+sourceIp+' -> '+targetIp+' neighbor '+neighborIp+' ttl '+ttl);
   const delivered=transmitEthernet(sender,arp.get(neighborIp),vlan,kind,context,options);
-  if(!delivered.has(target.id))return {ok:false,why:sender.name+' → '+target.name+' Ethernet '+kind+' frame seçili komşuya ulaşmadı; MAC/VLAN/port çıkışını kontrol et.'};
+  if(!delivered.has(target.id))return {ok:false,failure:'frame',why:sender.name+' → '+target.name+' Ethernet '+kind+' frame seçili komşuya ulaşmadı; MAC/VLAN/port çıkışını kontrol et.'};
  }
  return {ok:true};
 }
