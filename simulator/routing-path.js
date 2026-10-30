@@ -3,9 +3,9 @@ function routingIpBindings(ip){
  const bindings=[];
  for(const device of devices){
   if(device.enabled===false)continue;
-  if(device.type==='Router')for(const [name,iface] of activeRouterInterfaces(device))if(iface.ip===ip)bindings.push({id:device.id,physical:iface.parent||name.split('.')[0],vlan:iface.encapsulation==='dot1q'?Number(iface.vlan):null});
-  if(device.type==='Switch')for(const [,iface] of activeSwitchSvis(device))if(iface.ip===ip)bindings.push({id:device.id,physical:null,vlan:Number(iface.vlan)});
-  if(['PC','Server'].includes(device.type)&&device.ip===ip)bindings.push({id:device.id,physical:device.ports?.[0]||'eth0',vlan:null});
+  if(device.type==='Router')for(const [name,iface] of activeRouterInterfaces(device))if(iface.ip===ip)bindings.push({id:device.id,ip,physical:iface.parent||name.split('.')[0],vlan:iface.encapsulation==='dot1q'?Number(iface.vlan):null});
+  if(device.type==='Switch')for(const [,iface] of activeSwitchSvis(device))if(iface.ip===ip)bindings.push({id:device.id,ip,physical:null,vlan:Number(iface.vlan)});
+  if(['PC','Server'].includes(device.type)&&device.ip===ip)bindings.push({id:device.id,ip,physical:device.ports?.[0]||'eth0',vlan:null});
  }
  return bindings;
 }

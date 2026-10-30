@@ -23,8 +23,8 @@ Bu dalın başlangıcındaki main: `7bd05b59edabb3bba6ee11dd9bb3d829da4e4d9e`. P
 |---|---|---|
 | VLAN/access/trunk/shutdown | Port/VLAN ve erişimi etkiler | Önceki regresyonlar + yeni yönetim negatifleri |
 | Switch SVI/gateway/ping | Bu çalışmada uçtan uca yönetim endpoint'i | CLI/model/ağ/kalıcılık ve XML aktarım testleri |
-| Router static/default route | Connected/LPM/recursive lookup mevcut | Seçili wire next-hop ve gerçek asimetrik dönüş yolu takip PR'ında doğrulandı; router/SVI frame ve TTL entegrasyonu açık |
-| ARP/MAC | MAC: giriş portu, VLAN anahtarı, router sınırı, 300 sn aging; ARP sınırlı | Yerel PC/Server frame forwarding/flooding takip çalışmasında eklendi; routing/SVI frame entegrasyonu açık |
+| Router static/default route | Connected/LPM/recursive lookup mevcut | Seçili wire next-hop ve gerçek asimetrik dönüş yolu takip PR'ında doğrulandı; NAT dışı router/SVI frame entegrasyonu takip çalışmasında eklendi; TTL entegrasyonu açık |
+| ARP/MAC | MAC: giriş portu, VLAN anahtarı, router sınırı, 300 sn aging; ARP komşu bazında ping ile öğrenilir | Ortak yerel/router/SVI frame iletimi (NAT dışı); ARP aging hâlâ açık |
 | ACL/PAT | Sınırlı CLI/model ve trafik kontrolü mevcut | Tüm wildcard, yön, sayaç ve translation semantiği tamamlanmış sayılmaz |
 | DHCP/DNS/HTTP | Sınırlı eğitim servis davranışları | Tam protokol/mesaj modeli değildir |
 | OSPF/BGP | Bağımsız eğitim panelleri | Ortak topoloji motorunda dinamik rota kurulumu değildir |
@@ -118,3 +118,15 @@ Aynı switch'e başka router üzerinden geri dönen geçerli hairpin yolları de
 Dönüş, gidişin ters çevrilmesiyle varsayılmaz: hedefin kendi gateway/rota/next-hop kararlarıyla ayrı hesaplanır. Dönüşe özel router ACL'si ve MAC öğrenmesi gerçek dönüş yoluna uygulanır. Gidişte bulunan ama dönüşte kullanılmayan router'da dönüş rotası zorunlu tutulmaz. NAT/PAT çevrilmiş cevaplar mevcut eski çeviri modeliyle ters yolu kullanmaya devam eder; tam NAT frame/dönüş motoru bu kapsamda değildir.
 
 Yeni browser regresyonu seçili fakat hedef rotası olmayan next-hop; doğru komşu; aynı LAN hairpin; recursive next-hop; geçerli/geçersiz asimetrik dönüş; yalnız dönüşte kullanılan router ACL'si/MAC öğrenmesi; farklı gateway kullanan asimetrik SVI ve gateway MAC portu; AD/LPM ve sessiz alternatif router/floating route kullanmama; loop sonlanması; kaynak gateway; bağımsız alt arayüz numarası; CLI ile rota düzeltmesini sınar. Tam pipeline 26 gruptur. Router/SVI akışları henüz ortak frame motorunda değildir; ARP/NAT/TTL ve Paket Dedektifi olay entegrasyonu açık kalır. Kayıt kurtarma ve belirsiz PT kimliği audit işleri bu çalışmada çözülmez.
+
+## Ortak frame motoru: router ve SVI entegrasyonu
+
+`simulator/routed-ethernet.js` seçili gidiş/dönüş yolunu router sınırlarında L2 bölümlerine ayırır. Her bölümde, seçilmiş mantıksal arayüzün kaynak IP'siyle gerçek ARP request/reply ve Ethernet ICMP teslimi çalışır. Router frame'i yalnız seçili fiziksel çıkıştan gönderir; alıcı router'ın gerçek giriş portu da denetlenir. Router yeni L2 bölümünde kendi model MAC'ini kullanır; uçtan uca paket IP adresleri değişmez.
+
+Uç ARP tablosuna uzak host yerine gateway, router tablosuna kendi doğrudan L2 komşusu yazılır. Sıcak cache tekrar ARP üretmez; FDB'nin geçerli ama yanlış çıkışı gerçek yönlendirilmiş ping'i durdurur. Hedef kaynak trafik üretip yeni port öğrenildiğinde erişim düzelir. ARP cache yaşlandırması/scope anahtarı ve arayüz başına donanım MAC'leri henüz eklenmez.
+
+Etkin SVI, kendi VLAN'ında switch'in yerel MAC'ine gelen frame'i kabul eder ve IP uç noktası olarak yanıtlar; yeni fiziksel port veya transit L3 switch yeteneği eklenmez. Broadcast bridge olarak diğer uygun portlara da yayılır. SVI shutdown/autostate mevcut modelden okunur. Paket Adımı tamamlandığında eski sentetik ARP/öğrenme tekrar uygulanmaz; gerçek ping tesliminin ürettiği kayıtlar korunur. Paket Adımı'nın ara gösterimi henüz ortak frame olay oynatıcısı değildir.
+
+Yeni test: çok atlamalı gerçek ARP/ICMP; değişmeyen uç IP'ler; seçilmiş router fiziksel portundan yayın; sıcak unicast; stale-FDB nedeniyle başarısız routed ping ve yeniden öğrenmeyle düzelme; yerel/uzak SVI, gateway ARP, shutdown ve toparlanma; Paket Adımı'nın ARP'yi bozmaması. Önceki recursive/asimetrik routing, dot1Q, gerçek PKT/XML, Akademi, kayıt ve büyük topoloji testleri korunur. Toplam pipeline 27 gruptur.
+
+**Sınır:** NAT/PAT çevirili akışlar eski çeviri modelinde kalır ve `show ethernet events` bunu `legacy-nat` olarak açıklar; frame teslimi doğrulanmış sayılmaz. Yeni motor NAT dışı ping akışlarını kapsar. TTL/Time Exceeded, zamanlanmış beş ICMP paketi, gecikme/kayıp, ARP aging ve tam Paket Dedektifi oynatıcısı sonraki önceliktir. Geçmiş PR bölümlerindeki açık frame entegrasyonu notları o çalışmanın tarihsel kapsamıdır.
