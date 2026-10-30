@@ -50,3 +50,9 @@ Betik SHA-256 değerini doğrular. Geri çıkarılan dosya kaynak `.pkt` ile bay
 ## Trunk VLAN listesi aktarımı
 
 Dönüştürücü, açık `switchport trunk allowed vlan` komutlarında sayısal liste/aralık, `all`, `none`, `add` ve `remove` işlemlerini kaynak sırasıyla uygular. `all`, VLAN veritabanında bulunmayanlar dahil 1–4094 aralığını kapsar; trunk referansları VLAN veritabanına kayıt eklemez. Boş liste korunur. Geçersiz veya desteklenmeyen `except` gibi sözdizimleri önceki listeyi değiştirmez ve model dışı CLI raporuna girer. Bu kapsam, diğer IOS trunk komutlarının veya tüm Packet Tracer özelliklerinin desteklendiği anlamına gelmez.
+
+## Varsayılan trunk izinleri
+
+Packet Tracer kaynak yapılandırmasında `switchport mode trunk` var ama açık `switchport trunk allowed vlan` listesi yoksa trunk, 1–4094 aralığına izin verir. Açık sayısal liste veya `none`, komutun trunk modundan önce/sonra gelmesinden bağımsız korunur. İlk `add`/`remove` işlemi varsayılan tüm VLAN listesi üzerinden uygulanır.
+
+AğLab CLI'daki `switchport trunk allowed vlan all` da 1–4094 aralığını kapsar; daha sonra oluşturulan VLAN'lar ayrıca izin eklenmeden taşınabilir. Bu izin VLAN veritabanını doldurmaz: bir VLAN'ın gerçekten taşınması için switch üzerinde oluşturulmuş olması gerekir. JSON dışa aktarımında izin listesi korunur. Mevcut eğitim senaryolarının önceden sınırlandırılmış trunk listeleri otomatik olarak genişletilmez.

@@ -164,7 +164,7 @@ def convert(xml_bytes, original_pkt=None):
         elif kind=='Switch':
             ports=[f'fa0/{i}' for i in range(1,25)]+['gi0/1','gi0/2']; interfaces={p:{'mode':'access','vlan':1,'allowed':[1],'enabled':True} for p in ports}
             # Parse explicit access/trunk commands and VLAN database from the source config.
-            current=None; vlans={1}; ignored_interfaces=[]; stp_priorities={}
+            current=None; vlans={1}; ignored_interfaces=[]; stp_priorities={}; explicit_allowed=set()
             for line in cfg.splitlines():
                 m=re.match(r'\s*interface\s+(\S+)',line,re.I)
                 if m:
@@ -200,10 +200,11 @@ def convert(xml_bytes, original_pkt=None):
                     parsed=parse_trunk_allowed(m.group(1))
                     if parsed is not None:
                         action,values=parsed
-                        existing=set(interfaces[current]['allowed'])
+                        existing=set(interfaces[current]['allowed']) if current in explicit_allowed else set(range(1,4095))
                         if action=='add': values=existing | set(values)
                         elif action=='remove': values=existing - set(values)
                         interfaces[current]['allowed']=sorted(set(values))
+                        explicit_allowed.add(current)
                 m=re.match(r'\s*switchport trunk native vlan\s+(\d+)',line,re.I)
                 if m:
                     vid=int(m.group(1))
@@ -211,6 +212,9 @@ def convert(xml_bytes, original_pkt=None):
                         interfaces[current]['nativeVlan']=vid
                 if re.match(r'\s*shutdown\s*$',line,re.I): interfaces[current]['enabled']=False
                 if re.match(r'\s*no shutdown\s*$',line,re.I): interfaces[current]['enabled']=True
+            for port,iface in interfaces.items():
+                if iface['mode']=='trunk' and port not in explicit_allowed:
+                    iface['allowed']=list(range(1,4095))
             d={'id':f'd{len(raw_devices)+1}','name':name,'type':kind,'x':x,'y':y,'w':112,'h':72,'ip':'','mask':'','gateway':'','vlans':sorted(vlans),'stpPriorities':stp_priorities,'ports':list(dict.fromkeys(ports)),'enabled':text(eng,'POWER','true').lower()!='false','mode':'user','config':{'packetTracerModel':model,'runningConfig':cfg,'displayName':display,'unmodeledInterfaces':ignored_interfaces},'interfaces':interfaces}
         else:
             # PC / Server endpoint IP values appear under engine/INTERFACE/PORT/NETWORK/IPv4/IP in PT 9.
