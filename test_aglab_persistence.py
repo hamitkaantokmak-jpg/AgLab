@@ -99,7 +99,7 @@ try:
             command(page, switch_id, text)
         expect(page.locator('#aglabSaveWarning')).to_be_visible()
         assert page.evaluate('(key) => localStorage.getItem(key)', KEY) == previous
-        page.locator('#fileTopologyDetails > summary').click()
+        page.locator('#uxMoreLabActions').click()
         with page.expect_download() as download:
             page.locator('#ptExport').click()
         exported = Path(tmp) / 'recovered.json'
@@ -120,7 +120,7 @@ try:
         assert 'importReport' not in scenario and 'sourceArchive' not in scenario
         page.locator('#ptImportFile').set_input_files(str(ROOT / 'static-routing-two-routers.aglab.json'))
         expect(page.locator('#ptTerminal')).to_contain_text('8 cihaz, 7 bağlantı')
-        page.locator('#fileTopologyDetails > summary').click()
+        page.locator('#uxMoreLabActions').click()
         page.locator('#ptReset').click()
         clean = saved(page)
         assert 'importReport' not in clean and 'sourceArchive' not in clean

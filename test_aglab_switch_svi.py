@@ -20,7 +20,7 @@ try:
   def open_page():
    context=pw.chromium.launch_persistent_context(profile,headless=True)
    p=context.pages[0];p.on('pageerror',lambda e:errors.append(str(e)));p.goto(url)
-   p.click('[data-area="lab"]');p.click('#modeFree');return context,p
+   p.click('[data-area="lab"]');p.click('#ux14Free');return context,p
   context,page=open_page()
   # Real DOM change only when switching device (a repeated select event resets modes).
   def cmd(device,text,ok=True):
@@ -116,11 +116,11 @@ try:
 
   run('d2',['enable','configure terminal','interface g0/0','ip address 192.168.10.1 255.255.255.0','end'])
   cmd('d1','enable');cmd('d1','copy startup-config running-config');ping('d1','192.168.10.1',True)
-  page.locator('#fileTopologyDetails > summary').click()
+  page.locator('#uxMoreLabActions').click()
   with page.expect_download() as download:page.locator('#ptExport').click()
   exported=Path(tmp)/'svi.json';download.value.save_as(str(exported))
   saved=json.loads(exported.read_text());assert next(d for d in saved['devices'] if d['id']=='d1')['startupConfig']['interfaces']['vlan10']['enabled']
-  page.reload();page.click('[data-area="lab"]');page.click('#modeFree');ping('d1','192.168.10.1',True)
+  page.reload();page.click('[data-area="lab"]');page.click('#ux14Free');ping('d1','192.168.10.1',True)
   context.close();context,page=open_page();ping('d1','192.168.10.1',True)
   page.locator('#ptImportFile').set_input_files(str(exported));page.wait_for_timeout(100);ping('d1','192.168.20.2',True)
   for kind in ('vlan-mismatch','startup-ports','bad-gateway'):
