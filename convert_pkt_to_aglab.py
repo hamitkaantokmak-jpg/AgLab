@@ -126,7 +126,7 @@ def convert(xml_bytes, original_pkt=None):
     network=root.find('NETWORK')
     if network is None or network.find('DEVICES') is None or network.find('LINKS') is None:
         raise PacketTracerError('PACKETTRACER5 içeriğinde beklenen NETWORK/DEVICES/LINKS alanları bulunamadı.')
-    raw_devices=[]; ref_to_id={}; unsupported=[]; notes=[]
+    raw_devices=[]; ref_to_id={}; unsupported=[]; notes=[]; unmapped_endpoints=set(); endpoint_ports=[]
     for idx,dev in enumerate(network.find('DEVICES')):
         eng=dev.find('ENGINE')
         if eng is None: continue
@@ -233,15 +233,24 @@ def convert(xml_bytes, original_pkt=None):
                     iface['allowed']=list(range(1,4095))
             d={'id':f'd{len(raw_devices)+1}','name':name,'type':kind,'x':x,'y':y,'w':112,'h':72,'ip':'','mask':'','gateway':'','vlans':sorted(vlans),'stpPriorities':stp_priorities,'ports':list(dict.fromkeys(ports)),'enabled':text(eng,'POWER','true').lower()!='false','mode':'user','config':{'packetTracerModel':model,'runningConfig':cfg,'displayName':display,'unmodeledInterfaces':ignored_interfaces},'interfaces':interfaces}
         else:
-            # PC / Server endpoint IP values appear under engine/INTERFACE/PORT/NETWORK/IPv4/IP in PT 9.
-            ip=''; mask='255.255.255.0'; gateway=text(eng,'GATEWAY')
-            for el in eng.iter():
-                if el.tag.upper()=='IP' and el.text and re.fullmatch(r'\d+(?:\.\d+){3}',el.text.strip()) and el.text.strip()!='0.0.0.0':
-                    ip=el.text.strip(); break
-            for el in eng.iter():
-                if el.tag.upper() in ('SUBNET','SUBNET_MASK','MASK') and el.text and re.fullmatch(r'\d+(?:\.\d+){3}',el.text.strip()): mask=el.text.strip(); break
+            # Bind endpoint state to one physical wired NIC, never an unrelated
+            # service/Bluetooth IP found through an unrestricted recursive scan.
+            modules=list(eng.iter('MODULE'))
+            wired_types={'ecopperethernet','ecopperfastethernet','ecoppergigabitethernet','efiberfastethernet','efibergigabitethernet'}
+            wired=[p for p in eng.findall('.//MODULE/PORT') if text(p,'TYPE').lower() in wired_types]
+            mapped=not modules or len(wired)==1
+            address=wired[0] if len(wired)==1 else eng if not modules else None
+            ip=text(address,'IP')
+            if ip=='0.0.0.0' or not re.fullmatch(r'\d+(?:\.\d+){3}',ip): ip=''
+            mask=text(address,'SUBNET') or text(address,'SUBNET_MASK') or text(address,'MASK') or '255.255.255.0'
+            gateway=(text(address,'PORT_GATEWAY') or text(eng,'GATEWAY')) if mapped else ''
+            port_enabled=mapped and text(address,'POWER','true').lower()!='false'
             ports=['eth0']
-            d={'id':f'd{len(raw_devices)+1}','name':name,'type':kind,'x':x,'y':y,'w':104,'h':72,'ip':ip,'mask':mask,'gateway':gateway,'vlan':1,'ports':ports,'enabled':text(eng,'POWER','true').lower()!='false','mode':'user','config':{'packetTracerModel':model,'runningConfig':cfg,'displayName':display},'interfaces':{'eth0':{'enabled':True}}}
+            d={'id':f'd{len(raw_devices)+1}','name':name,'type':kind,'x':x,'y':y,'w':104,'h':72,'ip':ip,'mask':mask,'gateway':gateway,'vlan':1,'ports':ports,'enabled':text(eng,'POWER','true').lower()!='false','mode':'user','config':{'packetTracerModel':model,'runningConfig':cfg,'displayName':display},'interfaces':{'eth0':{'enabled':port_enabled}}}
+            endpoint_ports.append({'device':name,'sourceWiredPortCount':len(wired) if modules else None,'modeledPort':'eth0' if mapped else None,'sourcePortType':text(address,'TYPE') if wired else None})
+            if not mapped:
+                unmapped_endpoints.add(d['id'])
+                notes.append(f'{name}: {len(wired)} Ethernet NIC bulundu; tek kablolu NIC eşlemesi yapılamadığı için endpoint adresi/portu modellenmedi ve bağlantıları atlandı.')
             if kind=='Server': d['services']={'dhcp':False,'dns':False,'http':False}
         if ref: ref_to_id[ref]=d['id']
         raw_devices.append(d)
@@ -256,13 +265,15 @@ def convert(xml_bytes, original_pkt=None):
         if not a or not b:
             reason='Desteklenmeyen cihaz nedeniyle bağlantı atlandı.'
             notes.append(reason); skipped_links.append({'index':link_index,'reason':reason,'fromRef':a_ref,'toRef':b_ref}); continue
+        if a in unmapped_endpoints or b in unmapped_endpoints:
+            skipped_links.append({'index':link_index,'reason':'Endpoint NIC envanteri tek fiziksel Ethernet portuna eşlenemedi.','fromRef':a_ref,'toRef':b_ref}); continue
         da=next(d for d in raw_devices if d['id']==a); db=next(d for d in raw_devices if d['id']==b)
         pa,pb=norm_port(text(cable,'PORT'),da['type']),norm_port(text(cable,'PORT', '' ),db['type'])
         # The cable contains two PORT siblings, so read them in order.
         pnodes=cable.findall('PORT'); pa=norm_port((pnodes[0].text or '') if pnodes else '',da['type']); pb=norm_port((pnodes[1].text or '') if len(pnodes)>1 else '',db['type'])
-        # Normalize PT PC FastEthernet0 / Ethernet0 into AgLab endpoint eth0.
-        if da['type'] in ('PC','Server') and pa.startswith(('fa','eth')): pa='eth0'
-        if db['type'] in ('PC','Server') and pb.startswith(('fa','eth')): pb='eth0'
+        # Normalize only the single wired endpoint port, not arbitrary NIC indices.
+        if da['type'] in ('PC','Server') and pa in ('fa0','g0','gi0','eth0'): pa='eth0'
+        if db['type'] in ('PC','Server') and pb in ('fa0','g0','gi0','eth0'): pb='eth0'
         # Reject unsupported endpoints rather than creating broken links.
         if pa not in da['ports'] or pb not in db['ports']:
             reason=f'Port eşleşmedi, bağlantı atlandı: {da["name"]}/{pa} ↔ {db["name"]}/{pb}.'
@@ -305,14 +316,14 @@ def convert(xml_bytes, original_pkt=None):
       'sourceDeviceCount':len(network.find('DEVICES')),'devicesImported':len(raw_devices),
       'unsupportedDevices':unsupported,'sourceLinkCount':source_link_count,
       'linksImported':len(links),'skippedLinks':skipped_links,'sourceLinks':source_links,
-      'notes':sorted(set(notes)),
+      'notes':sorted(set(notes)),'endpointPorts':endpoint_ports,
       'unmodeledConfigLineCount':len(unmodeled_config_lines),
       'unmodeledConfigLines':unmodeled_config_lines,
       'runningConfigPreservedFor':{d['name']:bool(d.get('config',{}).get('runningConfig')) for d in raw_devices},
       'simulationCoverage':{
-        'modeled':'Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, PC IPv4/mask/gateway, router fiziksel ve etiketli 802.1Q alt arayüz IPv4/mask/shutdown, alt arayüz parent/VLAN eşlemesi, IPv4 statik rota, switch access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.',
+        'modeled':'Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, tek Ethernet NIC PC/Server IPv4/mask/gateway ve port POWER, router fiziksel ve etiketli 802.1Q alt arayüz IPv4/mask/shutdown, alt arayüz parent/VLAN eşlemesi, IPv4 statik rota, switch access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.',
         'preservedButNotFullySimulated':'Tam running-config metni config.runningConfig alanında saklanır; bu, tüm IOS komutlarının AğLab motorunda çalıştığı anlamına gelmez.',
-        'notModeled':['IOS sürüm/feature davranışları','duplex/speed ve kablo türü/medya ayrıntıları','STP zamanlaması, root bridge seçim algoritmasının tam davranışı ve tüm STP durum geçişleri','VLAN SVI arayüzleri','Router alt arayüzlerinde native VLAN ve ISL encapsulation','güç dağıtım cihazının davranışı','kaynak dosyada yer alıp AğLab modeline eşlenmeyen diğer cihaz/protokol özellikleri']
+        'notModeled':['IOS sürüm/feature davranışları','duplex/speed ve kablo türü/medya ayrıntıları','STP zamanlaması, root bridge seçim algoritmasının tam davranışı ve tüm STP durum geçişleri','Çoklu NIC ve Ethernet dışı endpoint arayüzleri','VLAN SVI arayüzleri','Router alt arayüzlerinde native VLAN ve ISL encapsulation','güç dağıtım cihazının davranışı','kaynak dosyada yer alıp AğLab modeline eşlenmeyen diğer cihaz/protokol özellikleri']
       },
       'routerRoutes':{d['name']:d.get('staticRoutes',[]) for d in raw_devices if d['type']=='Router'},
       'endpoints':[{k:d.get(k) for k in ['name','type','ip','mask','gateway']} for d in raw_devices if d['type'] in ('PC','Server')]

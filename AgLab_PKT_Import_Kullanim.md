@@ -74,3 +74,9 @@ Desteklenen komut yalnızca `encapsulation dot1q <VLAN>` biçimidir. `native`, I
 İçe aktarılan topolojinin özgün `.pkt`/XML arşivi ve `importReport` kapsam raporu, otomatik tarayıcı kaydında ve JSON dışa aktarımında birlikte korunur. Sayfa yeniden açıldığında model dışı CLI ve desteklenmeyen cihaz uyarıları tekrar gösterilir; rapor, kaynak içe aktarma anını açıklar ve sonraki düzenlemeler için yeni bir doğrulama raporu değildir.
 
 Tarayıcı depolaması dolarsa uyarı gösterilir; son başarılı kayıt korunur ve bellekteki güncel topoloji Dışa aktar ile kurtarılabilir. Sıfırlama veya yeni hazır eğitim topolojisine geçme eski kaynak arşivini ve aktarım raporunu yeni senaryoya eklemez.
+
+## PC/Server fiziksel Ethernet portu
+
+Kaynak XML'de tek desteklenen kablolu `MODULE/PORT` varsa endpoint IP/maske, port güç durumu ve öncelikle `PORT_GATEWAY` bu kayıttan alınır; port gateway boşsa cihazın `GATEWAY` alanı kullanılır. Servis veya Bluetooth altındaki ilgisiz IP/maske değerleri endpoint adresi olarak seçilmez. Cihaz gücü ile port gücü ayrı korunur. Kaynakta modül envanteri olmayan basit XML için doğrudan ENGINE IPv4 alanları desteklenir.
+
+Tek Ethernet endpoint'in `FastEthernet0`, `GigabitEthernet0` ve `Ethernet0` kablo adları AğLab `eth0` portuna eşlenir. Diğer port indeksleri bu porta otomatik yönlendirilmez. Birden fazla Ethernet NIC veya desteklenmeyen modül envanteri varsa adres/port modellenmez, ilgili bağlantılar atlanır ve kapsam kaybı notlarda/atlanan bağlantılarda belirtilir. Bu durumda özgün XML arşivi korunur. Kaynak port sayısı/türü ve model eşlemesi `importReport.endpointPorts` içinde bulunur. Çoklu NIC veya kablosuz simülasyonu desteklenmiş sayılmaz.

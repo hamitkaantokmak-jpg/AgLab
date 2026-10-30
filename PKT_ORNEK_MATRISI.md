@@ -16,3 +16,7 @@ Gerçek örnekteki tarayıcı içe aktarımı, dört ping ve JSON arşiv round-t
 `test_aglab_large_topology.py`, JSON ile oluşturulan 298 switch ve iki PC'den oluşan 300 cihaz/300 bağlantılık halkayı çalıştırır. Bu yük senaryosu bir `.pkt` sürüm uyumluluk örneği değildir.
 
 Uzak uçlar arasındaki senkron ping komutu için her ölçümde 1000 ms bütçe uygulanır. Ölçümler test çıktısında pipeline JSON raporuna kaydedilir. Bu eşik CI regresyon bütçesidir; her donanım için gecikme garantisi değildir. Tek bağlantı kapanınca alternatif yol, iki bağlantı kapanınca izolasyon, tekrar açılınca erişim ve 301 cihaz/1001 bağlantı girişinin mevcut kaydı bozmadan reddi doğrulanır. Port değişikliklerinin sonuçları yeni yol aramasında yeniden hesaplanır.
+
+## Endpoint port regresyonu
+
+`test_aglab_endpoint_ports.py`, izinli gerçek örneğin çözülmüş XML'inden oluşturulan **sentetik mutasyonları** kullanır: ilgisiz servis IP'si, fiziksel port gücü, GigabitEthernet0 kablosu, çoklu NIC ve bilinmeyen port indeksi. Adres/port eşlemesi ve başarılı/başarısız/yeniden başarılı tarayıcı ping'i doğrulanır. Bu mutasyonlar ikinci bir gerçek PKT sürümü veya yeni gerçek dosya örneği sayılmaz.
