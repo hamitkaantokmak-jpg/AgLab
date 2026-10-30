@@ -52,7 +52,9 @@ with sync_playwright() as pw:
   page.evaluate('t=>academyEngine.load(t)',t)
   assert page.evaluate('academy.check().earned_points')==100
   # A down destination must fail packet delivery, regardless of matching IP.
-  t['devices'][1]['enabled']=False;page.evaluate('t=>academyEngine.load(t)',t)
+  probe=next(c for c in lab['assessment']['criteria'] if c['kind']=='probe.icmp')
+  next(d for d in t['devices'] if d['id']==probe['target']['destination'])['enabled']=False
+  page.evaluate('t=>academyEngine.load(t)',t)
   r=page.evaluate('academy.check()')
   assert any(c['status'] in ['failed','error'] for c in r['criteria'] if c['kind']=='probe.icmp'),r
   page.click('#academyReset')
