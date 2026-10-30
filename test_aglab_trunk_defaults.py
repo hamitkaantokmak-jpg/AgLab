@@ -96,7 +96,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             command(device_id, text)
     ping(True)
     page.evaluate("showArea('lab')")
-    page.locator('#fileTopologyDetails > summary').click()
+    page.locator('#uxMoreLabActions').click()
     with page.expect_download() as download:
         page.locator('#ptExport').click()
     exported = Path(tmp) / 'export.json'
