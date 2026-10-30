@@ -1,0 +1,295 @@
+{
+  "id": "AGL-013",
+  "order": 13,
+  "module_id": "M2",
+  "title": "/25 ile iki eşit alt ağ",
+  "language": "tr-TR",
+  "duration_minutes": 20,
+  "prerequisites": [
+    "AGL-012"
+  ],
+  "learning_objectives": [
+    "CIDR gösterimini uygulamak",
+    "Alt ağ hesabını doğrulamak"
+  ],
+  "theory": "/25 maskesi 255.255.255.128’dir. Bir /24 iki /25’e bölünür: .0–.127 ve .128–.255. İkinci ağın ilk hostu .129, broadcast adresi .255’tir.",
+  "scenario": "Aşağıdaki başlangıç durumunu kullanarak /25 ile iki eşit alt ağ görevini tamamla.",
+  "initial_topology": {
+    "app": "AgLab",
+    "version": 23,
+    "devices": [
+      {
+        "id": "PC1",
+        "name": "PC1",
+        "type": "PC",
+        "x": 80,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC2",
+        "name": "PC2",
+        "type": "PC",
+        "x": 260,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "SW1",
+        "name": "SW1",
+        "type": "Switch",
+        "x": 440,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1
+        ]
+      }
+    ],
+    "links": [
+      {
+        "a": "PC1",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/1",
+        "up": true
+      },
+      {
+        "a": "PC2",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/2",
+        "up": true
+      }
+    ],
+    "nextId": 4,
+    "selected": "PC1"
+  },
+  "steps": [
+    {
+      "order": 1,
+      "text": "192.168.13.0/24’ün ikinci /25 alt ağını ve kapasitesini hesapla."
+    },
+    {
+      "order": 2,
+      "text": "PC1=192.168.13.129/25, PC2=192.168.13.130/25 yapılandır; gateway boş kalsın."
+    },
+    {
+      "order": 3,
+      "text": "Yerel ping gönder ve cevap alanlarını doldur."
+    }
+  ],
+  "expected_result": "Planlanan adresler aynı alt ağdadır ve ping başarılıdır.",
+  "assessment": {
+    "max_points": 100,
+    "criteria": [
+      {
+        "kind": "state.equals",
+        "target": "devices.PC1.ip",
+        "expected": "192.168.13.129",
+        "label": "PC1 hedef adresi",
+        "points": 10,
+        "id": "AGL-013-C01",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "state.equals",
+        "target": "devices.PC2.ip",
+        "expected": "192.168.13.130",
+        "label": "PC2 hedef adresi",
+        "points": 10,
+        "id": "AGL-013-C02",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "state.equals",
+        "target": "devices.PC1.mask",
+        "expected": "255.255.255.128",
+        "label": "PC1 maskesi",
+        "points": 10,
+        "id": "AGL-013-C03",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "state.equals",
+        "target": "devices.PC2.mask",
+        "expected": "255.255.255.128",
+        "label": "PC2 maskesi",
+        "points": 10,
+        "id": "AGL-013-C04",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "probe.icmp",
+        "target": {
+          "source": "PC1",
+          "destination": "PC2"
+        },
+        "expected": true,
+        "label": "PC1 → PC2: erişim var",
+        "points": 20,
+        "probe_policy": "icmp-5-v1",
+        "id": "AGL-013-C05",
+        "required_capabilities": [
+          "icmp_probe"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "answer.equals",
+        "target": "answers.network",
+        "expected": "192.168.13.128",
+        "label": "İkinci /25 ağı",
+        "points": 20,
+        "id": "AGL-013-C06",
+        "required_capabilities": [
+          "answer_input"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "answer.equals",
+        "target": "answers.usable_hosts",
+        "expected": 126,
+        "label": "Kullanılabilir host sayısı",
+        "points": 20,
+        "id": "AGL-013-C07",
+        "required_capabilities": [
+          "answer_input"
+        ],
+        "on_unavailable": "not_evaluated"
+      }
+    ]
+  },
+  "hints": [
+    "128 adreslik blokta iki adres ayrılır."
+  ],
+  "support": [
+    {
+      "feature": "ipv4",
+      "status": "DOGRULANMADI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "icmp",
+      "status": "DOGRULANMADI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "automatic_grader",
+      "status": "ENTEGRASYON_GEREKLI",
+      "reason": "Bu paket içeriktir. Puanlayıcı, durum bağdaştırıcısı ve probe çalıştırıcısı ayrı geliştirilir."
+    }
+  ],
+  "content_status": "HAZIR",
+  "execution_status": "MOTORDE_CALISTIRILMADI"
+}

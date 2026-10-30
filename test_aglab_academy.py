@@ -9,12 +9,12 @@ with sync_playwright() as pw:
  page=b.new_page(); errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
  page.goto((ROOT/'AgLab_Final_PKT_Import.html').as_uri())
  assert page.locator('#academySelect').count()==1, 'Academy selector missing'
- assert page.locator('#academySelect option').count()==10
+ assert page.locator('#academySelect option').count()==20
  page.click('[data-area="lab"]')
  hashes=json.loads((ROOT/'academy/source/SHA256.json').read_text())
  for name,digest in hashes.items():
   assert hashlib.sha256((ROOT/'academy/source'/name).read_bytes()).hexdigest()==digest
- for i in range(1,11):
+ for i in range(1,21):
   lid=f'AGL-{i:03d}'; raw=(ROOT/f'academy/source/{lid}.json').read_bytes()
   assert hashlib.sha256(raw).hexdigest()==hashes[lid+'.json']
   lab=json.loads(raw)
@@ -30,7 +30,11 @@ with sync_playwright() as pw:
   # Use real simulator import and grader, never replace ping with a test double.
   page.evaluate('t=>academyEngine.load(t)',lab['target_topology'])
   for key,value in lab['teacher_solution']['answer_key'].items():
-   page.select_option(f'#academyAnswer-{key}',json.dumps(value) if isinstance(value,bool) else value)
+   control=page.locator(f'#academyAnswer-{key}')
+   if control.evaluate('(e)=>e.tagName')=='SELECT':
+    control.select_option(json.dumps(value) if isinstance(value,bool) else value)
+   else:
+    control.fill(str(value))
   result=page.evaluate('academy.check()')
   assert result['earned_points']==100 and result['coverage']==1,result
   assert all(c['status']=='passed' for c in result['criteria']),result
@@ -48,6 +52,34 @@ with sync_playwright() as pw:
   assert page.locator('#academyHints').inner_text()==''
   assert page.locator('#academyResult').inner_text()==''
   print('PASS',lid,'original, initial, target, reverse links, broken delivery, reset')
+ # Typed answers retain JSON types and survive reload; malformed data earns no credit.
+ page.select_option('#academySelect','AGL-013');page.click('#academyStart')
+ for device,ip in [('PC1','192.168.13.129'),('PC2','192.168.13.130')]:
+  page.select_option('#ptCliDevice',device)
+  page.fill('#ptCliInput',f'ip address {ip} 255.255.255.128')
+  page.locator('#ptCliInput').press('Enter')
+ page.fill('#academyAnswer-network',' 192.168.013.128 ')
+ page.fill('#academyAnswer-usable_hosts','126')
+ page.reload();page.click('[data-area="lab"]')
+ assert page.locator('#academySelect').input_value()=='AGL-013'
+ assert page.locator('#academyAnswer-usable_hosts').input_value()=='126'
+ r=page.evaluate('academy.check()')
+ assert all(c['status']=='passed' for c in r['criteria'] if c['kind']=='answer.equals'),r
+ assert r['earned_points']==100,r
+ page.fill('#academyAnswer-usable_hosts','126.5')
+ r=page.evaluate('academy.check()')
+ assert r['criteria'][-1]['status']=='failed',r
+ page.reload();page.click('[data-area="lab"]')
+ assert page.locator('#academyAnswer-usable_hosts').input_value()=='126.5'
+ page.select_option('#academySelect','AGL-019');page.click('#academyStart')
+ page.fill('#academyAnswer-department_b_network','192.168.019.65/27')
+ page.fill('#academyAnswer-transit_network',' 192.168.19.96/30 ')
+ r=page.evaluate('academy.check()')
+ assert all(c['status']=='passed' for c in r['criteria'] if c['kind']=='answer.equals'),r
+ for bad in ['192.168.19.64/33','192.168.19.256/27','192.168.19.64','']:
+  page.fill('#academyAnswer-department_b_network',bad)
+  r=page.evaluate('academy.check()')
+  assert r['criteria'][-2]['status']=='failed',r
  # Solve AGL-005 using student-visible IOS CLI and check button.
  page.select_option('#academySelect','AGL-005');page.click('#academyStart')
  page.select_option('#ptCliDevice','SW1')

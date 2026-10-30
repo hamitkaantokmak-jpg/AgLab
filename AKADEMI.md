@@ -1,6 +1,6 @@
-# AğLab Akademi — AGL-001–010
+# AğLab Akademi — AGL-001–020
 
-AGL-006–010 uyarlaması ve kalan laboratuvarların denetimi için
+AGL-006–020 uyarlaması ve kalan laboratuvarların denetimi için
 [uyarlama raporuna](academy/ADAPTATION.md) bakın. Aşağıdaki v1 notları
 ilk beş görevin kapsamını anlatır.
 

@@ -84,100 +84,80 @@
     "title": "IPv4 ve /24 maskesi",
     "sha256": "779e98fff97b630a1f2f0151a244e60ab42dee20e024007bb31209d1c20a6f4c",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-012",
     "title": "Ağ, ilk host ve son host",
     "sha256": "ffc2e8ed85044b07a6558b510d9d5b79e76d50e555c0b6a46c842e78b03b686a",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-013",
     "title": "/25 ile iki eşit alt ağ",
     "sha256": "11c507ba44dd148fe09a195c82bb99396bf58105c26be481900bb9e5550bb8ab",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-014",
     "title": "/26 ile dört alt ağ",
     "sha256": "49a3bfae2ee9a12441627f0d36e15fc76acbdd09fb3e32f0b1ddbc095e166d99",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-015",
     "title": "/27 ve host kapasitesi",
     "sha256": "f25f2665c50bdd4de558215a2e557d46e9e03794560a235ac389932bdd042357",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-016",
     "title": "/28 küçük ofis planı",
     "sha256": "0ec2f07a606cba7f087806d0d9ef6f24cadbb2cabcf192397b14ee1e52353798",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-017",
     "title": "/30 transit ağını tanıma",
     "sha256": "d6e972e563c288cd451631ad64bcf5ba715b9fb8933bcd58cea12b152d2347b2",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-018",
     "title": "Maske uyuşmazlığını giderme",
     "sha256": "70753723130bf0ad4767011c625e8a01a9cb186dc1f1305cf81344ed0b37e9cb",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-019",
     "title": "VLSM: farklı büyüklükte ağları ayırma",
     "sha256": "ae4f0c5bd046f93349c5dd05894722f4603497355c5618a14c7be9a0db105b48",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-020",
     "title": "Subnetting mini projesi: 60 hostluk şube",
     "sha256": "40b6ee96f87463e09ba58c835e490b229abfe9f815709fa58ecf369bd6a76491",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-021",

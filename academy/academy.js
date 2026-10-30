@@ -18,6 +18,16 @@ academyPanel.innerHTML=`<h2>AğLab Akademi v1</h2>
 ac('area-lab').prepend(academyPanel);
 academyLabs.forEach(l=>{const o=document.createElement('option');o.value=l.id;o.textContent=l.id+' — '+l.title;ac('academySelect').append(o)});
 const answerFields={
+ network:{label:'Ağ adresi',type:'ipv4'},
+ broadcast:{label:'Yayın adresi',type:'ipv4'},
+ first_host:{label:'İlk kullanılabilir host adresi',type:'ipv4'},
+ last_host:{label:'Son kullanılabilir host adresi',type:'ipv4'},
+ usable_hosts:{label:'Kullanılabilir host sayısı',type:'integer'},
+ department_b_network:{label:'B bölümü ağı (CIDR)',type:'cidr'},
+ transit_network:{label:'Transit ağı (CIDR)',type:'cidr'},
+ gateway_candidate:{label:'Ağ geçidi adayı',type:'ipv4'},
+ initial_pair_local_under_both_masks:{label:'Başlangıçtaki iki adres her iki maskeye göre de yerel mi?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ ping_proves_mask_correct:{label:'Başarılı ping maskenin doğru olduğunu kanıtlar mı?',options:[['true','Evet'],['false','Hayır']],boolean:true},
  pc1_pc2_survives_pc3_link_loss:{label:'Sadece PC3 kablosu çıkarılırsa PC1–PC2 erişimi sürer mi?',options:[['true','Evet'],['false','Hayır']],boolean:true},
  ping_protocol:{label:'Ping hangi protokolü kullanır?',options:[['ICMP','ICMP'],['TCP','TCP'],['UDP','UDP']]},
  ping_proves_http:{label:'Başarılı ping HTTP hizmetinin çalıştığını kesin kanıtlar mı?',options:[['true','Evet'],['false','Hayır']],boolean:true},
@@ -31,7 +41,29 @@ const answerFields={
  inter_network_device:{label:'Farklı IP ağlarını bağlayan cihaz hangisi?',options:[['pc','PC'],['switch','Switch'],['router','Router']]},
  fault_layer:{label:'Kesintinin kaynağı hangi katmanda?',options:[['physical','Fiziksel yol'],['network','IP / ağ'],['application','Uygulama']]}
 };
-function academyAnswers(){const a={};ac('academyAnswers').querySelectorAll('select').forEach(s=>{if(s.value!=='')a[s.dataset.key]=answerFields[s.dataset.key].boolean?s.value==='true':s.value});return a}
+function acAnswerValue(field,raw){
+ if(field.boolean)return raw==='true';
+ if(field.type==='integer'&&/^\d+$/.test(raw.trim())&&Number.isSafeInteger(Number(raw)))return Number(raw);
+ return field.type?raw.trim():raw;
+}
+function acAnswerAllowed(field,value){
+ if(field.type==='integer')return (typeof value==='number'&&Number.isSafeInteger(value)&&value>=0)||(typeof value==='string'&&value.length<=128);
+ if(field.type)return typeof value==='string'&&value.length<=128;
+ return field.options.some(([v])=>field.boolean?(v==='true')===value&&typeof value==='boolean':v===value);
+}
+function acNormalizeAnswer(key,value){
+ const type=answerFields[key]?.type;
+ if((type!=='ipv4'&&type!=='cidr')||typeof value!=='string')return value;
+ const parts=value.trim().split('/'),octets=parts[0].split('.');
+ if(octets.length!==4||octets.some(v=>!/^\d{1,3}$/.test(v)||Number(v)>255))return null;
+ const nums=octets.map(Number);
+ if(type==='ipv4')return parts.length===1?nums.join('.'):null;
+ if(parts.length!==2||!/^\d{1,2}$/.test(parts[1])||Number(parts[1])>32)return null;
+ const prefix=Number(parts[1]),ip=nums.reduce((a,n)=>(a*256+n)>>>0,0),mask=prefix===0?0:(0xffffffff<<(32-prefix))>>>0;
+ const network=(ip&mask)>>>0;
+ return [24,16,8,0].map(shift=>(network>>>shift)&255).join('.')+'/'+prefix;
+}
+function academyAnswers(){const a={};ac('academyAnswers').querySelectorAll('select,input').forEach(s=>{if(s.value!=='')a[s.dataset.key]=acAnswerValue(answerFields[s.dataset.key],s.value)});return a}
 function acText(parent,tag,text){const e=document.createElement(tag);e.textContent=text;parent.append(e);return e}
 function academyValidateSession(session){
  if(!session||typeof session!=='object'||Array.isArray(session)||session.version!==1||Object.keys(session).some(k=>!['version','labId','answers','hintIndex','baseline','checked'].includes(k)))throw new Error('Akademi oturum kaydı geçersiz.');
@@ -40,7 +72,7 @@ function academyValidateSession(session){
  if(!session.answers||typeof session.answers!=='object'||Array.isArray(session.answers))throw new Error('Akademi cevap kaydı geçersiz.');
  const keys=lab.assessment.criteria.filter(c=>c.kind==='answer.equals').map(c=>c.target.split('.')[1]);
  for(const [key,value] of Object.entries(session.answers)){
-  const field=answerFields[key];if(!keys.includes(key)||!field||!field.options.some(([v])=>field.boolean?(v==='true')===value&&typeof value==='boolean':v===value))throw new Error('Akademi cevap değeri geçersiz.');
+  const field=answerFields[key];if(!keys.includes(key)||!field||!acAnswerAllowed(field,value))throw new Error('Akademi cevap değeri geçersiz.');
  }
  return lab;
 }
@@ -69,10 +101,12 @@ function academyRestoreSession(session){
  ac('academyAnswers').replaceChildren();
  lab.assessment.criteria.filter(c=>c.kind==='answer.equals').forEach(c=>{
   const key=c.target.split('.')[1],field=answerFields[key];const label=acText(ac('academyAnswers'),'label',field.label+' ');
-  const select=document.createElement('select');select.id='academyAnswer-'+key;select.dataset.key=key;
-  [['','Cevabını seç'],...field.options].forEach(([value,text])=>{const o=document.createElement('option');o.value=value;o.textContent=text;select.append(o)});label.append(select);
-  if(Object.hasOwn(session.answers,key))select.value=String(session.answers[key]);
-  select.onchange=()=>saveTopology(true);
+  const control=document.createElement(field.type?'input':'select');control.id='academyAnswer-'+key;control.dataset.key=key;
+  if(field.type){control.type='text';control.maxLength=128;control.inputMode=field.type==='integer'?'numeric':'text';control.autocomplete='off';control.placeholder=field.type==='cidr'?'a.b.c.d/önek':field.type==='ipv4'?'a.b.c.d':'Tam sayı';}
+  else [['','Cevabını seç'],...field.options].forEach(([value,text])=>{const o=document.createElement('option');o.value=value;o.textContent=text;control.append(o)});
+  label.htmlFor=control.id;label.append(control);
+  if(Object.hasOwn(session.answers,key))control.value=String(session.answers[key]);
+  control.oninput=control.onchange=()=>saveTopology(true);
  });
  ac('academyHints').replaceChildren();lab.hints.slice(0,academyHintIndex).forEach(h=>acText(ac('academyHints'),'li',h));ac('academyResult').replaceChildren();
  ac('academyReset').disabled=false;ac('academyCheck').disabled=false;ac('academyHint').disabled=academyHintIndex>=lab.hints.length;
@@ -115,7 +149,7 @@ function academyEvaluate(criteria,answers){
     const ok=JSON.stringify(acCanonical(a))===JSON.stringify(acCanonical(e));status=ok?'passed':'failed';
     detail=ok?'Ölçüt sağlandı.':c.target==='links'?'Kablo uçlarını, portlarını ve bağlantı durumlarını görev adımlarıyla karşılaştır.':c.target+' alanını cihaz ayarlarında kontrol et.';
    }else if(c.kind==='answer.equals'){
-    const a=answers[c.target.split('.')[1]];status=a===c.expected?'passed':'failed';detail=status==='passed'?'Cevap doğru.':a===undefined?'Kavramsal soruya cevap seç.':'Cihazın rolünü konu anlatımından tekrar incele.';
+    const key=c.target.split('.')[1],a=answers[key];status=acNormalizeAnswer(key,a)===acNormalizeAnswer(key,c.expected)?'passed':'failed';detail=status==='passed'?'Cevap doğru.':a===undefined?'Kavramsal soruya cevap seç.':'Cihazın rolünü konu anlatımından tekrar incele.';
    }else if(c.kind==='probe.icmp'){
     if(c.expected!==true){status='not_evaluated';detail='Negatif ICMP sağlık önkoşulları bu sürümde desteklenmiyor.'}
     else{

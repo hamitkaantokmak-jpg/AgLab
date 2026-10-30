@@ -26,17 +26,26 @@ ARP soruları kavramsaldır; gerçek ARP paket yakalama görevi eklenmemiştir.
 ICMP önceki sürümdeki deterministik beş deneme uyarlamasını kullanır;
 gerçek zamanlı icmp-5-v1 uygunluğu iddia edilmez.
 
+## İkinci grup: AGL-011–020
+
+IPv4 /24–/30, host aralığı, maske uyuşmazlığı ve VLSM görevleri özgün
+kaynaklarından öğrenci/öğretmen şemasına aktarılmıştır. Rubrikler değişmez.
+Sayı cevapları JSON tamsayısı olarak saklanır. IPv4 cevaplarında ondalık
+oktetler, CIDR cevaplarında ağ öneği kanonik karşılaştırılır; örneğin
+192.168.19.65/27, 192.168.19.64/27 ağıdır. Hatalı maske/oktet ve kesirli
+host sayıları puan kazandırmaz. Hatalı taslak cevap da kaydedilip geri açılır.
+Chromium testi 20 görevin başlangıç/çözüm/bozuk erişim/sıfırlamasını,
+AGL-013'ün öğrenci CLI çözümünü ve sayı/IP/CIDR cevaplarının kalıcılığını kapsar.
+
 ## Sonraki gruplar
 
 Her laboratuvarın sonucu adaptation-audit.json dosyasında ayrı yer alır.
 
-1. AGL-011–020: sayı, IPv4 ve CIDR cevap girişleri/normalizasyonu;
-   alt ağ hesaplarını ve öğrenci çözümünü Chromium ile doğrulama.
-2. AGL-021–030: MAC/VLAN/trunk soruları; vlans ve allowed için sıra
+1. AGL-021–030: MAC/VLAN/trunk soruları; vlans ve allowed için sıra
    bağımsız küme karşılaştırması. 023, 026, 027, 030 negatif ICMP sağlık
    önkoşulları desteklenene kadar engellidir. Kabloyu koparmak yalıtım
    başarısı sayılamaz.
-3. AGL-031–040: arayüz nesnelerinde türetilmiş alanların ve rota kümelerinin
+2. AGL-031–040: arayüz nesnelerinde türetilmiş alanların ve rota kümelerinin
    semantik karşılaştırması; statik/çok atlamalı routing testleri.
    033 açık source_interface ve destination_ip probe bağdaştırıcısı
    olmadan engellidir.
