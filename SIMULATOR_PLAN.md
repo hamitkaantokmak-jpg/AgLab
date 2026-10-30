@@ -24,7 +24,7 @@ Bu dalın başlangıcındaki main: `7bd05b59edabb3bba6ee11dd9bb3d829da4e4d9e`. P
 | VLAN/access/trunk/shutdown | Port/VLAN ve erişimi etkiler | Önceki regresyonlar + yeni yönetim negatifleri |
 | Switch SVI/gateway/ping | Bu çalışmada uçtan uca yönetim endpoint'i | CLI/model/ağ/kalıcılık ve XML aktarım testleri |
 | Router static/default route | Connected/LPM/recursive lookup mevcut | Gerçek next-hop yoluna sadakat ve dönüş yolu audit bulguları Aşama 3'te çözülmeli |
-| ARP/MAC | Başarılı trafik sonrası öğrenme | Tam frame flooding/aging değildir; Aşama 2 kapsamı |
+| ARP/MAC | MAC: giriş portu, VLAN anahtarı, router sınırı, 300 sn aging; ARP sınırlı | Frame forwarding/flooding hâlâ Aşama 2 kapsamı |
 | ACL/PAT | Sınırlı CLI/model ve trafik kontrolü mevcut | Tüm wildcard, yön, sayaç ve translation semantiği tamamlanmış sayılmaz |
 | DHCP/DNS/HTTP | Sınırlı eğitim servis davranışları | Tam protokol/mesaj modeli değildir |
 | OSPF/BGP | Bağımsız eğitim panelleri | Ortak topoloji motorunda dinamik rota kurulumu değildir |
@@ -82,3 +82,11 @@ Doğrulama: `test_aglab_switch_svi.py` CLI/model/ağ/kalıcılık katmanlarını
 VLAN 10'a özel etiketsiz geçiş istisnası kaldırıldı. Router fiziksel arayüzünden çıkan paket, switch trunk native VLAN'ına eşlenir; rastgele ilk alt arayüzün VLAN'ı seçilmez. Native VLAN trafiği etkin fiziksel IP arayüzü; native olmayan VLAN ise aynı fiziksel porta bağlı, etkin ve doğru dot1Q VLAN'ına sahip alt arayüz gerektirir. `encapsulation dot1q ... native` hâlâ desteklenmez; native VLAN için yalnız etiketli alt arayüz yapılandırılmışsa çift yönlü ping başarılı gösterilmez. PC ve SVI yönetimi ortak bağlantı kontrolünü kullanır.
 
 `test_aglab_l2_router_trunk.py`: VLAN 10/77/333 üzerinde 18 sentetik PT XML örneği, her iki yönde ping, yanlış native VLAN, eksik/kapalı alt arayüz, allowed none ve CLI ile native VLAN hata/düzelme döngüsü. Özgün XML arşivi korunur. Bu düzeltme tam frame motoru, flooding, MAC aging veya next-hop audit çözümü olarak sunulmaz.
+
+## L2 takip çalışması: dinamik MAC öğrenme
+
+`simulator/mac-learning.js` kaynak MAC'i çıkış portu yerine gerçek giriş portunda öğrenir. Ping gidiş ve yanıt yolları ayrı işlenir; router çıkışında kaynak MAC router'ın modeldeki MAC'i olur. Paket adımı yalnız gerçekten geçilen giriş portunu öğrenir; yanıt gelmeden hedef MAC öğrenilmiş gibi gösterilmez. Router MAC'i cihaz başına model adresidir, fiziksel arayüze ayrı MAC üretimi bu kapsamda değildir.
+
+Anahtar VLAN + MAC'tir; aynı router MAC'i birden fazla VLAN'da ayrı satırlar oluşturabilir. `show mac address-table` dinamik satırları gösterir. 300 saniye kaynak trafik alınmazsa kayıt yaşlanır; okuma veya yeni öğrenmede tembel temizleme yapılır. Kapalı/kopuk port, silinen VLAN ve değişen access/allowed üyeliği de eski satırları temizler. `enable` modunda `clear mac address-table dynamic` yalnız seçili switch'in tablosunu siler. Operasyonel MAC tabloları JSON/startup'a yazılmaz; yeniden açılışta trafikle öğrenilir.
+
+Yeni tarayıcı regresyonu giriş portlarını iki switch üzerinde; Paket adımı ara durumunu; 300 saniye sınırını, yeniden öğrenmeyi, port/VLAN değişimini, clear komutu/yetkisini, aynı MAC'in iki VLAN'ını ve router sınırını doğrular. Tam pipeline toplam 24 gruptur. Frame hedef seçimi hâlâ mevcut yol motorundadır: bu çalışma MAC tablosunun forwarding kararını yönettiği veya flooding uygulandığı iddiası taşımaz. Gerçek frame iletimi ve unknown/broadcast flood sıradaki önceliktir; routing audit bulgusu açık kalır.

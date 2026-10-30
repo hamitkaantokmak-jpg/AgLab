@@ -166,12 +166,12 @@ function learnManagementEndpoints(src,dst,path,sourceIp,targetIp){
   if(owner.type!=='Switch')continue;
   const address=activeSwitchSvis(owner).find(([,i])=>i.ip===ownerIp)?.[1];if(!address)continue;
   let neighbor=peer,neighborIp=peerIp;
-  const table=macTables.get(owner.id)||new Map(),arp=arpTables.get(owner.id)||new Map();
+  const table=switchMacTable(owner),arp=arpTables.get(owner.id)||new Map();
   if(!inNetwork(peerIp,ownerIp,address.mask)){
    neighbor=devices.find(d=>d.type==='Router'&&activeRouterInterfaces(d).some(([,i])=>i.ip===owner.gateway));neighborIp=owner.gateway;
-   arp.delete(peerIp);if(Number(table.get(macOf(peer))?.vlan)===Number(address.vlan))table.delete(macOf(peer));
+   arp.delete(peerIp);table.delete(switchMacKey(address.vlan,macOf(peer)));
   }
-  if(neighbor&&neighborIp){arp.set(neighborIp,macOf(neighbor));table.set(macOf(neighbor),{vlan:vlan??Number(address.vlan),port:linkPort(edge,owner.id),device:neighbor.name});}
+  if(neighbor&&neighborIp){arp.set(neighborIp,macOf(neighbor));learnSwitchMac(owner,neighbor,vlan??Number(address.vlan),linkPort(edge,owner.id));}
   arpTables.set(owner.id,arp);macTables.set(owner.id,table);
  }
 }
