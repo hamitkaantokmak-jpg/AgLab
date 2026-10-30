@@ -24,7 +24,7 @@ Bu dalın başlangıcındaki main: `7bd05b59edabb3bba6ee11dd9bb3d829da4e4d9e`. P
 | VLAN/access/trunk/shutdown | Port/VLAN ve erişimi etkiler | Önceki regresyonlar + yeni yönetim negatifleri |
 | Switch SVI/gateway/ping | Bu çalışmada uçtan uca yönetim endpoint'i | CLI/model/ağ/kalıcılık ve XML aktarım testleri |
 | Router static/default route | Connected/LPM/recursive lookup mevcut | Gerçek next-hop yoluna sadakat ve dönüş yolu audit bulguları Aşama 3'te çözülmeli |
-| ARP/MAC | MAC: giriş portu, VLAN anahtarı, router sınırı, 300 sn aging; ARP sınırlı | Frame forwarding/flooding hâlâ Aşama 2 kapsamı |
+| ARP/MAC | MAC: giriş portu, VLAN anahtarı, router sınırı, 300 sn aging; ARP sınırlı | Yerel PC/Server frame forwarding/flooding takip çalışmasında eklendi; routing/SVI frame entegrasyonu açık |
 | ACL/PAT | Sınırlı CLI/model ve trafik kontrolü mevcut | Tüm wildcard, yön, sayaç ve translation semantiği tamamlanmış sayılmaz |
 | DHCP/DNS/HTTP | Sınırlı eğitim servis davranışları | Tam protokol/mesaj modeli değildir |
 | OSPF/BGP | Bağımsız eğitim panelleri | Ortak topoloji motorunda dinamik rota kurulumu değildir |
@@ -90,3 +90,21 @@ VLAN 10'a özel etiketsiz geçiş istisnası kaldırıldı. Router fiziksel aray
 Anahtar VLAN + MAC'tir; aynı router MAC'i birden fazla VLAN'da ayrı satırlar oluşturabilir. `show mac address-table` dinamik satırları gösterir. 300 saniye kaynak trafik alınmazsa kayıt yaşlanır; okuma veya yeni öğrenmede tembel temizleme yapılır. Kapalı/kopuk port, silinen VLAN ve değişen access/allowed üyeliği de eski satırları temizler. `enable` modunda `clear mac address-table dynamic` yalnız seçili switch'in tablosunu siler. Operasyonel MAC tabloları JSON/startup'a yazılmaz; yeniden açılışta trafikle öğrenilir.
 
 Yeni tarayıcı regresyonu giriş portlarını iki switch üzerinde; Paket adımı ara durumunu; 300 saniye sınırını, yeniden öğrenmeyi, port/VLAN değişimini, clear komutu/yetkisini, aynı MAC'in iki VLAN'ını ve router sınırını doğrular. Tam pipeline toplam 24 gruptur. Frame hedef seçimi hâlâ mevcut yol motorundadır: bu çalışma MAC tablosunun forwarding kararını yönettiği veya flooding uygulandığı iddiası taşımaz. Gerçek frame iletimi ve unknown/broadcast flood sıradaki önceliktir; routing audit bulgusu açık kalır.
+
+## L2 takip çalışması: yerel frame forwarding
+
+`simulator/ethernet-forwarding.js` aynı subnet ve router içermeyen yerel PC/Server ping'ini gerçek frame yayılımıyla doğrular. Boş ARP cache'te ARP broadcast, hedefin unicast ARP yanıtı, ardından ICMP request/reply gönderilir. Sonraki ping cache'i kullanır. Dinamik FDB egress kararını belirler: bilinmeyen unicast ve broadcast yalnız aynı VLAN'ın bağlı, allowed ve STP forwarding portlarına; bilinen hedef tek porta gider. Giriş portu çıkış olarak seçilirse frame filtrelenir. NIC hedefi uyuşmayan uç frame'i alabilir ama kabul etmez. Access/trunk etiketsiz trafiğinde native VLAN eşleşmesi zorunludur.
+
+Aktif ama yanlış porta işaret eden stale MAC kaydı ping'i gerçekten başarısız kılabilir; motor BFS ile başarıya zorlamaz. Hedef yeniden trafik ürettiğinde source learning kaydı düzeltir. Link/VLAN/STP nedeniyle kullanılamayan egress temizlenip unknown-unicast flood'a geçilir. Router'lar broadcast veya unknown-unicast frame'lerini başka LAN'a bridge etmez.
+
+Eğitim amaçlı özel tanı komutları (IOS uyumluluğu iddiası değildir):
+
+```text
+test ethernet 0200.0000.0004
+test ethernet broadcast
+show ethernet events
+```
+
+Tanı frame'leri yalnız etkin PC/Server'dan gönderilir; MAC öğrenmeyi gerçekten etkiler. Olay listesi son yerel işleme aittir, en çok 256 olayı tutar ve sığmayan olay sayısını açıklar; iletim kırpılmaz. Topoloji yükleme/sıfırlama ve yeni ping eski olay listesini temizler. Multicast/IGMP bu kapsamda yoktur; multicast tanı hedefleri reddedilir. ARP cache aging, 5 ayrı zamanlanmış ICMP paketi, kayıp/gecikme, ortak router/SVI forwarding ve Paket Dedektifi'nin yeni olayları tüketmesi açık kalır. Var olan CLI 5/5 eğitim özeti korunur.
+
+Yeni browser testi flood/learned unicast, VLAN izolasyonu, ARP cache, FDB aging, MAC taşınması, gerçek stale-FDB ping hatası, native/access sınırı, üçgen STP ve router broadcast sınırını doğrular. Toplam pipeline 25 gruptur. Önceki MAC çalışmasındaki “frame forwarding açık” notu o PR'ın tarihsel kapsamıdır; bu takip çalışması yalnız belirtilen yerel akışları tamamlar. L3 routing next-hop audit bulgusu hâlâ açıktır.

@@ -1,4 +1,4 @@
-// Dynamic FDB learning; frame forwarding/flooding is a separate engine milestone.
+// Dynamic VLAN-scoped FDB shared by learning and local Ethernet forwarding.
 const MAC_AGING_MS=300000;
 function switchMacKey(vlan,mac){return Number(vlan)+'|'+mac}
 function switchMacTable(d,now=Date.now()){
