@@ -102,6 +102,38 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         assert expected in output, output[-1600:]
 
     ping(True)
+    for text in ['enable', 'configure terminal', 'interface g0/0.200']:
+        command('d1', text)
+    before = page.locator('#ptTerminal').inner_text()
+    output = command('d1', 'encapsulation dot1q 20')[len(before):]
+    assert '802.1Q encapsulation dot1Q 20 yapılandırıldı.' in output, output
+    for invalid in ['encapsulation dot1q 20.5', 'encapsulation dot1q 0',
+                    'encapsulation dot1q 4095', 'encapsulation dot1q 20 native',
+                    'encapsulation dot1q 20 extra', 'encapsulation dot1q',
+                    'encapsulation isl 20']:
+        command('d1', invalid)
+        assert 'outerr' in (page.locator('#ptTerminal > div').last.get_attribute('class') or ''), invalid
+    # An independent subinterface number above the VLAN range is not a VLAN ID.
+    for text in ['exit', 'interface GigabitEthernet0/0.5000', 'encapsulation dot1q 30',
+                 'ip address 192.168.30.1 255.255.255.0', 'end']:
+        command('d1', text)
+    output = command('d1', 'show running-config')
+    assert 'interface g0/0.5000' in output and 'encapsulation dot1Q 30' in output, output[-2000:]
+    page.evaluate("showArea('lab')")
+    page.locator('#fileTopologyDetails > summary').click()
+    with page.expect_download() as download:
+        page.locator('#ptExport').click()
+    exported = Path(tmp) / 'cli-roundtrip.json'
+    download.value.save_as(str(exported))
+    saved = json.loads(exported.read_text())
+    saved_router = next(d for d in saved['devices'] if d['id'] == 'd1')
+    assert saved_router['interfaces']['g0/0.200']['vlan'] == 20
+    assert saved_router['interfaces']['g0/0.5000']['vlan'] == 30
+    assert saved_router['interfaces']['g0/0.5000']['parent'] == 'g0/0'
+    assert 'g0/0.5000' not in saved_router['ports']
+    page.locator('#ptImportFile').set_input_files(str(exported))
+    page.wait_for_timeout(150)
+    ping(True)  # invalid commands did not replace the imported VLAN 20 binding
     for text in ['enable', 'configure terminal', 'interface g0/0.200', 'shutdown', 'end']:
         command('d1', text)
     ping(False)
@@ -118,6 +150,19 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
                  'switchport trunk allowed vlan 10', 'end']:
         command('d2', text)
     ping(False)
+    # Physical parents imported outside the default g0/0 inventory work in CLI too.
+    path.write_text(json.dumps(parent_topology))
+    page.locator('#ptImportFile').set_input_files(str(path))
+    page.wait_for_timeout(150)
+    for text in ['enable', 'configure terminal', 'interface GigabitEthernet1/0.5000',
+                 'encapsulation dot1q 30', 'ip address 192.168.30.1 255.255.255.0', 'end']:
+        command('d1', text)
+    output = command('d1', 'show running-config')
+    assert 'interface g1/0.5000' in output, output[-2000:]
+    command('d1', 'configure terminal')
+    for invalid in ['interface g9/9.20', 'interface g1/0.4294967296', 'interface g1/0.1.5']:
+        command('d1', invalid)
+        assert 'outerr' in (page.locator('#ptTerminal > div').last.get_attribute('class') or ''), invalid
     assert not errors, errors
     browser.close()
-print('PASS: converted dot1Q inter-VLAN ping, parent shutdown/recovery and excluded VLAN')
+print('PASS: PT/CLI dot1Q consistency, invalid syntax rejection, physical parents, JSON roundtrip and inter-VLAN ping/shutdown')
