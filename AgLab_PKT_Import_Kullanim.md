@@ -46,3 +46,9 @@ python restore_pkt_from_aglab_json.py static-routing-two-routers.aglab.json -o r
 ```
 
 Betik SHA-256 değerini doğrular. Geri çıkarılan dosya kaynak `.pkt` ile bayt bazında aynı olmalıdır. `importReport.unmodeledConfigLines` alanı, simülasyon modeline eşlenmeyen CLI satırlarını ve kaynak satır numaralarını listeler.
+
+## Etiketli router alt arayüzleri
+
+`interface GigabitEthernet0/0.200` altında `encapsulation dot1Q 20` ve IPv4 yapılandırması, parent `g0/0` ve VLAN 20 bilgileriyle aktarılır. Alt arayüz numarası VLAN kimliğinden farklı olabilir. Mantıksal alt arayüzler fiziksel kablo portları listesine eklenmez. Aynı switch üzerindeki VLAN'lar, router'a giden trunk üzerinden yönlendirilebilir; parent/alt arayüz shutdown ve trunk izinleri paket akışını etkiler.
+
+`native`, ISL ve geçersiz VLAN etiketleri bu aktarımda modellenmez; kaynak running-config/XML korunur ve komutlar model dışı raporlanır. Sentetik PT XML regresyonu aktarımı gerçek tarayıcı ping testleriyle doğrular; tüm Packet Tracer sürümleri ve özellikleri için uyumluluk garantisi vermez.
