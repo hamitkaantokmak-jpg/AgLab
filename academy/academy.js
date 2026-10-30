@@ -18,6 +18,14 @@ academyPanel.innerHTML=`<h2>AğLab Akademi v1</h2>
 ac('area-lab').prepend(academyPanel);
 academyLabs.forEach(l=>{const o=document.createElement('option');o.value=l.id;o.textContent=l.id+' — '+l.title;ac('academySelect').append(o)});
 const answerFields={
+ pc1_pc2_survives_pc3_link_loss:{label:'Sadece PC3 kablosu çıkarılırsa PC1–PC2 erişimi sürer mi?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ ping_protocol:{label:'Ping hangi protokolü kullanır?',options:[['ICMP','ICMP'],['TCP','TCP'],['UDP','UDP']]},
+ ping_proves_http:{label:'Başarılı ping HTTP hizmetinin çalıştığını kesin kanıtlar mı?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ arp_target_ip:{label:'Yerel hedef için ARP ile sorulan IP hangisidir?',options:[['192.168.1.10','192.168.1.10'],['192.168.1.20','192.168.1.20'],['192.168.1.255','192.168.1.255']]},
+ arp_resolves:{label:'ARP hangi adres türünü çözer?',options:[['MAC','MAC'],['IP','IP'],['DNS','DNS']]},
+ arp_crosses_router:{label:'ARP yayını routerdan geçer mi?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ dns_required_for_ip_ping:{label:'IP adresine ping için DNS gerekli mi?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ initial_same_subnet:{label:'Başlangıçtaki adresler aynı /24 ağda mıydı?',options:[['true','Evet'],['false','Hayır']],boolean:true},
  router_required:{label:'Bu yerel ağda router gerekli mi?',options:[['true','Evet'],['false','Hayır']],boolean:true},
  l2_device:{label:'Katman 2 çerçevelerini ileten cihaz hangisi?',options:[['pc','PC'],['switch','Switch'],['router','Router']]},
  inter_network_device:{label:'Farklı IP ağlarını bağlayan cihaz hangisi?',options:[['pc','PC'],['switch','Switch'],['router','Router']]},

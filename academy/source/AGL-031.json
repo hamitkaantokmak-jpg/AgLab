@@ -1,0 +1,743 @@
+{
+  "id": "AGL-031",
+  "order": 31,
+  "module_id": "M4",
+  "title": "Router ile iki doğrudan bağlı ağı birleştirme",
+  "language": "tr-TR",
+  "duration_minutes": 20,
+  "prerequisites": [
+    "AGL-030"
+  ],
+  "learning_objectives": [
+    "Router arayüzünü adreslemek",
+    "Doğrudan rotayı tanımak"
+  ],
+  "theory": "Router etkin ve adresli arayüzlerinin ağlarını doğrudan bağlı rota olarak öğrenir. Tek routerın iki doğrudan ağı arasında ayrıca statik rota gerekmez. Uçlar uzak hedef için kendi yerel gateway adresine gönderir.",
+  "scenario": "Aşağıdaki başlangıç durumunu kullanarak router ile iki doğrudan bağlı ağı birleştirme görevini tamamla.",
+  "initial_topology": {
+    "app": "AgLab",
+    "version": 23,
+    "devices": [
+      {
+        "id": "PC1",
+        "name": "PC1",
+        "type": "PC",
+        "x": 80,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.10.10",
+        "mask": "255.255.255.0",
+        "gateway": "192.168.10.1",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "SW1",
+        "name": "SW1",
+        "type": "Switch",
+        "x": 260,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1
+        ]
+      },
+      {
+        "id": "R1",
+        "name": "R1",
+        "type": "Router",
+        "x": 440,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "g0/0",
+          "g0/1",
+          "g0/2"
+        ],
+        "interfaces": {
+          "g0/0": {
+            "enabled": false
+          },
+          "g0/1": {
+            "enabled": false
+          },
+          "g0/2": {
+            "enabled": true
+          }
+        },
+        "staticRoutes": [],
+        "route": ""
+      },
+      {
+        "id": "SW2",
+        "name": "SW2",
+        "type": "Switch",
+        "x": 620,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1
+        ]
+      },
+      {
+        "id": "PC2",
+        "name": "PC2",
+        "type": "PC",
+        "x": 800,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.20.20",
+        "mask": "255.255.255.0",
+        "gateway": "192.168.20.1",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      }
+    ],
+    "links": [
+      {
+        "a": "PC1",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/1",
+        "up": true
+      },
+      {
+        "a": "SW1",
+        "portA": "gi0/1",
+        "b": "R1",
+        "portB": "g0/0",
+        "up": true
+      },
+      {
+        "a": "R1",
+        "portA": "g0/1",
+        "b": "SW2",
+        "portB": "gi0/1",
+        "up": true
+      },
+      {
+        "a": "SW2",
+        "portA": "fa0/1",
+        "b": "PC2",
+        "portB": "eth0",
+        "up": true
+      }
+    ],
+    "nextId": 6,
+    "selected": "PC1"
+  },
+  "target_topology": {
+    "app": "AgLab",
+    "version": 23,
+    "devices": [
+      {
+        "id": "PC1",
+        "name": "PC1",
+        "type": "PC",
+        "x": 80,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.10.10",
+        "mask": "255.255.255.0",
+        "gateway": "192.168.10.1",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "SW1",
+        "name": "SW1",
+        "type": "Switch",
+        "x": 260,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1
+        ]
+      },
+      {
+        "id": "R1",
+        "name": "R1",
+        "type": "Router",
+        "x": 440,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "g0/0",
+          "g0/1",
+          "g0/2"
+        ],
+        "interfaces": {
+          "g0/0": {
+            "enabled": true,
+            "ip": "192.168.10.1",
+            "mask": "255.255.255.0"
+          },
+          "g0/1": {
+            "enabled": true,
+            "ip": "192.168.20.1",
+            "mask": "255.255.255.0"
+          },
+          "g0/2": {
+            "enabled": true
+          }
+        },
+        "staticRoutes": [],
+        "route": ""
+      },
+      {
+        "id": "SW2",
+        "name": "SW2",
+        "type": "Switch",
+        "x": 620,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1
+        ]
+      },
+      {
+        "id": "PC2",
+        "name": "PC2",
+        "type": "PC",
+        "x": 800,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.20.20",
+        "mask": "255.255.255.0",
+        "gateway": "192.168.20.1",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      }
+    ],
+    "links": [
+      {
+        "a": "PC1",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/1",
+        "up": true
+      },
+      {
+        "a": "SW1",
+        "portA": "gi0/1",
+        "b": "R1",
+        "portB": "g0/0",
+        "up": true
+      },
+      {
+        "a": "R1",
+        "portA": "g0/1",
+        "b": "SW2",
+        "portB": "gi0/1",
+        "up": true
+      },
+      {
+        "a": "SW2",
+        "portA": "fa0/1",
+        "b": "PC2",
+        "portB": "eth0",
+        "up": true
+      }
+    ],
+    "nextId": 6,
+    "selected": "PC1"
+  },
+  "steps": [
+    {
+      "order": 1,
+      "text": "R1 g0/0=192.168.10.1/24 ve g0/1=192.168.20.1/24 yapılandır; portları aç."
+    },
+    {
+      "order": 2,
+      "text": "PC gateway alanlarını plana göre kontrol et."
+    },
+    {
+      "order": 3,
+      "text": "CLI varsa show ip interface brief ve show ip route incele."
+    },
+    {
+      "order": 4,
+      "text": "İki yönde ping dene; ek statik rota gerekip gerekmediğini cevapla."
+    }
+  ],
+  "expected_result": "İki doğrudan bağlı LAN arasında iki yönlü erişim sağlanır.",
+  "assessment": {
+    "max_points": 100,
+    "criteria": [
+      {
+        "kind": "state.equals",
+        "target": "devices.R1.interfaces.g0/0",
+        "expected": {
+          "enabled": true,
+          "ip": "192.168.10.1",
+          "mask": "255.255.255.0"
+        },
+        "label": "Sol arayüz",
+        "points": 20,
+        "id": "AGL-031-C01",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "state.equals",
+        "target": "devices.R1.interfaces.g0/1",
+        "expected": {
+          "enabled": true,
+          "ip": "192.168.20.1",
+          "mask": "255.255.255.0"
+        },
+        "label": "Sağ arayüz",
+        "points": 20,
+        "id": "AGL-031-C02",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "probe.icmp",
+        "target": {
+          "source": "PC1",
+          "destination": "PC2"
+        },
+        "expected": true,
+        "label": "PC1 → PC2: erişim var",
+        "points": 20,
+        "probe_policy": "icmp-5-v1",
+        "id": "AGL-031-C03",
+        "required_capabilities": [
+          "icmp_probe"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "probe.icmp",
+        "target": {
+          "source": "PC2",
+          "destination": "PC1"
+        },
+        "expected": true,
+        "label": "PC2 → PC1: erişim var",
+        "points": 20,
+        "probe_policy": "icmp-5-v1",
+        "id": "AGL-031-C04",
+        "required_capabilities": [
+          "icmp_probe"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "answer.equals",
+        "target": "answers.static_route_required",
+        "expected": false,
+        "label": "Doğrudan ağlar için ek rota gerekmez",
+        "points": 20,
+        "id": "AGL-031-C05",
+        "required_capabilities": [
+          "answer_input"
+        ],
+        "on_unavailable": "not_evaluated"
+      }
+    ]
+  },
+  "hints": [
+    "Her router arayüzü farklı alt ağda olmalıdır."
+  ],
+  "teacher_solution": {
+    "explanation": "İki arayüze IP/mask ver ve no shutdown uygula. PC1 gateway=.10.1, PC2 gateway=.20.1; staticRoutes boş kalır.",
+    "answer_key": {
+      "static_route_required": false
+    },
+    "target_topology_file": "../topologies/AGL-031-solution.aglab.json",
+    "reference_commands": {
+      "SW1": [
+        "enable",
+        "configure terminal",
+        "interface fa0/1",
+        "switchport mode access",
+        "switchport access vlan 1",
+        "no shutdown",
+        "exit",
+        "interface gi0/1",
+        "switchport mode access",
+        "switchport access vlan 1",
+        "no shutdown",
+        "exit",
+        "end"
+      ],
+      "R1": [
+        "enable",
+        "configure terminal",
+        "interface g0/0",
+        "ip address 192.168.10.1 255.255.255.0",
+        "no shutdown",
+        "exit",
+        "interface g0/1",
+        "ip address 192.168.20.1 255.255.255.0",
+        "no shutdown",
+        "exit",
+        "end"
+      ],
+      "SW2": [
+        "enable",
+        "configure terminal",
+        "interface fa0/1",
+        "switchport mode access",
+        "switchport access vlan 1",
+        "no shutdown",
+        "exit",
+        "interface gi0/1",
+        "switchport mode access",
+        "switchport access vlan 1",
+        "no shutdown",
+        "exit",
+        "end"
+      ]
+    },
+    "command_note": "Temiz başlangıç/hedef kurulum örneği; hatalı mevcut rotayı kaldırma yerine geçmez. CLI alt kümesi doğrulanmadıysa arayüz veya durum bağdaştırıcısı kullan. Öğrenciye cevap anahtarı/çözüm topolojisi sunma."
+  },
+  "support": [
+    {
+      "feature": "ipv4",
+      "status": "DOGRULANMADI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "icmp",
+      "status": "DOGRULANMADI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "static_routing",
+      "status": "KISMI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "automatic_grader",
+      "status": "ENTEGRASYON_GEREKLI",
+      "reason": "Bu paket içeriktir. Puanlayıcı, durum bağdaştırıcısı ve probe çalıştırıcısı ayrı geliştirilir."
+    }
+  ],
+  "content_status": "HAZIR",
+  "execution_status": "MOTORDE_CALISTIRILMADI"
+}

@@ -1,0 +1,543 @@
+{
+  "id": "AGL-010",
+  "order": 10,
+  "module_id": "M1",
+  "title": "Yerel ağ mini projesi: iki hatayı düzelt",
+  "language": "tr-TR",
+  "duration_minutes": 25,
+  "prerequisites": [
+    "AGL-009"
+  ],
+  "learning_objectives": [
+    "Birden çok hatayı ayırmak",
+    "Üç uçlu yerel ağı doğrulamak"
+  ],
+  "theory": "Bir ağda birden fazla bağımsız hata olabilir. Fiziksel yolu onarmak yanlış IP ağını otomatik düzeltmez. Kontrolleri sırayla yapmak ve her müdahaleden sonra yeniden ölçmek teşhisi kolaylaştırır.",
+  "scenario": "Aşağıdaki başlangıç durumunu kullanarak yerel ağ mini projesi: iki hatayı düzelt görevini tamamla.",
+  "initial_topology": {
+    "app": "AgLab",
+    "version": 23,
+    "devices": [
+      {
+        "id": "PC1",
+        "name": "PC1",
+        "type": "PC",
+        "x": 80,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.1.10",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC2",
+        "name": "PC2",
+        "type": "PC",
+        "x": 260,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.1.20",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC3",
+        "name": "PC3",
+        "type": "PC",
+        "x": 440,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.3.30",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "SW1",
+        "name": "SW1",
+        "type": "Switch",
+        "x": 620,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1
+        ]
+      }
+    ],
+    "links": [
+      {
+        "a": "PC1",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/1",
+        "up": true
+      },
+      {
+        "a": "PC2",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/2",
+        "up": true
+      },
+      {
+        "a": "PC3",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/3",
+        "up": false
+      }
+    ],
+    "nextId": 5,
+    "selected": "PC1"
+  },
+  "target_topology": {
+    "app": "AgLab",
+    "version": 23,
+    "devices": [
+      {
+        "id": "PC1",
+        "name": "PC1",
+        "type": "PC",
+        "x": 80,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.1.10",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC2",
+        "name": "PC2",
+        "type": "PC",
+        "x": 260,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.1.20",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC3",
+        "name": "PC3",
+        "type": "PC",
+        "x": 440,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.1.30",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "SW1",
+        "name": "SW1",
+        "type": "Switch",
+        "x": 620,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1
+        ]
+      }
+    ],
+    "links": [
+      {
+        "a": "PC1",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/1",
+        "up": true
+      },
+      {
+        "a": "PC2",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/2",
+        "up": true
+      },
+      {
+        "a": "PC3",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/3",
+        "up": true
+      }
+    ],
+    "nextId": 5,
+    "selected": "PC1"
+  },
+  "steps": [
+    {
+      "order": 1,
+      "text": "PC3 kablosunu etkinleştir."
+    },
+    {
+      "order": 2,
+      "text": "PC3 IP adresini 192.168.1.30/24 yap."
+    },
+    {
+      "order": 3,
+      "text": "PC1 → PC2, PC1 → PC3 ve PC2 → PC3 testlerini yap."
+    },
+    {
+      "order": 4,
+      "text": "Yaptığın iki değişikliği öğretmene açıklamak için not al."
+    }
+  ],
+  "expected_result": "Üç test de başarılı olur.",
+  "assessment": {
+    "max_points": 100,
+    "criteria": [
+      {
+        "kind": "state.equals",
+        "target": "links",
+        "expected": [
+          {
+            "a": "PC1",
+            "portA": "eth0",
+            "b": "SW1",
+            "portB": "fa0/1",
+            "up": true
+          },
+          {
+            "a": "PC2",
+            "portA": "eth0",
+            "b": "SW1",
+            "portB": "fa0/2",
+            "up": true
+          },
+          {
+            "a": "PC3",
+            "portA": "eth0",
+            "b": "SW1",
+            "portB": "fa0/3",
+            "up": true
+          }
+        ],
+        "label": "Tüm yollar etkin",
+        "points": 20,
+        "id": "AGL-010-C01",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "state.equals",
+        "target": "devices.PC3.ip",
+        "expected": "192.168.1.30",
+        "label": "PC3 doğru ağda",
+        "points": 20,
+        "id": "AGL-010-C02",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "probe.icmp",
+        "target": {
+          "source": "PC1",
+          "destination": "PC2"
+        },
+        "expected": true,
+        "label": "PC1 → PC2: erişim var",
+        "points": 20,
+        "probe_policy": "icmp-5-v1",
+        "id": "AGL-010-C03",
+        "required_capabilities": [
+          "icmp_probe"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "probe.icmp",
+        "target": {
+          "source": "PC1",
+          "destination": "PC3"
+        },
+        "expected": true,
+        "label": "PC1 → PC3: erişim var",
+        "points": 20,
+        "probe_policy": "icmp-5-v1",
+        "id": "AGL-010-C04",
+        "required_capabilities": [
+          "icmp_probe"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "probe.icmp",
+        "target": {
+          "source": "PC2",
+          "destination": "PC3"
+        },
+        "expected": true,
+        "label": "PC2 → PC3: erişim var",
+        "points": 20,
+        "probe_policy": "icmp-5-v1",
+        "id": "AGL-010-C05",
+        "required_capabilities": [
+          "icmp_probe"
+        ],
+        "on_unavailable": "not_evaluated"
+      }
+    ]
+  },
+  "hints": [
+    "İlk hatayı bulduğunda kontrolleri bitirme."
+  ],
+  "teacher_solution": {
+    "explanation": "PC3 linki up=true, PC3 IP=192.168.1.30 olur; /24 maske korunur.",
+    "answer_key": {},
+    "target_topology_file": "../topologies/AGL-010-solution.aglab.json",
+    "reference_commands": {
+      "SW1": [
+        "enable",
+        "configure terminal",
+        "interface fa0/1",
+        "switchport mode access",
+        "switchport access vlan 1",
+        "no shutdown",
+        "exit",
+        "interface fa0/2",
+        "switchport mode access",
+        "switchport access vlan 1",
+        "no shutdown",
+        "exit",
+        "interface fa0/3",
+        "switchport mode access",
+        "switchport access vlan 1",
+        "no shutdown",
+        "exit",
+        "end"
+      ]
+    },
+    "command_note": "Temiz başlangıç/hedef kurulum örneği; hatalı mevcut rotayı kaldırma yerine geçmez. CLI alt kümesi doğrulanmadıysa arayüz veya durum bağdaştırıcısı kullan. Öğrenciye cevap anahtarı/çözüm topolojisi sunma."
+  },
+  "support": [
+    {
+      "feature": "ipv4",
+      "status": "DOGRULANMADI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "icmp",
+      "status": "DOGRULANMADI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "automatic_grader",
+      "status": "ENTEGRASYON_GEREKLI",
+      "reason": "Bu paket içeriktir. Puanlayıcı, durum bağdaştırıcısı ve probe çalıştırıcısı ayrı geliştirilir."
+    }
+  ],
+  "content_status": "HAZIR",
+  "execution_status": "MOTORDE_CALISTIRILMADI"
+}

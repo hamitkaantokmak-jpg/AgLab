@@ -1,0 +1,210 @@
+{
+  "id": "AGL-010",
+  "target_topology": {
+    "app": "AgLab",
+    "version": 23,
+    "devices": [
+      {
+        "id": "PC1",
+        "name": "PC1",
+        "type": "PC",
+        "x": 80,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.1.10",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC2",
+        "name": "PC2",
+        "type": "PC",
+        "x": 260,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.1.20",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC3",
+        "name": "PC3",
+        "type": "PC",
+        "x": 440,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.1.30",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "SW1",
+        "name": "SW1",
+        "type": "Switch",
+        "x": 620,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1
+        ]
+      }
+    ],
+    "links": [
+      {
+        "a": "PC1",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/1",
+        "up": true
+      },
+      {
+        "a": "PC2",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/2",
+        "up": true
+      },
+      {
+        "a": "PC3",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/3",
+        "up": true
+      }
+    ],
+    "nextId": 5,
+    "selected": "PC1"
+  },
+  "teacher_solution": {
+    "explanation": "PC3 linki up=true, PC3 IP=192.168.1.30 olur; /24 maske korunur.",
+    "answer_key": {},
+    "target_topology_file": "../topologies/AGL-010-solution.aglab.json",
+    "reference_commands": {
+      "SW1": [
+        "enable",
+        "configure terminal",
+        "interface fa0/1",
+        "switchport mode access",
+        "switchport access vlan 1",
+        "no shutdown",
+        "exit",
+        "interface fa0/2",
+        "switchport mode access",
+        "switchport access vlan 1",
+        "no shutdown",
+        "exit",
+        "interface fa0/3",
+        "switchport mode access",
+        "switchport access vlan 1",
+        "no shutdown",
+        "exit",
+        "end"
+      ]
+    },
+    "command_note": "Temiz başlangıç/hedef kurulum örneği; hatalı mevcut rotayı kaldırma yerine geçmez. CLI alt kümesi doğrulanmadıysa arayüz veya durum bağdaştırıcısı kullan. Öğrenciye cevap anahtarı/çözüm topolojisi sunma."
+  }
+}

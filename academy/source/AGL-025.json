@@ -1,0 +1,802 @@
+{
+  "id": "AGL-025",
+  "order": 25,
+  "module_id": "M3",
+  "title": "Trunk allowed VLAN eksikliğini giderme",
+  "language": "tr-TR",
+  "duration_minutes": 20,
+  "prerequisites": [
+    "AGL-024"
+  ],
+  "learning_objectives": [
+    "Kısmi VLAN arızasını teşhis etmek",
+    "Allowed listesini düzeltmek"
+  ],
+  "theory": "Trunk olması bütün VLAN’ların taşındığı anlamına gelmez. İzin listesinde VLAN 20 yoksa VLAN 10 erişirken VLAN 20 karşı switch’e taşınmayabilir. VLAN veritabanı ile trunk izin listesi ayrı ayarlardır.",
+  "scenario": "Aşağıdaki başlangıç durumunu kullanarak trunk allowed vlan eksikliğini giderme görevini tamamla.",
+  "initial_topology": {
+    "app": "AgLab",
+    "version": 23,
+    "devices": [
+      {
+        "id": "PC1",
+        "name": "PC1",
+        "type": "PC",
+        "x": 80,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.10.11",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC2",
+        "name": "PC2",
+        "type": "PC",
+        "x": 260,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.20.12",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC3",
+        "name": "PC3",
+        "type": "PC",
+        "x": 440,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.10.13",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC4",
+        "name": "PC4",
+        "type": "PC",
+        "x": 620,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.20.14",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "SW1",
+        "name": "SW1",
+        "type": "Switch",
+        "x": 800,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 10,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 20,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "trunk",
+            "vlan": 1,
+            "allowed": [
+              10
+            ],
+            "nativeVlan": 1
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1,
+          10,
+          20
+        ]
+      },
+      {
+        "id": "SW2",
+        "name": "SW2",
+        "type": "Switch",
+        "x": 980,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 10,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 20,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "trunk",
+            "vlan": 1,
+            "allowed": [
+              10
+            ],
+            "nativeVlan": 1
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1,
+          10,
+          20
+        ]
+      }
+    ],
+    "links": [
+      {
+        "a": "PC1",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/1",
+        "up": true
+      },
+      {
+        "a": "PC2",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/2",
+        "up": true
+      },
+      {
+        "a": "PC3",
+        "portA": "eth0",
+        "b": "SW2",
+        "portB": "fa0/1",
+        "up": true
+      },
+      {
+        "a": "PC4",
+        "portA": "eth0",
+        "b": "SW2",
+        "portB": "fa0/2",
+        "up": true
+      },
+      {
+        "a": "SW1",
+        "portA": "gi0/1",
+        "b": "SW2",
+        "portB": "gi0/1",
+        "up": true
+      }
+    ],
+    "nextId": 7,
+    "selected": "PC1"
+  },
+  "target_topology": {
+    "app": "AgLab",
+    "version": 23,
+    "devices": [
+      {
+        "id": "PC1",
+        "name": "PC1",
+        "type": "PC",
+        "x": 80,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.10.11",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC2",
+        "name": "PC2",
+        "type": "PC",
+        "x": 260,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.20.12",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC3",
+        "name": "PC3",
+        "type": "PC",
+        "x": 440,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.10.13",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "PC4",
+        "name": "PC4",
+        "type": "PC",
+        "x": 620,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.20.14",
+        "mask": "255.255.255.0",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "SW1",
+        "name": "SW1",
+        "type": "Switch",
+        "x": 800,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 10,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 20,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "trunk",
+            "vlan": 1,
+            "allowed": [
+              10,
+              20
+            ],
+            "nativeVlan": 1
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1,
+          10,
+          20
+        ]
+      },
+      {
+        "id": "SW2",
+        "name": "SW2",
+        "type": "Switch",
+        "x": 980,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 10,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 20,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "trunk",
+            "vlan": 1,
+            "allowed": [
+              10,
+              20
+            ],
+            "nativeVlan": 1
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1,
+          10,
+          20
+        ]
+      }
+    ],
+    "links": [
+      {
+        "a": "PC1",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/1",
+        "up": true
+      },
+      {
+        "a": "PC2",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/2",
+        "up": true
+      },
+      {
+        "a": "PC3",
+        "portA": "eth0",
+        "b": "SW2",
+        "portB": "fa0/1",
+        "up": true
+      },
+      {
+        "a": "PC4",
+        "portA": "eth0",
+        "b": "SW2",
+        "portB": "fa0/2",
+        "up": true
+      },
+      {
+        "a": "SW1",
+        "portA": "gi0/1",
+        "b": "SW2",
+        "portB": "gi0/1",
+        "up": true
+      }
+    ],
+    "nextId": 7,
+    "selected": "PC1"
+  },
+  "steps": [
+    {
+      "order": 1,
+      "text": "PC1 → PC3 ile PC2 → PC4 davranışlarını karşılaştır."
+    },
+    {
+      "order": 2,
+      "text": "İki gi0/1 izin listesine VLAN 20 ekle."
+    },
+    {
+      "order": 3,
+      "text": "Her iki switchte VLAN 20 varlığını koru."
+    },
+    {
+      "order": 4,
+      "text": "İki VLAN’ı yeniden test et."
+    }
+  ],
+  "expected_result": "VLAN 10 korunur, VLAN 20 erişimi düzelir.",
+  "assessment": {
+    "max_points": 100,
+    "criteria": [
+      {
+        "kind": "state.equals",
+        "target": "devices.SW1.interfaces.gi0/1.allowed",
+        "expected": [
+          10,
+          20
+        ],
+        "label": "SW1 allowed",
+        "points": 20,
+        "id": "AGL-025-C01",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "state.equals",
+        "target": "devices.SW2.interfaces.gi0/1.allowed",
+        "expected": [
+          10,
+          20
+        ],
+        "label": "SW2 allowed",
+        "points": 20,
+        "id": "AGL-025-C02",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "probe.icmp",
+        "target": {
+          "source": "PC1",
+          "destination": "PC3"
+        },
+        "expected": true,
+        "label": "PC1 → PC3: erişim var",
+        "points": 20,
+        "probe_policy": "icmp-5-v1",
+        "id": "AGL-025-C03",
+        "required_capabilities": [
+          "icmp_probe"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "probe.icmp",
+        "target": {
+          "source": "PC2",
+          "destination": "PC4"
+        },
+        "expected": true,
+        "label": "PC2 → PC4: erişim var",
+        "points": 20,
+        "probe_policy": "icmp-5-v1",
+        "id": "AGL-025-C04",
+        "required_capabilities": [
+          "icmp_probe"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "answer.equals",
+        "target": "answers.allowed_list_creates_vlan",
+        "expected": false,
+        "label": "İzin listesi VLAN oluşturmaz",
+        "points": 20,
+        "id": "AGL-025-C05",
+        "required_capabilities": [
+          "answer_input"
+        ],
+        "on_unavailable": "not_evaluated"
+      }
+    ]
+  },
+  "hints": [
+    "switchport trunk allowed vlan add 20 yalnız ilgili portun izinlerini değiştirir."
+  ],
+  "teacher_solution": {
+    "explanation": "İki gi0/1 izin listesi [10,20] olur; veritabanındaki VLAN 20 bağımsızdır.",
+    "answer_key": {
+      "allowed_list_creates_vlan": false
+    },
+    "target_topology_file": "../topologies/AGL-025-solution.aglab.json",
+    "reference_commands": {
+      "SW1": [
+        "enable",
+        "configure terminal",
+        "vlan 10",
+        "exit",
+        "vlan 20",
+        "exit",
+        "interface fa0/1",
+        "switchport mode access",
+        "switchport access vlan 10",
+        "no shutdown",
+        "exit",
+        "interface fa0/2",
+        "switchport mode access",
+        "switchport access vlan 20",
+        "no shutdown",
+        "exit",
+        "interface gi0/1",
+        "switchport mode trunk",
+        "switchport trunk allowed vlan 10,20",
+        "switchport trunk native vlan 1",
+        "no shutdown",
+        "exit",
+        "end"
+      ],
+      "SW2": [
+        "enable",
+        "configure terminal",
+        "vlan 10",
+        "exit",
+        "vlan 20",
+        "exit",
+        "interface fa0/1",
+        "switchport mode access",
+        "switchport access vlan 10",
+        "no shutdown",
+        "exit",
+        "interface fa0/2",
+        "switchport mode access",
+        "switchport access vlan 20",
+        "no shutdown",
+        "exit",
+        "interface gi0/1",
+        "switchport mode trunk",
+        "switchport trunk allowed vlan 10,20",
+        "switchport trunk native vlan 1",
+        "no shutdown",
+        "exit",
+        "end"
+      ]
+    },
+    "command_note": "Temiz başlangıç/hedef kurulum örneği; hatalı mevcut rotayı kaldırma yerine geçmez. CLI alt kümesi doğrulanmadıysa arayüz veya durum bağdaştırıcısı kullan. Öğrenciye cevap anahtarı/çözüm topolojisi sunma."
+  },
+  "support": [
+    {
+      "feature": "vlan",
+      "status": "KISMI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "trunk",
+      "status": "KISMI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "icmp",
+      "status": "DOGRULANMADI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "automatic_grader",
+      "status": "ENTEGRASYON_GEREKLI",
+      "reason": "Bu paket içeriktir. Puanlayıcı, durum bağdaştırıcısı ve probe çalıştırıcısı ayrı geliştirilir."
+    }
+  ],
+  "content_status": "HAZIR",
+  "execution_status": "MOTORDE_CALISTIRILMADI"
+}

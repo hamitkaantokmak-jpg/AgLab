@@ -9,9 +9,12 @@ with sync_playwright() as pw:
  page=b.new_page(); errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
  page.goto((ROOT/'AgLab_Final_PKT_Import.html').as_uri())
  assert page.locator('#academySelect').count()==1, 'Academy selector missing'
+ assert page.locator('#academySelect option').count()==10
  page.click('[data-area="lab"]')
  hashes=json.loads((ROOT/'academy/source/SHA256.json').read_text())
- for i in range(1,6):
+ for name,digest in hashes.items():
+  assert hashlib.sha256((ROOT/'academy/source'/name).read_bytes()).hexdigest()==digest
+ for i in range(1,11):
   lid=f'AGL-{i:03d}'; raw=(ROOT/f'academy/source/{lid}.json').read_bytes()
   assert hashlib.sha256(raw).hexdigest()==hashes[lid+'.json']
   lab=json.loads(raw)
