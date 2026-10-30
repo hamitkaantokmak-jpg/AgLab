@@ -12,7 +12,7 @@ Projeyi GitHub deposuna yükleyin. `.github/workflows/aglab-ci.yml` her push, pu
 
 ## Kapsam sınırı
 
-Bu altyapı otomatik test, raporlama ve paketlemeyi sağlar; kendi başına yeni ağ özellikleri **yazmaz**. Mevcut test gruplarının geçmesi Packet Tracer'ın tüm `.pkt` formatlarını, OSPF/RIP, ACL/NAT veya büyük topolojilerde performansı doğrulamaz. Yeni özellikler için yeni testler eklenmeli. Tarayıcı kalıcılığı `test_aglab_persistence.py` ile kalite kapısına dahildir: gerçek HTTP origin, diskte saklanan tarayıcı profili, sayfa yenileme, yeni Chromium süreci, VLAN/port yapılandırması, kaynak arşivi ve aktarım raporu, geçersiz JSON reddi ve depolama kotası hatasında dışa aktarım kontrol edilir. Bu, farklı tarayıcılar veya gizli gezinme oturumları arasında otomatik veri aktarımı sağlamaz.
+Bu altyapı otomatik test, raporlama ve paketlemeyi sağlar; kendi başına yeni ağ özellikleri **yazmaz**. Mevcut test gruplarının geçmesi Packet Tracer'ın tüm `.pkt` formatlarını, OSPF/RIP, ACL/NAT veya tüm büyük topolojiler için performans garantisi vermez. Yeni özellikler için yeni testler eklenmeli. Tarayıcı kalıcılığı `test_aglab_persistence.py` ile kalite kapısına dahildir: gerçek HTTP origin, diskte saklanan tarayıcı profili, sayfa yenileme, yeni Chromium süreci, VLAN/port yapılandırması, kaynak arşivi ve aktarım raporu, geçersiz JSON reddi ve depolama kotası hatasında dışa aktarım kontrol edilir. Bu, farklı tarayıcılar veya gizli gezinme oturumları arasında otomatik veri aktarımı sağlamaz.
 
 ## Windows düzeltmesi (2026-10-29)
 `run_pipeline.py` artık Windows'ta Playwright'ın kurduğu Chromium'u da bulur; sistemde `chromium` komutunun PATH üzerinde olması gerekmez.
@@ -25,3 +25,7 @@ python run_pipeline.py
 ```
 
 Başarılıysa `dist/AgLab_Otomatik_Dogrulanmis_Paket.zip` oluşur. Testlerin ayrıntılı hata kayıtları `dist/test-results.json` dosyasındadır. `--skip-browser` kullanımı testleri geçirmiş saymaz.
+
+## Birleşik kalite kapısı
+
+`run_pipeline.py` trunk aktarımı/varsayılanları, dot1Q ve CLI tutarlılığı, tarayıcı kalıcılığı, 300 cihazlık STP yükü ve PKT örnek matrisini mevcut testlerle birlikte çalıştırır. Her test dosyası bir kez kayıtlıdır. Gerçek/sentetik örnek ayrımı ve performans bütçesi `PKT_ORNEK_MATRISI.md` içinde açıklanır. Ölçümler ilgili koşunun `dist/test-results.json` dosyasında bulunur. Başarılı ZIP, tüm kayıtlı testleri ve örnek matrisi belgelerini içerir.
