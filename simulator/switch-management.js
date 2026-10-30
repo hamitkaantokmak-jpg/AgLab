@@ -149,7 +149,6 @@ function switchManagementCommand(d,raw,p,out){
   const valid=p[1]==='mode'?p.length===3:p[1]==='access'&&p[2]==='vlan'?p.length===4:p[1]==='trunk'&&p[2]==='native'?p.length===5:true;
   if(!valid)return emit('Switchport komutunda fazla/eksik parametre var.',true);
  }
- if(p[0]==='trace'||p[0]==='traceroute')return emit('SVI yönetimi için ping desteklenir; switch traceroute bu aşamada desteklenmiyor.',true);
  if(p[0]==='ping'){const parsed=parsePingCommand(p);if(parsed.error)return emit(parsed.error,true);}
  return false;
 }

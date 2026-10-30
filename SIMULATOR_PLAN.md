@@ -151,3 +151,24 @@ show ethernet events
 Bu AğLab tanı sözdizimidir; tam IOS parametre uyumu iddia edilmez. Yeni test gerçek PKT'den mevcut aktarılmış topoloji üzerinde TTL 1/2/3/255, yerel/switch/router/SVI davranışı, gerçek ICMP dönüşü, ileri/dönüş ACL sırası, eksik ICMP dönüş rotası, sonraki eksik gateway, geçersiz TTL ve NAT yan etkisiz reddini sınar. Tam pipeline 28 gruptur.
 
 **Sınır:** İleri yol mevcut seçili-next-hop aramasıyla önce çözümlenir; routing loop veya eksik rota bu aşamada reddedilir, henüz TTL probe ile kısmi yol keşfine dönüşmez. Mevcut `trace/traceroute` hâlâ simüle yol görünümüdür; artan TTL ile gerçek traceroute probes, ICMP Destination Unreachable, rate limiting, zamanlama ve ortak Paket Dedektifi oynatıcısı sonraki iştir. Önceki bölümlerdeki TTL açık notları tarihsel PR kapsamını anlatır.
+
+## Gerçek TTL probe ile ICMP traceroute
+
+`simulator/traceroute.js` eski fiziksel yol listesinin yerine `trace`, `traceroute` ve `tracert` komutlarını aynı artan-TTL ICMP Echo yürütmesine bağlar:
+
+```text
+traceroute 192.168.2.2
+trace 192.168.2.2 max-hops 8
+tracert 192.168.2.2 max-hops 8
+show ethernet events
+```
+
+Varsayılan sınır 30, desteklenen sınır 1–64 IP atlamasıdır. TTL başına bir probe gönderilir; uydurma RTT veya üç deneme değeri üretilmez. Her probe bir komşu/L2 bölümünden diğerine gerçek rota, ARP, MAC, VLAN, STP ve ACL kararlarıyla ilerler. Sonraki route hatası, hedefin topolojide bulunmaması veya routing loop tüm yolu önceden reddedip erişilebilir önceki atlamaları gizlemez. Bilinmeyen doğrudan komşu için gerçek ARP broadcast denenir; yanıt uydurulmaz. Router döngülerinde aynı cihaza yeniden gelen paket TTL tüketmeye devam eder.
+
+CLI IP atlaması yalnız Time Exceeded yanıtı kaynağa gerçekten döndüğünde gösterilir; sessiz/engellenmiş router `*` kalır. İç olay kaydındaki router kimliği CLI hop satırına sızdırılmaz. Daha sonraki TTL probe'u yanıt alırsa izleme devam edebilir. Hedefte Echo Reply'nin gerçek dönüşü olmadan hedefe ulaşıldığı söylenmez. Switchler IP hop olarak listelenmez; etkin SVI kaynak/hedef olabilir. Router'ın yerel hedef adresi TTL tüketmez. Sonradan çözümlenemeyen rota veya bilinmeyen host, gözlemlenen önceki router'larla birlikte kısmi sonuç verebilir.
+
+`show ethernet events` tüm trace işleminin probe/TTL/ARP/ICMP olaylarını tek bounded kayıtta toplar; 256 olay sınırından sonra ek olay sayısını gösterir, probe yürütmesi sürer. 64-hop loop testi 64 gerçek satır, son TTL yanıtı, olay sınırı ve 5 saniyelik browser işlem bütçesini doğrular. Bu bütçe küçük loop fixture'ına aittir; tüm topolojiler için süre garantisi değildir.
+
+Yeni test mevcut PKT'den aktarılmış topolojide gerçek hoplar/alias/local Echo Reply; sessiz orta router ama başarılı sonraki hedef; max-hops; yapılandırılmamış host; router loop; SVI; yanlış sözdizimi; yerel hedef router; sonraki eksik rota ve NAT sınırını kapsar. Önceki hairpin testi de R3'ün ICMP dönüş rotası yokken `*` göstermesini, iç olayda gerçekten R3 TTL dolumu bulunmasını doğrular. Toplam pipeline 29 gruptur.
+
+**Sınır:** Bu ICMP Echo traceroute'tur, UDP traceroute değildir. ICMP Destination Unreachable/type bazlı ACL, rate limiting, zamanlama/gecikme/kayıp, NAT/PAT probe geçişi ve ortak olay oynatıcısı henüz tamamlanmaz. NAT sınırında açık desteklenmiyor sonucu verilir; çeviri tablosu uydurulmaz. Normal `ping` hâlâ kendi tam ileri yol ön kontrolünü kullanır; traceroute'un kısmi/loop keşfi bu komutta uygulanmıştır. Önceki bölümlerin trace henüz simüle yol olduğu notu tarihsel PR kapsamını anlatır.

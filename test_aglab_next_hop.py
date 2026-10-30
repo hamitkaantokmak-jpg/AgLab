@@ -33,7 +33,8 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  good=copy.deepcopy(base);good['devices'][2]['staticRoutes']=[route('192.168.2.0','10.0.0.2')];load(good);ping(True)
  # The selected R3 can legitimately hairpin through the same transit switch to R2.
  hairpin=copy.deepcopy(base);hairpin['devices'][4]['staticRoutes']=[route('192.168.2.0','10.0.0.2')];load(hairpin);ping(True)
- trace=cmd('d1','trace 192.168.2.2');assert 'd5' in trace and 'Hedefe ulaşılabilir' in trace,trace
+ trace=cmd('d1','trace 192.168.2.2');assert '2  *' in trace and 'd5' not in trace and 'Hedefe ulaşılabilir' in trace,trace
+ assert 'ttl-expired d5' in cmd('d1','show ethernet events')
  print('PASS: dead selected next-hop rejected; valid selected path and same-LAN hairpin followed',flush=True)
  # A route existing on every forward router is insufficient if the actual reverse next-hop dead-ends.
  reverse=copy.deepcopy(good);reverse['devices'][3]['staticRoutes']=[route('192.168.1.0','10.0.0.3')];load(reverse);ping(False)
