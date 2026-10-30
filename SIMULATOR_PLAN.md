@@ -32,7 +32,7 @@ Bu dalın başlangıcındaki main: `7bd05b59edabb3bba6ee11dd9bb3d829da4e4d9e`. P
 
 ## Sonraki aşamalar: yalnız plan
 
-1. Aşama 1 doğrulanıp incelemeye sunulduktan sonra L2: VLAN/802.1Q/native doğruluğu, frame forwarding, MAC aging ve flooding. Önceki VLAN 10 legacy ping audit bulgusu tüm cihaz akışlarında giderilmeli.
+1. Aşama 1 doğrulanıp incelemeye sunulduktan sonra L2: VLAN/802.1Q/native doğruluğu, frame forwarding, MAC aging ve flooding. VLAN 10 legacy ping istisnası takip eden L2 düzeltmesinde kaldırıldı; frame forwarding/aging hâlâ açıktır.
 2. Routing: seçili gerçek next-hop'u izleyen hop-by-hop kararlar, dönüş yolu, ARP, TTL/ICMP/traceroute. Yanlış başarılı ping audit bulgusu kapatılmalı.
 3. Ortak forwarding olay kaydı; Paket Dedektifi gerçek kararları tüketmeli.
 4. ACL, NAT/PAT; ardından STP/RSTP, EtherChannel/LACP.
@@ -75,4 +75,10 @@ copy running-config startup-config
 
 Router portu kapandığında router ping'i başarısız olmalıdır. PC portu VLAN 10'da bağlı kaldığı sürece SVI up kalabilir; VLAN'ı taşıyan son forwarding port kapanırsa line protocol down olur. Port geri açılınca ping yeniden başarılı olur. Uzak hedef ARP kaydında uzak cihaz yerine yerel gateway bulunur. Startup kaydı depolama kotası nedeniyle yazılamazsa başarı mesajı verilmez ve önceki startup snapshot'ı korunur.
 
-Doğrulama: `test_aglab_switch_svi.py` CLI/model/ağ/kalıcılık katmanlarını; `test_aglab_svi_import.py` sentetik PT XML aktarımını ve canlı ping'i sınar. Tam pipeline 22 test grubunu çalıştırır.
+Doğrulama: `test_aglab_switch_svi.py` CLI/model/ağ/kalıcılık katmanlarını; `test_aglab_svi_import.py` sentetik PT XML aktarımını ve canlı ping'i sınar. SVI çalışmasının pipeline sonucu 22/22 başarılıdır; takip eden L2 regresyonuyla toplam 23 grup vardır.
+
+## L2 takip düzeltmesi: router–switch trunk sınırı
+
+VLAN 10'a özel etiketsiz geçiş istisnası kaldırıldı. Router fiziksel arayüzünden çıkan paket, switch trunk native VLAN'ına eşlenir; rastgele ilk alt arayüzün VLAN'ı seçilmez. Native VLAN trafiği etkin fiziksel IP arayüzü; native olmayan VLAN ise aynı fiziksel porta bağlı, etkin ve doğru dot1Q VLAN'ına sahip alt arayüz gerektirir. `encapsulation dot1q ... native` hâlâ desteklenmez; native VLAN için yalnız etiketli alt arayüz yapılandırılmışsa çift yönlü ping başarılı gösterilmez. PC ve SVI yönetimi ortak bağlantı kontrolünü kullanır.
+
+`test_aglab_l2_router_trunk.py`: VLAN 10/77/333 üzerinde 18 sentetik PT XML örneği, her iki yönde ping, yanlış native VLAN, eksik/kapalı alt arayüz, allowed none ve CLI ile native VLAN hata/düzelme döngüsü. Özgün XML arşivi korunur. Bu düzeltme tam frame motoru, flooding, MAC aging veya next-hop audit çözümü olarak sunulmaz.

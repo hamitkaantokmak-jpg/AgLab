@@ -4,6 +4,7 @@ import argparse, datetime, json, os, pathlib, shutil, subprocess, sys, tempfile,
 ROOT=pathlib.Path(__file__).resolve().parent
 TESTS=['test_aglab_pkt_trunk.py','test_aglab_import.py','test_aglab_cli_vlan.py','test_aglab_status.py','test_aglab_subinterfaces.py','test_aglab_v7.py','test_aglab_v11_routing.py','test_aglab_v12_gateway.py','test_aglab_v13_router_ping.py','test_aglab_v15_local_ping.py','test_aglab_v17_ping_validation.py','test_aglab_academy.py','test_aglab_ui.py']
 TESTS.append('test_aglab_trunk_defaults.py')
+TESTS.append('test_aglab_l2_router_trunk.py')
 TESTS.append('test_aglab_pkt_dot1q.py')
 TESTS.append('test_aglab_persistence.py')
 TESTS.extend(['test_aglab_large_topology.py','test_aglab_pkt_matrix.py','test_aglab_endpoint_ports.py','test_aglab_student_journey.py','test_aglab_switch_svi.py','test_aglab_svi_import.py'])

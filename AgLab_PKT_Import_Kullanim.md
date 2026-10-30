@@ -84,3 +84,5 @@ Tek Ethernet endpoint'in `FastEthernet0`, `GigabitEthernet0` ve `Ethernet0` kabl
 ## Switch yönetim SVI aktarımı
 
 Switch kaynak yapılandırmasındaki `interface Vlan<ID>`, IPv4/maske, shutdown durumu, VLAN ismi ve `ip default-gateway` yönetim modeline aktarılır. SVI fiziksel kablo portu değildir; protokol durumu etkin VLAN ve bağlı forwarding portlara bağlıdır. `ip routing` ile Layer 3 switch transit routing bu kapsamda desteklenmez ve model dışı komut raporunda kalır. Yeni aktarım senaryosu sentetik PT XML ile doğrulanmıştır; mevcut gerçek `.pkt` örneği ve özgün kaynak arşivleri korunur. Komut ve sınır örnekleri için [simülasyon planına](SIMULATOR_PLAN.md) bakın.
+
+Router–switch trunk bağlantısında native VLAN etkin fiziksel router IP arayüzüyle, diğer VLAN'lar doğru 802.1Q alt arayüzüyle taşınır. VLAN 10'a özel geçiş uygulanmaz. `encapsulation dot1Q ... native` desteği yoktur; yalnız etiketli alt arayüzün VLAN'ını switch native VLAN'ı yapmak çift yönlü erişim sağlamaz.
