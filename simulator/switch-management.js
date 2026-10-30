@@ -19,17 +19,7 @@ function switchManagementAddress(d,target,exact=false){
  const found=exact?entries.find(([,i])=>i.ip===target):entries.find(([,i])=>inNetwork(target,i.ip,i.mask))||entries.find(([,i])=>d.gateway&&inNetwork(d.gateway,i.ip,i.mask))||entries[0];
  return found?{...found[1],interfaceName:found[0]}:null;
 }
-function switchManagementLink(l,vlan){
- if(!linkCarriesVlan(l,vlan).ok)return false;
- for(const [id,port,otherId,otherPort] of [[l.a,l.portA,l.b,l.portB],[l.b,l.portB,l.a,l.portA]]){
-  const r=get(id),other=get(otherId),p=portState(other,otherPort);
-  if(r?.type!=='Router'||other?.type!=='Switch'||p?.mode!=='trunk')continue;
-  const tagged=activeRouterInterfaces(r).some(([name,i])=>(i.parent||(name.includes('.')?name.split('.')[0]:name))===port&&i.encapsulation==='dot1q'&&Number(i.vlan)===Number(vlan));
-  const untagged=r.interfaces?.[port]?.enabled!==false&&Number(p.nativeVlan??1)===Number(vlan);
-  if(!tagged&&!untagged)return false;
- }
- return true;
-}
+function switchManagementLink(l,vlan){return linkCarriesVlan(l,vlan).ok}
 function validateSwitchManagement(d){
  if(d.type!=='Switch'){if(d.vlanNames!==undefined||d.startupConfig!==undefined)throw new Error('Switch yönetim alanı farklı cihaz türünde kullanılamaz.');return}
  if(d.gateway!==undefined&&(typeof d.gateway!=='string'||d.gateway!==''&&!validIP(d.gateway)))throw new Error('Switch yönetim gateway adresi geçersiz.');
