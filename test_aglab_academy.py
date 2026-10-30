@@ -9,12 +9,12 @@ with sync_playwright() as pw:
  page=b.new_page(); errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
  page.goto((ROOT/'AgLab_Final_PKT_Import.html').as_uri())
  assert page.locator('#academySelect').count()==1, 'Academy selector missing'
- assert page.locator('#academySelect option').count()==30
+ assert page.locator('#academySelect option').count()==40
  page.click('[data-area="lab"]')
  hashes=json.loads((ROOT/'academy/source/SHA256.json').read_text())
  for name,digest in hashes.items():
   assert hashlib.sha256((ROOT/'academy/source'/name).read_bytes()).hexdigest()==digest
- for i in range(1,31):
+ for i in range(1,41):
   lid=f'AGL-{i:03d}'; raw=(ROOT/f'academy/source/{lid}.json').read_bytes()
   assert hashlib.sha256(raw).hexdigest()==hashes[lid+'.json']
   lab=json.loads(raw)
@@ -47,13 +47,16 @@ with sync_playwright() as pw:
   # VLAN and allowed lists are sets, including when used by the isolation health plan.
   for d in t['devices']:
    if 'vlans' in d:d['vlans'].reverse()
+   if 'staticRoutes' in d:d['staticRoutes'].reverse()
    for interface in d['interfaces'].values():
     if 'allowed' in interface:interface['allowed'].reverse()
+    if i>=31:interface.update(packets=99,operStatus='up')
   page.evaluate('t=>academyEngine.load(t)',t)
   assert page.evaluate('academy.check().earned_points')==100
   # A down destination must fail packet delivery, regardless of matching IP.
   probe=next(c for c in lab['assessment']['criteria'] if c['kind']=='probe.icmp')
-  next(d for d in t['devices'] if d['id']==probe['target']['destination'])['enabled']=False
+  destination=probe['target'].get('destination') or next(d['id'] for d in t['devices'] if any(i.get('ip')==probe['target'].get('destination_ip') for i in d['interfaces'].values()))
+  next(d for d in t['devices'] if d['id']==destination)['enabled']=False
   page.evaluate('t=>academyEngine.load(t)',t)
   r=page.evaluate('academy.check()')
   assert any(c['status'] in ['failed','error'] for c in r['criteria'] if c['kind']=='probe.icmp'),r
@@ -62,6 +65,48 @@ with sync_playwright() as pw:
   assert page.locator('#academyHints').inner_text()==''
   assert page.locator('#academyResult').inner_text()==''
   print('PASS',lid,'original, initial, target, reverse links, broken delivery, reset')
+ # Build the /30 transit using CLI, and verify the exact requested source interface.
+ page.select_option('#academySelect','AGL-033');page.click('#academyStart')
+ for device,ip in [('R1','10.0.12.1'),('R2','10.0.12.2')]:
+  page.select_option('#ptCliDevice',device)
+  for cmd in ['enable','configure terminal','interface g0/1',f'ip address {ip} 255.255.255.252','no shutdown','end']:
+   page.fill('#ptCliInput',cmd);page.locator('#ptCliInput').press('Enter')
+ page.fill('#academyAnswer-transit_network','10.0.12.0')
+ page.fill('#academyAnswer-transit_broadcast','10.0.12.3')
+ r=page.evaluate('academy.check()');assert r['earned_points']==100,r
+ assert 'g0/1 10.0.12.1' in r['criteria'][2]['detail'],r
+ criterion=json.loads((ROOT/'academy/source/AGL-033.json').read_text(encoding='utf-8'))['assessment']['criteria'][2]
+ wrong=json.loads(json.dumps(criterion));wrong['target']['source_interface']='g0/0'
+ r=page.evaluate('c=>academy.evaluate([c],{})',wrong)
+ assert r['criteria'][0]['status']=='error',r
+ t=page.evaluate('academyEngine.snapshot()')
+ next(d for d in t['devices'] if d['id']=='R1')['interfaces']['g0/1']['enabled']=False
+ page.evaluate('t=>academyEngine.load(t)',t)
+ r=page.evaluate('academy.check()');assert r['criteria'][2]['status']=='failed',r
+ # No return route means no success, even when forward static routes match.
+ lab=json.loads((ROOT/'academy/source/AGL-034.json').read_text(encoding='utf-8'))
+ page.select_option('#academySelect','AGL-034');page.click('#academyStart')
+ t=lab['target_topology'];next(d for d in t['devices'] if d['id']=='R2')['staticRoutes']=[]
+ page.evaluate('t=>academyEngine.load(t)',t)
+ r=page.evaluate('academy.check()')
+ assert all(c['status']=='failed' for c in r['criteria'] if c['kind']=='probe.icmp'),r
+ # Solve two routers and a three-router repair through the student CLI.
+ page.click('#academyReset')
+ for device,network,hop in [('R1','192.168.20.0','10.0.12.2'),('R2','192.168.10.0','10.0.12.1')]:
+  page.select_option('#ptCliDevice',device)
+  for cmd in ['enable','configure terminal',f'ip route {network} 255.255.255.0 {hop}','end']:
+   page.fill('#ptCliInput',cmd);page.locator('#ptCliInput').press('Enter')
+ page.fill('#academyAnswer-r1_next_hop','10.0.12.2')
+ assert page.evaluate('academy.check().earned_points')==100
+ page.select_option('#academySelect','AGL-040');page.click('#academyStart')
+ for device,commands in [('PC2',['ip default-gateway 192.168.20.1']),('R3',['enable','configure terminal','interface g0/1','no shutdown','end']),('R2',['enable','configure terminal','ip route 192.168.20.0 255.255.255.0 10.0.23.2','end'])]:
+  page.select_option('#ptCliDevice',device)
+  for cmd in commands:
+   page.fill('#ptCliInput',cmd);page.locator('#ptCliInput').press('Enter')
+ r=page.evaluate('academy.check()');assert r['earned_points']==100,r
+ page.reload();page.click('[data-area="lab"]')
+ assert page.locator('#academySelect').input_value()=='AGL-040'
+ assert page.evaluate('academy.check().earned_points')==100
  # Isolation cannot earn credit by breaking the intended network.
  for lid in ['AGL-023','AGL-026','AGL-027','AGL-030']:
   lab=json.loads((ROOT/f'academy/source/{lid}.json').read_text(encoding='utf-8'))

@@ -63,14 +63,31 @@ yalıtımda bozuk kablo/cihaz/port/IP/VLAN/trunk saldırıları, AGL-024 trunk
 ve AGL-023 yalıtım CLI çözümü ile yenileme sonrası puanlamayı içerir.
 Node sağlık kapısı testi CI'da ayrıca çalışır.
 
-## Sonraki grup
+## Dördüncü grup: AGL-031–040
 
-Her laboratuvarın sonucu adaptation-audit.json dosyasında ayrı yer alır.
+Doğrudan bağlı routing, gateway, /30 transit, çift yönlü statik rota,
+eksik dönüş rotası, yanlış next-hop, varsayılan rota, en uzun önek ve
+üç routerlı çok atlamalı sorun giderme görevleri özgün kaynaklarından eklenir.
+Görev ve rubrik değişmez. Arayüz nesnelerinde yapılandırma alanları korunup
+paket sayacı/operasyon metaverisi dışarıda bırakılır. Statik rotalar sıra
+bağımsız kümelerdir; ağ adresi, maske, next-hop ve idari uzaklık karşılaştırılır.
+Fazladan/eksik/tekrarlı veya geçersiz rota tam eşitlik ölçütünü geçirmez.
 
-1. AGL-031–040: arayüz nesnelerinde türetilmiş alanların ve rota kümelerinin
-   semantik karşılaştırması; statik/çok atlamalı routing testleri.
-   033 açık source_interface ve destination_ip probe bağdaştırıcısı
-   olmadan engellidir.
+AGL-033'te destination_ip hedefi ve source_interface açıkça ele alınır.
+Kaynak fiziksel router arayüzünün açık, geçerli adresli ve motorun seçtiği
+doğrudan bağlı çıkışla aynı olduğu doğrulanır; sonra mevcut canlı ping çalışır.
+Örneğin R1 g0/1 10.0.12.1 → 10.0.12.2. Yanlış kaynak arayüzü sessizce
+yok sayılmaz; destek kapsamı dışındaki eşleşme error/incomplete döndürür.
+Kapalı/adressiz arayüz veya bağlı çıkış eksikliği erişim başarısızlığıdır.
+Genel extended ping, keyfi kaynak IP'si, alt arayüz ve statik/uzak ağ üzerinden
+zorlanan kaynak seçimi desteklenmez; yalnız bu doğrudan bağlı fiziksel
+arayüz koşulu desteklenir. CLI'ye genel source seçeneği eklendiği iddia edilmez.
 
-Bekleyen/engelli içerikler öğrenci listesine eklenmez. Bu gruplar henüz
-çalıştırılmadı; OSPF/BGP/ACL/NAT/DHCP içeriği uydurulmadı.
+Chromium kapsamı 40 özgün görev, rota sırası ve türetilmiş arayüz alanları,
+eksik dönüş rotasında başarısız ping, AGL-033 /30 transit CLI çözümü,
+yanlış/kapalı kaynak arayüzünün puan alamaması, AGL-034 çift yönlü statik
+rota ve AGL-040 üç routerlı CLI onarımı ile yenileme sonrası devamı kapsar.
+Her görevin durumu adaptation-audit.json içinde ayrı tutulur.
+
+Paketin 40 görevi dışında OSPF/BGP/ACL/NAT/DHCP laboratuvarı uydurulmadı.
+Bu uyarlama gerçek Cisco IOS/PT özelliklerinin tamamına uygunluk iddiası değildir.

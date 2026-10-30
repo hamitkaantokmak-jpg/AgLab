@@ -1,6 +1,6 @@
-# AğLab Akademi — AGL-001–030
+# AğLab Akademi — AGL-001–040
 
-AGL-006–030 uyarlaması ve kalan laboratuvarların denetimi için
+AGL-006–040 uyarlaması ve motor sınırlarının denetimi için
 [uyarlama raporuna](academy/ADAPTATION.md) bakın. Aşağıdaki v1 notları
 ilk beş görevin kapsamını anlatır.
 

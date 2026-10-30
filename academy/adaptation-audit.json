@@ -244,100 +244,79 @@
     "title": "Router ile iki doğrudan bağlı ağı birleştirme",
     "sha256": "29305117e62c510cefe8b220d9bc21e3c1e5be87c9cc34ebbd41e93190fc3404",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-032",
     "title": "Varsayılan ağ geçidi hatalarını düzeltme",
     "sha256": "5f5221f2899b4338cf6c6d371886dbcf58ee6666b2ca18e51078040c320cd50a",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-033",
     "title": "İki router arasında /30 transit bağlantısı",
     "sha256": "ad418376de28285754ee4e046ab87941a791db162b2ccc3dfde432425f197b85",
     "content_errors": [],
-    "status": "blocked",
-    "blockers": [
-      "Explicit router source-interface probe unsupported",
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-034",
     "title": "İlk çift yönlü statik rota",
     "sha256": "19250ad79d557ba18a4956b0208cf6ca844370e81e80fb8c76d9e421b6b21b19",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-035",
     "title": "Eksik dönüş rotasını bulma",
     "sha256": "2addcb072454de8df28a9ad8f8dbb2fa943fc43ea54def2f322336ff1642a67b",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-036",
     "title": "Yanlış sonraki atlamayı düzeltme",
     "sha256": "a81fcb55ab181d2aab8e8ebb324799d9d643acf87cef99645b3b83a1c69706e4",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-037",
     "title": "Varsayılan statik rota: şube çıkışı",
     "sha256": "8026401317a1eb98676a2050c5441bfd0356d04f3ee47b28551c7a3b674a64bd",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-038",
     "title": "En uzun önek eşleşmesini okuma",
     "sha256": "84599ea180300c3e2429726ccec418e23d410dac98c9ab71b9d06b2bd42ef745",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-039",
     "title": "Üç routerla temel çok atlamalı statik routing",
     "sha256": "0573515fdab5570a93385b4940bf8a68ca9ac0230345d0bc334af341dce3f54f",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-040",
     "title": "Bitirme laboratuvarı: iki şube, üç bağımsız hata",
     "sha256": "2719f41d65244dc96d53bbb06e38f99c97052bf7b4f95031cd88931ed1a86653",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   }
 ]

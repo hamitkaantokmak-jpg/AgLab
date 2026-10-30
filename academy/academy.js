@@ -18,6 +18,16 @@ academyPanel.innerHTML=`<h2>AğLab Akademi v1</h2>
 ac('area-lab').prepend(academyPanel);
 academyLabs.forEach(l=>{const o=document.createElement('option');o.value=l.id;o.textContent=l.id+' — '+l.title;ac('academySelect').append(o)});
 const answerFields={
+ static_route_required:{label:'Doğrudan bağlı iki ağ arasında ek statik rota gerekli mi?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ gateway_same_local_subnet:{label:'Varsayılan ağ geçidi uç ile aynı yerel alt ağda olmalı mı?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ transit_broadcast:{label:'Transit ağının yayın adresi',type:'ipv4'},
+ r1_next_hop:{label:'R1 için sonraki atlama adresi',type:'ipv4'},
+ missing_route_router:{label:'Eksik dönüş rotası hangi router üzerinde?',options:[['R1','R1'],['R2','R2']]},
+ bad_next_hop_reason:{label:'Yanlış sonraki atlama adresinin sorunu nedir?',options:[['broadcast','Yayın adresi'],['network','Ağ adresi'],['host','Geçerli host adresi']]},
+ default_proves_internet:{label:'Varsayılan rota tek başına internet erişimini kanıtlar mı?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ route_for_192_168_20_20:{label:'192.168.20.20 için seçilen rota öneği',type:'cidr'},
+ route_for_203_0_113_9:{label:'203.0.113.9 için eşleşen rota öneği',type:'cidr'},
+ prefix_before_distance:{label:'Rota seçiminde önek uzunluğu idari uzaklıktan önce mi gelir?',options:[['true','Evet'],['false','Hayır']],boolean:true},
  learning_field:{label:'Switch MAC öğrenirken hangi alanı kullanır?',options:[['source_mac','Kaynak MAC'],['destination_mac','Hedef MAC'],['source_ip','Kaynak IP']]},
  forwarding_field:{label:'Switch iletim kararında hangi alanı kullanır?',options:[['source_mac','Kaynak MAC'],['destination_mac','Hedef MAC'],['destination_ip','Hedef IP']]},
  management_ip_required:{label:'Aynı VLAN iletimi için switch yönetim IP adresi zorunlu mu?',options:[['true','Evet'],['false','Hayır']],boolean:true},
@@ -36,7 +46,7 @@ const answerFields={
  last_host:{label:'Son kullanılabilir host adresi',type:'ipv4'},
  usable_hosts:{label:'Kullanılabilir host sayısı',type:'integer'},
  department_b_network:{label:'B bölümü ağı (CIDR)',type:'cidr'},
- transit_network:{label:'Transit ağı (CIDR)',type:'cidr'},
+ transit_network:{label:'Transit ağ adresi (görevde istenen biçim)',type:'ip-network'},
  gateway_candidate:{label:'Ağ geçidi adayı',type:'ipv4'},
  initial_pair_local_under_both_masks:{label:'Başlangıçtaki iki adres her iki maskeye göre de yerel mi?',options:[['true','Evet'],['false','Hayır']],boolean:true},
  ping_proves_mask_correct:{label:'Başarılı ping maskenin doğru olduğunu kanıtlar mı?',options:[['true','Evet'],['false','Hayır']],boolean:true},
@@ -64,7 +74,8 @@ function acAnswerAllowed(field,value){
  return field.options.some(([v])=>field.boolean?(v==='true')===value&&typeof value==='boolean':v===value);
 }
 function acNormalizeAnswer(key,value){
- const type=answerFields[key]?.type;
+ let type=answerFields[key]?.type;
+ if(type==='ip-network'&&typeof value==='string')type=value.includes('/')?'cidr':'ipv4';
  if((type!=='ipv4'&&type!=='cidr')||typeof value!=='string')return value;
  const parts=value.trim().split('/'),octets=parts[0].split('.');
  if(octets.length!==4||octets.some(v=>!/^\d{1,3}$/.test(v)||Number(v)>255))return null;
@@ -115,7 +126,7 @@ function academyRestoreSession(session){
  lab.assessment.criteria.filter(c=>c.kind==='answer.equals').forEach(c=>{
   const key=c.target.split('.')[1],field=answerFields[key];const label=acText(ac('academyAnswers'),'label',field.label+' ');
   const control=document.createElement(field.type?'input':'select');control.id='academyAnswer-'+key;control.dataset.key=key;
-  if(field.type){control.type='text';control.maxLength=128;control.inputMode=field.type==='integer'?'numeric':'text';control.autocomplete='off';control.placeholder=field.type==='cidr'?'a.b.c.d/önek':field.type==='ipv4'?'a.b.c.d':'Tam sayı';}
+  if(field.type){control.type='text';control.maxLength=128;control.inputMode=field.type==='integer'?'numeric':'text';control.autocomplete='off';control.placeholder=field.type==='cidr'?'a.b.c.d/önek':field.type==='ipv4'?'a.b.c.d':field.type==='ip-network'?'IPv4 veya ağ/önek':'Tam sayı';}
   else [['','Cevabını seç'],...field.options].forEach(([value,text])=>{const o=document.createElement('option');o.value=value;o.textContent=text;control.append(o)});
   label.htmlFor=control.id;label.append(control);
   if(Object.hasOwn(session.answers,key))control.value=String(session.answers[key]);
@@ -151,9 +162,18 @@ function acState(target){const parts=target.split('.');if(parts[0]==='links')ret
  if(parts[0]!=='devices')throw new Error('Desteklenmeyen durum yolu');
  let val=get(parts[1]);for(const p of parts.slice(2))val=val?.[p];return val;
 }
-function acProbe(source,destination){
- const d=get(destination);if(!get(source)||!d)throw new Error('Probe için cihaz eksik.');
- return Array.from({length:5},()=>ping(source,d.ip));
+function acProbe(source,destination,spec={}){
+ const src=get(source),d=get(destination);
+ if(!src)throw new Error('Probe için kaynak cihaz eksik.');
+ const ip=spec.destination_ip??d?.ip;
+ if(!ip||!validIP(ip))throw new Error('Probe için geçerli hedef IP eksik.');
+ if(!spec.destination_ip&&!d)throw new Error('Probe için hedef cihaz eksik.');
+ let binding=null;
+ if(spec.source_interface){
+  binding=AgLabRoutingGrading.sourceBinding(src,spec.source_interface,routeLookup(src,ip));
+  if(!binding)return Array.from({length:5},()=>({ok:false,why:'İstenen kaynak arayüzü kapalı, adresi geçersiz veya bağlı çıkışı yok.'}));
+ }
+ return Array.from({length:5},()=>{const r=ping(source,ip);return binding?{...r,why:r.why+' Kaynak arayüzü: '+binding.interface+' '+binding.ip+'.'}:r;});
 }
 function academyEvaluate(criteria,answers,health=null){
  const rows=criteria.map(c=>{
@@ -162,6 +182,8 @@ function academyEvaluate(criteria,answers,health=null){
    if(c.kind==='state.equals'){
     const actual=acState(c.target);let a=actual,e=c.expected;
     if(c.target==='links'){validateTopologyData({app:'AgLab',devices,links});a=acLinks(actual);e=acLinks(e)}
+    else if(/\.staticRoutes$/.test(c.target)){a=AgLabRoutingGrading.sameRoutes(a,e)?e:null;}
+    else if(/^devices\.[^.]+\.interfaces\.[^.]+$/.test(c.target)){a=AgLabRoutingGrading.interfaceState(a);e=AgLabRoutingGrading.interfaceState(e);}
     else if(/\.(vlans|allowed)$/.test(c.target)){a=AgLabVlanHealth.sameVlanSet(a,e)?e:null;}
     else if(/\.(ip|mask|gateway)$/.test(c.target)&&typeof a==='string'&&validIP(a))a=a.split('.').map(Number).join('.');
     const ok=JSON.stringify(acCanonical(a))===JSON.stringify(acCanonical(e));status=ok?'passed':'failed';
@@ -172,13 +194,13 @@ function academyEvaluate(criteria,answers,health=null){
     if(c.expected!==true&&c.expected!==false){status='not_evaluated';detail='ICMP beklentisi desteklenmiyor.'}
     else if(c.expected===false&&!health){status='not_evaluated';detail='Negatif ICMP sağlık planı bulunamadı.'}
     else{
-     if(c.target.source_interface||!c.target.destination)throw new Error('Bu probe biçimi henüz desteklenmiyor.');
+     if(!c.target.destination&&!c.target.destination_ip)throw new Error('Bu probe biçimi henüz desteklenmiyor.');
      if(c.expected===false){
       AgLabVlanHealth.assertHealthy({devices,links},health);
       for(const control of health.controls){if(acProbe(control.source,control.destination).slice(1).filter(r=>r.ok).length<3)throw new Error('Aynı VLAN pozitif sağlık kontrolü başarısız: '+control.source+' → '+control.destination);}
      }
      // Deterministic synchronous engine: first of five is warm-up, no wall-clock timing.
-     const runs=acProbe(c.target.source,c.target.destination);
+     const runs=acProbe(c.target.source,c.target.destination,c.target);
      const ok=c.expected?runs.slice(1).filter(r=>r.ok).length>=3:runs.every(r=>!r.ok);
      status=ok?'passed':'failed';
      detail=c.expected?(ok?'5 denemelik simüle ICMP kontrolü başarılı. ':'Erişim başarısız: ')+runs.at(-1).why:(ok?'Planlanan sağlıklı ağda 5 denemede erişim yok; yalıtım doğrulandı.':'Yalıtım beklenirken erişim sağlandı.');
