@@ -166,8 +166,8 @@ function acProbe(source,destination,spec={}){
  const src=get(source),d=get(destination);
  if(!src)throw new Error('Probe için kaynak cihaz eksik.');
  const ip=spec.destination_ip??d?.ip;
- if(!ip||!validIP(ip))throw new Error('Probe için geçerli hedef IP eksik.');
  if(!spec.destination_ip&&!d)throw new Error('Probe için hedef cihaz eksik.');
+ if(!ip||!validIP(ip))return Array.from({length:5},()=>({ok:false,why:'Hedef cihazda geçerli IPv4 adresi yapılandırılmamış.'}));
  let binding=null;
  if(spec.source_interface){
   binding=AgLabRoutingGrading.sourceBinding(src,spec.source_interface,routeLookup(src,ip));
