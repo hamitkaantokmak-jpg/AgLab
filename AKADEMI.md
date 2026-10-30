@@ -1,4 +1,8 @@
-# AğLab Akademi v1 — AGL-001–005
+# AğLab Akademi — AGL-001–040
+
+AGL-006–040 uyarlaması ve motor sınırlarının denetimi için
+[uyarlama raporuna](academy/ADAPTATION.md) bakın. Aşağıdaki v1 notları
+ilk beş görevin kapsamını anlatır.
 
 HTML dosyasını aç, Laboratuvar alanında Akademi bölümünden görev seç ve başlat.
 Başlat/sıfırla mevcut çalışma topolojisini değiştirir; önce JSON dışa aktarılabilir.

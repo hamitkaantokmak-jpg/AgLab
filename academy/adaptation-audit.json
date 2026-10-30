@@ -1,0 +1,322 @@
+[
+  {
+    "id": "AGL-001",
+    "title": "İlk yerel ağ: iki PC ve switch",
+    "sha256": "52788d7de2803722cc568e65e0208a1c9d37a7480185039c41eb12840dc26c13",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-002",
+    "title": "Cihaz rolleri ve uç IP ayarı",
+    "sha256": "cbef69051e8fdcd15d2933f56b58e13dc0488df7948e953a8a94bbd46bfae154",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-003",
+    "title": "Fiziksel bağlantı kesintisi",
+    "sha256": "d81d53002369262c3c0cf8ce5ad5a79ee86ff1e5038cdc2dd68f2f394da51a14",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-004",
+    "title": "Kapalı cihazı teşhis etme",
+    "sha256": "b0adcf8b71d65519ac194cebf8916849217017f51f036e1030c67afae5324065",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-005",
+    "title": "Yönetimsel olarak kapalı port",
+    "sha256": "84ba868894f1d7a0a62ac37414a7a548bdb6113f686773f2bf13e6ccbbfcff10",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-006",
+    "title": "Üç uçlu yıldız topoloji",
+    "sha256": "05f663f5f4f93e25b310d087df3b424ece6eeb1929538b28f8c965d75a745972",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-007",
+    "title": "Ping sonucunu doğru yorumlama",
+    "sha256": "22ae5f0cdf0b7e556fb4e18eee70b0055a4ec0dddb213e6a5c67904007131ee6",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-008",
+    "title": "Yerel teslim ve ARP kavramı",
+    "sha256": "5ac92954854502839ff9c5d19a339804a0195bc4d57e0e4ba8c718fc265e1675",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-009",
+    "title": "Aynı kablo ağı, farklı IP ağı",
+    "sha256": "f5c8878815017f551f785fb757b7b51754ad70d9fdc8e4e9175f42b755e7414e",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-010",
+    "title": "Yerel ağ mini projesi: iki hatayı düzelt",
+    "sha256": "75b5d5f1ceb0a9ca47863cf7ce40ae4b63d3cced1aa81047aba6a52365edb2ca",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-011",
+    "title": "IPv4 ve /24 maskesi",
+    "sha256": "779e98fff97b630a1f2f0151a244e60ab42dee20e024007bb31209d1c20a6f4c",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-012",
+    "title": "Ağ, ilk host ve son host",
+    "sha256": "ffc2e8ed85044b07a6558b510d9d5b79e76d50e555c0b6a46c842e78b03b686a",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-013",
+    "title": "/25 ile iki eşit alt ağ",
+    "sha256": "11c507ba44dd148fe09a195c82bb99396bf58105c26be481900bb9e5550bb8ab",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-014",
+    "title": "/26 ile dört alt ağ",
+    "sha256": "49a3bfae2ee9a12441627f0d36e15fc76acbdd09fb3e32f0b1ddbc095e166d99",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-015",
+    "title": "/27 ve host kapasitesi",
+    "sha256": "f25f2665c50bdd4de558215a2e557d46e9e03794560a235ac389932bdd042357",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-016",
+    "title": "/28 küçük ofis planı",
+    "sha256": "0ec2f07a606cba7f087806d0d9ef6f24cadbb2cabcf192397b14ee1e52353798",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-017",
+    "title": "/30 transit ağını tanıma",
+    "sha256": "d6e972e563c288cd451631ad64bcf5ba715b9fb8933bcd58cea12b152d2347b2",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-018",
+    "title": "Maske uyuşmazlığını giderme",
+    "sha256": "70753723130bf0ad4767011c625e8a01a9cb186dc1f1305cf81344ed0b37e9cb",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-019",
+    "title": "VLSM: farklı büyüklükte ağları ayırma",
+    "sha256": "ae4f0c5bd046f93349c5dd05894722f4603497355c5618a14c7be9a0db105b48",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-020",
+    "title": "Subnetting mini projesi: 60 hostluk şube",
+    "sha256": "40b6ee96f87463e09ba58c835e490b229abfe9f815709fa58ecf369bd6a76491",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-021",
+    "title": "Switch iletiminde MAC ve IP ayrımı",
+    "sha256": "d6cf390c1f9f491d5b1652957efac3ac21072bae0c7bfc14ea8cbe380743b13f",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-022",
+    "title": "İlk VLAN: access portlarını VLAN 10’a taşı",
+    "sha256": "27b30cb2550d46d9260d9585fffd7444fc00b9c5707161d125db491991e5088a",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-023",
+    "title": "Aynı IP ağı olsa da farklı VLAN yalıtımı",
+    "sha256": "f9e7c62bdb132ad77b2a4630f49bb1082eca95ace8f552d7708b307d87de4cfd",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-024",
+    "title": "İki switch arasında 802.1Q trunk",
+    "sha256": "16eb562f7a4f7ad51b68244fc7312509bcd49c0c463a2118c44fa1d4cb8fb526",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-025",
+    "title": "Trunk allowed VLAN eksikliğini giderme",
+    "sha256": "c0eba95e5e7815025e88563e48f140f62f37697d1b5a6c00933f56c5a4bd0b37",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-026",
+    "title": "Yanlış access VLAN üyeliği",
+    "sha256": "28010b5d72b6e4c65ad3518c2c1fa89ce12c1e728db11c03feab4fefcdc801b1",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-027",
+    "title": "VLAN ve IPv4 alt ağını birlikte planlama",
+    "sha256": "1bbbdf5329b3e84087ba83d59b560f5da1905d5922e1afe287fc588dad1eb65b",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-028",
+    "title": "Tek trunk kesintisinin etki alanı",
+    "sha256": "61a2f00e97aaa5472c563f921048c7b9bee377843a514e55ecf3f5bcc54d49ae",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-029",
+    "title": "Yayın alanları ve native VLAN farkındalığı",
+    "sha256": "31d4dd02da7e8fc9e7bc411ae3f219e56e44c31261d1f90e8c2fad5d642ac408",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-030",
+    "title": "VLAN mini projesi: iki bölümlü ofis",
+    "sha256": "d47a61a1da24e13c00548f3418b26214b3e520427dea3c2af9241714dd02c9ad",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-031",
+    "title": "Router ile iki doğrudan bağlı ağı birleştirme",
+    "sha256": "29305117e62c510cefe8b220d9bc21e3c1e5be87c9cc34ebbd41e93190fc3404",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-032",
+    "title": "Varsayılan ağ geçidi hatalarını düzeltme",
+    "sha256": "5f5221f2899b4338cf6c6d371886dbcf58ee6666b2ca18e51078040c320cd50a",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-033",
+    "title": "İki router arasında /30 transit bağlantısı",
+    "sha256": "ad418376de28285754ee4e046ab87941a791db162b2ccc3dfde432425f197b85",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-034",
+    "title": "İlk çift yönlü statik rota",
+    "sha256": "19250ad79d557ba18a4956b0208cf6ca844370e81e80fb8c76d9e421b6b21b19",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-035",
+    "title": "Eksik dönüş rotasını bulma",
+    "sha256": "2addcb072454de8df28a9ad8f8dbb2fa943fc43ea54def2f322336ff1642a67b",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-036",
+    "title": "Yanlış sonraki atlamayı düzeltme",
+    "sha256": "a81fcb55ab181d2aab8e8ebb324799d9d643acf87cef99645b3b83a1c69706e4",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-037",
+    "title": "Varsayılan statik rota: şube çıkışı",
+    "sha256": "8026401317a1eb98676a2050c5441bfd0356d04f3ee47b28551c7a3b674a64bd",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-038",
+    "title": "En uzun önek eşleşmesini okuma",
+    "sha256": "84599ea180300c3e2429726ccec418e23d410dac98c9ab71b9d06b2bd42ef745",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-039",
+    "title": "Üç routerla temel çok atlamalı statik routing",
+    "sha256": "0573515fdab5570a93385b4940bf8a68ca9ac0230345d0bc334af341dce3f54f",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  },
+  {
+    "id": "AGL-040",
+    "title": "Bitirme laboratuvarı: iki şube, üç bağımsız hata",
+    "sha256": "2719f41d65244dc96d53bbb06e38f99c97052bf7b4f95031cd88931ed1a86653",
+    "content_errors": [],
+    "status": "integrated",
+    "blockers": []
+  }
+]

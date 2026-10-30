@@ -25,8 +25,15 @@ jobs:
           node-version: '22'
       - name: Akademi puanlama sözleşmesini doğrula
         run: node academy/test_grading_verdict.cjs
-      - name: Akademi HTML derlemesini doğrula
+      - name: VLAN yalıtım sağlık kapısını doğrula
+        run: node academy/test_vlan_health.cjs
+      - name: Routing değerlendirme kurallarını doğrula
+        run: node academy/test_routing_grading.cjs
+      - name: Otomatik MAC adreslerini doğrula
+        run: node simulator/test_mac_address.cjs
+      - name: Simülatör ve Akademi HTML derlemesini doğrula
         run: |
+          python build_simulator.py
           python build_academy.py
           git diff --exit-code -- AgLab_Final_PKT_Import.html
       - name: Chromium ve Playwright kur

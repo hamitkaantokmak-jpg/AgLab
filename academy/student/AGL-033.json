@@ -1,0 +1,456 @@
+{
+  "id": "AGL-033",
+  "order": 33,
+  "module_id": "M4",
+  "title": "İki router arasında /30 transit bağlantısı",
+  "language": "tr-TR",
+  "duration_minutes": 20,
+  "prerequisites": [
+    "AGL-032"
+  ],
+  "learning_objectives": [
+    "Transit adresleme yapmak",
+    "Komşuluk ile uçtan uca erişimi ayırmak"
+  ],
+  "theory": "Routerlar arası transit ağ iki komşu arayüzü aynı IP alt ağına koyar. 10.0.12.0/30 içinde .1 ve .2 kullanılabilir, .0 ağ ve .3 broadcast adresidir. Transit erişimi uzak LAN rotalarının varlığını kanıtlamaz.",
+  "scenario": "Aşağıdaki başlangıç durumunu kullanarak i̇ki router arasında /30 transit bağlantısı görevini tamamla.",
+  "initial_topology": {
+    "app": "AgLab",
+    "version": 23,
+    "devices": [
+      {
+        "id": "PC1",
+        "name": "PC1",
+        "type": "PC",
+        "x": 80,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.10.10",
+        "mask": "255.255.255.0",
+        "gateway": "192.168.10.1",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      },
+      {
+        "id": "SW1",
+        "name": "SW1",
+        "type": "Switch",
+        "x": 260,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1
+        ]
+      },
+      {
+        "id": "R1",
+        "name": "R1",
+        "type": "Router",
+        "x": 440,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "g0/0",
+          "g0/1",
+          "g0/2"
+        ],
+        "interfaces": {
+          "g0/0": {
+            "enabled": true,
+            "ip": "192.168.10.1",
+            "mask": "255.255.255.0"
+          },
+          "g0/1": {
+            "enabled": false
+          },
+          "g0/2": {
+            "enabled": true
+          }
+        },
+        "staticRoutes": [],
+        "route": ""
+      },
+      {
+        "id": "R2",
+        "name": "R2",
+        "type": "Router",
+        "x": 620,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "g0/0",
+          "g0/1",
+          "g0/2"
+        ],
+        "interfaces": {
+          "g0/0": {
+            "enabled": true,
+            "ip": "192.168.20.1",
+            "mask": "255.255.255.0"
+          },
+          "g0/1": {
+            "enabled": false
+          },
+          "g0/2": {
+            "enabled": true
+          }
+        },
+        "staticRoutes": [],
+        "route": ""
+      },
+      {
+        "id": "SW2",
+        "name": "SW2",
+        "type": "Switch",
+        "x": 800,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "",
+        "mask": "",
+        "gateway": "",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "fa0/1",
+          "fa0/2",
+          "fa0/3",
+          "fa0/4",
+          "gi0/1",
+          "gi0/2"
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/3": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "fa0/4": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/1": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          },
+          "gi0/2": {
+            "enabled": true,
+            "mode": "access",
+            "vlan": 1,
+            "allowed": [
+              1
+            ]
+          }
+        },
+        "vlans": [
+          1
+        ]
+      },
+      {
+        "id": "PC2",
+        "name": "PC2",
+        "type": "PC",
+        "x": 980,
+        "y": 100,
+        "w": 108,
+        "h": 72,
+        "ip": "192.168.20.20",
+        "mask": "255.255.255.0",
+        "gateway": "192.168.20.1",
+        "enabled": true,
+        "mode": "user",
+        "config": {},
+        "ports": [
+          "eth0"
+        ],
+        "interfaces": {
+          "eth0": {
+            "enabled": true
+          }
+        },
+        "vlan": 1
+      }
+    ],
+    "links": [
+      {
+        "a": "PC1",
+        "portA": "eth0",
+        "b": "SW1",
+        "portB": "fa0/1",
+        "up": true
+      },
+      {
+        "a": "SW1",
+        "portA": "gi0/1",
+        "b": "R1",
+        "portB": "g0/0",
+        "up": true
+      },
+      {
+        "a": "R1",
+        "portA": "g0/1",
+        "b": "R2",
+        "portB": "g0/1",
+        "up": true
+      },
+      {
+        "a": "R2",
+        "portA": "g0/0",
+        "b": "SW2",
+        "portB": "gi0/1",
+        "up": true
+      },
+      {
+        "a": "SW2",
+        "portA": "fa0/1",
+        "b": "PC2",
+        "portB": "eth0",
+        "up": true
+      }
+    ],
+    "nextId": 7,
+    "selected": "PC1"
+  },
+  "steps": [
+    {
+      "order": 1,
+      "text": "R1 g0/1=10.0.12.1/30 ve R2 g0/1=10.0.12.2/30 yapılandır; aç."
+    },
+    {
+      "order": 2,
+      "text": "R1’den 10.0.12.2’ye ping gönder; kaynak arayüzü g0/1 olarak seçebilen bağdaştırıcı kullan."
+    },
+    {
+      "order": 3,
+      "text": "Rotaları ekleme; PC1 → PC2 erişiminin henüz olmadığını doğrula."
+    },
+    {
+      "order": 4,
+      "text": "Transit ağ ve yayın adreslerini cevapla."
+    }
+  ],
+  "expected_result": "Router komşuları erişir; uzak LAN uçları henüz erişemez.",
+  "assessment": {
+    "max_points": 100,
+    "criteria": [
+      {
+        "kind": "state.equals",
+        "target": "devices.R1.interfaces.g0/1",
+        "expected": {
+          "enabled": true,
+          "ip": "10.0.12.1",
+          "mask": "255.255.255.252"
+        },
+        "label": "R1 transit",
+        "points": 20,
+        "id": "AGL-033-C01",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "state.equals",
+        "target": "devices.R2.interfaces.g0/1",
+        "expected": {
+          "enabled": true,
+          "ip": "10.0.12.2",
+          "mask": "255.255.255.252"
+        },
+        "label": "R2 transit",
+        "points": 20,
+        "id": "AGL-033-C02",
+        "required_capabilities": [
+          "state_adapter"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "probe.icmp",
+        "target": {
+          "source": "R1",
+          "source_interface": "g0/1",
+          "destination_ip": "10.0.12.2"
+        },
+        "expected": true,
+        "label": "Transit komşu ping",
+        "points": 20,
+        "probe_policy": "icmp-5-v1",
+        "id": "AGL-033-C03",
+        "required_capabilities": [
+          "icmp_probe"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "answer.equals",
+        "target": "answers.transit_network",
+        "expected": "10.0.12.0",
+        "label": "Transit ağ",
+        "points": 20,
+        "id": "AGL-033-C04",
+        "required_capabilities": [
+          "answer_input"
+        ],
+        "on_unavailable": "not_evaluated"
+      },
+      {
+        "kind": "answer.equals",
+        "target": "answers.transit_broadcast",
+        "expected": "10.0.12.3",
+        "label": "Transit yayın",
+        "points": 20,
+        "id": "AGL-033-C05",
+        "required_capabilities": [
+          "answer_input"
+        ],
+        "on_unavailable": "not_evaluated"
+      }
+    ]
+  },
+  "hints": [
+    "R1 ve R2 LAN arayüzleri /24; transit arayüzleri /30."
+  ],
+  "support": [
+    {
+      "feature": "ipv4",
+      "status": "DOGRULANMADI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "icmp",
+      "status": "DOGRULANMADI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "static_routing",
+      "status": "KISMI",
+      "reason": "Depo modelinde/örnek testlerde iz var; bu paket kapsamında motor testi yapılmadı. Çalıştırmadan önce capability kontrolü gerekir."
+    },
+    {
+      "feature": "automatic_grader",
+      "status": "ENTEGRASYON_GEREKLI",
+      "reason": "Bu paket içeriktir. Puanlayıcı, durum bağdaştırıcısı ve probe çalıştırıcısı ayrı geliştirilir."
+    }
+  ],
+  "content_status": "HAZIR",
+  "execution_status": "MOTORDE_CALISTIRILMADI"
+}
