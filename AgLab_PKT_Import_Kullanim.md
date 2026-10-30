@@ -46,3 +46,9 @@ python restore_pkt_from_aglab_json.py static-routing-two-routers.aglab.json -o r
 ```
 
 Betik SHA-256 değerini doğrular. Geri çıkarılan dosya kaynak `.pkt` ile bayt bazında aynı olmalıdır. `importReport.unmodeledConfigLines` alanı, simülasyon modeline eşlenmeyen CLI satırlarını ve kaynak satır numaralarını listeler.
+
+## Tarayıcı kaydı ve aktarım raporu
+
+İçe aktarılan topolojinin özgün `.pkt`/XML arşivi ve `importReport` kapsam raporu, otomatik tarayıcı kaydında ve JSON dışa aktarımında birlikte korunur. Sayfa yeniden açıldığında model dışı CLI ve desteklenmeyen cihaz uyarıları tekrar gösterilir; rapor, kaynak içe aktarma anını açıklar ve sonraki düzenlemeler için yeni bir doğrulama raporu değildir.
+
+Tarayıcı depolaması dolarsa uyarı gösterilir; son başarılı kayıt korunur ve bellekteki güncel topoloji Dışa aktar ile kurtarılabilir. Sıfırlama veya yeni hazır eğitim topolojisine geçme eski kaynak arşivini ve aktarım raporunu yeni senaryoya eklemez.
