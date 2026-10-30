@@ -1,0 +1,2 @@
+# Preserve archived lab sources byte-for-byte for SHA256 provenance.
+academy/source/AGL-*.json -text
