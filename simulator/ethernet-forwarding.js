@@ -47,7 +47,7 @@ function transmitEthernet(source,destinationMac,vlan,kind,context,options={}){
  }
  return delivered;
 }
-function localEthernetPing(source,target,vlan){
+function localEthernetPing(source,target,vlan,ttl=64){
  beginEthernetEvents();const context=ethernetContext(),sourceArp=arpTables.get(source.id)||new Map(),targetArp=arpTables.get(target.id)||new Map();
  if(sourceArp.get(target.ip)!==macOf(target)){
   const request=transmitEthernet(source,'ff:ff:ff:ff:ff:ff',vlan,'arp-request',context);
@@ -57,6 +57,7 @@ function localEthernetPing(source,target,vlan){
   if(!reply.has(source.id))return {ok:false,why:'ARP yanıtı kaynağa ulaşmadı.'};
   sourceArp.set(target.ip,macOf(target));arpTables.set(source.id,sourceArp);
  }
+ ethernetEvent('packet icmp-request ip '+source.ip+' -> '+target.ip+' ttl '+ttl);
  const request=transmitEthernet(source,sourceArp.get(target.ip),vlan,'icmp-request',context);
  if(!request.has(target.id))return {ok:false,why:'Ethernet ICMP frame hedefe ulaşmadı; MAC tablosu ve VLAN çıkışlarını kontrol et.'};
  const reply=transmitEthernet(target,macOf(source),vlan,'icmp-reply',context);

@@ -9,11 +9,12 @@ TESTS.append('test_aglab_mac_learning.py')
 TESTS.append('test_aglab_frame_forwarding.py')
 TESTS.append('test_aglab_next_hop.py')
 TESTS.append('test_aglab_routed_frames.py')
+TESTS.append('test_aglab_icmp_ttl.py')
 TESTS.append('test_aglab_pkt_dot1q.py')
 TESTS.append('test_aglab_persistence.py')
 TESTS.extend(['test_aglab_large_topology.py','test_aglab_pkt_matrix.py','test_aglab_endpoint_ports.py','test_aglab_student_journey.py','test_aglab_switch_svi.py','test_aglab_svi_import.py'])
 ARTIFACTS=['AgLab_Final_PKT_Import.html','convert_pkt_to_aglab.py','restore_pkt_from_aglab_json.py','static-routing-two-routers.aglab.json','static-routing-two-routers-import-report.json','AgLab_PKT_Import_Kullanim.md','static-routing-two-routers(1).pkt' ]
-ARTIFACTS.extend(['pkt-sample-matrix.json','PKT_ORNEK_MATRISI.md','simulator/switch-management.js','simulator/mac-learning.js','simulator/ethernet-forwarding.js','simulator/routing-path.js','simulator/routed-ethernet.js','build_simulator.py','SIMULATOR_PLAN.md'])
+ARTIFACTS.extend(['pkt-sample-matrix.json','PKT_ORNEK_MATRISI.md','simulator/switch-management.js','simulator/mac-learning.js','simulator/ethernet-forwarding.js','simulator/routing-path.js','simulator/routed-ethernet.js','simulator/icmp.js','build_simulator.py','SIMULATOR_PLAN.md'])
 def run():
  p=argparse.ArgumentParser();p.add_argument('--out',default='dist');p.add_argument('--skip-browser',action='store_true');p.add_argument('--timeout',type=int,default=100);a=p.parse_args()
  out=(ROOT/a.out).resolve();out.mkdir(parents=True,exist_ok=True)
