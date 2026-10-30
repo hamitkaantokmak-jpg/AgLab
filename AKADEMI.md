@@ -54,6 +54,13 @@ Yeni Packet Tracer desteği eklenmez; mevcut dönüştürücü ve kaynak arşivi
 
 ## Geliştirme ve doğrulama
 
+Öğrenci ve öğretmen ZIP'lerinin ikisi de bu belgeyi, uyarlama raporunu ve
+görev bazındaki denetim listesini içerir. Pipeline iki arşivin CRC'sini,
+40 laboratuvar envanterini, HTML/öğrenci JSON eşitliğini, özgün kaynak
+özetlerini ve öğrenci/öğretmen veri ayrımını da doğrular. Paketler indirilince
+ayrıca `python verify_packages.py AgLab_Otomatik_Dogrulanmis_Paket.zip AgLab_Akademi_Ogretmen.zip`
+ile bu denetim tekrarlanabilir; betik öğrenci ZIP'inde ve depoda bulunur.
+
 `academy/academy.js` ve `academy/student-data.js` HTML içine `python build_academy.py`
 ile gömülür. HTML tek başına çevrimdışı açılabilir. Kaynak JS değişince yeniden
 derleyin. `python run_pipeline.py` mevcut regresyonları ve Akademi Chromium testlerini birlikte çalıştırır. ZIP yalnız tüm testler geçerse oluşturulur.

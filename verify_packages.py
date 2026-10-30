@@ -1,0 +1,46 @@
+"""Validate the two offline Academy archives, including content and source separation."""
+import hashlib, json, re, sys, zipfile
+
+def verify_release_packages(student_path, teacher_path):
+    ids={f'AGL-{i:03d}' for i in range(1,41)}
+    docs={'AKADEMI.md','academy/ADAPTATION.md','academy/adaptation-audit.json'}
+    def read_json(archive,name):return json.loads(archive.read(name).decode('utf-8'))
+    with zipfile.ZipFile(student_path) as student,zipfile.ZipFile(teacher_path) as teacher:
+        for archive in [student,teacher]:
+            names=archive.namelist()
+            assert len(names)==len(set(names)), 'Duplicate ZIP entry'
+            assert archive.testzip() is None, 'ZIP CRC failure'
+            assert docs<=set(names), 'Missing Academy documentation: '+str(docs-set(names))
+            audit=read_json(archive,'academy/adaptation-audit.json')
+            assert len(audit)==40 and {row['id'] for row in audit}==ids, 'Incomplete adaptation audit'
+        student_names=set(student.namelist());teacher_names=set(teacher.namelist())
+        assert not any(n.startswith(('academy/teacher/','academy/source/')) for n in student_names), 'Teacher/source data in student ZIP'
+        assert {n for n in student_names if n.startswith('academy/student/') and n.endswith('.json')}=={f'academy/student/{i}.json' for i in ids}, 'Student lab inventory mismatch'
+        assert {n for n in teacher_names if n.startswith('academy/teacher/') and n.endswith('.json')}=={f'academy/teacher/{i}.json' for i in ids}, 'Teacher lab inventory mismatch'
+        assert {n for n in teacher_names if n.startswith('academy/source/') and n.endswith('.json')}=={f'academy/source/{i}.json' for i in ids}|{'academy/source/SHA256.json'}, 'Source inventory mismatch'
+        hashes=read_json(teacher,'academy/source/SHA256.json')
+        assert set(hashes)=={i+'.json' for i in ids}, 'Source hash inventory mismatch'
+        html=student.read('AgLab_Final_PKT_Import.html').decode('utf-8')
+        assert 'teacher_solution' not in html and 'target_topology' not in html, 'Teacher fields in student HTML'
+        match=re.search(r'^const academyLabs = (.+);\r?$',html,re.MULTILINE)
+        assert match, 'Embedded Academy data missing'
+        embedded=json.loads(match.group(1))
+        assert len(embedded)==40 and {lab['id'] for lab in embedded}==ids, 'Embedded lab inventory mismatch'
+        embedded={lab['id']:lab for lab in embedded}
+        for lid in sorted(ids):
+            raw=teacher.read(f'academy/source/{lid}.json')
+            assert hashlib.sha256(raw).hexdigest()==hashes[lid+'.json'], 'Source SHA256 mismatch: '+lid
+            source=json.loads(raw.decode('utf-8'))
+            learner=read_json(student,f'academy/student/{lid}.json')
+            assert not {'teacher_solution','target_topology'}&learner.keys(), 'Teacher fields in student JSON: '+lid
+            for key,value in source.items():
+                if key not in ['teacher_solution','target_topology']:
+                    assert learner.get(key)==value, 'Source/student mismatch: '+lid+'/'+key
+            assert embedded[lid]==learner, 'HTML/student JSON mismatch: '+lid
+            solution=read_json(teacher,f'academy/teacher/{lid}.json')
+            assert solution=={key:source[key] for key in ['id','target_topology','teacher_solution']}, 'Teacher/source mismatch: '+lid
+    return {'labs':40,'source_hashes':40,'student_teacher_separation':True,'documentation':True}
+
+if __name__=='__main__':
+    if len(sys.argv)!=3:raise SystemExit('Usage: python verify_packages.py student.zip teacher.zip')
+    print(json.dumps(verify_release_packages(sys.argv[1],sys.argv[2]),ensure_ascii=False))
