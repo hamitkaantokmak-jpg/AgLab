@@ -120,7 +120,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     output = command('d1', 'show running-config')
     assert 'interface g0/0.5000' in output and 'encapsulation dot1Q 30' in output, output[-2000:]
     page.evaluate("showArea('lab')")
-    page.locator('#fileTopologyDetails > summary').click()
+    page.locator('#uxMoreLabActions').click()
     with page.expect_download() as download:
         page.locator('#ptExport').click()
     exported = Path(tmp) / 'cli-roundtrip.json'
