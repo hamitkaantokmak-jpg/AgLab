@@ -46,3 +46,37 @@ python restore_pkt_from_aglab_json.py static-routing-two-routers.aglab.json -o r
 ```
 
 Betik SHA-256 değerini doğrular. Geri çıkarılan dosya kaynak `.pkt` ile bayt bazında aynı olmalıdır. `importReport.unmodeledConfigLines` alanı, simülasyon modeline eşlenmeyen CLI satırlarını ve kaynak satır numaralarını listeler.
+
+## Trunk VLAN listesi aktarımı
+
+Dönüştürücü, açık `switchport trunk allowed vlan` komutlarında sayısal liste/aralık, `all`, `none`, `add` ve `remove` işlemlerini kaynak sırasıyla uygular. `all`, VLAN veritabanında bulunmayanlar dahil 1–4094 aralığını kapsar; trunk referansları VLAN veritabanına kayıt eklemez. Boş liste korunur. Geçersiz veya desteklenmeyen `except` gibi sözdizimleri önceki listeyi değiştirmez ve model dışı CLI raporuna girer. Bu kapsam, diğer IOS trunk komutlarının veya tüm Packet Tracer özelliklerinin desteklendiği anlamına gelmez.
+
+## Varsayılan trunk izinleri
+
+Packet Tracer kaynak yapılandırmasında `switchport mode trunk` var ama açık `switchport trunk allowed vlan` listesi yoksa trunk, 1–4094 aralığına izin verir. Açık sayısal liste veya `none`, komutun trunk modundan önce/sonra gelmesinden bağımsız korunur. İlk `add`/`remove` işlemi varsayılan tüm VLAN listesi üzerinden uygulanır.
+
+AğLab CLI'daki `switchport trunk allowed vlan all` da 1–4094 aralığını kapsar; daha sonra oluşturulan VLAN'lar ayrıca izin eklenmeden taşınabilir. Bu izin VLAN veritabanını doldurmaz: bir VLAN'ın gerçekten taşınması için switch üzerinde oluşturulmuş olması gerekir. JSON dışa aktarımında izin listesi korunur. Mevcut eğitim senaryolarının önceden sınırlandırılmış trunk listeleri otomatik olarak genişletilmez.
+
+## Etiketli router alt arayüzleri
+
+`interface GigabitEthernet0/0.200` altında `encapsulation dot1Q 20` ve IPv4 yapılandırması, parent `g0/0` ve VLAN 20 bilgileriyle aktarılır. Alt arayüz numarası VLAN kimliğinden farklı olabilir. Mantıksal alt arayüzler fiziksel kablo portları listesine eklenmez. Aynı switch üzerindeki VLAN'lar, router'a giden trunk üzerinden yönlendirilebilir; parent/alt arayüz shutdown ve trunk izinleri paket akışını etkiler.
+
+`native`, ISL ve geçersiz VLAN etiketleri bu aktarımda modellenmez; kaynak running-config/XML korunur ve komutlar model dışı raporlanır. Sentetik PT XML regresyonu aktarımı gerçek tarayıcı ping testleriyle doğrular; tüm Packet Tracer sürümleri ve özellikleri için uyumluluk garantisi vermez.
+
+## CLI ile alt arayüz düzenleme
+
+CLI, içe aktarılan topolojideki bağımsız alt arayüz/VLAN eşlemesini korur: örneğin `interface g0/0.200` altında `encapsulation dot1q 20` geçerlidir. Yeni alt arayüzler mevcut fiziksel parent üzerinden oluşturulur; `GigabitEthernet1/0.5000` gibi tam adlar normalleştirilir ve mantıksal arayüz fiziksel kablo portları listesine eklenmez. Bu modelde alt arayüz numarası 1–4294967295, VLAN etiketi ise ayrıca 1–4094 aralığındadır. Yeni alt arayüz, geçerli encapsulation ve IP yapılandırılana kadar yönlendirmeye katılmaz.
+
+Desteklenen komut yalnızca `encapsulation dot1q <VLAN>` biçimidir. `native`, ISL, eksik/fazla parametre veya geçersiz VLAN etiketi hata verir ve önceki eşlemeyi değiştirmez. JSON dışa/içe aktarımı bu bilgileri korur. Bu kapsam tam IOS uyumluluğu anlamına gelmez.
+
+## Tarayıcı kaydı ve aktarım raporu
+
+İçe aktarılan topolojinin özgün `.pkt`/XML arşivi ve `importReport` kapsam raporu, otomatik tarayıcı kaydında ve JSON dışa aktarımında birlikte korunur. Sayfa yeniden açıldığında model dışı CLI ve desteklenmeyen cihaz uyarıları tekrar gösterilir; rapor, kaynak içe aktarma anını açıklar ve sonraki düzenlemeler için yeni bir doğrulama raporu değildir.
+
+Tarayıcı depolaması dolarsa uyarı gösterilir; son başarılı kayıt korunur ve bellekteki güncel topoloji Dışa aktar ile kurtarılabilir. Sıfırlama veya yeni hazır eğitim topolojisine geçme eski kaynak arşivini ve aktarım raporunu yeni senaryoya eklemez.
+
+## PC/Server fiziksel Ethernet portu
+
+Kaynak XML'de tek desteklenen kablolu `MODULE/PORT` varsa endpoint IP/maske, port güç durumu ve öncelikle `PORT_GATEWAY` bu kayıttan alınır; port gateway boşsa cihazın `GATEWAY` alanı kullanılır. Servis veya Bluetooth altındaki ilgisiz IP/maske değerleri endpoint adresi olarak seçilmez. Cihaz gücü ile port gücü ayrı korunur. Kaynakta modül envanteri olmayan basit XML için doğrudan ENGINE IPv4 alanları desteklenir.
+
+Tek Ethernet endpoint'in `FastEthernet0`, `GigabitEthernet0` ve `Ethernet0` kablo adları AğLab `eth0` portuna eşlenir. Diğer port indeksleri bu porta otomatik yönlendirilmez. Birden fazla Ethernet NIC veya desteklenmeyen modül envanteri varsa adres/port modellenmez, ilgili bağlantılar atlanır ve kapsam kaybı notlarda/atlanan bağlantılarda belirtilir. Bu durumda özgün XML arşivi korunur. Kaynak port sayısı/türü ve model eşlemesi `importReport.endpointPorts` içinde bulunur. Çoklu NIC veya kablosuz simülasyonu desteklenmiş sayılmaz.

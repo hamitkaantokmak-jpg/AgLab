@@ -6,6 +6,14 @@ Cihaz, kablo ve CLI düzenlemeleri mevcut simülatör üzerinden yapılır. Kavr
 soruları Akademi bölümünde cevapla ve Çözümümü kontrol et düğmesini kullan.
 İpuçları sırayla açılır. Sıfırla, etkin görevin özgün başlangıcını ve boş cevapları yükler.
 
+## Kaldığın yerden devam etme
+
+Etkin laboratuvar, öğrenci topolojisi, seçilen cevaplar ve açılan ipuçları aynı topoloji kaydında tutulur. Aynı adres ve tarayıcı profiliyle sayfayı yeniden açınca Laboratuvar → Akademi bölümünden çalışmana devam edebilirsin. Önceden kontrol ettiğin çözümün puanı yeniden hesaplanır; eski bir başarı sonucu güncel topolojiye körlemesine uygulanmaz. Yapılandırma veya cevap değişirse önceki sonuç yerine yeniden kontrol etme uyarısı gösterilir.
+
+Laboratuvar listesindeki en iyi puan ve tamamlanma durumu bu tarayıcı profilinde saklanır. Baştan başla / sıfırla mevcut denemeyi, cevapları ve ipuçlarını temizler; geçmiş en iyi puanı silmez. Başka bir topoloji içe aktarmak veya hazır ağ senaryosuna geçmek etkin Akademi görevini kapatır. Akademi kaydı içeren JSON, etkin oturum bilgilerini de taşır; geçersiz oturum kaydı mevcut çalışmayı değiştirmeden reddedilir.
+
+Farklı cihazlar/profiller arasında hesap senkronizasyonu yoktur. Tarayıcı verisini silmek yerel kayıtları kaldırır. En iyi puan geçmişi JSON'a dahil edilmez; etkin oturum ve topoloji dahil edilir. Depolama hatası gösterilirse çalışmayı JSON olarak dışa aktar. Bu istemci tarafı ilerleme, güvenli sınav notu veya öğrenci kimlik sistemi değildir.
+
 ## Kaynak ve veri koruma
 
 Kaynak: önceki çalışmanın `AgLab_Akademi_Ilk_40_TR.zip` paketi,
@@ -44,7 +52,8 @@ Yeni Packet Tracer desteği eklenmez; mevcut dönüştürücü ve kaynak arşivi
 
 `academy/academy.js` ve `academy/student-data.js` HTML içine `python build_academy.py`
 ile gömülür. HTML tek başına çevrimdışı açılabilir. Kaynak JS değişince yeniden
-derleyin. `python run_pipeline.py` 10 mevcut regresyonla yeni Akademi Chromium
-testini çalıştırır. ZIP yalnız tüm testler geçerse oluşturulur.
+derleyin. `python run_pipeline.py` mevcut regresyonları ve Akademi Chromium testlerini birlikte çalıştırır. ZIP yalnız tüm testler geçerse oluşturulur.
 Testler özgün veri özetlerini, başlangıç/çözüm, ters/sırasız kablolar, bozuk ağ,
 cevaplar, ipuçları, sıfırlama ve eksik kapsamı kontrol eder.
+
+`test_aglab_student_journey.py` öğretmen hedefini yüklemeden görünür öğrenci arayüzünü kullanır: AGL-005 CLI çözümü, AGL-001 kablolama/cevap değerlendirmesi, yenileme, kalıcı profilde yeni Chromium süreci, mobil genişlik, ipuçları, güncel puan, sıfırlama, ilerleme ve dış topoloji geçişi. İlk beş laboratuvarın özgün kaynak/rubrik testleri de korunur.

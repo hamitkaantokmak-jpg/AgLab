@@ -1,5 +1,7 @@
 // Runs inside the simulator closure: all probes use the live student topology.
-let academyActive=null, academyHintIndex=0, academyBaseline=0;
+let academyActive=null, academyHintIndex=0, academyBaseline=0, academyChecked=false, academyLastCheckedState=null;
+const academyProgressKey='aglab-academy-progress-v1';
+let academyProgress={};
 const ac=id=>document.getElementById(id);
 const academyPanel=document.createElement('section');
 academyPanel.className='panel';academyPanel.id='academyPanel';
@@ -8,6 +10,7 @@ academyPanel.innerHTML=`<h2>AğLab Akademi v1</h2>
 <button id="academyStart">Laboratuvarı başlat</button>
 <button id="academyReset" disabled>Baştan başla / sıfırla</button>
 <p id="academyNotice">Başlat ve sıfırla, çalışma alanındaki topolojiyi değiştirir. Mevcut çalışmanı önce JSON olarak dışa aktarabilirsin.</p>
+<p id="academyProgress" role="status"></p>
 <div id="academyLesson"></div><div id="academyAnswers"></div>
 <button id="academyCheck" disabled>Çözümümü kontrol et</button>
 <button id="academyHint" disabled>Sıradaki ipucu</button>
@@ -22,9 +25,35 @@ const answerFields={
 };
 function academyAnswers(){const a={};ac('academyAnswers').querySelectorAll('select').forEach(s=>{if(s.value!=='')a[s.dataset.key]=answerFields[s.dataset.key].boolean?s.value==='true':s.value});return a}
 function acText(parent,tag,text){const e=document.createElement(tag);e.textContent=text;parent.append(e);return e}
-function academyStart(){
- const lab=academyLabs.find(l=>l.id===ac('academySelect').value);if(!lab)return;
- importTopology(clone(lab.initial_topology));academyActive=lab;academyHintIndex=0;
+function academyValidateSession(session){
+ if(!session||typeof session!=='object'||Array.isArray(session)||session.version!==1||Object.keys(session).some(k=>!['version','labId','answers','hintIndex','baseline','checked'].includes(k)))throw new Error('Akademi oturum kaydı geçersiz.');
+ const lab=academyLabs.find(l=>l.id===session.labId);if(!lab)throw new Error('Kayıtlı Akademi laboratuvarı bulunamadı.');
+ if(!Number.isInteger(session.hintIndex)||session.hintIndex<0||session.hintIndex>lab.hints.length||!Number.isInteger(session.baseline)||session.baseline<0||session.baseline>100||typeof session.checked!=='boolean')throw new Error('Akademi oturum durumu geçersiz.');
+ if(!session.answers||typeof session.answers!=='object'||Array.isArray(session.answers))throw new Error('Akademi cevap kaydı geçersiz.');
+ const keys=lab.assessment.criteria.filter(c=>c.kind==='answer.equals').map(c=>c.target.split('.')[1]);
+ for(const [key,value] of Object.entries(session.answers)){
+  const field=answerFields[key];if(!keys.includes(key)||!field||!field.options.some(([v])=>field.boolean?(v==='true')===value&&typeof value==='boolean':v===value))throw new Error('Akademi cevap değeri geçersiz.');
+ }
+ return lab;
+}
+function academyWorkSignature(){return JSON.stringify({devices:devices.map(({x,y,w,h,name,...state})=>state),links,answers:academyAnswers()})}
+function academyInvalidateResult(){
+ if(academyActive&&academyChecked&&academyLastCheckedState!==null&&academyWorkSignature()!==academyLastCheckedState){
+  ac('academyResult').replaceChildren();acText(ac('academyResult'),'p','Çalışman son kontrolden sonra değişti. Yeniden kontrol et; önceki puan güncel çözümün sonucu değildir.');
+ }
+}
+function academySessionFields(){return academyActive?{academySession:{version:1,labId:academyActive.id,answers:academyAnswers(),hintIndex:academyHintIndex,baseline:academyBaseline,checked:academyChecked}}:{}}
+function academyClearSession(){
+ academyActive=null;academyHintIndex=0;academyBaseline=0;academyChecked=false;academyLastCheckedState=null;
+ ['academyLesson','academyAnswers','academyHints','academyResult'].forEach(id=>ac(id).replaceChildren());
+ ['academyReset','academyCheck','academyHint'].forEach(id=>ac(id).disabled=true);
+ ac('academyNotice').textContent='Bir laboratuvar seçip başlat. Başlat ve sıfırla mevcut topolojiyi değiştirir; önce JSON olarak dışa aktarabilirsin.';
+}
+function academyNotice(){ac('academyNotice').textContent='Etkin görev: '+academyActive.id+'. Başlangıçta zaten sağlanan ölçütler: '+academyBaseline+'/100 puan. Kontrol güncel topolojini kullanır; çalışman bu tarayıcıda kaldığın yerden açılır.'}
+function academyRestoreSession(session){
+ if(!session){academyClearSession();return}
+ const lab=academyValidateSession(session);academyActive=lab;academyHintIndex=session.hintIndex;academyBaseline=session.baseline;academyChecked=session.checked;academyLastCheckedState=null;
+ ac('academySelect').value=lab.id;
  ac('academyLesson').replaceChildren();acText(ac('academyLesson'),'h3',lab.id+' — '+lab.title);
  acText(ac('academyLesson'),'p',lab.theory);acText(ac('academyLesson'),'p',lab.scenario);
  const ol=document.createElement('ol');lab.steps.forEach(s=>acText(ol,'li',s.text));ac('academyLesson').append(ol);
@@ -34,11 +63,28 @@ function academyStart(){
   const key=c.target.split('.')[1],field=answerFields[key];const label=acText(ac('academyAnswers'),'label',field.label+' ');
   const select=document.createElement('select');select.id='academyAnswer-'+key;select.dataset.key=key;
   [['','Cevabını seç'],...field.options].forEach(([value,text])=>{const o=document.createElement('option');o.value=value;o.textContent=text;select.append(o)});label.append(select);
+  if(Object.hasOwn(session.answers,key))select.value=String(session.answers[key]);
+  select.onchange=()=>saveTopology(true);
  });
- ac('academyHints').replaceChildren();ac('academyResult').replaceChildren();
- ['academyReset','academyCheck','academyHint'].forEach(id=>ac(id).disabled=false);
- academyBaseline=academyEvaluate(lab.assessment.criteria,{}).earned_points;
- ac('academyNotice').textContent='Etkin görev: '+lab.id+'. Başlangıçta zaten sağlanan ölçütler: '+academyBaseline+'/100 puan. Özgün başlangıç ve rubrik korunmuştur. Kontrol, güncel topolojini kullanır.';
+ ac('academyHints').replaceChildren();lab.hints.slice(0,academyHintIndex).forEach(h=>acText(ac('academyHints'),'li',h));ac('academyResult').replaceChildren();
+ ac('academyReset').disabled=false;ac('academyCheck').disabled=false;ac('academyHint').disabled=academyHintIndex>=lab.hints.length;
+ academyNotice();if(academyChecked)academyCheck(false);
+}
+function academyStart(){
+ const lab=academyLabs.find(l=>l.id===ac('academySelect').value);if(!lab)return;
+ importTopology({...clone(lab.initial_topology),academySession:{version:1,labId:lab.id,answers:{},hintIndex:0,baseline:0,checked:false}});
+ academyBaseline=academyEvaluate(lab.assessment.criteria,{}).earned_points;academyNotice();saveTopology(true);
+}
+function academyRenderProgress(){
+ const completed=academyLabs.filter(l=>academyProgress[l.id]?.bestScore===100).length;
+ ac('academyProgress').textContent='Tamamlanan laboratuvar: '+completed+'/'+academyLabs.length+'. En iyi puanların bu tarayıcıda saklanır; sıfırlama başarı geçmişini silmez.';
+ academyLabs.forEach(l=>{const option=[...ac('academySelect').options].find(o=>o.value===l.id),score=academyProgress[l.id]?.bestScore;option.textContent=l.id+' — '+l.title+(score===100?' — Tamamlandı (100/100)':score!==undefined?' — En iyi '+score+'/100':'')});
+}
+function academyRecordProgress(result){
+ if(result.status!=='complete')return;
+ const old=academyProgress[academyActive.id]?.bestScore||0;
+ academyProgress[academyActive.id]={bestScore:Math.max(old,result.earned_points)};academyRenderProgress();
+ try{localStorage.setItem(academyProgressKey,JSON.stringify(academyProgress))}catch(e){ac('academyNotice').textContent+=' İlerleme geçmişi kaydedilemedi; tarayıcı depolamasını kontrol et.'}
 }
 function acCanonical(v){
  if(Array.isArray(v))return v.map(acCanonical);
@@ -80,17 +126,20 @@ function academyEvaluate(criteria,answers){
  const max=rows.filter(r=>['passed','failed'].includes(r.status)).reduce((s,r)=>s+r.points,0);
  return {earned_points:earned,evaluated_max_points:max,nominal_max_points:100,coverage:max/100,status:max===100&&!rows.some(r=>r.status==='error')?'complete':'incomplete',criteria:rows};
 }
-function academyCheck(){
- if(!academyActive)return null;const result=academyEvaluate(academyActive.assessment.criteria,academyAnswers());
+function academyCheck(persist=true){
+ if(!academyActive)return null;academyChecked=true;const result=academyEvaluate(academyActive.assessment.criteria,academyAnswers());
  const box=ac('academyResult');box.replaceChildren();
  acText(box,'h3',result.earned_points+'/100 — '+(result.status==='incomplete'?'Değerlendirme eksik':result.earned_points===100?'Tüm ölçütler sağlandı':'Düzenlemeye devam et'));
  acText(box,'p','Değerlendirilen puan: '+result.evaluated_max_points+'/100. Başlangıçta sağlanan: '+academyBaseline+'/100.');
- const ul=document.createElement('ul');result.criteria.forEach(r=>acText(ul,'li',r.label+' · '+(r.status==='passed'?r.points:0)+'/'+r.points+' · '+r.detail));box.append(ul);return result;
+ const ul=document.createElement('ul');result.criteria.forEach(r=>acText(ul,'li',r.label+' · '+(r.status==='passed'?r.points:0)+'/'+r.points+' · '+r.detail));box.append(ul);academyLastCheckedState=academyWorkSignature();if(persist){academyRecordProgress(result);saveTopology(true)}return result;
 }
 ac('academyStart').onclick=academyStart;
 ac('academyReset').onclick=()=>{if(academyActive){ac('academySelect').value=academyActive.id;academyStart()}};
 ac('academySelect').onchange=()=>{ac('academyNotice').textContent='Seçilen görevi açmak için Laboratuvarı başlat düğmesine bas. Etkin görev: '+(academyActive?.id||'yok')};
-ac('academyCheck').onclick=academyCheck;
-ac('academyHint').onclick=()=>{if(!academyActive)return;const hint=academyActive.hints[academyHintIndex++];if(hint)acText(ac('academyHints'),'li',hint);if(academyHintIndex>=academyActive.hints.length)ac('academyHint').disabled=true};
+ac('academyCheck').onclick=()=>academyCheck();
+ac('academyHint').onclick=()=>{if(!academyActive)return;const hint=academyActive.hints[academyHintIndex++];if(hint)acText(ac('academyHints'),'li',hint);if(academyHintIndex>=academyActive.hints.length)ac('academyHint').disabled=true;saveTopology(true)};
 window.academy={check:academyCheck,evaluate:academyEvaluate};
-window.academyEngine={load:importTopology,snapshot:()=>clone({app:'AgLab',version:23,devices,links,nextId,selected})};
+window.academyEngine={load:t=>importTopology({...clone(t),...academySessionFields()}),snapshot:()=>clone({app:'AgLab',version:23,devices,links,nextId,selected})};
+
+try{const saved=JSON.parse(localStorage.getItem(academyProgressKey)||'{}');for(const lab of academyLabs){const score=saved?.[lab.id]?.bestScore;if(Number.isInteger(score)&&score>=0&&score<=100)academyProgress[lab.id]={bestScore:score}}}catch(e){}
+academyRenderProgress();
