@@ -21,7 +21,7 @@ with sync_playwright() as pw:
     expect(page.locator('#academyPanel')).to_be_visible()
     page.select_option('#academySelect','AGL-005')
     page.click('#academyStart')
-    page.select_option('#ptCliDevice',label='SW1')
+    page.select_option('#ptCliDevice','SW1')
     for cmd in ('enable','configure terminal','interface fa0/2','no shutdown','end'):
         page.fill('#ptCliInput',cmd)
         page.press('#ptCliInput','Enter')
