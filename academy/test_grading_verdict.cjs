@@ -11,6 +11,12 @@ const uncertain=finalize([row('link','passed'),row('ping','not_evaluated')]);
 assert.equal(uncertain.status,'incomplete');assert.equal(uncertain.earned_points,50);assert.equal(uncertain.coverage,.5);
 assert.equal(finalize([row('link','passed'),row('ping','error')]).status,'incomplete');
 assert.equal(finalize([row('only','passed')]).status,'incomplete');
+for(const status of ['error','not_evaluated']){
+ const zeroPoint=finalize([row('score','passed',100),row('diagnostic',status,0)]);
+ assert.equal(zeroPoint.status,'incomplete','unresolved zero-point criteria must prevent completion');
+ assert.equal(zeroPoint.earned_points,100);assert.equal(zeroPoint.coverage,1);
+}
+assert.equal(finalize([row('score','passed',100),row('diagnostic','failed',0)]).status,'complete');
 assert.throws(()=>finalize([row('x','passed'),row('x','failed')]));
 assert.throws(()=>finalize([row('x','passed',101)]));
 assert.throws(()=>finalize([row('x','passed',-1)]));

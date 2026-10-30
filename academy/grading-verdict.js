@@ -18,7 +18,8 @@ function finalize(rows,nominalMax=100){
   if(row.status==='failed')evaluated+=row.points;
   return {...row};
  });
- const complete=declared===nominalMax&&evaluated===nominalMax;
+ const complete=declared===nominalMax&&evaluated===nominalMax&&
+  criteria.every(row=>row.status==='passed'||row.status==='failed');
  return {earned_points:earned,evaluated_max_points:evaluated,
   nominal_max_points:nominalMax,coverage:evaluated/nominalMax,
   status:complete?'complete':'incomplete',criteria};
