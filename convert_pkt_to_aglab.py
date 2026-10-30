@@ -87,6 +87,12 @@ def norm_port(name, kind=None):
         s='gi'+s[1:]
     return s
 
+def dot1q_vlan(line):
+    """Only tagged 802.1Q is modeled; native and other encapsulations stay reported."""
+    match=re.fullmatch(r'\s*encapsulation\s+dot1q\s+(\d+)\s*',line,re.I)
+    if match and 1 <= int(match.group(1)) <= 4094: return int(match.group(1))
+    return None
+
 def parse_vlan_list(value):
     """Parse IOS VLAN list syntax (1,10,20-22) into unique VLAN IDs."""
     vals=[]
@@ -148,10 +154,20 @@ def convert(xml_bytes, original_pkt=None):
                     current=norm_port(m.group(1),kind)
                     if current.startswith('vlan'):
                         ignored_interfaces.append(m.group(1)); current=None; continue
-                    if current not in interfaces: interfaces[current]={'enabled':True}; ports.append(current)
+                    if current not in interfaces:
+                        interfaces[current]={'enabled':True}
+                        if '.' in current:
+                            parent=current.split('.')[0]
+                            interfaces[current]['parent']=parent
+                            if parent not in interfaces: interfaces[parent]={'enabled':True}
+                            if parent not in ports: ports.append(parent)
+                        else: ports.append(current)
                     modeled_interfaces.add(current)
                     continue
                 if not current: continue
+                vlan=dot1q_vlan(line)
+                if vlan is not None and interfaces[current].get('parent'):
+                    interfaces[current].update({'encapsulation':'dot1q','vlan':vlan})
                 m=re.match(r'\s*ip address\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)',line,re.I)
                 if m: interfaces[current]['ip'],interfaces[current]['mask']=m.group(1),m.group(2)
                 if re.match(r'\s*shutdown\s*$',line,re.I): interfaces[current]['enabled']=False
@@ -267,12 +283,17 @@ def convert(xml_bytes, original_pkt=None):
         cfg=d.get('config',{}).get('runningConfig','')
         if not cfg: continue
         current_kind=d['type']
+        current_interface=None
         for line_no,line in enumerate(cfg.splitlines(),1):
             raw=line.strip()
+            interface=re.fullmatch(r'interface\s+(\S+)',raw,re.I)
+            if interface: current_interface=norm_port(interface.group(1),current_kind)
             if not raw or raw in ('!','end','exit'): continue
             modeled=False
             if current_kind=='Router':
                 modeled=bool(re.match(r'^(?:interface\s+\S+|ip address\s+\d+(?:\.\d+){3}\s+\d+(?:\.\d+){3}|shutdown|no shutdown|ip route\s+\d+(?:\.\d+){3}\s+\d+(?:\.\d+){3}\s+\d+(?:\.\d+){3}(?:\s+\d+)?)$',raw,re.I))
+                if dot1q_vlan(raw) is not None and d['interfaces'].get(current_interface,{}).get('parent'):
+                    modeled=True
             elif current_kind=='Switch':
                 modeled=bool(re.match(r'^(?:interface\s+\S+|vlan\s+\d+|switchport access vlan\s+\d+|switchport mode (?:access|trunk)|switchport trunk allowed vlan\s+[\d, -]+|switchport trunk native vlan\s+\d+|shutdown|no shutdown|spanning-tree vlan\s+[\d, -]+\s+priority\s+\d+)$',raw,re.I))
                 trunk=re.match(r'^switchport trunk allowed vlan\s+(.+)$',raw,re.I)
@@ -289,9 +310,9 @@ def convert(xml_bytes, original_pkt=None):
       'unmodeledConfigLines':unmodeled_config_lines,
       'runningConfigPreservedFor':{d['name']:bool(d.get('config',{}).get('runningConfig')) for d in raw_devices},
       'simulationCoverage':{
-        'modeled':'Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, PC IPv4/mask/gateway, router fiziksel arayüz IPv4/mask/shutdown, IPv4 statik rota, switch access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.',
+        'modeled':'Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, PC IPv4/mask/gateway, router fiziksel ve etiketli 802.1Q alt arayüz IPv4/mask/shutdown, alt arayüz parent/VLAN eşlemesi, IPv4 statik rota, switch access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.',
         'preservedButNotFullySimulated':'Tam running-config metni config.runningConfig alanında saklanır; bu, tüm IOS komutlarının AğLab motorunda çalıştığı anlamına gelmez.',
-        'notModeled':['IOS sürüm/feature davranışları','duplex/speed ve kablo türü/medya ayrıntıları','STP zamanlaması, root bridge seçim algoritmasının tam davranışı ve tüm STP durum geçişleri','VLAN SVI arayüzleri','güç dağıtım cihazının davranışı','kaynak dosyada yer alıp AğLab modeline eşlenmeyen diğer cihaz/protokol özellikleri']
+        'notModeled':['IOS sürüm/feature davranışları','duplex/speed ve kablo türü/medya ayrıntıları','STP zamanlaması, root bridge seçim algoritmasının tam davranışı ve tüm STP durum geçişleri','VLAN SVI arayüzleri','Router alt arayüzlerinde native VLAN ve ISL encapsulation','güç dağıtım cihazının davranışı','kaynak dosyada yer alıp AğLab modeline eşlenmeyen diğer cihaz/protokol özellikleri']
       },
       'routerRoutes':{d['name']:d.get('staticRoutes',[]) for d in raw_devices if d['type']=='Router'},
       'endpoints':[{k:d.get(k) for k in ['name','type','ip','mask','gateway']} for d in raw_devices if d['type'] in ('PC','Server')]

@@ -56,3 +56,15 @@ Dönüştürücü, açık `switchport trunk allowed vlan` komutlarında sayısal
 Packet Tracer kaynak yapılandırmasında `switchport mode trunk` var ama açık `switchport trunk allowed vlan` listesi yoksa trunk, 1–4094 aralığına izin verir. Açık sayısal liste veya `none`, komutun trunk modundan önce/sonra gelmesinden bağımsız korunur. İlk `add`/`remove` işlemi varsayılan tüm VLAN listesi üzerinden uygulanır.
 
 AğLab CLI'daki `switchport trunk allowed vlan all` da 1–4094 aralığını kapsar; daha sonra oluşturulan VLAN'lar ayrıca izin eklenmeden taşınabilir. Bu izin VLAN veritabanını doldurmaz: bir VLAN'ın gerçekten taşınması için switch üzerinde oluşturulmuş olması gerekir. JSON dışa aktarımında izin listesi korunur. Mevcut eğitim senaryolarının önceden sınırlandırılmış trunk listeleri otomatik olarak genişletilmez.
+
+## Etiketli router alt arayüzleri
+
+`interface GigabitEthernet0/0.200` altında `encapsulation dot1Q 20` ve IPv4 yapılandırması, parent `g0/0` ve VLAN 20 bilgileriyle aktarılır. Alt arayüz numarası VLAN kimliğinden farklı olabilir. Mantıksal alt arayüzler fiziksel kablo portları listesine eklenmez. Aynı switch üzerindeki VLAN'lar, router'a giden trunk üzerinden yönlendirilebilir; parent/alt arayüz shutdown ve trunk izinleri paket akışını etkiler.
+
+`native`, ISL ve geçersiz VLAN etiketleri bu aktarımda modellenmez; kaynak running-config/XML korunur ve komutlar model dışı raporlanır. Sentetik PT XML regresyonu aktarımı gerçek tarayıcı ping testleriyle doğrular; tüm Packet Tracer sürümleri ve özellikleri için uyumluluk garantisi vermez.
+
+## CLI ile alt arayüz düzenleme
+
+CLI, içe aktarılan topolojideki bağımsız alt arayüz/VLAN eşlemesini korur: örneğin `interface g0/0.200` altında `encapsulation dot1q 20` geçerlidir. Yeni alt arayüzler mevcut fiziksel parent üzerinden oluşturulur; `GigabitEthernet1/0.5000` gibi tam adlar normalleştirilir ve mantıksal arayüz fiziksel kablo portları listesine eklenmez. Bu modelde alt arayüz numarası 1–4294967295, VLAN etiketi ise ayrıca 1–4094 aralığındadır. Yeni alt arayüz, geçerli encapsulation ve IP yapılandırılana kadar yönlendirmeye katılmaz.
+
+Desteklenen komut yalnızca `encapsulation dot1q <VLAN>` biçimidir. `native`, ISL, eksik/fazla parametre veya geçersiz VLAN etiketi hata verir ve önceki eşlemeyi değiştirmez. JSON dışa/içe aktarımı bu bilgileri korur. Bu kapsam tam IOS uyumluluğu anlamına gelmez.
