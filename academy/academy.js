@@ -122,9 +122,7 @@ function academyEvaluate(criteria,answers){
   }catch(e){status='error';detail='Değerlendirme tamamlanamadı: '+e.message}
   return {id:c.id,kind:c.kind,label:c.label,points:c.points,status,detail};
  });
- const earned=rows.filter(r=>r.status==='passed').reduce((s,r)=>s+r.points,0);
- const max=rows.filter(r=>['passed','failed'].includes(r.status)).reduce((s,r)=>s+r.points,0);
- return {earned_points:earned,evaluated_max_points:max,nominal_max_points:100,coverage:max/100,status:max===100&&!rows.some(r=>r.status==='error')?'complete':'incomplete',criteria:rows};
+ return AgLabGradingVerdict.finalize(rows);
 }
 function academyCheck(persist=true){
  if(!academyActive)return null;academyChecked=true;const result=academyEvaluate(academyActive.assessment.criteria,academyAnswers());
