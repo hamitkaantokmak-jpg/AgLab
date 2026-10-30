@@ -130,3 +130,24 @@ Etkin SVI, kendi VLAN'ında switch'in yerel MAC'ine gelen frame'i kabul eder ve 
 Yeni test: çok atlamalı gerçek ARP/ICMP; değişmeyen uç IP'ler; seçilmiş router fiziksel portundan yayın; sıcak unicast; stale-FDB nedeniyle başarısız routed ping ve yeniden öğrenmeyle düzelme; yerel/uzak SVI, gateway ARP, shutdown ve toparlanma; Paket Adımı'nın ARP'yi bozmaması. Önceki recursive/asimetrik routing, dot1Q, gerçek PKT/XML, Akademi, kayıt ve büyük topoloji testleri korunur. Toplam pipeline 27 gruptur.
 
 **Sınır:** NAT/PAT çevirili akışlar eski çeviri modelinde kalır ve `show ethernet events` bunu `legacy-nat` olarak açıklar; frame teslimi doğrulanmış sayılmaz. Yeni motor NAT dışı ping akışlarını kapsar. TTL/Time Exceeded, zamanlanmış beş ICMP paketi, gecikme/kayıp, ARP aging ve tam Paket Dedektifi oynatıcısı sonraki önceliktir. Geçmiş PR bölümlerindeki açık frame entegrasyonu notları o çalışmanın tarihsel kapsamıdır.
+
+## IPv4 TTL ve ICMP Time Exceeded
+
+`simulator/icmp.js` ile `ping <IPv4> [ttl <1-255>]` desteklenir. Varsayılan request TTL 64'tür; echo reply ve Time Exceeded yeni paketler olarak TTL 64 ile başlar. TTL yalnız router'ın transit IP forwarding adımında azalır. Switch/L2 geçişi, kendi ürettiği paketi gönderen kaynak router ve paketin yerel hedefi olan router TTL tüketmez. Packet Step kaynak router gösterimi de bunu ve gerçek çıkış kaynak IP'sini korur.
+
+TTL sıfır olunca request o router'da kesilir; sonraki router veya hedefe frame gönderilmez. ICMP Time Exceeded type 11/code 0, orijinal IP çiftiyle olay kaydına girer; ayrı dönüş rota/ARP/Ethernet/ACL sürecinden geçer. Kaynağa gerçekten ulaşırsa `icmp-delivered`, dönüş yolu veya ACL engellerse `icmp-undelivered` görünür. Hata paketinin kendi TTL'si dolarsa yeni ICMP hata paketi üretilmez. ICMP type bazında ayrı ACL eşleştirmesi henüz yoktur; mevcut genel ICMP kuralları uygulanır.
+
+Normal NAT dışı ping'de ACL kararları gerçek L2 bölümü sırasında alınır; daha ilerideki router ACL'si erken TTL dolumunu maskeleyemez. Tam echo dönüş kontrolü request iletildikten sonra yapılır; sonraki hedefin eksik gateway'i erken Time Exceeded sonucunu maskelemez. Boş/negatif/kesirli veya 255'i aşan TTL reddedilir. NAT/PAT çevirili akışlarda özel TTL henüz desteklenmez; komut çeviri tablosu üretmeden reddedilir, normal eski PAT davranışı korunur.
+
+Örnek iki transit router için TTL 1 ilk router'da, TTL 2 ikinci router'da biter; TTL 3 hedefe ulaşır:
+
+```text
+ping 192.168.2.2 ttl 1
+ping 192.168.2.2 ttl 2
+ping 192.168.2.2 ttl 3
+show ethernet events
+```
+
+Bu AğLab tanı sözdizimidir; tam IOS parametre uyumu iddia edilmez. Yeni test gerçek PKT'den mevcut aktarılmış topoloji üzerinde TTL 1/2/3/255, yerel/switch/router/SVI davranışı, gerçek ICMP dönüşü, ileri/dönüş ACL sırası, eksik ICMP dönüş rotası, sonraki eksik gateway, geçersiz TTL ve NAT yan etkisiz reddini sınar. Tam pipeline 28 gruptur.
+
+**Sınır:** İleri yol mevcut seçili-next-hop aramasıyla önce çözümlenir; routing loop veya eksik rota bu aşamada reddedilir, henüz TTL probe ile kısmi yol keşfine dönüşmez. Mevcut `trace/traceroute` hâlâ simüle yol görünümüdür; artan TTL ile gerçek traceroute probes, ICMP Destination Unreachable, rate limiting, zamanlama ve ortak Paket Dedektifi oynatıcısı sonraki iştir. Önceki bölümlerdeki TTL açık notları tarihsel PR kapsamını anlatır.

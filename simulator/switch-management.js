@@ -150,7 +150,7 @@ function switchManagementCommand(d,raw,p,out){
   if(!valid)return emit('Switchport komutunda fazla/eksik parametre var.',true);
  }
  if(p[0]==='trace'||p[0]==='traceroute')return emit('SVI yönetimi için ping desteklenir; switch traceroute bu aşamada desteklenmiyor.',true);
- if(p[0]==='ping'&&(p.length!==2||!validIP(p[1])))return emit('Kullanım: ping <IPv4>',true);
+ if(p[0]==='ping'){const parsed=parsePingCommand(p);if(parsed.error)return emit(parsed.error,true);}
  return false;
 }
 function switchManagementGatewayCheck(owner,address,remoteIp,path){

@@ -17,16 +17,25 @@ function routedFrameSegments(source,path,sourceIp,targetIp){
    const selectedNeighbor=segmentSource.type==='Router'?routingWireHop(segmentSource,targetIp)?.ip:routingSourceHop(segmentSource,targetIp)?.ip;
    const localIp=routedPortAddress(segmentSource,sourcePort,vlan,outgoing),neighborIp=routedPortAddress(next,targetPort,vlan,selectedNeighbor||(index===path.length-1?targetIp:null));
    if(!localIp||!neighborIp)return null;
-   segments.push({source:segmentSource,target:next,sourcePort,targetPort,vlan,localIp,neighborIp});segmentSource=next;first=index+1;
+   const segmentPath=path.slice(first,index+1);segmentPath.vlans=path.vlans?.slice(first,index+1)||[];
+   segments.push({source:segmentSource,target:next,sourcePort,targetPort,vlan,localIp,neighborIp,path:segmentPath});segmentSource=next;first=index+1;
   }
   current=next;
  }
  return segments;
 }
-function deliverRoutedFrames(source,path,sourceIp,targetIp,kind,context){
+function deliverRoutedFrames(source,path,sourceIp,targetIp,kind,context,packet={ttl:64}){
  const segments=routedFrameSegments(source,path,sourceIp,targetIp);if(!segments?.length)return {ok:false,why:'Seçili yol için etkin Ethernet/IP arayüzü çözümlenemedi.'};
- for(const segment of segments){
+ let ttl=packet.ttl??64;
+ for(let index=0;index<segments.length;index++){
+  const segment=segments[index];
   const {source:sender,target,sourcePort,targetPort,vlan,localIp,neighborIp}=segment;
+  if(index>0&&sender.type==='Router'){
+   const previous=ttl;ttl--;ethernetEvent('ttl-forward '+sender.id+' '+previous+' -> '+ttl);
+   if(ttl<=0)return icmpTimeExceeded(sender,source,sourceIp,targetIp,segments[index-1].neighborIp,context,kind);
+  }
+  const policy=aclPathDecision(segment.path,sender.id,target.id,sourceIp,targetIp,'icmp',null);
+  if(!policy.ok){ethernetEvent('icmp-policy-drop '+policy.why);return policy;}
   const options={sourcePort:sender.type==='Switch'?null:sourcePort,targetId:target.id,targetPort:target.type==='Switch'?null:targetPort};
   const reverse={sourcePort:target.type==='Switch'?null:targetPort,targetId:sender.id,targetPort:sender.type==='Switch'?null:sourcePort};
   const arp=arpTables.get(sender.id)||new Map(),neighborArp=arpTables.get(target.id)||new Map();
@@ -39,14 +48,9 @@ function deliverRoutedFrames(source,path,sourceIp,targetIp,kind,context){
    if(!reply.has(sender.id))return {ok:false,why:target.name+' ARP yanıtı '+sender.name+' cihazına ulaşmadı.'};
    arp.set(neighborIp,macOf(target));arpTables.set(sender.id,arp);
   }
-  ethernetEvent('packet '+kind+' ip '+sourceIp+' -> '+targetIp+' neighbor '+neighborIp);
+  ethernetEvent('packet '+kind+' ip '+sourceIp+' -> '+targetIp+' neighbor '+neighborIp+' ttl '+ttl);
   const delivered=transmitEthernet(sender,arp.get(neighborIp),vlan,kind,context,options);
   if(!delivered.has(target.id))return {ok:false,why:sender.name+' → '+target.name+' Ethernet '+kind+' frame seçili komşuya ulaşmadı; MAC/VLAN/port çıkışını kontrol et.'};
  }
  return {ok:true};
-}
-function routedEthernetPing(source,target,path,replyPath,sourceIp,targetIp){
- const context=ethernetContext(),forward=deliverRoutedFrames(source,path,sourceIp,targetIp,'icmp-request',context);if(!forward.ok)return forward;
- const reply=deliverRoutedFrames(target,replyPath,targetIp,sourceIp,'icmp-reply',context);if(!reply.ok)return {ok:false,why:'Dönüş: '+reply.why};
- return {ok:true,why:'Seçili next-hop ve gerçek dönüş yolu üzerinde ARP/Ethernet ICMP teslimi doğrulandı.'};
 }
