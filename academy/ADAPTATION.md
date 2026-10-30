@@ -92,11 +92,13 @@ Genel extended ping, keyfi kaynak IP'si, alt arayüz ve statik/uzak ağ üzerind
 zorlanan kaynak seçimi desteklenmez; yalnız bu doğrudan bağlı fiziksel
 arayüz koşulu desteklenir. CLI'ye genel source seçeneği eklendiği iddia edilmez.
 
-Chromium kapsamı 40 özgün görev, rota sırası ve türetilmiş arayüz alanları,
+Chromium kapsamı 40 özgün görev, rota sırası, geçersiz içe aktarma alanının reddi,
 eksik dönüş rotasında başarısız ping, AGL-033 /30 transit CLI çözümü,
 yanlış/kapalı kaynak arayüzünün puan alamaması, AGL-034 çift yönlü statik
 rota ve AGL-040 üç routerlı CLI onarımı ile yenileme sonrası devamı kapsar.
 Her görevin durumu adaptation-audit.json içinde ayrı tutulur.
+Türetilmiş arayüz alanlarının puanı etkilememesi ayrı Node testiyle doğrulanır;
+JSON içe aktarma şeması bu alanları kabul edecek şekilde gevşetilmez.
 
 Paketin 40 görevi dışında OSPF/BGP/ACL/NAT/DHCP laboratuvarı uydurulmadı.
 Bu uyarlama gerçek Cisco IOS/PT özelliklerinin tamamına uygunluk iddiası değildir.

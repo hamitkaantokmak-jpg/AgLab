@@ -50,7 +50,6 @@ with sync_playwright() as pw:
    if 'staticRoutes' in d:d['staticRoutes'].reverse()
    for interface in d['interfaces'].values():
     if 'allowed' in interface:interface['allowed'].reverse()
-    if i>=31:interface.update(packets=99,operStatus='up')
   page.evaluate('t=>academyEngine.load(t)',t)
   assert page.evaluate('academy.check().earned_points')==100
   # A down destination must fail packet delivery, regardless of matching IP.
@@ -65,6 +64,12 @@ with sync_playwright() as pw:
   assert page.locator('#academyHints').inner_text()==''
   assert page.locator('#academyResult').inner_text()==''
   print('PASS',lid,'original, initial, target, reverse links, broken delivery, reset')
+ # Import validation stays strict even though the grader can ignore derived runtime fields.
+ t=json.loads((ROOT/'academy/source/AGL-031.json').read_text(encoding='utf-8'))['target_topology']
+ t['devices'][0]['interfaces']['eth0']['packets']=99
+ before=page.evaluate('academyEngine.snapshot()')
+ assert page.evaluate("""t=>{try{academyEngine.load(t);return false;}catch(e){return e.message.includes('Beklenmeyen arayüz');}}""",t)
+ assert page.evaluate('academyEngine.snapshot()')==before
  # Build the /30 transit using CLI, and verify the exact requested source interface.
  page.select_option('#academySelect','AGL-033');page.click('#academyStart')
  for device,ip in [('R1','10.0.12.1'),('R2','10.0.12.2')]:
