@@ -89,7 +89,9 @@ def run():
   teacher=out/'AgLab_Akademi_Ogretmen.zip'
   if teacher.exists():teacher.unlink()
   print('FAIL: no verified release generated; see',out/'test-report.md')
- for t in report['tests']:print(t['status'],t['name'])
+ for t in report['tests']:
+  print(t['status'],t['name'])
+  if t['status']=='FAIL':print(t.get('error',''),t.get('stdout',''),t.get('stderr',''))
  return 0 if report['passed'] else 1
 if __name__=='__main__':sys.exit(run())
 

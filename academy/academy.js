@@ -18,6 +18,18 @@ academyPanel.innerHTML=`<h2>AğLab Akademi v1</h2>
 ac('area-lab').prepend(academyPanel);
 academyLabs.forEach(l=>{const o=document.createElement('option');o.value=l.id;o.textContent=l.id+' — '+l.title;ac('academySelect').append(o)});
 const answerFields={
+ learning_field:{label:'Switch MAC öğrenirken hangi alanı kullanır?',options:[['source_mac','Kaynak MAC'],['destination_mac','Hedef MAC'],['source_ip','Kaynak IP']]},
+ forwarding_field:{label:'Switch iletim kararında hangi alanı kullanır?',options:[['source_mac','Kaynak MAC'],['destination_mac','Hedef MAC'],['destination_ip','Hedef IP']]},
+ management_ip_required:{label:'Aynı VLAN iletimi için switch yönetim IP adresi zorunlu mu?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ ip_selects_vlan:{label:'Uç cihazın IP adresi access VLAN üyeliğini belirler mi?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ direct_l2_between_vlans:{label:'Farklı VLAN uçları router olmadan doğrudan erişebilir mi?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ allowed_list_creates_vlan:{label:'Trunk allowed listesi VLAN veritabanını oluşturur mu?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ inter_vlan_function:{label:'VLAN’lar arası erişim için hangi işlev gerekir?',options:[['routing','Yönlendirme'],['switching','Katman 2 switching'],['dns','DNS']]},
+ vlan_id_must_match_ip_octet:{label:'VLAN numarası IP adresinin oktetiyle eşleşmek zorunda mı?',options:[['true','Evet'],['false','Hayır']],boolean:true},
+ common_fault:{label:'İki VLAN için ortak arızalı bileşen hangisidir?',options:[['trunk_link','Switchler arası trunk bağlantısı'],['pc1_link','PC1 bağlantısı'],['pc2_link','PC2 bağlantısı']]},
+ endpoint_broadcast_domains:{label:'Access uçlarının ait olduğu yayın alanı sayısı',type:'integer'},
+ native_default_tagging:{label:'Native VLAN’ın yaygın etiket davranışı nedir?',options:[['untagged','Etiketsiz'],['tagged','Etiketli']]},
+
  network:{label:'Ağ adresi',type:'ipv4'},
  broadcast:{label:'Yayın adresi',type:'ipv4'},
  first_host:{label:'İlk kullanılabilir host adresi',type:'ipv4'},
@@ -98,6 +110,7 @@ function academyRestoreSession(session){
  acText(ac('academyLesson'),'p',lab.theory);acText(ac('academyLesson'),'p',lab.scenario);
  const ol=document.createElement('ol');lab.steps.forEach(s=>acText(ol,'li',s.text));ac('academyLesson').append(ol);
  acText(ac('academyLesson'),'p','Beklenen sonuç: '+lab.expected_result);
+ if(lab.probe_health)acText(ac('academyLesson'),'p','Yalıtım kontrolünden önce görevdeki kablo, adres, VLAN ve trunk planını tamamla. Kapalı cihaz veya port, kopuk kablo ya da eksik VLAN yalıtım başarısı sayılmaz; önce bu koşulları düzelt.');
  ac('academyAnswers').replaceChildren();
  lab.assessment.criteria.filter(c=>c.kind==='answer.equals').forEach(c=>{
   const key=c.target.split('.')[1],field=answerFields[key];const label=acText(ac('academyAnswers'),'label',field.label+' ');
@@ -115,7 +128,7 @@ function academyRestoreSession(session){
 function academyStart(){
  const lab=academyLabs.find(l=>l.id===ac('academySelect').value);if(!lab)return;
  importTopology({...clone(lab.initial_topology),academySession:{version:1,labId:lab.id,answers:{},hintIndex:0,baseline:0,checked:false}});
- academyBaseline=academyEvaluate(lab.assessment.criteria,{}).earned_points;academyNotice();saveTopology(true);
+ academyBaseline=academyEvaluate(lab.assessment.criteria,{},lab.probe_health).earned_points;academyNotice();saveTopology(true);
 }
 function academyRenderProgress(){
  const completed=academyLabs.filter(l=>academyProgress[l.id]?.bestScore===100).length;
@@ -138,27 +151,37 @@ function acState(target){const parts=target.split('.');if(parts[0]==='links')ret
  if(parts[0]!=='devices')throw new Error('Desteklenmeyen durum yolu');
  let val=get(parts[1]);for(const p of parts.slice(2))val=val?.[p];return val;
 }
-function academyEvaluate(criteria,answers){
+function acProbe(source,destination){
+ const d=get(destination);if(!get(source)||!d)throw new Error('Probe için cihaz eksik.');
+ return Array.from({length:5},()=>ping(source,d.ip));
+}
+function academyEvaluate(criteria,answers,health=null){
  const rows=criteria.map(c=>{
   let status='not_evaluated',detail='Bu ölçüt henüz desteklenmiyor.';
   try{
    if(c.kind==='state.equals'){
     const actual=acState(c.target);let a=actual,e=c.expected;
     if(c.target==='links'){validateTopologyData({app:'AgLab',devices,links});a=acLinks(actual);e=acLinks(e)}
+    else if(/\.(vlans|allowed)$/.test(c.target)){a=AgLabVlanHealth.sameVlanSet(a,e)?e:null;}
     else if(/\.(ip|mask|gateway)$/.test(c.target)&&typeof a==='string'&&validIP(a))a=a.split('.').map(Number).join('.');
     const ok=JSON.stringify(acCanonical(a))===JSON.stringify(acCanonical(e));status=ok?'passed':'failed';
     detail=ok?'Ölçüt sağlandı.':c.target==='links'?'Kablo uçlarını, portlarını ve bağlantı durumlarını görev adımlarıyla karşılaştır.':c.target+' alanını cihaz ayarlarında kontrol et.';
    }else if(c.kind==='answer.equals'){
     const key=c.target.split('.')[1],a=answers[key];status=acNormalizeAnswer(key,a)===acNormalizeAnswer(key,c.expected)?'passed':'failed';detail=status==='passed'?'Cevap doğru.':a===undefined?'Kavramsal soruya cevap seç.':'Cihazın rolünü konu anlatımından tekrar incele.';
    }else if(c.kind==='probe.icmp'){
-    if(c.expected!==true){status='not_evaluated';detail='Negatif ICMP sağlık önkoşulları bu sürümde desteklenmiyor.'}
+    if(c.expected!==true&&c.expected!==false){status='not_evaluated';detail='ICMP beklentisi desteklenmiyor.'}
+    else if(c.expected===false&&!health){status='not_evaluated';detail='Negatif ICMP sağlık planı bulunamadı.'}
     else{
-     const destination=get(c.target.destination);if(!get(c.target.source)||!destination)throw new Error('Probe için cihaz eksik.');
-     // Simulator is synchronous/deterministic: five live evaluations, first warm-up.
-     // No wall-clock convergence or packet loss is modeled by this engine.
-     const runs=Array.from({length:5},()=>ping(c.target.source,destination.ip));
-     const ok=runs.slice(1).filter(r=>r.ok).length>=3;status=ok?'passed':'failed';
-     detail=(ok?'5 denemelik simüle ICMP kontrolü başarılı. ': 'Erişim başarısız: ')+runs.at(-1).why;
+     if(c.target.source_interface||!c.target.destination)throw new Error('Bu probe biçimi henüz desteklenmiyor.');
+     if(c.expected===false){
+      AgLabVlanHealth.assertHealthy({devices,links},health);
+      for(const control of health.controls){if(acProbe(control.source,control.destination).slice(1).filter(r=>r.ok).length<3)throw new Error('Aynı VLAN pozitif sağlık kontrolü başarısız: '+control.source+' → '+control.destination);}
+     }
+     // Deterministic synchronous engine: first of five is warm-up, no wall-clock timing.
+     const runs=acProbe(c.target.source,c.target.destination);
+     const ok=c.expected?runs.slice(1).filter(r=>r.ok).length>=3:runs.every(r=>!r.ok);
+     status=ok?'passed':'failed';
+     detail=c.expected?(ok?'5 denemelik simüle ICMP kontrolü başarılı. ':'Erişim başarısız: ')+runs.at(-1).why:(ok?'Planlanan sağlıklı ağda 5 denemede erişim yok; yalıtım doğrulandı.':'Yalıtım beklenirken erişim sağlandı.');
     }
    }
   }catch(e){status='error';detail='Değerlendirme tamamlanamadı: '+e.message}
@@ -167,7 +190,7 @@ function academyEvaluate(criteria,answers){
  return AgLabGradingVerdict.finalize(rows);
 }
 function academyCheck(persist=true){
- if(!academyActive)return null;academyChecked=true;const result=academyEvaluate(academyActive.assessment.criteria,academyAnswers());
+ if(!academyActive)return null;academyChecked=true;const result=academyEvaluate(academyActive.assessment.criteria,academyAnswers(),academyActive.probe_health);
  const box=ac('academyResult');box.replaceChildren();
  acText(box,'h3',result.earned_points+'/100 — '+(result.status==='incomplete'?'Değerlendirme eksik':result.earned_points===100?'Tüm ölçütler sağlandı':'Düzenlemeye devam et'));
  acText(box,'p','Değerlendirilen puan: '+result.evaluated_max_points+'/100. Başlangıçta sağlanan: '+academyBaseline+'/100.');

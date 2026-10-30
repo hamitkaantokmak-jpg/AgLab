@@ -164,104 +164,80 @@
     "title": "Switch iletiminde MAC ve IP ayrımı",
     "sha256": "d6cf390c1f9f491d5b1652957efac3ac21072bae0c7bfc14ea8cbe380743b13f",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-022",
     "title": "İlk VLAN: access portlarını VLAN 10’a taşı",
     "sha256": "27b30cb2550d46d9260d9585fffd7444fc00b9c5707161d125db491991e5088a",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-023",
     "title": "Aynı IP ağı olsa da farklı VLAN yalıtımı",
     "sha256": "f9e7c62bdb132ad77b2a4630f49bb1082eca95ace8f552d7708b307d87de4cfd",
     "content_errors": [],
-    "status": "blocked",
-    "blockers": [
-      "Negative ICMP health preconditions unsupported",
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-024",
     "title": "İki switch arasında 802.1Q trunk",
     "sha256": "16eb562f7a4f7ad51b68244fc7312509bcd49c0c463a2118c44fa1d4cb8fb526",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-025",
     "title": "Trunk allowed VLAN eksikliğini giderme",
     "sha256": "c0eba95e5e7815025e88563e48f140f62f37697d1b5a6c00933f56c5a4bd0b37",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-026",
     "title": "Yanlış access VLAN üyeliği",
     "sha256": "28010b5d72b6e4c65ad3518c2c1fa89ce12c1e728db11c03feab4fefcdc801b1",
     "content_errors": [],
-    "status": "blocked",
-    "blockers": [
-      "Negative ICMP health preconditions unsupported",
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-027",
     "title": "VLAN ve IPv4 alt ağını birlikte planlama",
     "sha256": "1bbbdf5329b3e84087ba83d59b560f5da1905d5922e1afe287fc588dad1eb65b",
     "content_errors": [],
-    "status": "blocked",
-    "blockers": [
-      "Negative ICMP health preconditions unsupported",
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-028",
     "title": "Tek trunk kesintisinin etki alanı",
     "sha256": "61a2f00e97aaa5472c563f921048c7b9bee377843a514e55ecf3f5bcc54d49ae",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-029",
     "title": "Yayın alanları ve native VLAN farkındalığı",
     "sha256": "31d4dd02da7e8fc9e7bc411ae3f219e56e44c31261d1f90e8c2fad5d642ac408",
     "content_errors": [],
-    "status": "pending",
-    "blockers": [
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-030",
     "title": "VLAN mini projesi: iki bölümlü ofis",
     "sha256": "d47a61a1da24e13c00548f3418b26214b3e520427dea3c2af9241714dd02c9ad",
     "content_errors": [],
-    "status": "blocked",
-    "blockers": [
-      "Negative ICMP health preconditions unsupported",
-      "Answer controls / set or interface normalization and browser validation pending"
-    ]
+    "status": "integrated",
+    "blockers": []
   },
   {
     "id": "AGL-031",

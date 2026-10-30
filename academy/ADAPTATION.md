@@ -37,15 +37,37 @@ host sayıları puan kazandırmaz. Hatalı taslak cevap da kaydedilip geri açı
 Chromium testi 20 görevin başlangıç/çözüm/bozuk erişim/sıfırlamasını,
 AGL-013'ün öğrenci CLI çözümünü ve sayı/IP/CIDR cevaplarının kalıcılığını kapsar.
 
-## Sonraki gruplar
+## Üçüncü grup: AGL-021–030
+
+MAC/IP ayrımı, access VLAN, 802.1Q trunk, allowed listesi, arıza kapsamı,
+native VLAN ve VLAN mini projesi özgün rubrikleri değiştirilmeden eklendi.
+VLAN ve allowed listeleri sırasız, benzersiz tamsayı kümeleridir.
+
+023/026/027/030 için ayrı probe_health planı özgün hedefin bağlantı ve
+adres/VLAN/trunk alanlarından türetilir; puan ve rubrik değişmez. Bu tutucu
+önkoşul tüm planlanan kabloları, açık cihaz/portları, uç IP/maskelerini,
+VLAN veritabanını ve bağlı portların VLAN/trunk ayarlarını doğrular.
+Varsa aynı VLAN'daki uç çiftleri iki yönde pozitif ping ile kontrol edilir.
+023'te aynı VLAN'da ikinci uç yoktur; fiziksel ve yapılandırma kontrolleri
+kullanılır. Sağlık geçmezse negatif ölçüt error, toplam incomplete olur;
+kablo koparmak veya port kapatmak yalıtım puanı kazandırmaz.
+
+Sağlık geçtikten sonra beş güncel simüle ping'in tümü başarısızsa negatif
+ölçüt geçer. Bu yalnız mevcut deterministik L2 eğitim ağı içindir. ARP
+yakınsaması ve gerçek zamanlı paket kaybı modellenmez. Plan kullanıcıya
+açıktır; öğretmen çözümü probe için yüklenmez. Muhafazakâr plan kontrolü,
+eşdeğer farklı topoloji tasarımlarını kabul eden genel ağ doğrulaması değildir.
+
+Chromium kapsamı 30 görev, sırası değiştirilmiş VLAN/allowed listeleri,
+yalıtımda bozuk kablo/cihaz/port/IP/VLAN/trunk saldırıları, AGL-024 trunk
+ve AGL-023 yalıtım CLI çözümü ile yenileme sonrası puanlamayı içerir.
+Node sağlık kapısı testi CI'da ayrıca çalışır.
+
+## Sonraki grup
 
 Her laboratuvarın sonucu adaptation-audit.json dosyasında ayrı yer alır.
 
-1. AGL-021–030: MAC/VLAN/trunk soruları; vlans ve allowed için sıra
-   bağımsız küme karşılaştırması. 023, 026, 027, 030 negatif ICMP sağlık
-   önkoşulları desteklenene kadar engellidir. Kabloyu koparmak yalıtım
-   başarısı sayılamaz.
-2. AGL-031–040: arayüz nesnelerinde türetilmiş alanların ve rota kümelerinin
+1. AGL-031–040: arayüz nesnelerinde türetilmiş alanların ve rota kümelerinin
    semantik karşılaştırması; statik/çok atlamalı routing testleri.
    033 açık source_interface ve destination_ip probe bağdaştırıcısı
    olmadan engellidir.

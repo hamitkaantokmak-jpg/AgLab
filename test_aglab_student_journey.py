@@ -49,11 +49,11 @@ try:
         resume(page, 'AGL-005')
         expect(page.locator('#academyHints li')).to_have_count(1)
         expect(page.locator('#academyResult h3')).to_contain_text('100/100')
-        expect(page.locator('#academyProgress')).to_contain_text('1/20')
+        expect(page.locator('#academyProgress')).to_contain_text('1/30')
         context.close()
         context, page = open_student(mobile=True)
         resume(page, 'AGL-005')
-        expect(page.locator('#academyProgress')).to_contain_text('1/20')
+        expect(page.locator('#academyProgress')).to_contain_text('1/30')
 
         # Answers and hints survive, without loading teacher target topology.
         page.select_option('#academySelect', 'AGL-001')
@@ -72,7 +72,7 @@ try:
             page.click('#ptMakeLink')
         page.click('#academyCheck')
         expect(page.locator('#academyResult h3')).to_contain_text('100/100')
-        expect(page.locator('#academyProgress')).to_contain_text('2/20')
+        expect(page.locator('#academyProgress')).to_contain_text('2/30')
         assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'), 'Student journey overflows mobile viewport'
 
         # Resume recomputes grade: editing a solved network cannot restore stale 100.
@@ -83,12 +83,12 @@ try:
         page.click('#ux14Guided')
         resume(page, 'AGL-001')
         expect(page.locator('#academyResult h3')).not_to_contain_text('100/100')
-        expect(page.locator('#academyProgress')).to_contain_text('2/20')
+        expect(page.locator('#academyProgress')).to_contain_text('2/30')
         page.click('#academyReset')
         expect(page.locator('#academyAnswer-router_required')).to_have_value('')
         expect(page.locator('#academyHints li')).to_have_count(0)
         expect(page.locator('#academyResult')).to_be_empty()
-        expect(page.locator('#academyProgress')).to_contain_text('2/20')
+        expect(page.locator('#academyProgress')).to_contain_text('2/30')
         initial = json.loads((ROOT / 'academy/student/AGL-001.json').read_text())['initial_topology']
         assert page.evaluate('academyEngine.snapshot()') == initial
 
@@ -103,7 +103,7 @@ try:
         assert page.evaluate("localStorage.getItem('aglab-topology-v23')") == snapshot
         page.locator('#ptImportFile').set_input_files(str(ROOT / 'static-routing-two-routers.aglab.json'))
         expect(page.locator('#academyCheck')).to_be_disabled()
-        expect(page.locator('#academyProgress')).to_contain_text('2/20')
+        expect(page.locator('#academyProgress')).to_contain_text('2/30')
         assert not errors, errors
         context.close()
 finally:

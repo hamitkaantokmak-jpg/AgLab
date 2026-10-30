@@ -9,12 +9,12 @@ with sync_playwright() as pw:
  page=b.new_page(); errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
  page.goto((ROOT/'AgLab_Final_PKT_Import.html').as_uri())
  assert page.locator('#academySelect').count()==1, 'Academy selector missing'
- assert page.locator('#academySelect option').count()==20
+ assert page.locator('#academySelect option').count()==30
  page.click('[data-area="lab"]')
  hashes=json.loads((ROOT/'academy/source/SHA256.json').read_text())
  for name,digest in hashes.items():
   assert hashlib.sha256((ROOT/'academy/source'/name).read_bytes()).hexdigest()==digest
- for i in range(1,21):
+ for i in range(1,31):
   lid=f'AGL-{i:03d}'; raw=(ROOT/f'academy/source/{lid}.json').read_bytes()
   assert hashlib.sha256(raw).hexdigest()==hashes[lid+'.json']
   lab=json.loads(raw)
@@ -25,7 +25,8 @@ with sync_playwright() as pw:
   page.select_option('#academySelect',lid);page.click('#academyStart')
   assert page.evaluate('academyEngine.snapshot()')==lab['initial_topology']
   result=page.evaluate('academy.check()')
-  assert result['earned_points']<100 and result['status']=='complete',result
+  assert result['earned_points']<100,result
+  assert result['status']=='complete' or lab.get('probe_health'),result
   page.click('#academyHint');assert page.locator('#academyHints').inner_text()
   # Use real simulator import and grader, never replace ping with a test double.
   page.evaluate('t=>academyEngine.load(t)',lab['target_topology'])
@@ -43,15 +44,59 @@ with sync_playwright() as pw:
   t['links']=[dict(a=l['b'],b=l['a'],portA=l['portB'],portB=l['portA'],up=l['up']) for l in reversed(t['links'])]
   page.evaluate('t=>academyEngine.load(t)',t)
   assert page.evaluate('academy.check().earned_points')==100
+  # VLAN and allowed lists are sets, including when used by the isolation health plan.
+  for d in t['devices']:
+   if 'vlans' in d:d['vlans'].reverse()
+   for interface in d['interfaces'].values():
+    if 'allowed' in interface:interface['allowed'].reverse()
+  page.evaluate('t=>academyEngine.load(t)',t)
+  assert page.evaluate('academy.check().earned_points')==100
   # A down destination must fail packet delivery, regardless of matching IP.
   t['devices'][1]['enabled']=False;page.evaluate('t=>academyEngine.load(t)',t)
   r=page.evaluate('academy.check()')
-  assert any(c['status']=='failed' for c in r['criteria'] if c['kind']=='probe.icmp'),r
+  assert any(c['status'] in ['failed','error'] for c in r['criteria'] if c['kind']=='probe.icmp'),r
   page.click('#academyReset')
   assert page.evaluate('academyEngine.snapshot()')==lab['initial_topology']
   assert page.locator('#academyHints').inner_text()==''
   assert page.locator('#academyResult').inner_text()==''
   print('PASS',lid,'original, initial, target, reverse links, broken delivery, reset')
+ # Isolation cannot earn credit by breaking the intended network.
+ for lid in ['AGL-023','AGL-026','AGL-027','AGL-030']:
+  lab=json.loads((ROOT/f'academy/source/{lid}.json').read_text(encoding='utf-8'))
+  page.select_option('#academySelect',lid);page.click('#academyStart')
+  for key,value in lab['teacher_solution']['answer_key'].items():
+   page.select_option(f'#academyAnswer-{key}',json.dumps(value) if isinstance(value,bool) else value)
+  for fault in ['cable','device','port','ip','vlan','trunk']:
+   if fault=='trunk' and lid=='AGL-023':continue
+   t=json.loads(json.dumps(lab['target_topology']))
+   if fault=='cable':t['links'][0]['up']=False
+   elif fault=='device':t['devices'][0]['enabled']=False
+   elif fault=='port':t['devices'][0]['interfaces']['eth0']['enabled']=False
+   elif fault=='ip':t['devices'][0]['ip']='192.0.2.200'
+   elif fault=='vlan':next(d for d in t['devices'] if d['type']=='Switch')['vlans']=[1]
+   else:next(d for d in t['devices'] if d['type']=='Switch')['interfaces']['gi0/1']['allowed']=[10]
+   page.evaluate('t=>academyEngine.load(t)',t)
+   r=page.evaluate('academy.check()')
+   assert r['status']=='incomplete' and r['earned_points']<100,(lid,fault,r)
+   negative_ids={c['id'] for c in lab['assessment']['criteria'] if c['kind']=='probe.icmp' and c['expected'] is False}
+   assert all(c['status']=='error' for c in r['criteria'] if c['id'] in negative_ids),(lid,fault,r)
+ # Solve trunk configuration through student-visible CLI, without loading the teacher solution.
+ page.select_option('#academySelect','AGL-024');page.click('#academyStart')
+ for device in ['SW1','SW2']:
+  page.select_option('#ptCliDevice',device)
+  for cmd in ['enable','configure terminal','interface gi0/1','switchport mode trunk','switchport trunk allowed vlan 10,20','end']:
+   page.fill('#ptCliInput',cmd);page.locator('#ptCliInput').press('Enter')
+ assert page.evaluate('academy.check().earned_points')==100
+ # Solve VLAN isolation through CLI, then preserve grading over reload.
+ page.select_option('#academySelect','AGL-023');page.click('#academyStart')
+ page.select_option('#ptCliDevice','SW1')
+ for cmd in ['enable','configure terminal','interface fa0/2','switchport access vlan 20','end']:
+  page.fill('#ptCliInput',cmd);page.locator('#ptCliInput').press('Enter')
+ page.select_option('#academyAnswer-direct_l2_between_vlans','false')
+ assert page.evaluate('academy.check().earned_points')==100
+ page.reload();page.click('[data-area="lab"]')
+ assert page.locator('#academySelect').input_value()=='AGL-023'
+ assert page.evaluate('academy.check().earned_points')==100
  # Typed answers retain JSON types and survive reload; malformed data earns no credit.
  page.select_option('#academySelect','AGL-013');page.click('#academyStart')
  for device,ip in [('PC1','192.168.13.129'),('PC2','192.168.13.130')]:

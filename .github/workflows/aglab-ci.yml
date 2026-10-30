@@ -25,6 +25,8 @@ jobs:
           node-version: '22'
       - name: Akademi puanlama sözleşmesini doğrula
         run: node academy/test_grading_verdict.cjs
+      - name: VLAN yalıtım sağlık kapısını doğrula
+        run: node academy/test_vlan_health.cjs
       - name: Akademi HTML derlemesini doğrula
         run: |
           python build_academy.py
