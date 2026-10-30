@@ -60,6 +60,16 @@ with sync_playwright() as pw:
  # Unsupported criterion is incomplete, never a false success.
  r=page.evaluate("academy.evaluate([{id:'unsupported',kind:'unknown',points:100}], {})")
  assert r['status']=='incomplete' and r['earned_points']==0 and r['coverage']==0,r
+ # Probe errors must propagate through the embedded verdict module as incomplete.
+ r=page.evaluate("academy.evaluate([{id:'missing-device',kind:'probe.icmp',points:100,expected:true,target:{source:'missing',destination:'also-missing'}}], {})")
+ assert r['status']=='incomplete' and r['evaluated_max_points']==0,r
+ assert r['criteria'][0]['status']=='error',r
+ # Invalid criteria must still be rejected at the public browser entry point.
+ assert page.evaluate("""() => {
+  try { academy.evaluate([{id:'bad',kind:'unknown',points:-1}], {}); }
+  catch (e) { return e.message === 'Invalid criterion'; }
+  return false;
+ }""")
  assert not errors,errors
  b.close()
 print('PASS Academy browser integration')

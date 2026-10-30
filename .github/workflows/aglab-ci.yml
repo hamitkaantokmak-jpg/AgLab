@@ -19,6 +19,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Akademi puanlama sözleşmesini doğrula
+        run: node academy/test_grading_verdict.cjs
+      - name: Akademi HTML derlemesini doğrula
+        run: |
+          python build_academy.py
+          git diff --exit-code -- AgLab_Final_PKT_Import.html
       - name: Chromium ve Playwright kur
         run: |
           python -m pip install playwright
