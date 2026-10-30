@@ -91,7 +91,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     ping(True)
     # 'all' must already include a VLAN that does not exist yet.
     for device_id in ('d1', 'd3'):
-        for text in ['configure terminal', 'vlan 333', 'exit', 'interface fa0/1',
+        for text in ['configure terminal', 'vlan 333', 'interface fa0/1',
                      'switchport access vlan 333', 'end']:
             command(device_id, text)
     ping(True)
@@ -104,6 +104,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     saved = json.loads(exported.read_text())
     for device in saved['devices']:
         if device['type'] == 'Switch':
+            assert device['interfaces']['fa0/1']['vlan'] == 333, 'Traffic must actually move to VLAN 333'
             assert device['interfaces']['gi0/1']['allowed'] == ALL
             assert device['vlans'] == [1, 77, 333], device['vlans']
     assert not errors, errors
