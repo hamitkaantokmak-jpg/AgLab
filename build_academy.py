@@ -4,7 +4,7 @@ ROOT=Path(__file__).resolve().parent
 p=ROOT/'AgLab_Final_PKT_Import.html'
 h=p.read_text(encoding='utf-8')
 start='// BEGIN ACADEMY GENERATED\n';end='// END ACADEMY GENERATED\n'
-code=start+(ROOT/'academy/student-data.js').read_text(encoding='utf-8')+(ROOT/'academy/academy.js').read_text(encoding='utf-8')+'\n'+end
+code=start+(ROOT/'academy/student-data.js').read_text(encoding='utf-8')+(ROOT/'academy/grading-verdict.js').read_text(encoding='utf-8')+(ROOT/'academy/academy.js').read_text(encoding='utf-8')+'\n'+end
 if start in h:
  a=h.index(start);b=h.index(end,a)+len(end);h=h[:a]+code+h[b:]
 else:
