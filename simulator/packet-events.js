@@ -20,7 +20,29 @@ function normalize(lines,overflow=0){
  });
  return {events:entries,overflow,truncated:overflow>0};
 }
-const api=Object.freeze({normalize});
+function explain(event){
+ if(!event||typeof event!=='object')throw Error('Invalid packet event');
+ const d=event.detail;
+ switch(event.kind){
+ case 'frame':return event.device+' cihazı '+d.protocol+' çerçevesini VLAN '+d.vlan+' üzerinden gönderdi.';
+ case 'forward':{
+  const label={broadcast:'Yayın', 'unknown-unicast':'Bilinmeyen hedefe yayılım',unicast:'Öğrenilmiş MAC yönlendirmesi',filter:'Giriş portuna geri gönderim engellendi'}[d.decision]||'İletim';
+  return event.device+': '+label+'; giriş '+d.ingress+'; çıkış '+(d.egress.join(', ')||'yok')+'.';
+ }
+ case 'receive':return event.device+' cihazı '+d.protocol+' çerçevesini aldı'+(d.svi?' (SVI)':'')+'.';
+ case 'ttl':return event.device+' yönlendiricisinde TTL '+d.before+' → '+d.after+' oldu.';
+ case 'discard':return event.device+' çerçeveyi reddetti: '+d.reason+'.';
+ case 'icmp-delivered':return 'ICMP yanıtı kaynağa ulaştı.';
+ case 'icmp-undelivered':return 'ICMP yanıtı kaynağa ulaşamadı.';
+ default:return event.raw;
+ }
+}
+function at(log,index){
+ if(!log||!Array.isArray(log.events)||!Number.isInteger(index)||index<0||index>=log.events.length)return null;
+ const event=log.events[index];
+ return {index,total:log.events.length,...event,explanation:explain(event),hasPrevious:index>0,hasNext:index<log.events.length-1,logTruncated:!!log.truncated};
+}
+const api=Object.freeze({normalize,explain,at});
 if(typeof module==='object'&&module.exports)module.exports=api;
 else root.AgLabPacketEvents=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
