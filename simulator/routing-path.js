@@ -28,7 +28,7 @@ function routingSourceHop(source,targetIp){
  const matches=routingIpBindings(source.gateway).filter(binding=>get(binding.id)?.type==='Router');
  return matches.length===1?matches[0]:false;
 }
-function findPath(a,b,vlan=null,targetIp=null,validateVlans=false,options={}){
+function findPath(a,b,vlan=null,targetIp=null,strict=false,options={}){
  const forwardingTrees=new Map(),startVlan=vlan===null||vlan===undefined?endpointVlan(a):Number(vlan)||endpointVlan(a);
  const firstHop=targetIp?routingSourceHop(get(a),targetIp):null;if(firstHop===false)return null;
  const queue=[{node:a,path:[],vlans:[],vlan:startVlan,pending:firstHop}],seen=new Set([a+'|'+startVlan+'|'+(firstHop?.id||'')]);
@@ -36,7 +36,7 @@ function findPath(a,b,vlan=null,targetIp=null,validateVlans=false,options={}){
   const state=queue[index];
   if(state.node===b&&!state.pending&&(options.targetVlan===undefined||state.vlan===Number(options.targetVlan))){
    state.path.vlans=state.vlans;
-   if(targetIp&&!validateVlans&&state.path.some((link,i)=>!linkCarriesVlan(link,state.vlans[i]).ok))return findPath(a,b,vlan,targetIp,true,options)||state.path;
+   if(targetIp&&!strict&&state.path.some((link,i)=>!linkCarriesVlan(link,state.vlans[i]).ok))return findPath(a,b,vlan,targetIp,true,options)||state.path;
    return state.path;
   }
   const current=get(state.node);let pending=state.pending;
@@ -50,7 +50,7 @@ function findPath(a,b,vlan=null,targetIp=null,validateVlans=false,options={}){
     nextPending=null;
    }
    if(current?.type==='Switch'&&next?.type==='Switch'&&stpIsBlocked(link,edgeVlan,forwardingTrees))continue;
-   if(validateVlans&&!linkCarriesVlan(link,edgeVlan).ok)continue;
+   if(strict&&!linkCarriesVlan(link,edgeVlan).ok)continue;
    if(options.management&&!switchManagementLink(link,edgeVlan))continue;
    const nextVlan=targetIp&&current?.type==='Router'?edgeVlan:state.vlan,key=nextId+'|'+nextVlan+'|'+(nextPending?.id||'');
    if(seen.has(key))continue;seen.add(key);

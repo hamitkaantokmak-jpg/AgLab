@@ -1,5 +1,11 @@
 # AğLab Akademi — AGL-001–040
 
+Ortak motor senaryoları Lab'da kapalı menülerin dışında görünür. Sorun Çöz'deki
+OSPF, BGP, port güvenliği ve alt arayüz görevleri aynı cihaz/CLI/iletim motoruna
+yönlenir. Özellik kapsamı, desteklenmeyen ileri komutlar ve erişilebilirlik
+denetimi için [ortak motor belgesine](docs/ORTAK_MOTOR.md) bakın. Senaryolar genel
+eğitim örnekleridir; şubede yaşanmış olay olarak sunulmaz.
+
 AGL-006–040 uyarlaması ve motor sınırlarının denetimi için
 [uyarlama raporuna](academy/ADAPTATION.md) bakın. Aşağıdaki v1 notları
 ilk beş görevin kapsamını anlatır.

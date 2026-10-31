@@ -54,8 +54,8 @@ function openDeviceCli(id){
   });
   const style=document.createElement('style');
   style.textContent=`
-   #ptDeviceCliDialog{position:fixed;margin:0;padding:0;width:min(560px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow:auto;border:1px solid #557591;border-radius:14px;background:#111d2d;color:#e7f1ff;box-shadow:0 18px 70px #0009;z-index:10000}
-   #ptDeviceCliDialog .pt-device-cli-titlebar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:#1b3045;position:sticky;top:0;z-index:1}
+   #ptDeviceCliDialog{position:fixed;margin:0;padding:0;width:min(560px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow:auto;border:1px solid #557591;border-radius:14px;background:var(--panel,#111d2d);color:var(--text,#e7f1ff);box-shadow:0 18px 70px #0009;z-index:10000}
+   #ptDeviceCliDialog .pt-device-cli-titlebar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:var(--panel2,#1b3045);position:sticky;top:0;z-index:1}
    #ptDeviceCliDialog .pt-device-cli-titlebar strong{overflow-wrap:anywhere}
    #ptDeviceCliDialog .pt-device-cli-titlebar button{width:auto;min-height:40px;flex-shrink:0}
    #ptDeviceCliDialog .pt-cli-card{margin:0;border:0;border-radius:0;min-width:0;grid-column:auto;padding:14px}

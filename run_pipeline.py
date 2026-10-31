@@ -7,6 +7,7 @@ ACADEMY_DOCS=['AKADEMI.md','academy/ADAPTATION.md','academy/adaptation-audit.jso
 TESTS=['test_aglab_pkt_trunk.py','test_aglab_import.py','test_aglab_cli_vlan.py','test_aglab_status.py','test_aglab_subinterfaces.py','test_aglab_v7.py','test_aglab_v11_routing.py','test_aglab_v12_gateway.py','test_aglab_v13_router_ping.py','test_aglab_v15_local_ping.py','test_aglab_v17_ping_validation.py','test_aglab_academy.py','test_aglab_ui.py']
 TESTS.append('test_aglab_trunk_defaults.py')
 TESTS.append('test_aglab_device_cli.py')
+TESTS.append('test_aglab_network_features.py')
 TESTS.append('test_aglab_l2_router_trunk.py')
 TESTS.append('test_aglab_mac_learning.py')
 TESTS.append('test_aglab_frame_forwarding.py')
@@ -29,6 +30,8 @@ ARTIFACTS=['AgLab_Final_PKT_Import.html','convert_pkt_to_aglab.py','restore_pkt_
 ARTIFACTS.extend(['simulator/mac-address.js','simulator/test_mac_address.cjs','pkt-sample-matrix.json','PKT_ORNEK_MATRISI.md','simulator/switch-management.js','simulator/mac-learning.js','simulator/ethernet-forwarding.js','simulator/routing-path.js','simulator/routed-ethernet.js','simulator/icmp.js','simulator/traceroute.js','build_simulator.py','SIMULATOR_PLAN.md'])
 ARTIFACTS.extend(['simulator/packet-events.js','simulator/packet-detective-ui.js'])
 ARTIFACTS.append('simulator/device-cli.js')
+ARTIFACTS.extend(['simulator/network-protocols.js','simulator/port-security.js','simulator/network-scenarios.js','simulator/network-scenarios.json'])
+ARTIFACTS.append('docs/ORTAK_MOTOR.md')
 def run():
  p=argparse.ArgumentParser();p.add_argument('--out',default='dist');p.add_argument('--skip-browser',action='store_true');p.add_argument('--timeout',type=int,default=100);a=p.parse_args()
  out=(ROOT/a.out).resolve();out.mkdir(parents=True,exist_ok=True)
