@@ -11,12 +11,22 @@ const controls=document.createElement('div');
 const refresh=document.createElement('button');refresh.id='packetDetectiveRefresh';refresh.textContent='Son olayları göster';
 const previous=document.createElement('button');previous.id='packetDetectivePrevious';previous.textContent='← Önceki';previous.disabled=true;
 const next=document.createElement('button');next.id='packetDetectiveNext';next.textContent='Sonraki →';next.disabled=true;
-controls.append(refresh,previous,next);panel.append(controls);
+const filter=document.createElement('select');filter.id='packetDetectiveFilter';filter.setAttribute('aria-label','Paket olay türü');
+for(const [value,label] of [['all','Tüm olaylar'],['arp','ARP'],['icmp','ICMP'],['forward','İletim'],['discard','Kayıp / reddedilen']]){
+ const option=document.createElement('option');option.value=value;option.textContent=label;filter.append(option);
+}
+controls.append(refresh,filter,previous,next);panel.append(controls);
 const status=document.createElement('p');status.id='packetDetectiveStatus';status.setAttribute('role','status');panel.append(status);
 const explanation=document.createElement('p');explanation.id='packetDetectiveExplanation';panel.append(explanation);
 const raw=document.createElement('pre');raw.id='packetDetectiveRaw';raw.style.whiteSpace='pre-wrap';raw.style.overflowWrap='anywhere';panel.append(raw);
 host.append(panel);
-let snapshot={events:[],overflow:0,truncated:false},index=0;
+let allEvents={events:[],overflow:0,truncated:false},snapshot=allEvents,index=0;
+function filtered(){
+ const mode=filter.value;
+ if(mode==='all')return allEvents;
+ const events=allEvents.events.filter(event=>mode==='forward'?event.kind==='forward':mode==='discard'?event.kind==='discard'||event.kind==='icmp-undelivered':mode==='arp'?event.raw.toLowerCase().includes('arp-'):event.raw.toLowerCase().includes('icmp-'));
+ return {...allEvents,events};
+}
 let marked=null,markedEdge=null;
 function clearEdge(){if(markedEdge){markedEdge.removeAttribute('stroke');markedEdge.removeAttribute('stroke-width');markedEdge=null;}}
 function markDevice(id){
@@ -45,7 +55,7 @@ function render(){
  const step=AgLabPacketEvents.at(snapshot,index);
  previous.disabled=!step?.hasPrevious;next.disabled=!step?.hasNext;
  if(!step){
-  status.textContent='Henüz görüntülenecek ağ olayı yok.';
+  status.textContent=allEvents.events.length?'Bu filtreye uygun ağ olayı yok.':'Henüz görüntülenecek ağ olayı yok.';
   explanation.textContent='';raw.textContent='';markDevice(null);return;
  }
  status.textContent='Adım '+(step.index+1)+' / '+step.total+(snapshot.truncated?' · Kayıt sınırı aşıldı; '+snapshot.overflow+' olay gösterilemiyor.':'');
@@ -55,9 +65,10 @@ function render(){
  markForwardEdge(step);
 }
 refresh.onclick=()=>{
- snapshot=AgLabPacketEvents.normalize(ethernetEvents.slice(),ethernetEventOverflow);
- index=0;render();
+ allEvents=AgLabPacketEvents.normalize(ethernetEvents.slice(),ethernetEventOverflow);
+ snapshot=filtered();index=0;render();
 };
+filter.onchange=()=>{snapshot=filtered();index=0;render()};
 previous.onclick=()=>{if(index>0){index--;render()}};
 next.onclick=()=>{if(index+1<snapshot.events.length){index++;render()}};
 render();
