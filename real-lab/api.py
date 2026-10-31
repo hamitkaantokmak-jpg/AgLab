@@ -11,6 +11,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from diagnostics import ROUTERS, SHOW, diagnose
 
 ROOT = Path(__file__).resolve().parent
 ACTIONS = {"start": "start", "stop": "stop", "status": "status"}
@@ -51,6 +52,12 @@ class API(BaseHTTPRequestHandler):
             return self.respond(401, {"error": "unauthorized"})
         if self.path == "/api/lab":
             return self.respond(200, {"lab": "aglab-real-mvp", "devices": sorted(DEVICES)})
+        if self.path.startswith("/api/diagnostics/"):
+            parts = self.path.split("/")
+            if len(parts) != 5 or parts[3] not in ROUTERS or parts[4] not in SHOW:
+                return self.respond(404, {"error": "unsupported diagnostic"})
+            result = diagnose(parts[3], parts[4])
+            return self.respond(200 if result["ok"] else 502, result)
         return self.respond(404, {"error": "unknown endpoint"})
 
     def do_POST(self):
