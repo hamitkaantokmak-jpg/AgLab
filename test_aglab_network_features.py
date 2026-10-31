@@ -23,7 +23,7 @@ class CommonEngineTests(unittest.TestCase):
   lines += ['', '## Erişilebilirlik']+[str(r) for r in REPORT['accessibility']]
   (OUT/'network-audit.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
  def setUp(self):
-  self.context=self.browser.new_context(viewport={'width':1280,'height':960});self.page=self.context.new_page();self.errors=[]
+  self.context=self.browser.new_context(viewport={'width':1280,'height':960});self.page=self.context.new_page();self.page.emulate_media(reduced_motion='reduce');self.errors=[]
   self.page.on('pageerror',lambda e:self.errors.append(str(e)));self.page.goto((ROOT/'AgLab_Final_PKT_Import.html').as_uri());self.page.click('[data-area="lab"]')
  def tearDown(self):
   self.context.close();self.assertEqual(self.errors,[])
@@ -112,7 +112,19 @@ class CommonEngineTests(unittest.TestCase):
    if self.page.locator('html').get_attribute('data-theme')!=theme:self.page.locator('#themeToggle').focus();self.page.keyboard.press('Enter')
    for area in ['learn','lab','troubleshoot']:
     button=self.page.locator(f'button[data-area="{area}"]');button.focus();self.page.keyboard.press('Enter');expect(button).to_have_attribute('aria-pressed','true')
-    issues=self.run_js("""()=>{const issues=[];for(const e of document.querySelectorAll('input,select,textarea,button')){const s=getComputedStyle(e);if(!e.getClientRects().length||s.visibility==='hidden'||e.type==='file'||e.disabled)continue;const labelled=(e.getAttribute('aria-label')||e.title||'').trim()||(e.getAttribute('aria-labelledby')||'').split(/\\s+/).some(id=>document.getElementById(id)?.textContent.trim())||e.labels?.length;const named=e.tagName==='BUTTON'?labelled||/[\\p{L}\\p{N}]/u.test(e.innerText):labelled;if(!named)issues.push('Erişilebilir ad yok: '+(e.id||e.outerHTML.slice(0,90)));if(e.tabIndex>0)issues.push('Pozitif tabindex: '+e.id)}return issues}""")
+    self.run_js('(area)=>document.querySelectorAll("#area-"+area+" details").forEach(d=>d.open=true)',area)
+    issues=self.run_js(r"""()=>{
+     const issues=[];
+     for(const e of document.querySelectorAll('input,select,textarea,button')){
+      const s=getComputedStyle(e);
+      if(!e.getClientRects().length||s.visibility==='hidden'||e.closest('details:not([open])')||e.type==='file'||e.disabled)continue;
+      const labelled=(e.getAttribute('aria-label')||e.title||'').trim()||(e.getAttribute('aria-labelledby')||'').split(/\s+/).some(id=>document.getElementById(id)?.textContent.trim())||[...(e.labels||[])].some(label=>label.textContent.trim());
+      const named=e.tagName==='BUTTON'?labelled||/[A-Za-z0-9À-ɏ]/.test(e.innerText):labelled;
+      if(!named)issues.push('Erişilebilir ad yok: '+(e.id||e.outerHTML.slice(0,90)));
+      if(e.tabIndex>0)issues.push('Pozitif tabindex: '+e.id);
+     }
+     return issues;
+    }""")
     self.page.keyboard.press('Tab');self.assertTrue(self.run_js("document.activeElement!==document.body"))
     outline=self.run_js("getComputedStyle(document.activeElement).outlineStyle")
     issues += [] if outline not in ['none','hidden'] else ['Klavye odağı görünmüyor']
