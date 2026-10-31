@@ -56,6 +56,33 @@ class LocalHTTPTests(unittest.TestCase):
             self.assertIn('"r1"',body)
             self.assertIn('"pc2"',body)
 
+    def test_diagnostics_requires_auth_and_allowlist(self):
+        with patch.object(api, "TOKEN", "x"*32), patch.object(api, "diagnose") as diagnose:
+            code,_=self.request("GET","/api/diagnostics/r1/routes")
+            self.assertEqual(code,401)
+            for path in ("/api/diagnostics/r3/routes",
+                         "/api/diagnostics/r1/configure",
+                         "/api/diagnostics/r1/routes/extra",
+                         "/api/diagnostics/r1/routes?cmd=sh"):
+                code,_=self.request("GET",path,"x"*32)
+                self.assertEqual(code,404)
+            diagnose.assert_not_called()
+
+    def test_authenticated_diagnostics_read_only(self):
+        with patch.object(api, "TOKEN", "x"*32), patch.object(api, "diagnose") as diagnose:
+            diagnose.return_value={"router":"r2","view":"interfaces","ok":True,"output":"eth0 up"}
+            code,body=self.request("GET","/api/diagnostics/r2/interfaces","x"*32)
+            self.assertEqual(code,200)
+            self.assertIn("eth0 up",body)
+            diagnose.assert_called_once_with("r2","interfaces")
+
+    def test_failed_diagnostics_returns_bad_gateway(self):
+        with patch.object(api,"TOKEN","x"*32),patch.object(api,"diagnose") as diagnose:
+            diagnose.return_value={"router":"r1","view":"neighbors","ok":False,"output":"Docker unavailable"}
+            code,body=self.request("GET","/api/diagnostics/r1/neighbors","x"*32)
+            self.assertEqual(code,502)
+            self.assertIn("Docker unavailable",body)
+
     def test_unknown_action_does_not_run_process(self):
         with patch.object(api,"TOKEN","x"*32),patch.object(api.subprocess,"run") as run:
             code,_=self.request("POST","/api/lab/shell","x"*32)
