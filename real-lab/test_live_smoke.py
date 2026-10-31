@@ -32,9 +32,11 @@ class LiveSmokeTests(unittest.TestCase):
             seen.append(cmd)
             if cmd[0] == "docker":
                 raise subprocess.CalledProcessError(1, cmd)
-        with patch.object(live_smoke, "run", side_effect=fake), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        with patch.object(live_smoke, "run", side_effect=fake), patch.object(live_smoke.time, "sleep") as sleep, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(live_smoke.main(["--execute"]), 1)
         self.assertEqual(seen[-1][1], "destroy")
+        self.assertEqual(sum(cmd[0] == "docker" for cmd in seen), 8)
+        self.assertEqual(sleep.call_count, 7)
 
     def test_deploy_failure_still_attempts_destroy(self):
         seen = []
