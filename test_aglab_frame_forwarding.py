@@ -60,7 +60,9 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
    break
   page.click('#packetDetectiveNext')
  assert found_edge, 'No real single-egress forwarding edge was highlighted during playback'
- page.click('#packetDetectivePrevious')
+ while page.locator('#packetDetectivePrevious').is_enabled():
+  page.click('#packetDetectivePrevious')
+ assert 'Adım 1 /' in page.locator('#packetDetectiveStatus').inner_text()
  assert page.locator('#ptCanvas line.pt-edge[stroke="#ffcb38"]').count()==0
 
  assert '100 percent' in cmd('d3','ping 192.168.10.3')
