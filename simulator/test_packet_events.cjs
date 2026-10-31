@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict');
+const {normalize}=require('./packet-events.js');
+const input=['frame arp-request src d3 dst ff:ff:ff:ff:ff:ff vlan 10','broadcast d1 ingress fa0/1 egress fa0/2,gi0/1 vlan 10','receive d4 arp-request vlan 10','ttl-forward R1 2 -> 1','discard d8 destination-mac','icmp-undelivered d3 no-route','unknown legacy event'];
+const x=normalize(input,3);
+assert.equal(x.truncated,true);assert.equal(x.overflow,3);assert.equal(x.events.length,7);
+assert.deepEqual(x.events.map(e=>e.kind),['frame','forward','receive','ttl','discard','icmp-undelivered','other']);
+assert.deepEqual(x.events[1].detail.egress,['fa0/2','gi0/1']);assert.equal(x.events[3].detail.after,1);
+assert.equal(x.events[6].raw,'unknown legacy event');
+assert.deepEqual(normalize(['filter SW1 ingress fa0/1 egress - vlan 10']).events[0].detail.egress,[]);
+assert.throws(()=>normalize(['a'], -1));assert.throws(()=>normalize([null]));
+console.log('PASS packet detective event normalization');
