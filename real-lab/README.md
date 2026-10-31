@@ -1,5 +1,32 @@
 # AğLab Gerçek Lab MVP – iki FRR router + iki PC
 
+## Görüntüleri düzenli yenileme
+
+Yönetici API'si çalışırken exporter'ın mevcut yönetici ortamında:
+
+```sh
+python3 real-lab/export_student_snapshot.py --watch --interval 20
+```
+
+`--watch` her başarılı veya başarısız toplama sonrasında 5–30 saniye bekler
+(varsayılan 20). İşlemler üst üste binmez. Önceki bölümdeki token, router kapsamı,
+dosya ve okuyucu GID ayarları aynı şekilde kullanılır; bu süreç öğrenci hesabında
+çalıştırılmaz. Tek seferlik export için seçenek vermeden çalıştırmak yeterlidir.
+Bu, yönetici terminalinde açık kalan bir yenileme sürecidir; sistem servisi kurulmaz.
+
+Geçersiz başlangıç ayarlarıyla döngü başlamaz. Geçici API/toplama hatasında önceki
+dosya korunur ve bir sonraki aralıktan sonra tekrar denenir; hata ayrıntısı veya
+anahtar loglanmaz. Bildirim yalnızca hata/sağlıklı durum değiştiğinde yazılır.
+Toplama sırasında 60 saniyelik geçerlilik süresi dolan veri yayımlanmaz.
+Yenileme durur veya sürekli hata verirse öğrenci servisi eski görüntüyü 503 ile
+reddeder; yaşını sıfırlayıp eski sonucu yeniymiş gibi sunmaz.
+
+Ctrl+C veya SIGTERM süreci temiz biçimde durdurur. Yarım yazılan geçici dosya
+silinir; son yayımlanan görüntü korunur ve normal süresi dolunca geçersiz olur.
+Öğrenci ekranındaki **Tanıyı göster** son görüntüyü okur; ekran kendiliğinden
+sorgu yapmaz. Canlı CI iki ardışık gerçek FRR görüntüsü ve SIGTERM ile temiz
+kapanışı, birim testleri hata/iyileşme, aralık sınırı ve yarım yazma güvenliğini sınar.
+
 ## Yerel öğrenci tanılama ekranı
 
 Öğrenci servisi çalışırken aynı makinede `http://127.0.0.1:8766/` adresini açın.
@@ -115,7 +142,7 @@ seçilen router'ların üçer tanısını alır; dosyaya kapsam dışı router y
 yönetici API'sinin işlem kilidine uyar. Tümü başarılıysa yalnızca `ok` ve `output`
 alanlarını zaman damgasıyla atomik olarak yazar. Hata durumunda önceki dosya kalır;
 60 saniye dolunca öğrenci servisi bunu reddeder. Proxy ortamını kullanmaz ve
-yönlendirmeleri takip etmez. Düzenli yenileme operatörün sorumluluğundadır; bu
+yönlendirmeleri takip etmez. Düzenli yenileme için yukarıdaki `--watch` kullanılır; bu
 istek aynı topoloji anının atomik görüntüsü değildir. Çıktılarda lab IP'leri ve
 arayüz bilgileri bulunur; yalnızca o öğrenciye uygun veriyi paylaşın.
 

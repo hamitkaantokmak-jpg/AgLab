@@ -14,6 +14,7 @@ class StudentLiveLifecycleTests(unittest.TestCase):
             start.assert_not_called()
 
     def run_live(self, run, **patches):
+        patches.setdefault('verify_watch', Mock())
         with patch.object(smoke.sys, 'platform', 'linux'), patch.object(smoke.os, 'geteuid', return_value=0, create=True), \
              patch.object(smoke.subprocess, 'run', side_effect=run), \
              (patch.multiple(smoke, **patches) if patches else contextlib.nullcontext()):
@@ -62,6 +63,20 @@ class StudentLiveLifecycleTests(unittest.TestCase):
             with self.assertRaisesRegex(OSError, 'stop failed'):
                 self.run_live(run, request=Mock(return_value=(200, '{"output":"192.168.20.0/24"}')),
                               execute=Mock(), stop_process=Mock(side_effect=OSError('stop failed')))
+        self.assertIn('destroy', calls[-1])
+
+    def test_refresh_failure_stops_admin_and_cleans_containers(self):
+        calls = []
+        def run(command, **kwargs):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 0, stdout='')
+        process = Mock()
+        process.poll.return_value = None
+        with patch.object(smoke.subprocess, 'Popen', return_value=process):
+            with self.assertRaisesRegex(RuntimeError, 'refresh failed'):
+                self.run_live(run, request=Mock(return_value=(200, '{"output":"192.168.20.0/24"}')),
+                              verify_watch=Mock(side_effect=RuntimeError('refresh failed')))
+        process.terminate.assert_called_once()
         self.assertIn('destroy', calls[-1])
 
 

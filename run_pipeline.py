@@ -20,6 +20,7 @@ TESTS.extend(['test_aglab_large_topology.py','test_aglab_pkt_matrix.py','test_ag
 NODE_TESTS=['simulator/test_packet_events.cjs']
 STUDENT_FILES=['real-lab/student_api.py','real-lab/export_student_snapshot.py','real-lab/test_student_api.py','real-lab/student_isolation_smoke.py','real-lab/student_live_smoke.py','real-lab/test_student_live_smoke.py']
 STUDENT_FILES.append('real-lab/test_export_permissions.py')
+STUDENT_FILES.append('real-lab/test_snapshot_watch.py')
 STUDENT_FILES.extend(['real-lab/student.html','real-lab/student.js','real-lab/student.css','real-lab/test_student_ui.py'])
 REAL_LAB_FILES=['real-lab/topology.clab.yml','real-lab/r1/frr.conf','real-lab/r2/frr.conf','real-lab/README.md','real-lab/check_topology.py','real-lab/manage.py','real-lab/test_manage.py','real-lab/live_smoke.py','real-lab/test_live_smoke.py','real-lab/api.py','real-lab/test_api.py','real-lab/dashboard.html','real-lab/test_api_http.py','real-lab/diagnostics.py','real-lab/test_diagnostics.py']
 REAL_LAB_FILES.extend(STUDENT_FILES)
@@ -145,7 +146,13 @@ def run():
     report['tests'].append({'name':'real-lab/test_student_ui.py','status':'PASS' if r.returncode==0 else 'FAIL','exit_code':r.returncode,'stdout':r.stdout[-8000:],'stderr':r.stderr[-8000:]})
    except subprocess.TimeoutExpired:
     report['tests'].append({'name':'real-lab/test_student_ui.py','status':'FAIL','error':f'timed out after {a.timeout}s'})
- report['passed']=not missing and all(t['status']=='PASS' for t in report['tests']) and len(report['tests'])==len(TESTS)+len(NODE_TESTS)+10
+ if not missing:
+  try:
+   r=subprocess.run([sys.executable,str(ROOT/'real-lab/test_snapshot_watch.py')],cwd=ROOT,capture_output=True,text=True,encoding='utf-8',timeout=a.timeout)
+   report['tests'].append({'name':'real-lab/test_snapshot_watch.py','status':'PASS' if r.returncode==0 else 'FAIL','exit_code':r.returncode,'stdout':r.stdout[-8000:],'stderr':r.stderr[-8000:]})
+  except subprocess.TimeoutExpired:
+   report['tests'].append({'name':'real-lab/test_snapshot_watch.py','status':'FAIL','error':f'timed out after {a.timeout}s'})
+ report['passed']=not missing and all(t['status']=='PASS' for t in report['tests']) and len(report['tests'])==len(TESTS)+len(NODE_TESTS)+11
  (out/'test-results.json').write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf-8')
  lines=['# AğLab otomatik test raporu','',f"Tarih (UTC): {report['date_utc']}",f"Sonuç: {'BAŞARILI' if report['passed'] else 'BAŞARISIZ / DOĞRULANMADI'}",'']
  for t in report['tests']:lines.append(f"- {t['status']}: {t['name']} ({t.get('duration_s','?')} sn)")
