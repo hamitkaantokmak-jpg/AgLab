@@ -65,3 +65,7 @@ curl -X POST -H "Authorization: Bearer $AGLAB_LAB_TOKEN" http://127.0.0.1:8765/a
 ```
 
 API yalnızca 127.0.0.1 üzerinde açılır, tek laboratuvarı yönetir, JSON gövdesi/serbest komut kabul etmez ve en az 32 karakterli token ister. Bu **üretim servisi değildir**: eşzamanlı çağrı kontrolü, kullanıcı bazlı izolasyon, HTTPS proxy, log redaksiyonu ve yetki seviyesi henüz yoktur. Sunucuyu internete açmayın veya Docker yetkilerini tarayıcıya iletmeyin. Tarayıcı arayüzü ve terminal erişimi sonraki aşamalardır.
+
+## Yerel yönetim ekranı
+
+API çalışırken **aynı Linux makinesindeki** tarayıcıdan `http://127.0.0.1:8765/` adresini açın. `AGLAB_LAB_TOKEN` ortam değişkenindeki yönetici anahtarını girin. Cihazları görüntüleme, durumu sorgulama, başlatma ve durdurma kontrolleri bulunur. İstekler aynı origin'e gider; anahtar localStorage veya cookie'ye yazılmaz. **Bu ekran halka açık web sitesi veya öğrenciler için güvenli çok kullanıcılı panel değildir.** Henüz terminal, HTTPS proxy ve kullanıcı oturumları yoktur.
