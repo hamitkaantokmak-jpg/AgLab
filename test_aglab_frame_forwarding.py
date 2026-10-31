@@ -24,6 +24,10 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
   before=page.locator('#ptTerminal > div').count()
   page.evaluate("([id,text])=>{document.querySelector('#ptCliDevice').value=id;document.querySelector('#ptCliInput').value=text;document.querySelector('#ptCliForm').requestSubmit()}",[device,text])
   return '\n'.join(page.locator('#ptTerminal > div').all_text_contents()[before:])
+ page.click('#packetDetectiveRefresh')
+ assert 'Henüz görüntülenecek' in page.locator('#packetDetectiveStatus').inner_text()
+ assert page.locator('#packetDetectiveNext').is_disabled()
+ assert page.locator('#packetDetectivePrevious').is_disabled()
  cmd('d3','test ethernet 0200.0000.0004');events=cmd('d3','show ethernet events')
  assert 'unknown-unicast' in events,events
  assert 'receive d5' in events and 'receive d4' in events and 'receive d6' not in events,events
