@@ -12,6 +12,14 @@ spec.loader.exec_module(api)
 
 
 class APITests(unittest.TestCase):
+    def test_dashboard_is_local_and_has_controls(self):
+        page = (ROOT / "dashboard.html").read_text(encoding="utf-8")
+        for action in ("info", "status", "start", "stop"):
+            self.assertIn('data-action="' + action + '"', page)
+        self.assertIn("'/api/lab'", page)
+        self.assertNotIn("localStorage", page)
+        self.assertIn('type="password"', page)
+
     def test_fixed_actions(self):
         self.assertEqual(set(api.ACTIONS), {"start", "stop", "status"})
         self.assertEqual(api.DEVICES, {"r1", "r2", "pc1", "pc2"})
