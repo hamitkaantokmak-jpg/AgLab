@@ -28,6 +28,7 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  assert page.locator('#packetDetectiveRefresh').is_visible()
  page.click('#packetDetectiveRefresh')
  assert 'Henüz görüntülenecek' in page.locator('#packetDetectiveStatus').inner_text()
+ assert 'Tanılama için önce' in page.locator('#packetDetectiveDiagnosis').inner_text()
  assert page.locator('#packetDetectiveNext').is_disabled()
  assert page.locator('#packetDetectivePrevious').is_disabled()
  cmd('d3','test ethernet 0200.0000.0004');events=cmd('d3','show ethernet events')
