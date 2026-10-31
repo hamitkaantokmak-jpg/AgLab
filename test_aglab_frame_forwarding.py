@@ -48,6 +48,15 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  page.click('#packetDetectivePrevious')
  assert 'Adım 1 /' in page.locator('#packetDetectiveStatus').inner_text()
  assert cmd('d3','show ethernet events')==old_events,'Playback must not simulate new traffic'
+ page.select_option('#packetDetectiveFilter','arp')
+ assert 'Adım 1 /' in page.locator('#packetDetectiveStatus').inner_text()
+ assert 'arp-' in page.locator('#packetDetectiveRaw').inner_text()
+ page.select_option('#packetDetectiveFilter','discard')
+ assert 'Bu filtreye uygun ağ olayı yok.' in page.locator('#packetDetectiveStatus').inner_text() or 'Adım 1 /' in page.locator('#packetDetectiveStatus').inner_text()
+ page.select_option('#packetDetectiveFilter','all')
+ assert 'Adım 1 /' in page.locator('#packetDetectiveStatus').inner_text()
+ assert cmd('d3','show ethernet events')==old_events,'Filtering must not simulate new traffic'
+
  # A known one-port forwarding decision highlights its physical SVG edge.
  # Read the real event log and advance only to an eligible decision.
  page.click('#packetDetectiveRefresh')
