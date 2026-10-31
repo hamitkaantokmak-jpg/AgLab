@@ -9,3 +9,13 @@ assert.equal(x.events[6].raw,'unknown legacy event');
 assert.deepEqual(normalize(['filter SW1 ingress fa0/1 egress - vlan 10']).events[0].detail.egress,[]);
 assert.throws(()=>normalize(['a'], -1));assert.throws(()=>normalize([null]));
 console.log('PASS packet detective event normalization');
+
+const {at,explain}=require('./packet-events.js');
+const first=at(x,0),last=at(x,6);
+assert.equal(first.hasPrevious,false);assert.equal(first.hasNext,true);
+assert.equal(last.hasNext,false);assert.equal(last.hasPrevious,true);
+assert.equal(last.logTruncated,true);
+assert.equal(at(x,7),null);assert.equal(at(x,-1),null);
+assert.match(explain(x.events[1]),/fa0\/2/);
+assert.match(explain(x.events[3]),/TTL/);
+assert.equal(explain(x.events[6]),'unknown legacy event');
