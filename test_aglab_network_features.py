@@ -107,6 +107,17 @@ class CommonEngineTests(unittest.TestCase):
   self.page.click('[data-area="troubleshoot"]')
   for legacy,shared in [('ospf','ospf-area'),('bgp','bgp-as'),('portsec','port-security'),('subif','subif-missing')]:
    self.page.click('[data-area="troubleshoot"]');index=self.run_js('(id)=>scenarios.findIndex(s=>s.id===id)',legacy);self.page.locator(f'#scenarioList [data-s="{index}"]').click();expect(self.page.locator('#sharedScenarioSelect')).to_have_value(shared);expect(self.page.locator('#sharedScenarioPanel')).to_be_visible()
+ def test_08_main_area_form_names_and_keyboard_focus(self):
+  for theme in ['dark','light']:
+   if self.page.locator('html').get_attribute('data-theme')!=theme:self.page.locator('#themeToggle').focus();self.page.keyboard.press('Enter')
+   for area in ['learn','lab','troubleshoot']:
+    button=self.page.locator(f'button[data-area="{area}"]');button.focus();self.page.keyboard.press('Enter');expect(button).to_have_attribute('aria-pressed','true')
+    issues=self.run_js("""()=>{const issues=[];for(const e of document.querySelectorAll('input,select,textarea,button')){const s=getComputedStyle(e);if(!e.getClientRects().length||s.visibility==='hidden'||e.type==='file'||e.disabled)continue;const labelled=(e.getAttribute('aria-label')||e.title||'').trim()||(e.getAttribute('aria-labelledby')||'').split(/\\s+/).some(id=>document.getElementById(id)?.textContent.trim())||e.labels?.length;const named=e.tagName==='BUTTON'?labelled||/[\\p{L}\\p{N}]/u.test(e.innerText):labelled;if(!named)issues.push('Erişilebilir ad yok: '+(e.id||e.outerHTML.slice(0,90)));if(e.tabIndex>0)issues.push('Pozitif tabindex: '+e.id)}return issues}""")
+    self.page.keyboard.press('Tab');self.assertTrue(self.run_js("document.activeElement!==document.body"))
+    outline=self.run_js("getComputedStyle(document.activeElement).outlineStyle")
+    issues += [] if outline not in ['none','hidden'] else ['Klavye odağı görünmüyor']
+    REPORT['accessibility'].append({'theme':theme,'area':area,'issues':issues,'keyboard':'Enter navigation and Tab focus; names and tabindex checked'})
+    self.assertEqual(issues,[])
 
 if __name__=='__main__':
  suite=unittest.main(exit=False)

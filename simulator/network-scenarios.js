@@ -68,12 +68,15 @@ if(typeof scenarios!=='undefined'){
 // Meaningful names for existing controls whose context used to be visual only.
 for(const [id,label] of Object.entries({ptCliDevice:'CLI cihazı',ptCliInput:'Cihaz komutu',ptRenameInput:'Seçili cihazın yeni adı',ptSource:'Kaynak cihaz',ptTarget:'Hedef cihaz'})){const el=$p(id);if(el)el.setAttribute('aria-label',label);}
 const accessibilityStyle=document.createElement('style');accessibilityStyle.textContent=`
- :focus-visible{outline:3px solid #d68b00;outline-offset:3px}
+ :focus-visible{outline:3px solid #8b3c00;outline-offset:3px}
  html[data-theme="dark"] :focus-visible{outline-color:#ffe08a}
  #sharedScenarioPanel{background:var(--panel)!important;color:var(--text)!important;border-color:var(--line)!important}
  #sharedScenarioPanel p,#sharedScenarioStatus,#regressionAuditSummary,#regressionAuditResults{color:var(--text)!important}
  #sharedScenarioPanel input,#sharedScenarioPanel select,#sharedScenarioPanel button{background:var(--panel2);color:var(--text)}
  html[data-theme="light"] a{color:#16489a}html[data-theme="dark"] a{color:#a5d5ff}
  #sharedScenarioPanel pre{white-space:pre-wrap;overflow-wrap:anywhere}
- button,input,select,textarea{color:var(--text)!important;background-color:var(--panel2)!important}
+ button,input,select,textarea{color:var(--text)!important;background-color:var(--panel2)!important;background-image:none!important}
 `;document.head.append(accessibilityStyle);
+const areaNavigation=[...document.querySelectorAll('button[data-area]')];
+const announceArea=()=>areaNavigation.forEach(button=>button.setAttribute('aria-pressed',String(button.classList.contains('active'))));
+const areaObserver=new MutationObserver(announceArea);areaNavigation.forEach(button=>areaObserver.observe(button,{attributes:true,attributeFilter:['class']}));announceArea();
