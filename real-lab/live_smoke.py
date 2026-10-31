@@ -4,6 +4,7 @@ import argparse
 import pathlib
 import subprocess
 import sys
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parent
 TOPOLOGY = ROOT / "topology.clab.yml"
@@ -24,8 +25,17 @@ def main(argv=None):
     succeeded = False
     try:
         run(["containerlab", "deploy", "-t", str(TOPOLOGY)], 240)
-        run(PING, 30)
-        succeeded = True
+        # Container startup and routing initialization can lag behind deploy.
+        # Keep retries bounded and never skip cleanup.
+        for attempt in range(8):
+            try:
+                run(PING, 30)
+                succeeded = True
+                break
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                if attempt == 7:
+                    raise
+                time.sleep(2)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as error:
         print("Live smoke failed:", error, file=sys.stderr)
     finally:
