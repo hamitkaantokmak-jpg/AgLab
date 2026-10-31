@@ -59,6 +59,8 @@ with sync_playwright() as pw:
         assert state['devices'][0]['interfaces']['eth0']['enabled'] is True
         page.get_by_role('button', name='CLI penceresini kapat').click()
         expect(dialog).not_to_be_visible()
+        # Cabling uses a fresh topology: the router port above was deliberately shut down.
+        page.evaluate('(topology) => academyEngine.load(topology)', TOPOLOGY)
         pc.scroll_into_view_if_needed()
         before = page.evaluate('academyEngine.snapshot()')
         bounds = pc.bounding_box()
@@ -74,7 +76,8 @@ with sync_playwright() as pw:
         pc.click()
         router.click()
         expect(dialog).not_to_be_visible()
-        assert len(page.evaluate('academyEngine.snapshot()')['links']) == 1
+        final_state = page.evaluate('academyEngine.snapshot()')
+        assert len(final_state['links']) == 1, final_state
         assert not errors, errors
         context.close()
     browser.close()
