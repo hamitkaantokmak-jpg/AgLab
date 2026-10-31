@@ -20,8 +20,8 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
-def request(token, path='/api/diagnostics/r1/routes', method='GET'):
-    connection = http.client.HTTPConnection('127.0.0.1', 8766, timeout=2)
+def request(token, path='/api/diagnostics/r1/routes', method='GET', port=8766):
+    connection = http.client.HTTPConnection('127.0.0.1', port, timeout=2)
     try:
         connection.request(method, path, headers={'Authorization': 'Bearer ' + token})
         response = connection.getresponse()
@@ -30,14 +30,15 @@ def request(token, path='/api/diagnostics/r1/routes', method='GET'):
         connection.close()
 
 
-def execute():
+def execute(*, live_admin_token=None):
     require(sys.platform == 'linux' and os.geteuid() == 0, 'Requires a dedicated Linux runner and root')
     import pwd
     from export_student_snapshot import export_snapshot
     account = pwd.getpwnam('nobody')
     require(account.pw_uid != 0, 'Test account must be unprivileged')
     require(Path('/var/run/docker.sock').is_socket(), 'Real Docker socket required; test cannot be skipped')
-    student_token, admin_token = secrets.token_urlsafe(36), secrets.token_urlsafe(36)
+    student_token = secrets.token_urlsafe(36)
+    admin_token = live_admin_token or secrets.token_urlsafe(36)
     identity = dict(user=account.pw_uid, group=account.pw_gid, extra_groups=[])
     with tempfile.TemporaryDirectory(prefix='aglab-student-isolation-') as directory:
         folder = Path(directory)
@@ -49,8 +50,18 @@ def execute():
         secret.write_text(admin_token, encoding='utf-8')
         secret.chmod(0o600)
         snapshot = folder / 'snapshot.json'
-        export_snapshot(snapshot, admin_token, {'r1'},
-                        fetch=lambda *_: {'ok': True, 'output': 'synthetic route'})
+        if live_admin_token is None:
+            export_snapshot(snapshot, admin_token, {'r1'},
+                            fetch=lambda *_: {'ok': True, 'output': 'synthetic route'})
+        else:
+            # Production exporter, real HTTP admin API and real Docker/FRR.
+            export_snapshot(snapshot, admin_token, {'r1'})
+            require(request(student_token, '/api/lab', port=8765)[0] == 401,
+                    'Student credential accepted by admin service')
+        exported = json.loads(snapshot.read_text(encoding='utf-8'))
+        expected = exported['diagnostics']['r1']
+        if live_admin_token is not None:
+            require('192.168.20.0/24' in expected['routes']['output'], 'Expected real route missing')
         os.chown(snapshot, 0, account.pw_gid)
         snapshot.chmod(0o640)
         # Same UID/GID and empty supplementary groups as the server below.
@@ -93,7 +104,14 @@ with socket.socket(socket.AF_UNIX) as client:
                     time.sleep(0.1)
             else:
                 raise RuntimeError('Student process readiness timed out')
-            require(code == 200 and json.loads(body)['output'] == 'synthetic route', 'Scoped read failed')
+            require(code == 200 and json.loads(body)['output'] == expected['routes']['output'], 'Scoped read failed')
+            for view in ('routes', 'interfaces', 'neighbors'):
+                status, response = request(student_token, '/api/diagnostics/r1/' + view)
+                payload = json.loads(response)
+                require(status == 200 and payload['output'] == expected[view]['output'], 'Exported diagnostic differs')
+                require(payload['router'] == 'r1' and payload['view'] == view, 'Incorrect diagnostic identity')
+                require(set(payload) == {'router', 'view', 'captured_at', 'ok', 'output'}, 'Unexpected response fields')
+                require(admin_token not in response and student_token not in response, 'Credential in response')
             require(request(admin_token)[0] == 401, 'Admin credential accepted by student service')
             require(request(student_token, '/api/diagnostics/r2/routes')[0] == 404, 'Router scope bypass')
             require(request(student_token, '/api/lab')[0] == 404, 'Admin endpoint exposed')
@@ -114,6 +132,8 @@ with socket.socket(socket.AF_UNIX) as client:
                 process.kill()
                 process.wait(timeout=5)
     print('PASS: unprivileged student HTTP, scope, secret/file isolation and denied Docker socket')
+    if live_admin_token is not None:
+        print('PASS: real FRR -> admin HTTP -> scoped exporter -> unprivileged student HTTP (three views)')
 
 
 def main(argv=None):

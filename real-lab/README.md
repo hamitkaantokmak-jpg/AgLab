@@ -1,5 +1,22 @@
 # AğLab Gerçek Lab MVP – iki FRR router + iki PC
 
+## Canlı öğrenci zinciri testi
+
+`sudo python3 real-lab/student_live_smoke.py --execute`, ayrılmış Linux runner'da
+FRR topolojisini kurar, gerçek yönetici HTTP API'sini başlatır, üretim exporter'ıyla
+yalnızca r1'in üç tanısını dosyaya aktarır ve öğrenci sunucusunu `nobody` hesabıyla
+çalıştırır. Öğrenci HTTP çıktıları export edilen üç görünümle birebir karşılaştırılır;
+rota çıktısında gerçek `192.168.20.0/24` ağı aranır. Öğrenci tokenının yönetici
+API'sinde ve yönetici tokenının öğrenci API'sinde reddi de sınanır. Dosya/Docker
+yetkileri, router kapsamı ve eski/eksik görüntü kontrolleri aynı zincirde çalışır.
+
+CI bu testi zorunlu çalıştırır. `--execute` olmadan yalnızca dry-run gösterilir.
+Mevcut aynı adlı lab bulunursa test onu değiştirmeden durur. Başlatılan yönetici
+ve öğrenci süreçleri ile konteynerler hata halinde de kapatılmaya çalışılır; CI
+ayrıca kalan konteynerleri denetler. Bu test TLS, çok kiracılı oturum, öğrenci UI'si
+veya üretim dağıtımının tamamını doğrulamaz. Sentetik hesap yalıtım testi ayrıca
+korunmuştur; canlı zincir doğrulaması için bu yeni testin başarılı sonucu gerekir.
+
 ## Linux hesap yalıtımı doğrulaması
 
 `sudo python3 real-lab/student_isolation_smoke.py --execute` yalnızca ayrılmış

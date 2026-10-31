@@ -25,6 +25,8 @@ jobs:
         run: sudo python3 real-lab/live_smoke.py --execute
       - name: Yetkisiz öğrenci hesabı ve Docker yalıtımını doğrula
         run: sudo python3 real-lab/student_isolation_smoke.py --execute
+      - name: Canlı router tanısından öğrenci yanıtına tüm zinciri doğrula
+        run: sudo python3 real-lab/student_live_smoke.py --execute
       - name: Artık konteyner kalmadığını kontrol et
         if: always()
         run: |
