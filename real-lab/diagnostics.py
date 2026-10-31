@@ -16,7 +16,14 @@ def diagnose(router, view, runner=subprocess.run):
     if router not in ROUTERS or view not in SHOW:
         raise ValueError("unsupported router or diagnostic")
     command = ["docker", "exec", "clab-" + LAB + "-" + router, "vtysh", "-c", " ".join(SHOW[view])]
-    result = runner(command, capture_output=True, text=True, timeout=15, check=False)
+    try:
+        result = runner(command, capture_output=True, text=True, timeout=15, check=False)
+    except subprocess.TimeoutExpired:
+        return {"router": router, "view": view, "ok": False,
+                "output": "Tanılama zaman aşımına uğradı (15 saniye)."}
+    except OSError:
+        return {"router": router, "view": view, "ok": False,
+                "output": "Tanılama başlatılamadı; Docker erişimini kontrol edin."}
     return {"router": router, "view": view, "ok": result.returncode == 0,
             "output": (result.stdout + result.stderr)[-12000:]}
 
