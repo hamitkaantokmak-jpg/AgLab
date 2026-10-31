@@ -16,6 +16,11 @@ EXPECTED = {
 def validate_files():
     topo = TOPOLOGY.read_text(encoding="utf-8")
     assert "name: aglab-real-mvp" in topo
+    # The configuration files must be resolved relative to this topology.
+    for config in ("r1/frr.conf", "r2/frr.conf"):
+        assert ("startup-config: " + config) in topo
+        assert (ROOT / config).is_file()
+
     for node in ("r1", "r2", "pc1", "pc2"):
         assert re.search(r"^    " + node + r":$", topo, re.M), node
     for endpoints in (
