@@ -1,0 +1,33 @@
+name: aglab-real-mvp
+topology:
+  groups:
+    routers:
+      kind: frr
+      image: quay.io/frrouting/frr:containerlab-10.7.1
+      daemons:
+        - staticd
+  nodes:
+    r1:
+      group: routers
+      startup-config: r1/frr.conf
+    r2:
+      group: routers
+      startup-config: r2/frr.conf
+    pc1:
+      kind: linux
+      image: alpine:3.20
+      exec:
+        - ip addr add 192.168.10.10/24 dev eth1
+        - ip link set eth1 up
+        - ip route add 192.168.20.0/24 via 192.168.10.1
+    pc2:
+      kind: linux
+      image: alpine:3.20
+      exec:
+        - ip addr add 192.168.20.10/24 dev eth1
+        - ip link set eth1 up
+        - ip route add 192.168.10.0/24 via 192.168.20.1
+  links:
+    - endpoints: [pc1:eth1, r1:eth1]
+    - endpoints: [r1:eth2, r2:eth2]
+    - endpoints: [r2:eth1, pc2:eth1]
