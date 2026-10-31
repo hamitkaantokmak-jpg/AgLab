@@ -1,0 +1,26 @@
+name: Gerçek Lab canlı doğrulama (isteğe bağlı)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-containerlab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+      - name: Containerlab kur
+        run: |
+          curl -fsSL https://get.containerlab.dev | sudo bash
+          containerlab version
+      - name: Gerçek topolojiyi çalıştır ve ICMP doğrula
+        run: sudo python3 real-lab/live_smoke.py --execute
+      - name: Artık konteyner kalmadığını kontrol et
+        if: always()
+        run: |
+          sudo containerlab destroy -t real-lab/topology.clab.yml --cleanup || true
+          docker ps --format '{{.Names}}' | grep '^clab-aglab-real-mvp-' && exit 1 || true
