@@ -101,7 +101,9 @@ class LocalHTTPTests(unittest.TestCase):
             self.assertEqual(code,503)
             self.assertIn("diagnostic unavailable",body)
             self.assertNotIn("sensitive internal detail",body)
-            self.assertTrue(api.OPERATION_LOCK.acquire(blocking=False))
+            # Reading the response can beat the handler's finally block on
+            # another thread. A leaked lock must still fail within one second.
+            self.assertTrue(api.OPERATION_LOCK.acquire(timeout=1))
             api.OPERATION_LOCK.release()
 
     def test_dashboard_has_diagnostic_controls(self):
