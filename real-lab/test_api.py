@@ -16,6 +16,15 @@ class APITests(unittest.TestCase):
         self.assertEqual(set(api.ACTIONS), {"start", "stop", "status"})
         self.assertEqual(api.DEVICES, {"r1", "r2", "pc1", "pc2"})
 
+    def test_operation_lock_prevents_overlap(self):
+        self.assertTrue(api.OPERATION_LOCK.acquire(blocking=False))
+        try:
+            self.assertFalse(api.OPERATION_LOCK.acquire(blocking=False))
+        finally:
+            api.OPERATION_LOCK.release()
+        self.assertTrue(api.OPERATION_LOCK.acquire(blocking=False))
+        api.OPERATION_LOCK.release()
+
     def test_token_is_required_to_serve(self):
         with patch.object(api, "TOKEN", ""):
             with self.assertRaises(SystemExit):
