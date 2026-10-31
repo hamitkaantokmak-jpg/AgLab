@@ -19,6 +19,7 @@ controls.append(refresh,filter,previous,next);panel.append(controls);
 const status=document.createElement('p');status.id='packetDetectiveStatus';status.setAttribute('role','status');panel.append(status);
 const explanation=document.createElement('p');explanation.id='packetDetectiveExplanation';panel.append(explanation);
 const raw=document.createElement('pre');raw.id='packetDetectiveRaw';raw.style.whiteSpace='pre-wrap';raw.style.overflowWrap='anywhere';panel.append(raw);
+const diagnosis=document.createElement('p');diagnosis.id='packetDetectiveDiagnosis';diagnosis.setAttribute('role','status');panel.append(diagnosis);
 host.append(panel);
 let allEvents={events:[],overflow:0,truncated:false},snapshot=allEvents,index=0;
 function filtered(){
@@ -52,6 +53,8 @@ function markForwardEdge(step){
  line.setAttribute('stroke','#ffcb38');line.setAttribute('stroke-width','6');markedEdge=line;
 }
 function render(){
+ const result=AgLabPacketEvents.diagnose(allEvents);
+ diagnosis.textContent=!result.hasEvidence?'Tanılama için önce ağ testi çalıştır.':result.issues.length?result.issues.length+' olası sorun kaydı var. '+result.issues[0].summary+' Öneri: '+result.issues[0].hint:'Bu kayıtlarda açık bir paket reddi veya ICMP ulaşamama olayı yok.'+(result.truncated?' Olay kaydı sınırlı; sonuç kesin değil.':'');
  const step=AgLabPacketEvents.at(snapshot,index);
  previous.disabled=!step?.hasPrevious;next.disabled=!step?.hasNext;
  if(!step){
