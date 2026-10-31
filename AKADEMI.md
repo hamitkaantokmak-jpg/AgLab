@@ -10,6 +10,20 @@ Cihaz, kablo ve CLI düzenlemeleri mevcut simülatör üzerinden yapılır. Kavr
 soruları Akademi bölümünde cevapla ve Çözümümü kontrol et düğmesini kullan.
 İpuçları sırayla açılır. Sıfırla, etkin görevin özgün başlangıcını ve boş cevapları yükler.
 
+## Gerçek Lab tanılarına geçiş
+
+Akademi panelindeki **Gerçek Lab tanıları** bölümünü açıp **Öğrenci tanılarını aç**
+bağlantısını kullan. Aynı bilgisayarda çalışan `http://127.0.0.1:8766/` öğrenci
+servisi yeni sekmede açılır; öğrenci anahtarını yalnızca oraya girersin. Akademi
+anahtarı almaz, kaydetmez veya servise istek yapmaz. Yeni sekmenin Akademi
+sekmesine erişimi ve kaynak adres aktarımı kapalıdır.
+
+Bu, iki router ve iki PC'lik ayrı gerçek örnek topolojiye erişimdir; seçili AGL
+görevini otomatik olarak gerçek cihazlara kurmaz. Mevcut 40 görevin simülatör
+topolojisi, cevapları, ipuçları ve ilerlemesi Akademi sekmesinde kalır. Öğrenci
+servisi çalışmıyorsa yeni sekme bağlantı kuramaz; kurulum için
+[Gerçek Lab belgesine](real-lab/README.md) bak.
+
 ## Kaldığın yerden devam etme
 
 Etkin laboratuvar, öğrenci topolojisi, seçilen cevaplar ve açılan ipuçları aynı topoloji kaydında tutulur. Aynı adres ve tarayıcı profiliyle sayfayı yeniden açınca Laboratuvar → Akademi bölümünden çalışmana devam edebilirsin. Önceden kontrol ettiğin çözümün puanı yeniden hesaplanır; eski bir başarı sonucu güncel topolojiye körlemesine uygulanmaz. Yapılandırma veya cevap değişirse önceki sonuç yerine yeniden kontrol etme uyarısı gösterilir.

@@ -1,5 +1,7 @@
 """Real Chromium and student HTTP boundary; no administrator token or Docker."""
 import json
+import functools
+import http.server
 from pathlib import Path
 import tempfile
 import threading
@@ -16,9 +18,17 @@ class StudentBrowserTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
         cls.snapshot = Path(cls.temp.name) / 'snapshot.json'
-        cls.server = make_server(TOKEN, cls.snapshot, {'r1'}, port=0)
+        cls.server = make_server(TOKEN, cls.snapshot, {'r1'}, port=8766)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
+        class QuietHandler(http.server.SimpleHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+        root = Path(__file__).resolve().parents[1]
+        cls.academy_server = http.server.ThreadingHTTPServer(
+            ('127.0.0.1', 0), functools.partial(QuietHandler, directory=str(root)))
+        cls.academy_thread = threading.Thread(target=cls.academy_server.serve_forever, daemon=True)
+        cls.academy_thread.start()
         cls.playwright = sync_playwright().start()
         cls.browser = cls.playwright.chromium.launch(headless=True)
         cls.url = 'http://127.0.0.1:' + str(cls.server.server_address[1])
@@ -31,6 +41,9 @@ class StudentBrowserTests(unittest.TestCase):
         cls.server.server_close()
         cls.thread.join(timeout=3)
         cls.temp.cleanup()
+        cls.academy_server.shutdown()
+        cls.academy_server.server_close()
+        cls.academy_thread.join(timeout=3)
 
     def write_snapshot(self, age=0):
         self.snapshot.write_text(json.dumps({'captured_at': time.time()-age, 'diagnostics': {
@@ -68,6 +81,42 @@ class StudentBrowserTests(unittest.TestCase):
         expect(self.page.locator('#status')).to_contain_text('geçersiz')
         expect(self.page.locator('#diagnostics-panel')).to_be_hidden()
         self.assertFalse(any('/api/diagnostics/' in r.url for r in self.requests))
+
+    def test_academy_entry_reads_student_diagnostic_and_preserves_work(self):
+        academy_url = ('http://127.0.0.1:' + str(self.academy_server.server_port)
+                       + '/AgLab_Final_PKT_Import.html')
+        self.page.goto(academy_url)
+        self.page.click('[data-area="lab"]')
+        self.page.click('#ux14Guided')
+        self.page.select_option('#academySelect', 'AGL-005')
+        self.page.click('#academyStart')
+        self.page.click('#academyHint')
+        before = self.page.evaluate('academyEngine.snapshot()')
+        hints = self.page.locator('#academyHints').inner_text()
+        self.assertEqual(self.page.locator('#academySelect option').count(), 40)
+        self.page.locator('#academyRealLab summary').click()
+        link = self.page.locator('#academyRealLabLink')
+        expect(link).to_have_attribute('href', 'http://127.0.0.1:8766/')
+        self.assertFalse(any(r.url.startswith(self.url + '/api/') for r in self.requests))
+        with self.page.expect_popup() as popup_info:
+            link.click()
+        student = popup_info.value
+        student.on('pageerror', lambda error: self.errors.append(str(error)))
+        student.wait_for_load_state()
+        self.assertTrue(student.evaluate('window.opener === null'))
+        self.assertEqual(student.evaluate('document.referrer'), '')
+        student.get_by_label('Öğrenci erişim anahtarı', exact=True).fill(TOKEN)
+        student.get_by_role('button', name='Bağlan', exact=True).click()
+        expect(student.locator('#diagnostics-panel')).to_be_visible()
+        self.assertEqual(student.locator('#router option').all_text_contents(), ['r1'])
+        student.get_by_role('button', name='Tanıyı göster', exact=True).click()
+        expect(student.locator('#output')).to_have_text('route data')
+        self.assertEqual(self.page.evaluate('academyEngine.snapshot()'), before)
+        expect(self.page.locator('#academySelect')).to_have_value('AGL-005')
+        self.assertEqual(self.page.locator('#academyHints').inner_text(), hints)
+        self.assertNotIn(TOKEN, self.page.evaluate('JSON.stringify(localStorage)'))
+        student.close()
+        self.assertEqual(self.page.evaluate('academyEngine.snapshot()'), before)
 
     def test_scoped_read_text_safety_and_no_persistent_key(self):
         self.connected()

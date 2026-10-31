@@ -4,10 +4,13 @@
 
 Öğrenci servisi çalışırken aynı makinede `http://127.0.0.1:8766/` adresini açın.
 Öğretmenin verdiği **ayrı öğrenci anahtarıyla** bağlanın; yönetici anahtarını bu
-ekrana girmeyin. Ekran yalnızca izin verilen router'ları ve üç sabit tanıyı gösterir.
+ekrana girmeyin. Akademi panelindeki **Gerçek Lab tanıları → Öğrenci tanılarını aç**
+bağlantısı aynı ekranı yeni sekmede açar; anahtar veya Akademi çalışma verisi taşımaz.
+Ekran yalnızca izin verilen router'ları ve üç sabit tanıyı gösterir.
 `Tanıyı göster` mevcut görüntüyü okur; lab başlatmaz, komut çalıştırmaz veya
 görüntü üretmez. Yenilemeyi operatör/exporter yapar. Bu ekran 40 çevrimdışı labın
-arayüzünden ayrıdır; mevcut simülatör HTML'si değiştirilmez.
+arayüzünden ayrı sekmede çalışır. Mevcut 40 görevin simülasyonuna gerçek cihaz
+eşlemesi yapılmaz; Akademi'deki etkin çalışma korunur.
 
 Anahtar yalnızca sayfa belleğinde tutulur; girişten sonra parola alanı temizlenir,
 cookie veya tarayıcı depolamasına yazılmaz. `Bağlantıyı kapat` ya da sayfadan

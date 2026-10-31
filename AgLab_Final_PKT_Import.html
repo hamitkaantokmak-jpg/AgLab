@@ -2560,6 +2560,13 @@ const ac=id=>document.getElementById(id);
 const academyPanel=document.createElement('section');
 academyPanel.className='panel';academyPanel.id='academyPanel';
 academyPanel.innerHTML=`<h2>AğLab Akademi v1</h2>
+<details id="academyRealLab">
+<summary>Gerçek Lab tanıları</summary>
+<p>İki router ve iki PC'den oluşan gerçek örnek topolojinin salt okunur tanılarını incele.</p>
+<p>Bu bilgisayarda öğrenci servisi çalışıyor olmalı. Öğrenci anahtarını açılan ekranda gir.</p>
+<p><a id="academyRealLabLink" href="http://127.0.0.1:8766/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Öğrenci tanılarını aç ↗</a></p>
+<p>Gerçek örnek topoloji ayrı çalışır. Akademi'deki etkin görevin ve ilerlemen bu sekmede kalır.</p>
+</details>
 <label>Laboratuvar <select id="academySelect"></select></label>
 <button id="academyStart">Laboratuvarı başlat</button>
 <button id="academyReset" disabled>Baştan başla / sıfırla</button>
