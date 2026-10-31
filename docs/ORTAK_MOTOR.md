@@ -30,6 +30,9 @@ komutlar mevcut Cisco-benzeri CLI dilindedir. Gerçek IOS veya protokol paketler
   ortak `routeLookup` içinde korunur; protokol için ayrı ping başarı bayrağı yoktur.
 - JSON kaydet/yeniden aç/içe aktar yeni alanları taşır. Tanımsız iç alanlar reddedilir.
   Özgün Packet Tracer arşiv mekanizması ve 40 labın kaynak dosyaları değiştirilmez.
+- DHCP Discover, henüz IP/gateway almamış istemciden normal IP rotasıyla aranmaz:
+  VLAN içi L2 yol önce yerel sunucuya veya doğru helper arayüzüne gider; relay'den
+  sunucuya devam eden yol ortak yönlendirme motorunda doğrulanır.
 
 ## Senaryo verisi ve sürüm kapısı
 

@@ -96,6 +96,24 @@ function routingProtocolConfigurationLines(d){
  if(d.bgp){result.push('router bgp '+d.bgp.asn);for(const n of d.bgp.neighbors)result.push(' neighbor '+n.ip+' remote-as '+n.remoteAs);for(const n of d.bgp.networks)result.push(' network '+n.network+' mask '+n.mask);}
  return result;
 }
+function dhcpDiscoveryPath(source,server){
+ const vlan=endpointVlan(source.id,Number(source.vlan)||10);
+ const l2Only=path=>path&&orderedPathNodes(source.id,path).slice(1,-1).every(d=>d?.type==='Switch');
+ const local=findPath(source.id,server.id,vlan,null,true,{l2Only:true});
+ if(l2Only(local))return {server,path:local,local:true};
+ for(const router of devices.filter(d=>d.type==='Router'))for(const [name,iface] of activeRouterInterfaces(router)){
+  if(iface.helperAddress!==server.ip)continue;
+  const physical=iface.parent||name,wire=links.find(l=>(l.a===router.id&&l.portA===physical)||(l.b===router.id&&l.portB===physical));
+  const peer=wire&&get(wire.a===router.id?wire.b:wire.a);
+  if((iface.encapsulation==='dot1q'||peer?.type==='Switch')&&protocolWireVlan(router,name,iface)!==vlan)continue;
+  const discover=findPath(source.id,router.id,vlan,null,true,{l2Only:true,targetPort:physical});
+  if(!l2Only(discover)||!discover.length||linkPort(discover.at(-1),router.id)!==(iface.parent||name))continue;
+  const onward=findPath(router.id,server.id,vlan,server.ip,true);if(!onward)continue;
+  const path=discover.concat(onward);path.vlans=(discover.vlans||[]).concat(onward.vlans||[]);
+  return {server,path,local:false,relay:{router,iface}};
+ }
+ return null;
+}
 function routingProtocolCommand(d,p,out){
  const emit=(text,error=false)=>{out(text,error?'outerr':'outok');return true},changed=text=>{saveTopology(true);updatePrompt();return emit(text)};
  if(p[0]==='show'&&p[1]==='ip'&&((p[2]==='ospf')||(p[2]==='bgp'))){

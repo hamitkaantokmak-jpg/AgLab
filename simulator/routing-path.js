@@ -44,6 +44,8 @@ function findPath(a,b,vlan=null,targetIp=null,strict=false,options={}){
   for(const link of links.filter(edge=>linkUp(edge)&&(edge.a===state.node||edge.b===state.node))){
    let edgeVlan=state.vlan,nextPending=pending;
    const nextId=link.a===state.node?link.b:link.a,next=get(nextId);
+   if(options.l2Only&&nextId!==b&&next?.type!=='Switch')continue;
+   if(nextId===b&&options.targetPort&&linkPort(link,b)!==options.targetPort)continue;
    if(targetIp&&current?.type==='Router'){edgeVlan=routerEgressVlan(current,link,targetIp,state.vlan);if(edgeVlan===null)continue;}
    if(pending&&(next?.type!=='Switch'||nextId===pending.id)){
     if(nextId!==pending.id||pending.physical&&linkPort(link,nextId)!==pending.physical||pending.vlan!==null&&pending.vlan!==undefined&&Number(edgeVlan)!==pending.vlan)continue;
