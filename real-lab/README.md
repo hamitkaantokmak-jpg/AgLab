@@ -50,3 +50,18 @@ YAML ve dosyalar kod incelemesine açıktır. CI yalnızca statik kontroller yap
 ## GitHub üzerinde canlı doğrulama
 
 `.github/workflows/real-lab-live.yml` adlı **elle başlatılan** iş akışı Linux GitHub runner üzerinde Docker ve Containerlab kullanıp laboratuvarı gerçekten başlatmayı, PC1'den PC2'ye ping göndermeyi ve ortamı temizlemeyi dener. GitHub Actions → **Gerçek Lab canlı doğrulama (isteğe bağlı)** → **Run workflow**. GitHub, `workflow_dispatch` iş akışının varsayılan dalda bulunmasını gerektirebilir; bu nedenle PR üzerindeyken buton görünmeyebilir. Gerçek canlı doğrulama başarıyla bitmeden doğrulanmış canlı lab olduğunu iddia etmeyin. Kurulum betiği ağdan indirildiği için bu koşuyu yalnızca güvenilen repoda ve gerekli izinlerle başlatın.
+
+## Yerel API prototipi (henüz web arayüzü yok)
+
+Yalnızca güvenilen Linux lab sunucusunda:
+
+```bash
+export AGLAB_LAB_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(36))')"
+python3 real-lab/api.py
+curl -H "Authorization: Bearer $AGLAB_LAB_TOKEN" http://127.0.0.1:8765/api/lab
+curl -X POST -H "Authorization: Bearer $AGLAB_LAB_TOKEN" http://127.0.0.1:8765/api/lab/start
+curl -X POST -H "Authorization: Bearer $AGLAB_LAB_TOKEN" http://127.0.0.1:8765/api/lab/status
+curl -X POST -H "Authorization: Bearer $AGLAB_LAB_TOKEN" http://127.0.0.1:8765/api/lab/stop
+```
+
+API yalnızca 127.0.0.1 üzerinde açılır, tek laboratuvarı yönetir, JSON gövdesi/serbest komut kabul etmez ve en az 32 karakterli token ister. Bu **üretim servisi değildir**: eşzamanlı çağrı kontrolü, kullanıcı bazlı izolasyon, HTTPS proxy, log redaksiyonu ve yetki seviyesi henüz yoktur. Sunucuyu internete açmayın veya Docker yetkilerini tarayıcıya iletmeyin. Tarayıcı arayüzü ve terminal erişimi sonraki aşamalardır.
