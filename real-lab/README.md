@@ -1,5 +1,70 @@
 # AğLab Gerçek Lab MVP – iki FRR router + iki PC
 
+## Ayrı salt okunur öğrenci servisi
+
+`student_api.py`, yönetici API'sine bağlanmayan ve Docker/komut çalıştırmayan ayrı bir
+işlemdir. Yalnızca operatörün hazırladığı JSON görüntüsünden izin verilen router'ın
+`routes`, `interfaces`, `neighbors` çıktısını sunar. Bu bir canlı terminal veya çok
+kiracılı öğrenci oturum sistemi değildir. Mevcut 40 çevrimdışı lab değişmez.
+
+Güvenilen yönetici ortamında, mevcut yönetici API'si çalışırken:
+
+```sh
+export AGLAB_STUDENT_SNAPSHOT=/srv/aglab-share/snapshot.json
+export AGLAB_STUDENT_ROUTERS=r1
+python3 real-lab/export_student_snapshot.py
+```
+
+Exporter `AGLAB_LAB_TOKEN` kullanarak sabit loopback adresinden yalnızca açıkça
+seçilen router'ların üçer tanısını alır; dosyaya kapsam dışı router yazmaz ve
+yönetici API'sinin işlem kilidine uyar. Tümü başarılıysa yalnızca `ok` ve `output`
+alanlarını zaman damgasıyla atomik olarak yazar. Hata durumunda önceki dosya kalır;
+60 saniye dolunca öğrenci servisi bunu reddeder. Proxy ortamını kullanmaz ve
+yönlendirmeleri takip etmez. Düzenli yenileme operatörün sorumluluğundadır; altı
+istek aynı topoloji anının atomik görüntüsü değildir. Çıktılarda lab IP'leri ve
+arayüz bilgileri bulunur; yalnızca o öğrenciye uygun veriyi paylaşın.
+
+Öğrenci servisini **ayrı, yetkisiz bir işletim sistemi hesabında** başlatın:
+
+```sh
+unset AGLAB_LAB_TOKEN
+export AGLAB_STUDENT_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(36))')"
+export AGLAB_STUDENT_SNAPSHOT=/srv/aglab-share/snapshot.json
+export AGLAB_STUDENT_ROUTERS=r1
+python3 real-lab/student_api.py
+```
+
+Bu hesaba Docker grubu/socket erişimi, yönetici tokenı, yönetici servis ortamı veya
+paylaşım dizinine yazma izni vermeyin. Exporter dosyayı varsayılan olarak özel izinle
+oluşturur: operatör Linux'ta paylaşım dizinini setgid okuyucu grubuyla hazırlamalı,
+her başarılı export sonrasında dosyaya yalnızca o grup için okuma izni vermelidir
+(ör. `chmod 0640 /srv/aglab-share/snapshot.json`). Dosya ve dizin öğrenci tarafından
+değiştirilememelidir. Bunlar dağıtım gereksinimleridir; Python işlemi kendi başına
+işletim sistemi yetkilerini düşürmez.
+
+```sh
+curl -H "Authorization: Bearer $AGLAB_STUDENT_TOKEN" http://127.0.0.1:8766/api/diagnostics/r1/routes
+```
+
+Yönetici tokenını öğrenci tokenı olarak tekrar kullanmayın. Servis, ortamında
+`AGLAB_LAB_TOKEN` varsa başlamaz. İzin listesi boşsa veya bilinmeyen router içeriyorsa
+başlamaz. Bir servis örneği tek öğrenci kapsamını temsil eder; kimlik/tenant seçimi
+istekten alınmaz. Başka öğrenciler için ayrı kapsam, token, dosya ve süreç gerekir
+(bu prototip sabit 8766 portunu kullanır; ayrı ağ alanı/makine kullanın).
+
+Yanıtlar: eksik/yanlış token `401`, kapsam dışı router/yol `404`, yazma yöntemleri
+`405`, eksik/bozuk/1 MB üstü/60 saniyeden eski görüntü veya başarısız tanı `503`.
+Başarısız tanı çıktıları ve fazladan JSON alanları öğrenciye aktarılmaz. Çıktı üst
+sınırı 12000 karakterdir. Sunucu yalnızca `127.0.0.1:8766` dinler, CORS izni vermez,
+yanıtları önbelleğe aldırmaz ve tokenları loglamaz. Yönetici portunu öğrencilere
+proxy etmeyin. Uzak erişim için TLS, oturum doğrulaması, hız sınırı ve öğrenci
+başına süreç/ağ izolasyonu ayrıca gerekir; servis şu aşamada internete açılmaz.
+
+Doğrulama: `python3 real-lab/test_student_api.py` gerçek yerel HTTP üzerinden
+token/kapsam/yöntem kontrollerini, redaksiyonu, görüntü süresini ve exporter hata
+durumunu test eder; Docker veya gerçek öğrenci dağıtımını test etmez. Pipeline bu
+testi zorunlu çalıştırır ve üç yeni Python dosyasını pakete ekler.
+
 Bu klasör mevcut çevrimdışı AğLab simülatöründen **bağımsızdır**. İlk gerçek lab, Linux sunucusunda Docker ve Containerlab ile dört kapsayıcı çalıştırır; web arayüzü ve çok kullanıcılı sunucu henüz yoktur.
 
 ## Gereksinimler
