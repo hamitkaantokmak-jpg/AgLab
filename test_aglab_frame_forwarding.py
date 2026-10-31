@@ -24,6 +24,8 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
   before=page.locator('#ptTerminal > div').count()
   page.evaluate("([id,text])=>{document.querySelector('#ptCliDevice').value=id;document.querySelector('#ptCliInput').value=text;document.querySelector('#ptCliForm').requestSubmit()}",[device,text])
   return '\n'.join(page.locator('#ptTerminal > div').all_text_contents()[before:])
+ page.click('[data-area="lab"]')
+ assert page.locator('#packetDetectiveRefresh').is_visible()
  page.click('#packetDetectiveRefresh')
  assert 'Henüz görüntülenecek' in page.locator('#packetDetectiveStatus').inner_text()
  assert page.locator('#packetDetectiveNext').is_disabled()
