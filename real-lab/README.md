@@ -46,3 +46,7 @@ YAML ve dosyalar kod incelemesine açıktır. CI yalnızca statik kontroller yap
 ## Canlı uçtan uca test
 
 **Yalnızca ayrılmış Linux lab makinesinde** `python real-lab/live_smoke.py --execute` çalıştırın. Bu komut Containerlab laboratuvarını kurar, PC1'den PC2'ye gerçek ICMP gönderir ve başarılı/başarısız durumda kaynakları kapatmaya çalışır. Çalıştırılmadan önce aynı isimli başka bir laboratuvar bulunmamalıdır. `--execute` olmadan hiçbir konteyner başlatılmaz. CI'da bu işlem otomatik çalışmaz; CI yalnızca statik doğrulama yapar. Gerçek Docker testi henüz bu ortamda çalıştırılmamıştır.
+
+## GitHub üzerinde canlı doğrulama
+
+`.github/workflows/real-lab-live.yml` adlı **elle başlatılan** iş akışı Linux GitHub runner üzerinde Docker ve Containerlab kullanıp laboratuvarı gerçekten başlatmayı, PC1'den PC2'ye ping göndermeyi ve ortamı temizlemeyi dener. GitHub Actions → **Gerçek Lab canlı doğrulama (isteğe bağlı)** → **Run workflow**. GitHub, `workflow_dispatch` iş akışının varsayılan dalda bulunmasını gerektirebilir; bu nedenle PR üzerindeyken buton görünmeyebilir. Gerçek canlı doğrulama başarıyla bitmeden doğrulanmış canlı lab olduğunu iddia etmeyin. Kurulum betiği ağdan indirildiği için bu koşuyu yalnızca güvenilen repoda ve gerekli izinlerle başlatın.
