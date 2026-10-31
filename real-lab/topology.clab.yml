@@ -4,7 +4,6 @@ topology:
     routers:
       kind: frr
       image: quay.io/frrouting/frr:containerlab-10.7.1
-      daemons: [] # zebra/staticd are always enabled by native FRR kind
   nodes:
     r1:
       group: routers
