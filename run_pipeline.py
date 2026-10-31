@@ -18,7 +18,7 @@ TESTS.append('test_aglab_pkt_dot1q.py')
 TESTS.append('test_aglab_persistence.py')
 TESTS.extend(['test_aglab_large_topology.py','test_aglab_pkt_matrix.py','test_aglab_endpoint_ports.py','test_aglab_student_journey.py','test_aglab_switch_svi.py','test_aglab_svi_import.py'])
 NODE_TESTS=['simulator/test_packet_events.cjs']
-STUDENT_FILES=['real-lab/student_api.py','real-lab/export_student_snapshot.py','real-lab/test_student_api.py']
+STUDENT_FILES=['real-lab/student_api.py','real-lab/export_student_snapshot.py','real-lab/test_student_api.py','real-lab/student_isolation_smoke.py']
 REAL_LAB_FILES=['real-lab/topology.clab.yml','real-lab/r1/frr.conf','real-lab/r2/frr.conf','real-lab/README.md','real-lab/check_topology.py','real-lab/manage.py','real-lab/test_manage.py','real-lab/live_smoke.py','real-lab/test_live_smoke.py','real-lab/api.py','real-lab/test_api.py','real-lab/dashboard.html','real-lab/test_api_http.py','real-lab/diagnostics.py','real-lab/test_diagnostics.py']
 REAL_LAB_FILES.extend(STUDENT_FILES)
 ARTIFACTS=['AgLab_Final_PKT_Import.html','convert_pkt_to_aglab.py','restore_pkt_from_aglab_json.py','verify_packages.py','static-routing-two-routers.aglab.json','static-routing-two-routers-import-report.json','AgLab_PKT_Import_Kullanim.md','static-routing-two-routers(1).pkt' ]

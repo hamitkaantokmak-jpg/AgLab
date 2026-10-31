@@ -1,5 +1,21 @@
 # AğLab Gerçek Lab MVP – iki FRR router + iki PC
 
+## Linux hesap yalıtımı doğrulaması
+
+`sudo python3 real-lab/student_isolation_smoke.py --execute` yalnızca ayrılmış
+Linux test makinesinde çalıştırılır. `--execute` olmadan sadece yapılacak kontrolleri
+yazar. Canlı CI bu kontrolü zorunlu çalıştırır: öğrenci sunucusu gerçekten `nobody`
+UID/GID'siyle, ek gruplar ve yönetici ortamı olmadan başlatılır. Ayrı bir süreç aynı
+kimlikle yönetici gizli dosyasını okuyamadığını, görüntü dosyasına/dizinine
+yazamadığını ve gerçek Docker socket bağlantısının `EACCES` ile reddedildiğini
+doğrular. Socket yoksa kontrol başarılı sayılmaz.
+
+Gerçek HTTP üzerinden izinli okuma, yönetici tokenının reddi, router kapsamı,
+yazma yöntemlerinin reddi, eski/eksik görüntüde kapalı kalma sınanır. Test verisi
+sentetiktir; bu adım canlı FRR → exporter zincirini veya TLS/çok kiracılı dağıtımı
+doğrulamaz. Mevcut canlı Containerlab/ICMP testi ayrı çalışır. Geçici dosyalar ve
+öğrenci süreci hata durumunda da temizlenir; hesap/grup oluşturulmaz veya değiştirilmez.
+
 ## Ayrı salt okunur öğrenci servisi
 
 `student_api.py`, yönetici API'sine bağlanmayan ve Docker/komut çalıştırmayan ayrı bir
