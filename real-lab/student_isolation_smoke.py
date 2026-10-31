@@ -50,20 +50,17 @@ def execute(*, live_admin_token=None):
         secret.write_text(admin_token, encoding='utf-8')
         secret.chmod(0o600)
         snapshot = folder / 'snapshot.json'
-        if live_admin_token is None:
-            export_snapshot(snapshot, admin_token, {'r1'},
-                            fetch=lambda *_: {'ok': True, 'output': 'synthetic route'})
-        else:
-            # Production exporter, real HTTP admin API and real Docker/FRR.
-            export_snapshot(snapshot, admin_token, {'r1'})
+        def publish():
+            fetch = (lambda *_: {'ok': True, 'output': 'synthetic route'}) if live_admin_token is None else None
+            export_snapshot(snapshot, admin_token, {'r1'}, fetch=fetch, reader_gid=account.pw_gid)
+        publish()
+        if live_admin_token is not None:
             require(request(student_token, '/api/lab', port=8765)[0] == 401,
                     'Student credential accepted by admin service')
         exported = json.loads(snapshot.read_text(encoding='utf-8'))
         expected = exported['diagnostics']['r1']
         if live_admin_token is not None:
             require('192.168.20.0/24' in expected['routes']['output'], 'Expected real route missing')
-        os.chown(snapshot, 0, account.pw_gid)
-        snapshot.chmod(0o640)
         # Same UID/GID and empty supplementary groups as the server below.
         probe = '''
 import errno, os, pathlib, socket
@@ -112,6 +109,15 @@ with socket.socket(socket.AF_UNIX) as client:
                 require(payload['router'] == 'r1' and payload['view'] == view, 'Incorrect diagnostic identity')
                 require(set(payload) == {'router', 'view', 'captured_at', 'ok', 'output'}, 'Unexpected response fields')
                 require(admin_token not in response and student_token not in response, 'Credential in response')
+            previous_inode = snapshot.stat().st_ino
+            publish()
+            refreshed = json.loads(snapshot.read_text(encoding='utf-8'))
+            require(snapshot.stat().st_ino != previous_inode, 'Snapshot was not atomically replaced')
+            status, response = request(student_token)
+            require(status == 200 and json.loads(response)['captured_at'] == refreshed['captured_at'],
+                    'Student cannot read refreshed snapshot')
+            subprocess.run([sys.executable, '-c', probe], cwd=folder, env=environment,
+                           check=True, timeout=10, **identity)
             require(request(admin_token)[0] == 401, 'Admin credential accepted by student service')
             require(request(student_token, '/api/diagnostics/r2/routes')[0] == 404, 'Router scope bypass')
             require(request(student_token, '/api/lab')[0] == 404, 'Admin endpoint exposed')

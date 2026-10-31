@@ -1,5 +1,37 @@
 # AğLab Gerçek Lab MVP – iki FRR router + iki PC
 
+## Yenilemede öğrenci okuma izinlerini koruma
+
+Paylaşılan görüntü için `AGLAB_STUDENT_READER_GID` ortam değişkenine öğrenci
+hesabının sayısal okuyucu grup kimliğini verin. Örnek, önceden hazırlanmış
+`aglab-student` hesabı için **root yönetici oturumunda**:
+
+```sh
+export AGLAB_STUDENT_READER_GID="$(id -g aglab-student)"
+install -d -o root -g "$AGLAB_STUDENT_READER_GID" -m 0750 /srv/aglab-share
+export AGLAB_STUDENT_SNAPSHOT=/srv/aglab-share/snapshot.json
+export AGLAB_STUDENT_ROUTERS=r1
+python3 real-lab/export_student_snapshot.py
+```
+
+Exporter önce özel `0600` geçici dosyaya tam JSON yazar, sonra seçilen grubu ve
+`0640` iznini ayarlar ve ancak bundan sonra atomik olarak yayımlar. Böylece ilk
+export ve her yenileme öğrenciye yalnızca okuma verir; arada elle `chmod` gerekmez.
+Eski dosyanın geniş veya yazılabilir izinleri kopyalanmaz. Grup/izin ayarı başarısız
+olursa önceki görüntü korunur, geçici dosya silinir. Hedef dizin export işleminin
+hesabına ait olmalı ve grup/diğer kullanıcılar tarafından yazılabilir olmamalıdır.
+
+Bu ayar yalnızca POSIX dosya izinleri olan sistemlerde desteklenir. Grup seçilmezse
+dosya güvenli varsayılan `0600` izninde kalır. Öğrenci hesabına yalnızca kendi
+kapsamı için ayrılmış bir okuyucu grubu verin; Docker grubu vermeyin. Dizin başka
+öğrencilerin görüntülerini içermemelidir. Exporter zaten bu grubu ayarlayabilecek
+yetkiyle çalışmalıdır; başarısız olursa yetkileri genişletmek yerine kurulumu düzeltin.
+
+`test_export_permissions.py` ilk yayın, yenileme, yayımdan önce izin ayarı,
+güvensiz dizin reddi ve hata halinde önceki dosyanın korunmasını sınar. Canlı CI,
+servis çalışırken ikinci export yapıp yetkisiz öğrencinin yeni görüntüyü
+okuyabildiğini ve hâlâ yazamadığını/Docker'a erişemediğini doğrular.
+
 ## Canlı öğrenci zinciri testi
 
 `sudo python3 real-lab/student_live_smoke.py --execute`, ayrılmış Linux runner'da
@@ -53,7 +85,7 @@ seçilen router'ların üçer tanısını alır; dosyaya kapsam dışı router y
 yönetici API'sinin işlem kilidine uyar. Tümü başarılıysa yalnızca `ok` ve `output`
 alanlarını zaman damgasıyla atomik olarak yazar. Hata durumunda önceki dosya kalır;
 60 saniye dolunca öğrenci servisi bunu reddeder. Proxy ortamını kullanmaz ve
-yönlendirmeleri takip etmez. Düzenli yenileme operatörün sorumluluğundadır; altı
+yönlendirmeleri takip etmez. Düzenli yenileme operatörün sorumluluğundadır; bu
 istek aynı topoloji anının atomik görüntüsü değildir. Çıktılarda lab IP'leri ve
 arayüz bilgileri bulunur; yalnızca o öğrenciye uygun veriyi paylaşın.
 
@@ -68,10 +100,9 @@ python3 real-lab/student_api.py
 ```
 
 Bu hesaba Docker grubu/socket erişimi, yönetici tokenı, yönetici servis ortamı veya
-paylaşım dizinine yazma izni vermeyin. Exporter dosyayı varsayılan olarak özel izinle
-oluşturur: operatör Linux'ta paylaşım dizinini setgid okuyucu grubuyla hazırlamalı,
-her başarılı export sonrasında dosyaya yalnızca o grup için okuma izni vermelidir
-(ör. `chmod 0640 /srv/aglab-share/snapshot.json`). Dosya ve dizin öğrenci tarafından
+paylaşım dizinine yazma izni vermeyin. Yukarıdaki `AGLAB_STUDENT_READER_GID` ayarı
+ilk export ve yenilemelerde salt okunur grup erişimini atomik olarak sağlar.
+Dosya ve dizin öğrenci tarafından
 değiştirilememelidir. Bunlar dağıtım gereksinimleridir; Python işlemi kendi başına
 işletim sistemi yetkilerini düşürmez.
 
@@ -96,9 +127,9 @@ başına süreç/ağ izolasyonu ayrıca gerekir; servis şu aşamada internete a
 Doğrulama: `python3 real-lab/test_student_api.py` gerçek yerel HTTP üzerinden
 token/kapsam/yöntem kontrollerini, redaksiyonu, görüntü süresini ve exporter hata
 durumunu test eder; Docker veya gerçek öğrenci dağıtımını test etmez. Pipeline bu
-testi zorunlu çalıştırır ve üç yeni Python dosyasını pakete ekler.
+testi zorunlu çalıştırır ve öğrenci servisi/exporter/test dosyalarını pakete ekler.
 
-Bu klasör mevcut çevrimdışı AğLab simülatöründen **bağımsızdır**. İlk gerçek lab, Linux sunucusunda Docker ve Containerlab ile dört kapsayıcı çalıştırır; web arayüzü ve çok kullanıcılı sunucu henüz yoktur.
+Bu klasör mevcut çevrimdışı AğLab simülatöründen **bağımsızdır**. İlk gerçek lab, Linux sunucusunda Docker ve Containerlab ile dört kapsayıcı çalıştırır. Yerel yönetici paneli ve ayrı öğrenci okuma API'si prototip düzeyindedir; çok kullanıcılı üretim sunucusu değildir.
 
 ## Gereksinimler
 
@@ -135,7 +166,7 @@ Cisco / LabHub imajları kullanılmıyor veya dağıtılmıyor. Üretime alınma
 
 ## Doğrulama durumu
 
-YAML ve dosyalar kod incelemesine açıktır. CI yalnızca statik kontroller yapabilir; Docker/Containerlab ortamında gerçek ping testi ayrı çalıştırılmadan **canlı lab doğrulandı** denemez.
+Genel CI regresyonları ve paketleri doğrular. Ayrı canlı CI, Docker/Containerlab ile gerçek ICMP, öğrenci hesap yalıtımı ve tanılama zincirini sınar. Yalnızca ilgili commitin başarılı CI sonucu doğrulama kanıtıdır.
 
 ## Yönetici yaşam döngüsü komutları
 
@@ -143,13 +174,13 @@ YAML ve dosyalar kod incelemesine açıktır. CI yalnızca statik kontroller yap
 
 ## Canlı uçtan uca test
 
-**Yalnızca ayrılmış Linux lab makinesinde** `python real-lab/live_smoke.py --execute` çalıştırın. Bu komut Containerlab laboratuvarını kurar, PC1'den PC2'ye gerçek ICMP gönderir ve başarılı/başarısız durumda kaynakları kapatmaya çalışır. Çalıştırılmadan önce aynı isimli başka bir laboratuvar bulunmamalıdır. `--execute` olmadan hiçbir konteyner başlatılmaz. CI'da bu işlem otomatik çalışmaz; CI yalnızca statik doğrulama yapar. Gerçek Docker testi henüz bu ortamda çalıştırılmamıştır.
+**Yalnızca ayrılmış Linux lab makinesinde** `python real-lab/live_smoke.py --execute` çalıştırın. Bu komut Containerlab laboratuvarını kurar, PC1'den PC2'ye gerçek ICMP gönderir ve başarılı/başarısız durumda kaynakları kapatmaya çalışır. Çalıştırılmadan önce aynı isimli başka bir laboratuvar bulunmamalıdır. `--execute` olmadan hiçbir konteyner başlatılmaz. Canlı CI bu testi ilgili PR değişikliklerinde otomatik çalıştırır.
 
 ## GitHub üzerinde canlı doğrulama
 
-`.github/workflows/real-lab-live.yml` adlı **elle başlatılan** iş akışı Linux GitHub runner üzerinde Docker ve Containerlab kullanıp laboratuvarı gerçekten başlatmayı, PC1'den PC2'ye ping göndermeyi ve ortamı temizlemeyi dener. GitHub Actions → **Gerçek Lab canlı doğrulama (isteğe bağlı)** → **Run workflow**. GitHub, `workflow_dispatch` iş akışının varsayılan dalda bulunmasını gerektirebilir; bu nedenle PR üzerindeyken buton görünmeyebilir. Gerçek canlı doğrulama başarıyla bitmeden doğrulanmış canlı lab olduğunu iddia etmeyin. Kurulum betiği ağdan indirildiği için bu koşuyu yalnızca güvenilen repoda ve gerekli izinlerle başlatın.
+`.github/workflows/real-lab-live.yml` ilgili `real-lab` ve iş akışı PR değişikliklerinde otomatik çalışır; elle de başlatılabilir. Linux runner üzerinde gerçek Containerlab/ICMP, hesap yalıtımı ve öğrenci tanılama zinciri sınanır. Elle çalıştırmak için GitHub Actions → **Gerçek Lab canlı doğrulama (isteğe bağlı)** → **Run workflow**. Buton için iş akışının varsayılan dalda bulunması gerekebilir. Başarıyı her commitin kendi koşusundan doğrulayın. Kurulum betiği ağdan indirildiği için bu koşuyu yalnızca güvenilen repoda başlatın.
 
-## Yerel API prototipi (henüz web arayüzü yok)
+## Yerel yönetici API prototipi
 
 Yalnızca güvenilen Linux lab sunucusunda:
 
@@ -162,7 +193,7 @@ curl -X POST -H "Authorization: Bearer $AGLAB_LAB_TOKEN" http://127.0.0.1:8765/a
 curl -X POST -H "Authorization: Bearer $AGLAB_LAB_TOKEN" http://127.0.0.1:8765/api/lab/stop
 ```
 
-API yalnızca 127.0.0.1 üzerinde açılır, tek laboratuvarı yönetir, JSON gövdesi/serbest komut kabul etmez ve en az 32 karakterli token ister. Bu **üretim servisi değildir**: eşzamanlı çağrı kontrolü, kullanıcı bazlı izolasyon, HTTPS proxy, log redaksiyonu ve yetki seviyesi henüz yoktur. Sunucuyu internete açmayın veya Docker yetkilerini tarayıcıya iletmeyin. Tarayıcı arayüzü ve terminal erişimi sonraki aşamalardır.
+API yalnızca 127.0.0.1 üzerinde açılır, tek laboratuvarı yönetir, JSON gövdesi/serbest komut kabul etmez ve en az 32 karakterli token ister. İşlemler ortak kilitle korunur; meşgul durumda 409 döner. Yerel yönetici tarayıcı paneli vardır, serbest terminal yoktur. Bu **üretim servisi değildir**: çok kiracılı oturum ve HTTPS proxy dahil değildir. Yönetici tokenını öğrenciye vermeyin; öğrenci okuma servisini ayrı hesap ve izinlerle çalıştırın.
 
 ## Yerel yönetim ekranı
 
