@@ -83,6 +83,24 @@ class LocalHTTPTests(unittest.TestCase):
             self.assertEqual(code,502)
             self.assertIn("Docker unavailable",body)
 
+    def test_diagnostics_rejected_while_lab_operation_running(self):
+        with patch.object(api, "TOKEN", "x"*32), patch.object(api, "diagnose") as diagnose:
+            self.assertTrue(api.OPERATION_LOCK.acquire(blocking=False))
+            try:
+                code,body=self.request("GET","/api/diagnostics/r1/routes","x"*32)
+                self.assertEqual(code,409)
+                self.assertIn("another lab operation",body)
+                diagnose.assert_not_called()
+            finally:
+                api.OPERATION_LOCK.release()
+
+    def test_dashboard_has_diagnostic_controls(self):
+        code,body=self.request("GET","/")
+        self.assertEqual(code,200)
+        self.assertIn('data-action="diagnostics"',body)
+        self.assertIn('id="diag-router"',body)
+        self.assertIn('id="diag-view"',body)
+
     def test_unknown_action_does_not_run_process(self):
         with patch.object(api,"TOKEN","x"*32),patch.object(api.subprocess,"run") as run:
             code,_=self.request("POST","/api/lab/shell","x"*32)
