@@ -55,6 +55,23 @@ try:
         resume(page, 'AGL-005')
         expect(page.locator('#academyProgress')).to_contain_text('1/40')
 
+        # All forty labs must be discoverable on the real mobile student screen.
+        # Browsing a different lab must not silently discard ongoing work.
+        option_ids = page.locator('#academySelect option').evaluate_all(
+            "(options) => options.map(option => option.value)")
+        assert option_ids == [f'AGL-{index:03d}' for index in range(1, 41)], option_ids
+        assert len(set(option_ids)) == 40, 'Duplicate laboratory selector values'
+        active_snapshot = page.evaluate('academyEngine.snapshot()')
+        for candidate in option_ids:
+            page.select_option('#academySelect', candidate)
+            assert page.evaluate('academyEngine.snapshot()') == active_snapshot, (
+                'Selecting a lab without starting it replaced the active topology', candidate)
+            expect(page.locator('#academyCheck')).to_be_enabled()
+        page.select_option('#academySelect', 'AGL-005')
+        assert page.evaluate('academyEngine.snapshot()') == active_snapshot
+        assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'), (
+            'Forty-laboratory selector causes horizontal mobile overflow')
+
         # Answers and hints survive, without loading teacher target topology.
         page.select_option('#academySelect', 'AGL-001')
         page.click('#academyStart')
