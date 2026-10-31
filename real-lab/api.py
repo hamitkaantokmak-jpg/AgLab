@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -15,6 +16,7 @@ ROOT = Path(__file__).resolve().parent
 ACTIONS = {"start": "start", "stop": "stop", "status": "status"}
 DEVICES = {"r1", "r2", "pc1", "pc2"}
 TOKEN = os.getenv("AGLAB_LAB_TOKEN", "")
+OPERATION_LOCK = threading.Lock()
 if __name__ == "__main__" and len(TOKEN) < 32:
     raise SystemExit("Set AGLAB_LAB_TOKEN to a random secret of at least 32 characters")
 
@@ -48,16 +50,21 @@ class API(BaseHTTPRequestHandler):
         if self.headers.get("Content-Length") not in (None, "0"):
             return self.respond(400, {"error": "request bodies not accepted"})
         action = self.path.rsplit("/", 1)[-1]
+        if not OPERATION_LOCK.acquire(blocking=False):
+            return self.respond(409, {"error": "another lab operation is running"})
         try:
-            result = subprocess.run(
-                [sys.executable, str(ROOT / "manage.py"), ACTIONS[action], "--execute"],
-                cwd=ROOT, capture_output=True, text=True, timeout=200, check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return self.respond(503, {"error": "lab operation unavailable"})
-        return self.respond(200 if result.returncode == 0 else 502,
-                            {"action": action, "ok": result.returncode == 0,
-                             "output": (result.stdout + result.stderr)[-4000:]})
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(ROOT / "manage.py"), ACTIONS[action], "--execute"],
+                    cwd=ROOT, capture_output=True, text=True, timeout=200, check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return self.respond(503, {"error": "lab operation unavailable"})
+            return self.respond(200 if result.returncode == 0 else 502,
+                                {"action": action, "ok": result.returncode == 0,
+                                 "output": (result.stdout + result.stderr)[-4000:]})
+        finally:
+            OPERATION_LOCK.release()
 
     def log_message(self, fmt, *args):
         pass
