@@ -23,4 +23,10 @@ jobs:
         if: always()
         run: |
           sudo containerlab destroy -t real-lab/topology.clab.yml --cleanup || true
-          docker ps --format '{{.Names}}' | grep '^clab-aglab-real-mvp-' && exit 1 || true
+          remaining="$(sudo docker ps -a --format '{{.Names}}' | grep '^clab-aglab-real-mvp-' || true)"
+          if [ -n "$remaining" ]; then
+            echo "::error::Real-lab containers remain after cleanup:"
+            echo "$remaining"
+            exit 1
+          fi
+          echo "Real-lab cleanup verified"
