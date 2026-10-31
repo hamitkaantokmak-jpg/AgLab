@@ -28,6 +28,7 @@ class API(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
@@ -59,7 +60,10 @@ class API(BaseHTTPRequestHandler):
             if not OPERATION_LOCK.acquire(blocking=False):
                 return self.respond(409, {"error": "another lab operation is running"})
             try:
-                result = diagnose(parts[3], parts[4])
+                try:
+                    result = diagnose(parts[3], parts[4])
+                except Exception:
+                    return self.respond(503, {"error": "diagnostic unavailable"})
                 return self.respond(200 if result["ok"] else 502, result)
             finally:
                 OPERATION_LOCK.release()
