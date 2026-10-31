@@ -51,17 +51,17 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  # A known one-port forwarding decision highlights its physical SVG edge.
  # Read the real event log and advance only to an eligible decision.
  page.click('#packetDetectiveRefresh')
- chosen=page.evaluate("""() => {
-  const log=AgLabPacketEvents.normalize(ethernetEvents);
-  return log.events.findIndex(e=>e.kind==='forward' && e.detail.egress.length===1 &&
-    links.filter(l=>(l.a===e.device&&l.portA===e.detail.egress[0])||
-                    (l.b===e.device&&l.portB===e.detail.egress[0])).length===1);
- }""")
- if chosen>=0:
-  for _ in range(chosen):page.click('#packetDetectiveNext')
-  assert page.locator('#ptCanvas line.pt-edge[stroke="#ffcb38"]').count()==1
-  page.click('#packetDetectivePrevious')
-  assert page.locator('#ptCanvas line.pt-edge[stroke="#ffcb38"]').count()==0
+ found_edge=False
+ for _ in range(256):
+  if page.locator('#ptCanvas line.pt-edge[stroke="#ffcb38"]').count()==1:
+   found_edge=True
+   break
+  if page.locator('#packetDetectiveNext').is_disabled():
+   break
+  page.click('#packetDetectiveNext')
+ assert found_edge, 'No real single-egress forwarding edge was highlighted during playback'
+ page.click('#packetDetectivePrevious')
+ assert page.locator('#ptCanvas line.pt-edge[stroke="#ffcb38"]').count()==0
 
  assert '100 percent' in cmd('d3','ping 192.168.10.3')
  events=cmd('d3','show ethernet events');assert 'arp-request' not in events and 'unknown-unicast' not in events and 'receive d5' not in events,events
