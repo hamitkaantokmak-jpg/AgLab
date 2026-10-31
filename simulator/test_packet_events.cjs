@@ -19,3 +19,16 @@ assert.equal(at(x,7),null);assert.equal(at(x,-1),null);
 assert.match(explain(x.events[1]),/fa0\/2/);
 assert.match(explain(x.events[3]),/TTL/);
 assert.equal(explain(x.events[6]),'unknown legacy event');
+
+const inputLines=['frame icmp-request src PC1 dst 02:00:00:00:00:02 vlan 1'];
+const snapshot=normalize(inputLines);
+inputLines.push('discard SW1 blocked');
+assert.equal(snapshot.events.length,1,'event list must be a snapshot');
+assert.equal(at(snapshot,0).raw,'frame icmp-request src PC1 dst 02:00:00:00:00:02 vlan 1');
+assert.equal(at(snapshot,0).explanation.includes('PC1'),true);
+const receiveSvi=normalize(['receive SW1 arp-request vlan 10 svi vlan 10']);
+assert.equal(receiveSvi.events[0].detail.svi,true);
+assert.equal(receiveSvi.events[0].device,'SW1');
+const legacy=normalize(['future-protocol packet detail']).events[0];
+assert.equal(legacy.kind,'other');
+assert.equal(explain(legacy),'future-protocol packet detail');
