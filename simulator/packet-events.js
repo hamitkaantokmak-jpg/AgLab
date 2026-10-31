@@ -37,12 +37,26 @@ function explain(event){
  default:return event.raw;
  }
 }
+function diagnose(log){
+ if(!log||!Array.isArray(log.events))throw Error('Invalid packet event log');
+ const issues=[];
+ for(const event of log.events){
+  if(event.kind==='discard'){
+   const reason=event.detail.reason;
+   const hint=reason==='ingress-port'?'Giriş portu kapalı veya bağlantı geçersiz olabilir; port durumunu ve kabloyu kontrol et.':reason==='destination-mac'?'Hedef MAC adresi eşleşmedi; hedef cihazın MAC adresini ve VLAN üyeliğini kontrol et.':'Bu reddetme nedenini olay kaydından incele.';
+   issues.push({index:event.index,device:event.device,reason,summary:event.device+' cihazında çerçeve reddedildi.',hint});
+  }else if(event.kind==='icmp-undelivered'){
+   issues.push({index:event.index,device:event.device,reason:'icmp-undelivered',summary:'ICMP yanıtı kaynağa ulaşamadı.',hint:'IP adresleme, varsayılan ağ geçidi ve gidiş-dönüş yönlendirme yolunu kontrol et; bu kayıt tek başına kesin nedeni göstermiyor.'});
+  }
+ }
+ return {issues,hasEvidence:log.events.length>0,truncated:!!log.truncated};
+}
 function at(log,index){
  if(!log||!Array.isArray(log.events)||!Number.isInteger(index)||index<0||index>=log.events.length)return null;
  const event=log.events[index];
  return {index,total:log.events.length,...event,explanation:explain(event),hasPrevious:index>0,hasNext:index<log.events.length-1,logTruncated:!!log.truncated};
 }
-const api=Object.freeze({normalize,explain,at});
+const api=Object.freeze({normalize,explain,at,diagnose});
 if(typeof module==='object'&&module.exports)module.exports=api;
 else root.AgLabPacketEvents=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
