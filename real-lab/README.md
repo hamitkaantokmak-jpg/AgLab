@@ -41,3 +41,7 @@ YAML ve dosyalar kod incelemesine açıktır. CI yalnızca statik kontroller yap
 ## Yönetici yaşam döngüsü komutları
 
 `python real-lab/manage.py start` yalnızca bir dry-run gösterir. Yetkili Linux sunucusunda gerçek işlemler için `python real-lab/manage.py start --execute`, `python real-lab/manage.py status --execute` ve `python real-lab/manage.py stop --execute` kullanılır. Komutlar yalnızca depoya eklenmiş sabit topolojiyi kabul eder; serbest komut / dosya yolu veya HTTP uç noktası yoktur.
+
+## Canlı uçtan uca test
+
+**Yalnızca ayrılmış Linux lab makinesinde** `python real-lab/live_smoke.py --execute` çalıştırın. Bu komut Containerlab laboratuvarını kurar, PC1'den PC2'ye gerçek ICMP gönderir ve başarılı/başarısız durumda kaynakları kapatmaya çalışır. Çalıştırılmadan önce aynı isimli başka bir laboratuvar bulunmamalıdır. `--execute` olmadan hiçbir konteyner başlatılmaz. CI'da bu işlem otomatik çalışmaz; CI yalnızca statik doğrulama yapar. Gerçek Docker testi henüz bu ortamda çalıştırılmamıştır.
