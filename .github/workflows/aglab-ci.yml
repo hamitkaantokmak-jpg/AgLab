@@ -51,6 +51,8 @@ jobs:
             dist/test-report.md
             dist/test-results.json
             dist/student-ui.png
+            dist/device-cli.png
+            dist/device-cli-mobile.png
           if-no-files-found: warn
       - name: Başarılı ZIP'i sakla
         if: success()

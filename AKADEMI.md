@@ -10,6 +10,13 @@ Cihaz, kablo ve CLI düzenlemeleri mevcut simülatör üzerinden yapılır. Kavr
 soruları Akademi bölümünde cevapla ve Çözümümü kontrol et düğmesini kullan.
 İpuçları sırayla açılır. Sıfırla, etkin görevin özgün başlangıcını ve boş cevapları yükler.
 
+Topolojide cihaza tek tıkla o cihazın CLI penceresini yanında açabilirsin; komut
+alanı yazmaya hazır gelir. Klavyeyle cihazı odaklayıp Enter veya boşluk da kullanılır.
+Kapat düğmesi veya Esc pencereyi kapatıp CLI'yi yan panele geri taşır. Sürükleme
+cihazı taşır; kablo modu açıkken tıklamalar bağlantı kurmak için kullanılır.
+CLI kısayolu ve `/` tuşu da seçili cihazın penceresini açar. Komutlar mevcut
+simülasyon motorunu kullanır; pencere gerçek Cisco IOS çalıştırdığı anlamına gelmez.
+
 ## Gerçek Lab tanılarına geçiş
 
 Akademi panelindeki **Gerçek Lab tanıları** bölümünü açıp **Öğrenci tanılarını aç**
