@@ -17,16 +17,27 @@ const explanation=document.createElement('p');explanation.id='packetDetectiveExp
 const raw=document.createElement('pre');raw.id='packetDetectiveRaw';raw.style.whiteSpace='pre-wrap';raw.style.overflowWrap='anywhere';panel.append(raw);
 host.append(panel);
 let snapshot={events:[],overflow:0,truncated:false},index=0;
+let marked=null;
+function markDevice(id){
+ if(marked){marked.removeAttribute('stroke');marked.removeAttribute('stroke-width');marked=null;}
+ if(!id)return;
+ const canvas=document.getElementById('ptCanvas');
+ if(!canvas)return;
+ const group=[...canvas.querySelectorAll('g[data-id]')].find(node=>node.getAttribute('data-id')===id);
+ const outline=group?.querySelector('rect');
+ if(outline){outline.setAttribute('stroke','#ffcb38');outline.setAttribute('stroke-width','4');marked=outline;}
+}
 function render(){
  const step=AgLabPacketEvents.at(snapshot,index);
  previous.disabled=!step?.hasPrevious;next.disabled=!step?.hasNext;
  if(!step){
   status.textContent='Henüz görüntülenecek ağ olayı yok.';
-  explanation.textContent='';raw.textContent='';return;
+  explanation.textContent='';raw.textContent='';markDevice(null);return;
  }
  status.textContent='Adım '+(step.index+1)+' / '+step.total+(snapshot.truncated?' · Kayıt sınırı aşıldı; '+snapshot.overflow+' olay gösterilemiyor.':'');
  explanation.textContent=step.explanation;
  raw.textContent=step.raw;
+ markDevice(step.device);
 }
 refresh.onclick=()=>{
  snapshot=AgLabPacketEvents.normalize(ethernetEvents.slice(),ethernetEventOverflow);
