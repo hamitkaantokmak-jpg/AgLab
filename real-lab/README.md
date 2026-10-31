@@ -10,13 +10,14 @@ Bu klasör mevcut çevrimdışı AğLab simülatöründen **bağımsızdır**. �
 
 ## Çalıştırma
 
-Depo kökünden:
+`real-lab` klasöründen (göreli `startup-config` dosyalarının bulunması için):
 
 ```sh
-containerlab deploy -t real-lab/topology.clab.yml
+cd real-lab
+containerlab deploy -t topology.clab.yml
 docker exec clab-aglab-real-mvp-pc1 ping -c 3 -W 2 192.168.20.10
 docker exec clab-aglab-real-mvp-r1 vtysh -c "show ip route"
-containerlab destroy -t real-lab/topology.clab.yml
+containerlab destroy -t topology.clab.yml
 ```
 
 Beklenen: PC1 → R1 → R2 → PC2 yönünde gerçek ICMP, statik rota `192.168.20.0/24`; dönüş için R2 üzerinde `192.168.10.0/24`. PC'lerde hedef ağlara varsayılan yol yerine açık statik rota eklenmiştir.
@@ -25,7 +26,7 @@ Topoloji: `pc1 (192.168.10.10/24) -- r1 (192.168.10.1/24; 10.0.12.1/30) -- r2 (1
 
 ### Sorun giderme
 
-- `containerlab inspect -t real-lab/topology.clab.yml` ile düğümlerin durumunu görün.
+- `containerlab inspect -t topology.clab.yml` ile düğümlerin durumunu görün.
 - `docker exec clab-aglab-real-mvp-r2 vtysh -c "show ip route"` ile dönüş rotasını doğrulayın.
 - Docker / Containerlab erişimi olmadan bu laboratuvarı çalıştırmak mümkün değildir.
 - Kapsayıcıları internete açık bir API ile doğrudan yönetmeyin; üretim için kimlik doğrulama, kullanıcı izolasyonu, kota ve sınırlı işlem kümesi gerekir.
