@@ -37,3 +37,7 @@ Cisco / LabHub imajları kullanılmıyor veya dağıtılmıyor. Üretime alınma
 ## Doğrulama durumu
 
 YAML ve dosyalar kod incelemesine açıktır. CI yalnızca statik kontroller yapabilir; Docker/Containerlab ortamında gerçek ping testi ayrı çalıştırılmadan **canlı lab doğrulandı** denemez.
+
+## Yönetici yaşam döngüsü komutları
+
+`python real-lab/manage.py start` yalnızca bir dry-run gösterir. Yetkili Linux sunucusunda gerçek işlemler için `python real-lab/manage.py start --execute`, `python real-lab/manage.py status --execute` ve `python real-lab/manage.py stop --execute` kullanılır. Komutlar yalnızca depoya eklenmiş sabit topolojiyi kabul eder; serbest komut / dosya yolu veya HTTP uç noktası yoktur.
