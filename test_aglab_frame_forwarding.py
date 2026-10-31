@@ -30,6 +30,17 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  assert 'ingress fa0/1 egress fa0/1' not in events,events
  assert '100 percent' in cmd('d3','ping 192.168.10.3')
  events=cmd('d3','show ethernet events');assert 'arp-request' in events and 'broadcast' in events,events
+ # The student playback is a read-only view over the same real event log.
+ page.click('#packetDetectiveRefresh')
+ status=page.locator('#packetDetectiveStatus').inner_text()
+ assert 'Adım 1 /' in status,status
+ assert 'arp-request' in page.locator('#packetDetectiveRaw').inner_text()
+ old_events=cmd('d3','show ethernet events')
+ page.click('#packetDetectiveNext')
+ assert 'Adım 2 /' in page.locator('#packetDetectiveStatus').inner_text()
+ page.click('#packetDetectivePrevious')
+ assert 'Adım 1 /' in page.locator('#packetDetectiveStatus').inner_text()
+ assert cmd('d3','show ethernet events')==old_events,'Playback must not simulate new traffic'
  assert '100 percent' in cmd('d3','ping 192.168.10.3')
  events=cmd('d3','show ethernet events');assert 'arp-request' not in events and 'unknown-unicast' not in events and 'receive d5' not in events,events
  print('PASS: unknown-unicast flood, VLAN isolation, cold ARP and warm learned unicast',flush=True)
