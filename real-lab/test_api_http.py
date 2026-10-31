@@ -94,6 +94,16 @@ class LocalHTTPTests(unittest.TestCase):
             finally:
                 api.OPERATION_LOCK.release()
 
+    def test_diagnostic_unexpected_error_is_redacted_and_lock_released(self):
+        with patch.object(api, "TOKEN", "x"*32), patch.object(api, "diagnose") as diagnose:
+            diagnose.side_effect=RuntimeError("sensitive internal detail")
+            code,body=self.request("GET","/api/diagnostics/r1/routes","x"*32)
+            self.assertEqual(code,503)
+            self.assertIn("diagnostic unavailable",body)
+            self.assertNotIn("sensitive internal detail",body)
+            self.assertTrue(api.OPERATION_LOCK.acquire(blocking=False))
+            api.OPERATION_LOCK.release()
+
     def test_dashboard_has_diagnostic_controls(self):
         code,body=self.request("GET","/")
         self.assertEqual(code,200)
