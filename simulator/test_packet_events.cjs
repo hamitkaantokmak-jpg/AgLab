@@ -32,3 +32,13 @@ assert.equal(receiveSvi.events[0].device,'SW1');
 const legacy=normalize(['future-protocol packet detail']).events[0];
 assert.equal(legacy.kind,'other');
 assert.equal(explain(legacy),'future-protocol packet detail');
+
+const {diagnose}=require('./packet-events.js');
+const report=diagnose(normalize(['discard d8 ingress-port','icmp-undelivered d3 no-route'],2));
+assert.equal(report.issues.length,2);
+assert.equal(report.issues[0].device,'d8');
+assert.match(report.issues[0].hint,/port/);
+assert.match(report.issues[1].hint,/kesin nedeni/);
+assert.equal(report.truncated,true);
+assert.equal(diagnose(normalize(['receive d4 arp-request vlan 10'])).issues.length,0);
+assert.equal(diagnose(normalize([])).hasEvidence,false);
