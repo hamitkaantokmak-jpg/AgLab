@@ -39,6 +39,7 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  status=page.locator('#packetDetectiveStatus').inner_text()
  assert 'Adım 1 /' in status,status
  assert 'arp-request' in page.locator('#packetDetectiveRaw').inner_text()
+ assert page.locator('#ptCanvas g[data-id="d3"] rect').get_attribute('stroke') == '#ffcb38'
  old_events=cmd('d3','show ethernet events')
  page.click('#packetDetectiveNext')
  assert 'Adım 2 /' in page.locator('#packetDetectiveStatus').inner_text()
