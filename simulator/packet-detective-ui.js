@@ -20,6 +20,7 @@ const status=document.createElement('p');status.id='packetDetectiveStatus';statu
 const explanation=document.createElement('p');explanation.id='packetDetectiveExplanation';panel.append(explanation);
 const raw=document.createElement('pre');raw.id='packetDetectiveRaw';raw.style.whiteSpace='pre-wrap';raw.style.overflowWrap='anywhere';panel.append(raw);
 const diagnosis=document.createElement('p');diagnosis.id='packetDetectiveDiagnosis';diagnosis.setAttribute('role','status');panel.append(diagnosis);
+const go=document.createElement('button');go.id='packetDetectiveGoToDevice';go.textContent='Sorunlu cihaza git';go.disabled=true;panel.append(go);
 host.append(panel);
 let allEvents={events:[],overflow:0,truncated:false},snapshot=allEvents,index=0;
 function filtered(){
@@ -52,7 +53,13 @@ function markForwardEdge(step){
  if(!line)return;
  line.setAttribute('stroke','#ffcb38');line.setAttribute('stroke-width','6');markedEdge=line;
 }
+function targetDevice(){
+ const result=AgLabPacketEvents.diagnose(allEvents);
+ return result.issues.find(issue=>issue.device&&get(issue.device))?.device||null;
+}
 function render(){
+ const target=targetDevice();
+ go.disabled=!target;
  const result=AgLabPacketEvents.diagnose(allEvents);
  diagnosis.textContent=!result.hasEvidence?'Tanılama için önce ağ testi çalıştır.':result.issues.length?result.issues.length+' olası sorun kaydı var. '+result.issues[0].summary+' Öneri: '+result.issues[0].hint:'Bu kayıtlarda açık bir paket reddi veya ICMP ulaşamama olayı yok.'+(result.truncated?' Olay kaydı sınırlı; sonuç kesin değil.':'');
  const step=AgLabPacketEvents.at(snapshot,index);
@@ -67,6 +74,16 @@ function render(){
  markDevice(step.device);
  markForwardEdge(step);
 }
+go.onclick=()=>{
+ const id=targetDevice();
+ if(!id)return;
+ selected=id;
+ const selector=document.getElementById('ptCliDevice');
+ if(selector)selector.value=id;
+ updateInspector();render();
+ const node=[...document.querySelectorAll('#ptCanvas g[data-id]')].find(el=>el.getAttribute('data-id')===id);
+ if(node){node.scrollIntoView({block:'nearest',inline:'nearest'});node.setAttribute('aria-label','Sorun kaydıyla ilişkili seçili cihaz');}
+};
 refresh.onclick=()=>{
  allEvents=AgLabPacketEvents.normalize(ethernetEvents.slice(),ethernetEventOverflow);
  snapshot=filtered();index=0;render();
