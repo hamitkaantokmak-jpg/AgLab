@@ -69,3 +69,15 @@ API yalnızca 127.0.0.1 üzerinde açılır, tek laboratuvarı yönetir, JSON g�
 ## Yerel yönetim ekranı
 
 API çalışırken **aynı Linux makinesindeki** tarayıcıdan `http://127.0.0.1:8765/` adresini açın. `AGLAB_LAB_TOKEN` ortam değişkenindeki yönetici anahtarını girin. Cihazları görüntüleme, durumu sorgulama, başlatma ve durdurma kontrolleri bulunur. İstekler aynı origin'e gider; anahtar localStorage veya cookie'ye yazılmaz. **Bu ekran halka açık web sitesi veya öğrenciler için güvenli çok kullanıcılı panel değildir.** Henüz terminal, HTTPS proxy ve kullanıcı oturumları yoktur.
+
+
+## Salt okunur yönlendirici tanılama
+
+Yerel yönetici panelindeki **Tanıyı göster** düğmesi veya kimliği doğrulanmış GET istekleriyle yalnızca `r1` ve `r2` için `routes`, `interfaces` ve `neighbors` görünümleri alınabilir:
+
+```sh
+curl -H "Authorization: Bearer $AGLAB_LAB_TOKEN" http://127.0.0.1:8765/api/diagnostics/r1/routes
+curl -H "Authorization: Bearer $AGLAB_LAB_TOKEN" http://127.0.0.1:8765/api/diagnostics/r2/interfaces
+```
+
+İsteklerde serbest komut veya kullanıcıdan gelen shell ifadesi kullanılmaz. Başarısız Docker/FRR tanılaması `502`, kimlik doğrulaması eksikse `401`, izin verilmeyen cihaz/görünüm `404` döndürür. Tanılar Docker konteynerlerini gerektirir; testler HTTP ve mock kapsamındadır, canlı Docker doğrulaması değildir. Bu API yalnızca güvenilen yerel yönetici içindir; öğrenciye veya internete açık sunucu olarak yayınlanmamalıdır.
