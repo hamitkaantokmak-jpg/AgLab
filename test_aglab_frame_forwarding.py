@@ -24,12 +24,47 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
   before=page.locator('#ptTerminal > div').count()
   page.evaluate("([id,text])=>{document.querySelector('#ptCliDevice').value=id;document.querySelector('#ptCliInput').value=text;document.querySelector('#ptCliForm').requestSubmit()}",[device,text])
   return '\n'.join(page.locator('#ptTerminal > div').all_text_contents()[before:])
+ page.click('[data-area="lab"]')
+ assert page.locator('#packetDetectiveRefresh').is_visible()
+ page.click('#packetDetectiveRefresh')
+ assert 'Henüz görüntülenecek' in page.locator('#packetDetectiveStatus').inner_text()
+ assert page.locator('#packetDetectiveNext').is_disabled()
+ assert page.locator('#packetDetectivePrevious').is_disabled()
  cmd('d3','test ethernet 0200.0000.0004');events=cmd('d3','show ethernet events')
  assert 'unknown-unicast' in events,events
  assert 'receive d5' in events and 'receive d4' in events and 'receive d6' not in events,events
  assert 'ingress fa0/1 egress fa0/1' not in events,events
  assert '100 percent' in cmd('d3','ping 192.168.10.3')
  events=cmd('d3','show ethernet events');assert 'arp-request' in events and 'broadcast' in events,events
+ # The student playback is a read-only view over the same real event log.
+ page.click('#packetDetectiveRefresh')
+ status=page.locator('#packetDetectiveStatus').inner_text()
+ assert 'Adım 1 /' in status,status
+ assert 'arp-request' in page.locator('#packetDetectiveRaw').inner_text()
+ assert page.locator('#ptCanvas g[data-id="d3"] rect').get_attribute('stroke') == '#ffcb38'
+ old_events=cmd('d3','show ethernet events')
+ page.click('#packetDetectiveNext')
+ assert 'Adım 2 /' in page.locator('#packetDetectiveStatus').inner_text()
+ page.click('#packetDetectivePrevious')
+ assert 'Adım 1 /' in page.locator('#packetDetectiveStatus').inner_text()
+ assert cmd('d3','show ethernet events')==old_events,'Playback must not simulate new traffic'
+ # A known one-port forwarding decision highlights its physical SVG edge.
+ # Read the real event log and advance only to an eligible decision.
+ page.click('#packetDetectiveRefresh')
+ found_edge=False
+ for _ in range(256):
+  if page.locator('#ptCanvas line.pt-edge[stroke="#ffcb38"]').count()==1:
+   found_edge=True
+   break
+  if page.locator('#packetDetectiveNext').is_disabled():
+   break
+  page.click('#packetDetectiveNext')
+ assert found_edge, 'No real single-egress forwarding edge was highlighted during playback'
+ while page.locator('#packetDetectivePrevious').is_enabled():
+  page.click('#packetDetectivePrevious')
+ assert 'Adım 1 /' in page.locator('#packetDetectiveStatus').inner_text()
+ assert page.locator('#ptCanvas line.pt-edge[stroke="#ffcb38"]').count()==0
+
  assert '100 percent' in cmd('d3','ping 192.168.10.3')
  events=cmd('d3','show ethernet events');assert 'arp-request' not in events and 'unknown-unicast' not in events and 'receive d5' not in events,events
  print('PASS: unknown-unicast flood, VLAN isolation, cold ARP and warm learned unicast',flush=True)
