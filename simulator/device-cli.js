@@ -1,5 +1,6 @@
 // Reuse the existing CLI and command engine in a device-local, non-modal window.
 var ptDeviceCliState = null;
+var ptDeviceCliClickCandidate = null;
 function refreshDeviceCli(){
  if(!ptDeviceCliState?.dialog.open)return;
  const device=get($p('ptCliDevice').value);
