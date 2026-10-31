@@ -17,8 +17,10 @@ TESTS.append('test_aglab_icmp_unreachable.py')
 TESTS.append('test_aglab_pkt_dot1q.py')
 TESTS.append('test_aglab_persistence.py')
 TESTS.extend(['test_aglab_large_topology.py','test_aglab_pkt_matrix.py','test_aglab_endpoint_ports.py','test_aglab_student_journey.py','test_aglab_switch_svi.py','test_aglab_svi_import.py'])
+NODE_TESTS=['simulator/test_packet_events.cjs']
 ARTIFACTS=['AgLab_Final_PKT_Import.html','convert_pkt_to_aglab.py','restore_pkt_from_aglab_json.py','verify_packages.py','static-routing-two-routers.aglab.json','static-routing-two-routers-import-report.json','AgLab_PKT_Import_Kullanim.md','static-routing-two-routers(1).pkt' ]
 ARTIFACTS.extend(['simulator/mac-address.js','simulator/test_mac_address.cjs','pkt-sample-matrix.json','PKT_ORNEK_MATRISI.md','simulator/switch-management.js','simulator/mac-learning.js','simulator/ethernet-forwarding.js','simulator/routing-path.js','simulator/routed-ethernet.js','simulator/icmp.js','simulator/traceroute.js','build_simulator.py','SIMULATOR_PLAN.md'])
+ARTIFACTS.extend(['simulator/packet-events.js','simulator/packet-detective-ui.js'])
 def run():
  p=argparse.ArgumentParser();p.add_argument('--out',default='dist');p.add_argument('--skip-browser',action='store_true');p.add_argument('--timeout',type=int,default=100);a=p.parse_args()
  out=(ROOT/a.out).resolve();out.mkdir(parents=True,exist_ok=True)
@@ -32,7 +34,7 @@ def run():
   except Exception:pass
  if not browser:browser=shutil.which('chromium') or shutil.which('chromium-browser') or shutil.which('google-chrome')
  report={'date_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'browser':browser,'tests':[],'passed':False}
- required=ARTIFACTS+TESTS
+ required=ARTIFACTS+TESTS+NODE_TESTS
  missing=[f for f in required+ACADEMY_DOCS if not (ROOT/f).is_file()]
  if missing:
   report['error']='Missing files: '+', '.join(missing)
@@ -64,7 +66,18 @@ def run():
     except subprocess.TimeoutExpired:
      entry={'name':name,'status':'FAIL','error':f'timed out after {a.timeout}s'}
     report['tests'].append(entry)
- report['passed']=not missing and all(t['status']=='PASS' for t in report['tests']) and len(report['tests'])==len(TESTS)
+ if not missing:
+  node=shutil.which('node')
+  for name in NODE_TESTS:
+   if not node:
+    report['tests'].append({'name':name,'status':'FAIL','error':'Node.js bulunamadı; paket olayları doğrulanamadı.'})
+    continue
+   try:
+    r=subprocess.run([node,str(ROOT/name)],cwd=ROOT,capture_output=True,text=True,encoding='utf-8',timeout=a.timeout)
+    report['tests'].append({'name':name,'status':'PASS' if r.returncode==0 else 'FAIL','exit_code':r.returncode,'stdout':r.stdout[-8000:],'stderr':r.stderr[-8000:]})
+   except subprocess.TimeoutExpired:
+    report['tests'].append({'name':name,'status':'FAIL','error':f'timed out after {a.timeout}s'})
+ report['passed']=not missing and all(t['status']=='PASS' for t in report['tests']) and len(report['tests'])==len(TESTS)+len(NODE_TESTS)
  (out/'test-results.json').write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf-8')
  lines=['# AğLab otomatik test raporu','',f"Tarih (UTC): {report['date_utc']}",f"Sonuç: {'BAŞARILI' if report['passed'] else 'BAŞARISIZ / DOĞRULANMADI'}",'']
  for t in report['tests']:lines.append(f"- {t['status']}: {t['name']} ({t.get('duration_s','?')} sn)")
@@ -73,7 +86,7 @@ def run():
  if report['passed']:
   zpath=out/'AgLab_Otomatik_Dogrulanmis_Paket.zip'
   with zipfile.ZipFile(zpath,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
-   for f in ARTIFACTS+TESTS:z.write(ROOT/f,f)
+   for f in ARTIFACTS+TESTS+NODE_TESTS:z.write(ROOT/f,f)
    z.writestr('decoded_source.xml',base64.b64decode(source['sourceArchive']['decodedXmlBase64']))
    z.write(out/'test-report.md','test-report.md');z.write(out/'test-results.json','test-results.json')
    for f in (ROOT/'academy/student').glob('*.json'):z.write(f,'academy/student/'+f.name)
