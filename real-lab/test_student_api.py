@@ -58,8 +58,21 @@ class StudentTests(unittest.TestCase):
             self.assertEqual(self.request('/api/diagnostics/r1/routes', token=token)[0], 401)
         for path in ('/api/diagnostics/r2/routes', '/api/diagnostics/r1/configure',
                      '/api/diagnostics/r1/routes?cmd=sh', '/api/diagnostics/../routes',
-                     '/api/diagnostics/%72%31/routes', '/api/lab', '/'):
+                     '/api/diagnostics/%72%31/routes', '/api/lab'):
             self.assertEqual(self.request(path)[0], 404)
+
+    def test_student_page_is_public_but_scoped_metadata_requires_auth(self):
+        code, body, headers = self.request('/', token='')
+        self.assertEqual(code, 200)
+        self.assertIn('Öğrenci Tanıları', body)
+        self.assertNotIn('s'*40, body)
+        self.assertIn("script-src 'self'", headers['Content-Security-Policy'])
+        self.assertNotIn('unsafe-inline', headers['Content-Security-Policy'])
+        self.assertEqual(self.request('/api/student', token='')[0], 401)
+        code, body, _ = self.request('/api/student')
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(body)['routers'], ['r1'])
+        self.assertEqual(set(json.loads(body)['views']), {'routes', 'interfaces', 'neighbors'})
 
     def test_no_mutating_methods(self):
         for method in ('POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'):

@@ -1,5 +1,32 @@
 # AğLab Gerçek Lab MVP – iki FRR router + iki PC
 
+## Yerel öğrenci tanılama ekranı
+
+Öğrenci servisi çalışırken aynı makinede `http://127.0.0.1:8766/` adresini açın.
+Öğretmenin verdiği **ayrı öğrenci anahtarıyla** bağlanın; yönetici anahtarını bu
+ekrana girmeyin. Ekran yalnızca izin verilen router'ları ve üç sabit tanıyı gösterir.
+`Tanıyı göster` mevcut görüntüyü okur; lab başlatmaz, komut çalıştırmaz veya
+görüntü üretmez. Yenilemeyi operatör/exporter yapar. Bu ekran 40 çevrimdışı labın
+arayüzünden ayrıdır; mevcut simülatör HTML'si değiştirilmez.
+
+Anahtar yalnızca sayfa belleğinde tutulur; girişten sonra parola alanı temizlenir,
+cookie veya tarayıcı depolamasına yazılmaz. `Bağlantıyı kapat` ya da sayfadan
+ayrılma anahtarı ve sonucu temizler; devam eden isteğin geç yanıtı gösterilmez.
+Tanı çıktıları HTML olarak yorumlanmaz. Başarısız, eksik veya 60 saniyeden eski
+görüntüler gösterilmez; ekranda açık kalan sonuç da süresi dolunca kaldırılır.
+
+Sayfa ve sabit JS/CSS dosyaları anahtar istemeden yüklenir; router kapsamı ve
+tanılar kimlik doğrulaması gerektirir. İstekler yalnızca aynı öğrenci servisine
+GET olarak gider. CSP dış kaynakları, satır içi betikleri, form gönderimini ve
+başka sitelerde çerçeve içinde açılmayı engeller. Ekran bir kullanıcı/tenant oturum
+sistemi değildir; `Bağlantıyı kapat` sunucudaki paylaşılan tokenı iptal etmez.
+Uzak erişim için TLS ve uygun kimlik/tenant izolasyonu ayrıca gerekir.
+
+`test_student_ui.py` gerçek Chromium ile yanlış anahtar, router kapsamı,
+çıktının metin olarak gösterimi, tarayıcıda kalıcı anahtar bırakmama, hata/süre
+dolumunda eski sonucu temizleme ve bekleyen istekte çıkış/yeniden bağlanmayı sınar.
+CI test raporlarıyla birlikte `dist/student-ui.png` ekran görüntüsünü saklar.
+
 ## Yenilemede öğrenci okuma izinlerini koruma
 
 Paylaşılan görüntü için `AGLAB_STUDENT_READER_GID` ortam değişkenine öğrenci

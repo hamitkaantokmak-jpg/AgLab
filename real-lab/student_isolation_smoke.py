@@ -44,8 +44,9 @@ def execute(*, live_admin_token=None):
         folder = Path(directory)
         os.chown(folder, 0, account.pw_gid)
         folder.chmod(0o750)
-        shutil.copyfile(ROOT / 'student_api.py', folder / 'student_api.py')
-        (folder / 'student_api.py').chmod(0o644)
+        for asset in ('student_api.py', 'student.html', 'student.js', 'student.css'):
+            shutil.copyfile(ROOT / asset, folder / asset)
+            (folder / asset).chmod(0o644)
         secret = folder / 'admin.secret'
         secret.write_text(admin_token, encoding='utf-8')
         secret.chmod(0o600)

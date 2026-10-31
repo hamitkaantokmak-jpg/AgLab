@@ -12,6 +12,10 @@ ROUTERS = frozenset({'r1', 'r2'})
 VIEWS = frozenset({'routes', 'interfaces', 'neighbors'})
 MAX_BYTES = 1_000_000
 MAX_AGE = 60
+ROOT = Path(__file__).resolve().parent
+ASSETS = {'/': ('student.html', 'text/html; charset=utf-8'),
+          '/student.js': ('student.js', 'text/javascript; charset=utf-8'),
+          '/student.css': ('student.css', 'text/css; charset=utf-8')}
 
 
 def make_server(token, snapshot_path, routers, port=8766):
@@ -34,9 +38,27 @@ def make_server(token, snapshot_path, routers, port=8766):
                 self.wfile.write(raw)
 
         def do_GET(self):
+            if self.path in ASSETS:
+                filename, content_type = ASSETS[self.path]
+                try:
+                    raw = (ROOT / filename).read_bytes()
+                except OSError:
+                    return self.respond(503, {'error': 'page unavailable'})
+                self.send_response(200)
+                self.send_header('Content-Type', content_type)
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.send_header('Referrer-Policy', 'no-referrer')
+                self.send_header('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+                self.send_header('Content-Length', str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
             supplied = self.headers.get_all('Authorization', [])
             if len(supplied) != 1 or not hmac.compare_digest(supplied[0].encode('utf-8'), expected):
                 return self.respond(401, {'error': 'unauthorized'})
+            if self.path == '/api/student':
+                return self.respond(200, {'routers': sorted(routers), 'views': sorted(VIEWS), 'max_age': MAX_AGE})
             parts = self.path.split('/')
             if (len(parts) != 5 or parts[1:3] != ['api', 'diagnostics']
                     or parts[3] not in routers or parts[4] not in VIEWS):
