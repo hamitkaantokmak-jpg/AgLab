@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AğLab – Yerel Gerçek Lab Yönetimi</title>
+<style>body{font:16px system-ui;background:#101827;color:#eef5ff;max-width:780px;margin:40px auto;padding:16px}button,input{font:inherit;padding:10px;margin:4px;border-radius:7px}button{cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#202b40;padding:16px;border-radius:8px}label{display:block}small{color:#aac2d9}</style></head>
+<body><h1>Gerçek Lab · Yerel Yönetici</h1><p>İki FRR router ve iki Linux PC. Bu ekran yalnızca bu makinedeki yönetici içindir.</p>
+<label>Yönetici anahtarı <input type="password" id="token" autocomplete="off" minlength="32"></label>
+<p><button data-action="info">Cihazları göster</button> <button data-action="status">Durum</button> <button data-action="start">Başlat</button> <button data-action="stop">Durdur</button></p>
+<small>Bu arayüz laboratuvarı kontrol eder; henüz router terminali sunmaz. Anahtar sadece bellekte tutulur.</small>
+<pre id="result" role="status" aria-live="polite">Henüz işlem yapılmadı.</pre>
+<script>
+'use strict';
+const output=document.getElementById('result');
+let busy=false;
+for(const button of document.querySelectorAll('button[data-action]'))button.addEventListener('click',async()=>{
+ if(busy)return;
+ const token=document.getElementById('token').value;
+ if(token.length<32){output.textContent='En az 32 karakterli yönetici anahtarı gerekli.';return;}
+ const action=button.dataset.action;
+ if((action==='stop'||action==='start')&&!window.confirm('Laboratuvar '+(action==='start'?'başlatılsın':'durdurulsun')+' mı?'))return;
+ busy=true;
+ document.querySelectorAll('button').forEach(b=>b.disabled=true);
+ output.textContent='İşlem sürüyor...';
+ try{
+ const response=await fetch(action==='info'?'/api/lab':'/api/lab/'+action,{method:action==='info'?'GET':'POST',headers:{'Authorization':'Bearer '+token},cache:'no-store'});
+ const body=await response.json();
+ output.textContent=JSON.stringify({httpStatus:response.status,...body},null,2);
+ }catch(_){output.textContent='Bağlantı hatası: API erişilemiyor.'}
+ finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false)}
+});
+</script></body></html>
