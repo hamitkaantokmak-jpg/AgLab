@@ -17,8 +17,10 @@ const explanation=document.createElement('p');explanation.id='packetDetectiveExp
 const raw=document.createElement('pre');raw.id='packetDetectiveRaw';raw.style.whiteSpace='pre-wrap';raw.style.overflowWrap='anywhere';panel.append(raw);
 host.append(panel);
 let snapshot={events:[],overflow:0,truncated:false},index=0;
-let marked=null;
+let marked=null,markedEdge=null;
+function clearEdge(){if(markedEdge){markedEdge.removeAttribute('stroke');markedEdge.removeAttribute('stroke-width');markedEdge=null;}}
 function markDevice(id){
+ clearEdge();
  if(marked){marked.removeAttribute('stroke');marked.removeAttribute('stroke-width');marked=null;}
  if(!id)return;
  const canvas=document.getElementById('ptCanvas');
@@ -26,6 +28,18 @@ function markDevice(id){
  const group=[...canvas.querySelectorAll('g[data-id]')].find(node=>node.getAttribute('data-id')===id);
  const outline=group?.querySelector('rect');
  if(outline){outline.setAttribute('stroke','#ffcb38');outline.setAttribute('stroke-width','4');marked=outline;}
+}
+function markForwardEdge(step){
+ if(step?.kind!=='forward'||step.detail?.egress?.length!==1)return;
+ const port=step.detail.egress[0],id=step.device;
+ const matches=links.filter(l=>(l.a===id&&l.portA===port)||(l.b===id&&l.portB===port));
+ if(matches.length!==1)return; // Do not invent an edge for ambiguous/missing ports.
+ const visible=links.filter(l=>get(l.a)&&get(l.b));
+ const position=visible.indexOf(matches[0]);
+ const edges=document.querySelectorAll('#ptCanvas line.pt-edge');
+ const line=edges[position];
+ if(!line)return;
+ line.setAttribute('stroke','#ffcb38');line.setAttribute('stroke-width','6');markedEdge=line;
 }
 function render(){
  const step=AgLabPacketEvents.at(snapshot,index);
@@ -38,6 +52,7 @@ function render(){
  explanation.textContent=step.explanation;
  raw.textContent=step.raw;
  markDevice(step.device);
+ markForwardEdge(step);
 }
 refresh.onclick=()=>{
  snapshot=AgLabPacketEvents.normalize(ethernetEvents.slice(),ethernetEventOverflow);
