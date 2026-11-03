@@ -49,6 +49,22 @@ class LocalHTTPTests(unittest.TestCase):
                 code,_=self.request(method,path)
                 self.assertEqual(code,401)
 
+    def test_duplicate_authorization_headers_are_rejected(self):
+        with patch.object(api, "TOKEN", "x"*32), patch.object(api.subprocess, "run") as run:
+            conn=http.client.HTTPConnection("127.0.0.1",self.server.server_address[1],timeout=3)
+            try:
+                conn.putrequest("POST", "/api/lab/start")
+                conn.putheader("Authorization", "Bearer " + "x"*32)
+                conn.putheader("Authorization", "Bearer " + "x"*32)
+                conn.putheader("Content-Length", "0")
+                conn.endheaders()
+                response=conn.getresponse()
+                self.assertEqual(response.status,401)
+                response.read()
+            finally:
+                conn.close()
+            run.assert_not_called()
+
     def test_authenticated_info(self):
         with patch.object(api,"TOKEN","x"*32):
             code,body=self.request("GET","/api/lab","x"*32)
