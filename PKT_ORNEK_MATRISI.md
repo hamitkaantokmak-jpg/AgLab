@@ -20,3 +20,18 @@ Uzak uçlar arasındaki senkron ping komutu için her ölçümde 1000 ms bütçe
 ## Endpoint port regresyonu
 
 `test_aglab_endpoint_ports.py`, izinli gerçek örneğin çözülmüş XML'inden oluşturulan **sentetik mutasyonları** kullanır: ilgisiz servis IP'si, fiziksel port gücü, GigabitEthernet0 kablosu, çoklu NIC ve bilinmeyen port indeksi. Adres/port eşlemesi ve başarılı/başarısız/yeniden başarılı tarayıcı ping'i doğrulanır. Bu mutasyonlar ikinci bir gerçek PKT sürümü veya yeni gerçek dosya örneği sayılmaz.
+
+## IOS bağlamı ve kaynak dosya güvenliği
+
+`test_aglab_pkt_config_context.py`, özgün sentetik XML ile router birincil IP'sinin
+`secondary` satırı tarafından değiştirilememesini; `!`/`exit`/`end` ve desteklenmeyen
+`interface range` sonrasında eski porta komut uygulanmamasını doğrular. Switch VLAN
+komutlarındaki ek sözcükler ve statik rota seçenekleri kısmen uygulanmaz; desteklenmeyen
+satırlar raporda ve özgün XML/running-config arşivinde kalır. Tarayıcı testi birincil
+router adresine başarılı, modellenmeyen ikincil adrese başarısız yerel ping yürütür.
+Bu test gerçek ikinci bir PKT dosyası veya secondary/range desteği değildir.
+
+Dönüştürücü kaynak PKT, JSON çıktı ve rapor yollarının aynı dosyaya yönelmesini
+şifre çözmeden reddeder; symlink ve mevcut hardlink eşleşmeleri de sınanır. Normal
+kullanımda ayrı çıktı yolları seçilmelidir. Bu kontrol eşzamanlı kötü niyetli dosya
+sistemi değişikliklerine karşı bir atomik yazma garantisi sağlamaz.

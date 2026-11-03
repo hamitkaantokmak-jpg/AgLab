@@ -149,7 +149,10 @@ def convert(xml_bytes, original_pkt=None):
             ports=['g0/0','g0/1','g0/2']; interfaces={p:{'enabled':True} for p in ports}
             current=None; modeled_interfaces=set(); ignored_interfaces=[]
             for line in cfg.splitlines():
-                m=re.match(r'\s*interface\s+(\S+)',line,re.I)
+                if line.strip() in ('!', 'exit', 'end'):
+                    current=None; continue
+                if re.match(r'\s*interface\b',line,re.I): current=None
+                m=re.fullmatch(r'\s*interface\s+(\S+)\s*',line,re.I)
                 if m:
                     current=norm_port(m.group(1),kind)
                     if current.startswith('vlan'):
@@ -168,13 +171,13 @@ def convert(xml_bytes, original_pkt=None):
                 vlan=dot1q_vlan(line)
                 if vlan is not None and interfaces[current].get('parent'):
                     interfaces[current].update({'encapsulation':'dot1q','vlan':vlan})
-                m=re.match(r'\s*ip address\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)',line,re.I)
+                m=re.fullmatch(r'\s*ip address\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)\s*',line,re.I)
                 if m: interfaces[current]['ip'],interfaces[current]['mask']=m.group(1),m.group(2)
                 if re.match(r'\s*shutdown\s*$',line,re.I): interfaces[current]['enabled']=False
                 if re.match(r'\s*no shutdown\s*$',line,re.I): interfaces[current]['enabled']=True
             routes=[]
             for line in cfg.splitlines():
-                m=re.match(r'\s*ip route\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)(?:\s+(\d+))?',line,re.I)
+                m=re.fullmatch(r'\s*ip route\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)(?:\s+(\d+))?\s*',line,re.I)
                 if m: routes.append({'network':m.group(1),'mask':m.group(2),'nextHop':m.group(3),'distance':int(m.group(4) or 1)})
             d={'id':f'd{len(raw_devices)+1}','name':name,'type':kind,'x':x,'y':y,'w':108,'h':72,'ip':'','mask':'','gateway':'','vlan':1,'ports':list(dict.fromkeys(ports)),'route':'','enabled':text(eng,'POWER','true').lower()!='false','mode':'user','config':{'packetTracerModel':model,'runningConfig':cfg,'displayName':display,'unmodeledInterfaces':ignored_interfaces},'interfaces':interfaces,'staticRoutes':routes}
         elif kind=='Switch':
@@ -187,7 +190,9 @@ def convert(xml_bytes, original_pkt=None):
                 gw=re.fullmatch(r'\s*ip default-gateway\s+(\d+(?:\.\d+){3})\s*',line,re.I)
                 if gw:
                     management_gateway=gw.group(1); current=None; vlan_context=None; continue
-                m=re.match(r'\s*interface\s+(\S+)',line,re.I)
+                if re.match(r'\s*interface\b',line,re.I):
+                    current=None; vlan_context=None
+                m=re.fullmatch(r'\s*interface\s+(\S+)\s*',line,re.I)
                 if m:
                     current=norm_port(m.group(1),kind); vlan_context=None
                     if current.startswith('vlan'):
@@ -225,7 +230,7 @@ def convert(xml_bytes, original_pkt=None):
                     if re.fullmatch(r'\s*shutdown\s*',line,re.I): interfaces[current]['enabled']=False
                     if re.fullmatch(r'\s*no shutdown\s*',line,re.I): interfaces[current]['enabled']=True
                     continue
-                m=re.match(r'\s*switchport access vlan\s+(\d+)',line,re.I)
+                m=re.fullmatch(r'\s*switchport access vlan\s+(\d+)\s*',line,re.I)
                 if m:
                     vid=int(m.group(1))
                     if 1 <= vid <= 4094:
@@ -242,7 +247,7 @@ def convert(xml_bytes, original_pkt=None):
                         elif action=='remove': values=existing - set(values)
                         interfaces[current]['allowed']=sorted(set(values))
                         explicit_allowed.add(current)
-                m=re.match(r'\s*switchport trunk native vlan\s+(\d+)',line,re.I)
+                m=re.fullmatch(r'\s*switchport trunk native vlan\s+(\d+)\s*',line,re.I)
                 if m:
                     vid=int(m.group(1))
                     if 1 <= vid <= 4094:
@@ -320,7 +325,9 @@ def convert(xml_bytes, original_pkt=None):
         for line_no,line in enumerate(cfg.splitlines(),1):
             raw=line.strip()
             interface=re.fullmatch(r'interface\s+(\S+)',raw,re.I)
-            if interface: current_interface=norm_port(interface.group(1),current_kind); report_vlan=None
+            if re.match(r'interface\b',raw,re.I):
+                current_interface=norm_port(interface.group(1),current_kind) if interface else None
+                report_vlan=None
             vlan_line=re.fullmatch(r'vlan\s+(\d+)',raw,re.I)
             if vlan_line: report_vlan=int(vlan_line.group(1)); current_interface=None
             if not raw or raw in ('!','end','exit'):
@@ -339,6 +346,11 @@ def convert(xml_bytes, original_pkt=None):
                 if re.fullmatch(r'ip default-gateway\s+\d+(?:\.\d+){3}',raw,re.I): modeled=True
                 named=re.fullmatch(r'name\s+(.+)',raw,re.I)
                 if named: modeled=report_vlan in d['vlans'] and 1 <= len(named.group(1)) <= 32 and not re.search(r'[\x00-\x1f\x7f]',named.group(1))
+
+            interface_command=bool(re.match(r'interface\b',raw,re.I))
+            port_command=bool(re.match(r'(?:ip address\b|encapsulation\b|switchport\b|shutdown$|no shutdown$)',raw,re.I))
+            if interface_command or port_command:
+                modeled=modeled and current_interface in d['interfaces']
 
             if not modeled:
                 unmodeled_config_lines.append({'device':d['name'],'line':line_no,'command':raw})
@@ -381,6 +393,11 @@ def main():
     ap.add_argument('pkt',help='Kaynak .pkt dosyası'); ap.add_argument('-o','--output',help='JSON çıktı yolu')
     ap.add_argument('--report',help='İsteğe bağlı rapor JSON yolu')
     args=ap.parse_args(); src=Path(args.pkt); out=Path(args.output) if args.output else src.with_suffix('.aglab.json')
+    paths=[src,out]+([Path(args.report)] if args.report else [])
+    for index,left in enumerate(paths):
+        for right in paths[index+1:]:
+            if left.resolve()==right.resolve() or (left.exists() and right.exists() and left.samefile(right)):
+                raise PacketTracerError('Kaynak PKT, JSON çıktı ve rapor farklı dosyalar olmalıdır.')
     original=src.read_bytes(); xml=decrypt_pkt(original); obj,report=convert(xml,original); out.write_text(json.dumps(obj,ensure_ascii=False,indent=2),encoding='utf-8')
     print(f'OK: {out} — {report["devicesImported"]} cihaz, {report["linksImported"]} bağlantı')
     print('Statik rotalar:',json.dumps(report['routerRoutes'],ensure_ascii=False))
