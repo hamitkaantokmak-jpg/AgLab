@@ -6,6 +6,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const {simulate}=require('./engine-adapter-prototype.cjs');
+const {normalize}=require('./packet-events.js');
 
 function fixture({isolated=false,disconnected=false}={}){
  const pc1={id:'pc1',type:'PC',ip:'192.168.10.1',mac:'02:00:00:00:00:01',vlan:10};
@@ -42,7 +43,9 @@ function production(f){
  };
  vm.createContext(context);
  vm.runInContext(fs.readFileSync(path.join(__dirname,'ethernet-forwarding.js'),'utf8'),context);
- return vm.runInContext('localEthernetPing(get("pc1"),get("pc2"),10)',context);
+ const result=vm.runInContext('localEthernetPing(get("pc1"),get("pc2"),10)',context);
+ const lines=vm.runInContext('Array.from(ethernetEvents)',context);
+ return {ok:result.ok,log:normalize(lines)};
 }
 for(const test of [
  {name:'same access VLAN',params:{},expected:true},
@@ -59,6 +62,10 @@ for(const test of [
  assert.equal(adapted.ok,reference.ok,'engine parity: '+test.name);
  assert.ok(adapted.log.events.length>0,'adapter events missing: '+test.name);
  const adapterFrames=adapted.log.events.filter(e=>e.kind==='frame').map(e=>e.detail.protocol);
+ const referenceFrames=reference.log.events.filter(e=>e.kind==='frame').map(e=>e.detail.protocol);
+ assert.ok(referenceFrames.length>0,'real engine events missing: '+test.name);
+ if(!test.params.isolated)assert.deepEqual(adapterFrames,referenceFrames,'frame event parity: '+test.name);
+ // Known gap: the prototype rejects cross-VLAN hosts before ARP; the real motor logs a failed ARP broadcast.
  if(test.expected){
   assert.deepEqual(adapterFrames,['arp-request','arp-reply','icmp-request','icmp-reply'],'adapter event order: '+test.name);
   assert.equal(adapted.log.events.at(-1).kind,'icmp-delivered');
