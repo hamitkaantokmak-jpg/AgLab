@@ -58,5 +58,14 @@ for(const test of [
  assert.equal(reference.ok,test.expected,'production: '+test.name);
  assert.equal(adapted.ok,reference.ok,'engine parity: '+test.name);
  assert.ok(adapted.log.events.length>0,'adapter events missing: '+test.name);
+ const adapterFrames=adapted.log.events.filter(e=>e.kind==='frame').map(e=>e.detail.protocol);
+ if(test.expected){
+  assert.deepEqual(adapterFrames,['arp-request','arp-reply','icmp-request','icmp-reply'],'adapter event order: '+test.name);
+  assert.equal(adapted.log.events.at(-1).kind,'icmp-delivered');
+ }else{
+  assert.equal(adapted.log.events.at(-1).kind,'icmp-undelivered');
+  assert.equal(adapterFrames.includes('icmp-request'),false,'ICMP must not start without ARP reachability: '+test.name);
+ }
+
 }
 console.log('PASS ARP/ICMP adapter outcome parity (3 constrained access-LAN fixtures)');
