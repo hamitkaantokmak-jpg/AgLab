@@ -26,7 +26,8 @@
       "limitations": [
         "Power Distribution Device simüle edilmez",
         "model dışı IOS komutları raporlanır"
-      ]
+      ],
+      "report": "static-routing-two-routers-import-report.json"
     },
     {
       "id": "synthetic-switch-state",
@@ -192,6 +193,77 @@
       ],
       "limitations": [
         "desteklenmeyen range çalışıyor sayılmaz"
+      ]
+    },
+    {
+      "id": "synthetic-port-security-static",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Switch",
+      "config": [
+        "interface fa0/1",
+        "switchport port-security",
+        "switchport port-security maximum 2",
+        "switchport port-security violation restrict",
+        "switchport port-security mac-address 02aa.0000.0011"
+      ],
+      "expectedDevice": {
+        "interfaces": {
+          "fa0/1": {
+            "portSecurity": {
+              "enabled": true,
+              "max": 2,
+              "violation": "restrict",
+              "macs": [
+                "02:aa:00:00:00:11"
+              ]
+            }
+          }
+        }
+      },
+      "expectedUnmodeled": [],
+      "coverage": [
+        "temel port-security aktarımı",
+        "statik MAC kanonikleştirme ve ihlal modu"
+      ],
+      "limitations": [
+        "sticky/aging ve kaynak runtime sayaçları aktarılmaz",
+        "bu sentetik örnek tek başına paket iletimini doğrulamaz"
+      ]
+    },
+    {
+      "id": "synthetic-port-security-invalid",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Switch",
+      "config": [
+        "interface fa0/1",
+        "switchport port-security",
+        "switchport port-security maximum 0",
+        "switchport port-security mac-address 01:00:5e:00:00:01",
+        "switchport port-security mac-address sticky"
+      ],
+      "expectedDevice": {
+        "interfaces": {
+          "fa0/1": {
+            "portSecurity": {
+              "enabled": true,
+              "max": 1,
+              "violation": "shutdown",
+              "macs": []
+            }
+          }
+        }
+      },
+      "expectedUnmodeled": [
+        "switchport port-security maximum 0",
+        "switchport port-security mac-address 01:00:5e:00:00:01",
+        "switchport port-security mac-address sticky"
+      ],
+      "coverage": [
+        "geçersiz maksimum/multicast MAC reddi",
+        "sticky komutunun açıkça model dışı kalması"
+      ],
+      "limitations": [
+        "model dışı komutlar uygulanmaz, ham kaynak korunur"
       ]
     }
   ]

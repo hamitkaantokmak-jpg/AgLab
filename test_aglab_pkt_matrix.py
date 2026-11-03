@@ -29,6 +29,9 @@ for case in matrix['cases']:
         xml = decrypt_pkt(raw)  # Verify the real encrypted sample, not only cached XML.
         assert xml == base64.b64decode(archived['sourceArchive']['decodedXmlBase64'])
         obj, report = convert(xml, raw)
+        assert obj == archived, 'Cached normalized topology is stale: '+case['id']
+        if case.get('report'):
+            assert report == json.loads((ROOT/case['report']).read_text()), 'Cached import report is stale: '+case['id']
         subset(report, case['expected'])
         assert obj['sourceArchive']['originalPacketSha256'] == case['sha256']
         assert base64.b64decode(obj['sourceArchive']['originalPacketBase64']) == raw

@@ -10,6 +10,8 @@ Makine tarafından çalıştırılan tanım: `pkt-sample-matrix.json`.
 | synthetic-router-route | Özgün sentetik PT XML | Fiziksel IPv4/mask/shutdown, next-hop ve administrative distance | Tek başına uçtan uca paket iletimini doğrulamaz |
 | synthetic-switch-interface-range | Özgün sentetik PT XML | Fiziksel port listesi/aralığı, VLAN/shutdown ve tek port override | Router/SVI range, eksik prefixli liste üyesi yok |
 | synthetic-switch-invalid-range | Özgün sentetik PT XML | Hatalı aralıkta hiçbir porta kısmi uygulama yok; özgün komut raporu | Desteklenmeyen range çalıştırılmaz |
+| synthetic-port-security-static | Özgün sentetik PT XML | Temel port-security, maximum/violation ve statik MAC | Sticky/aging ve kaynak runtime sayaçları yok |
+| synthetic-port-security-invalid | Özgün sentetik PT XML | Geçersiz maximum/MAC ve sticky satırlarının raporlanması | Model dışı satırlar uygulanmaz |
 
 Gerçek örnekteki tarayıcı içe aktarımı, dört ping ve JSON arşiv round-trip kontrolleri ayrıca `test_aglab_import.py` tarafından çalıştırılır. Sayılar yalnızca ilgili koşunun raporu PASS ise doğrulanmış sayılır. Yeni örnek eklemek için izinli ve kişisel veri içermeyen kaynak kullanın; kaynak türünü, beklenen sonucu ve sınırları açıkça belirtin.
 
@@ -59,3 +61,33 @@ aynı VLAN'da ping başarısını, tek port VLAN değişimi veya range shutdown 
 başarısızlığı ve mevcut tek-port CLI komutlarıyla erişimin geri gelmesini sınar.
 Bu geliştirme interaktif CLI'ye `interface range` komutu eklemez; kapsam PKT
 running-config aktarımıdır. Yeni iki matris kaydı özgün sentetik XML'dir.
+
+## Fiziksel endpoint MAC ve port-security aktarımı
+
+Tek kablolu NIC'i kesin eşlenen PC/Server için yalnız o NIC'in `MACADDRESS` alanı
+kanonik `mac` alanına aktarılır; ilgisiz servis/Bluetooth MAC'i kullanılmaz.
+Kaynak MAC yoksa önceki sentetik adres davranışı korunur ve aktarım notu verilir.
+Kaynakta açıkça geçersiz, sıfır, multicast veya yinelenen endpoint MAC varsa dönüşüm
+açık hatayla reddedilir. Çoklu NIC belirsizliğinde mevcut adres/port/kablo reddi sürer.
+JSON doğrulaması da bozuk/yinelenen MAC'i mevcut çalışmayı değiştirmeden reddeder.
+Sentetik adres üretimi, açık kaynak MAC'leriyle çakışmayı önler; kaynak MAC yokken
+eski dN adresleri korunur. Router/switch fiziksel port MAC'leri bu kapsamda değildir.
+
+Switch fiziksel portlarında `switchport port-security`, `no switchport port-security`,
+`maximum 1-1024`, `violation shutdown|restrict|protect`, `mac-address <MAC>` ve
+`no switchport port-security mac-address <MAC>` mevcut CLI sözleşmesine göre aktarılır.
+Geçersiz satır önceki geçerli kuralı değiştirmez. Range seçimi içinde bir portun
+MAC kapasitesi komutu karşılamıyorsa o satır hiçbir seçili porta uygulanmaz ve
+özgün satır numarasıyla raporlanır. Sticky, aging, VLAN'a özel secure MAC, kaynak
+runtime ihlal sayacı/err-disabled ve recovery timer desteklenmez.
+
+`test_aglab_pkt_port_security.py`, fiziksel NIC kökenini, Server/missing-MAC
+uyumluluğunu, bozuk MAC/komutları ve range atomikliğini sınar. Chromium'da gerçek
+JSON içe aktarımıyla doğru MAC'in üç modda geçişi, yanlış MAC'in engellenmesi,
+shutdown modunda err-disabled, CLI ile toparlanma, dinamik öğrenme, yenileme ve
+JSON dışa aktarmada kaynak arşivi/kural/MAC korunması doğrulanır.
+
+İzinli gerçek PKT'den hazır topoloji ve rapor yeniden üretildi. Matris testi artık
+hazır JSON ve raporun kaynak PKT dönüşümüyle bütünüyle aynı olduğunu da denetler.
+Yeni port-security örnekleri sentetiktir; gerçek dosyada bu protokolün bulunduğu
+veya yeni bir Packet Tracer sürümünün doğrulandığı iddia edilmez.
