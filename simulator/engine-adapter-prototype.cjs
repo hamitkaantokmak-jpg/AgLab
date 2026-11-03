@@ -43,8 +43,7 @@ function simulate(topology,sourceId,targetId){
   return delivered;
  }
  let ok=false,why='';
- if(source.vlan!==target.vlan)why='VLAN isolation';
- else if(!send(source,'ff:ff:ff:ff:ff:ff','arp-request').has(target.id))why='ARP request not delivered';
+ if(!send(source,'ff:ff:ff:ff:ff:ff','arp-request').has(target.id))why='ARP request not delivered';
  else if(!send(target,source.mac,'arp-reply').has(source.id))why='ARP reply not delivered';
  else if(!send(source,target.mac,'icmp-request').has(target.id))why='ICMP request not delivered';
  else if(!send(target,source.mac,'icmp-reply').has(source.id))why='ICMP reply not delivered';
