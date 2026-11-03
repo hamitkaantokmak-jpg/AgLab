@@ -75,7 +75,10 @@ class API(BaseHTTPRequestHandler):
             return self.respond(401, {"error": "unauthorized"})
         if self.path not in ("/api/lab/start", "/api/lab/stop", "/api/lab/status"):
             return self.respond(404, {"error": "unknown endpoint"})
-        if self.headers.get("Content-Length") not in (None, "0"):
+        lengths = self.headers.get_all("Content-Length", [])
+        if (len(lengths) > 1 or any(value != "0" for value in lengths)
+                or self.headers.get_all("Transfer-Encoding", [])):
+            self.close_connection = True
             return self.respond(400, {"error": "request bodies not accepted"})
         action = self.path.rsplit("/", 1)[-1]
         if not OPERATION_LOCK.acquire(blocking=False):
