@@ -58,3 +58,7 @@ Karşılaştırma artık gerçek `ethernet-forwarding.js` olay günlüğünü de
 ### Deneysel VLAN bazlı MAC öğrenimi
 
 Prototip artık her switch için VLAN+MAC → giriş portu tablosu tutar. ARP Request yayın olarak yayılır; ARP Reply ve sonraki ICMP çerçeveleri öğrenilen hedef portuna unicast yönlendirilir. `test_engine_adapter_parity.cjs` üç erişim VLAN senaryosunda gerçek AğLab Ethernet motoruyla **switch forward kararını, ingress/egress portlarını ve VLAN bilgisini** de karşılaştırır. Bu yalnızca basit tek-switch/access VLAN modelidir; öğrenmenin yaşlanması, MAC taşınması, trunk/STP, port-security, yönlendirme ve gerçek paketin alanları hâlâ kapsam dışındadır. En son CI sonucu doğrulanana kadar testler geçildi sayılmaz.
+
+### Deneysel ARP oturum önbelleği
+
+`createSession()` ile isteğe bağlı, yalnızca prototip içinde kullanılan ARP önbelleği eklendi. İlk başarılı ping ARP+ICMP olayları üretir; aynı topoloji ve hedefle ikinci ping yalnız ICMP üretir. Topoloji JSON'u değiştiğinde önbellek silinir; kopan kablo için eski ARP kaydı kullanılamaz. Varsayılan `simulate()` çağrısı durumsuz kaldığı için mevcut karşılaştırma/ölçek testlerinin davranışı değişmez. Bu kaba topoloji imzası ve ARP TTL bulunmayan öğretim prototipidir; üretim motoruna bağlanmadı.
