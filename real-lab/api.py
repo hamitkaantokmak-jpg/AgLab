@@ -34,8 +34,9 @@ class API(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def authorized(self):
-        supplied = self.headers.get("Authorization", "")
-        return len(TOKEN) >= 32 and hmac.compare_digest(supplied, "Bearer " + TOKEN)
+        supplied = self.headers.get_all("Authorization", [])
+        return (len(TOKEN) >= 32 and len(supplied) == 1
+                and hmac.compare_digest(supplied[0], "Bearer " + TOKEN))
 
     def do_GET(self):
         if self.path == "/":
