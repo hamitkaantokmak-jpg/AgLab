@@ -36,3 +36,10 @@ Kaynaklar:
 - CI ve tarayıcı testleri yeşil; performans iyileşmesi ölçüldü. **Henüz bu prototip veya ölçüm yapılmadı.**
 
 Karar: AğLab JS motorunu şimdi topluca silme veya NetSim WASM'i doğrudan gömme. Önce MIT/TS yaklaşımıyla dar kapsamlı event adapter deneyi, gelişmiş protokollerde mevcut FRR altyapısını kullan.
+
+
+## İlk çalışan prototip (deneysel)
+
+`simulator/engine-adapter-prototype.cjs` yalnızca tek VLAN üzerindeki host/switch bağlantıları için **bağımsız ve çok sınırlı** ARP isteği/yanıtı ile ICMP echo gidiş/dönüş olaylarını üretir. Olaylar mevcut `packet-events.js` normalleştiricisine aktarılır. `simulator/test_engine_adapter_prototype.cjs` iki uç arasında teslimi, farklı VLAN'ı, kopuk bağlantıyı, hatalı MAC'i ve tekrarlanabilir sonuçları sınar; 10/50/100 uç için 20'şer koşuluk mikro ölçüm verir. Prototip gerçek MAC öğrenmesi/FDB, trunk, STP, router/TTL, ARP cache veya zamanlamalı Ethernet modelinin yerine **geçmez**. AğLab arayüzüne ve Akademi puanlamasına bağlanmadı; normal `build_simulator.py` çıktısına eklenmez.
+
+Bu kod başka bir simülatörün kaynak kodunu kopyalamaz, yeni kütüphane/lisans bağımlılığı yaratmaz. Mikro ölçüm sonuçları yalnızca bu küçük modelin çalışma süresidir; **eski AğLab motoruyla veya NetSim'le hız karşılaştırması değildir**. Dış motorla eşdeğerlik ve 40 lab uyumluluğu henüz kanıtlanmadı. CI sonucu, prototipin sınırlı sözleşmesini doğrular; motor geçiş onayı değildir.
