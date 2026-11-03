@@ -51,8 +51,10 @@ for case in matrix['cases']:
         obj, report = convert(xml)
         subset(obj['devices'][0], case['expectedDevice'])
         assert report['devicesImported'] == 1
+        if 'expectedUnmodeled' in case:
+            assert [row['command'] for row in report['unmodeledConfigLines']] == case['expectedUnmodeled'], case['id']
         assert base64.b64decode(obj['sourceArchive']['decodedXmlBase64']) == xml
     else:
         raise AssertionError('Unknown source kind: ' + case['sourceKind'])
     print('PASS matrix:', case['id'], 'source:', case['sourceKind'])
-print('PASS: 3 sample-matrix cases; real PKT authentication/decryption and source preservation')
+print(f"PASS: {len(matrix['cases'])} sample-matrix cases; real PKT authentication/decryption and source preservation")

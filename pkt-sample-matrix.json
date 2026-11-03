@@ -105,6 +105,94 @@
       "limitations": [
         "bu sentetik örnek tek başına paket iletimini doğrulamaz"
       ]
+    },
+    {
+      "id": "synthetic-switch-interface-range",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Switch",
+      "config": [
+        "interface range FastEthernet0/1 - 3, GigabitEthernet0/1",
+        "switchport access vlan 10",
+        "shutdown",
+        "exit",
+        "interface FastEthernet0/2",
+        "no shutdown"
+      ],
+      "expectedDevice": {
+        "vlans": [
+          1,
+          10
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "vlan": 10,
+            "enabled": false
+          },
+          "fa0/2": {
+            "vlan": 10,
+            "enabled": true
+          },
+          "fa0/3": {
+            "vlan": 10,
+            "enabled": false
+          },
+          "gi0/1": {
+            "vlan": 10,
+            "enabled": false
+          },
+          "fa0/4": {
+            "vlan": 1,
+            "enabled": true
+          }
+        }
+      },
+      "expectedUnmodeled": [],
+      "coverage": [
+        "mevcut fiziksel switch portlarında liste/aralık",
+        "VLAN/shutdown ve sonraki tek-port override"
+      ],
+      "limitations": [
+        "router/SVI range ve eksik prefixli liste üyeleri desteklenmez",
+        "bu sentetik örnek gerçek yeni PKT sürümü değildir"
+      ]
+    },
+    {
+      "id": "synthetic-switch-invalid-range",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Switch",
+      "config": [
+        "interface FastEthernet0/1",
+        "switchport access vlan 10",
+        "interface range FastEthernet0/1, bad",
+        "shutdown"
+      ],
+      "expectedDevice": {
+        "vlans": [
+          1,
+          10
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "vlan": 10,
+            "enabled": true
+          },
+          "fa0/2": {
+            "vlan": 1,
+            "enabled": true
+          }
+        }
+      },
+      "expectedUnmodeled": [
+        "interface range FastEthernet0/1, bad",
+        "shutdown"
+      ],
+      "coverage": [
+        "hatalı aralıkta kısmi uygulama yok",
+        "özgün satırlarla desteklenmeyen komut raporu"
+      ],
+      "limitations": [
+        "desteklenmeyen range çalışıyor sayılmaz"
+      ]
     }
   ]
 }
