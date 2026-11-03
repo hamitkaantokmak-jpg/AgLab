@@ -18,6 +18,7 @@ TESTS.append('test_aglab_traceroute.py')
 TESTS.append('test_aglab_icmp_unreachable.py')
 TESTS.append('test_aglab_pkt_dot1q.py')
 TESTS.append('test_aglab_pkt_config_context.py')
+TESTS.append('test_aglab_pkt_port_security.py')
 TESTS.append('test_aglab_persistence.py')
 TESTS.extend(['test_aglab_large_topology.py','test_aglab_pkt_matrix.py','test_aglab_endpoint_ports.py','test_aglab_student_journey.py','test_aglab_switch_svi.py','test_aglab_svi_import.py'])
 NODE_TESTS=['simulator/test_packet_events.cjs','simulator/test_port_security.cjs' ,'simulator/test_engine_adapter_prototype.cjs' ,'simulator/test_engine_adapter_parity.cjs']

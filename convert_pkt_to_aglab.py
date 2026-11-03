@@ -120,6 +120,36 @@ def parse_trunk_allowed(value):
         if not all(1 <= v <= 4094 for v in bounds) or bounds[0]>bounds[-1]: return None
     return action,parse_vlan_list(value)
 
+def canonical_secure_mac(value):
+    raw=re.sub(r'[.:-]','',value.lower())
+    if not re.fullmatch(r'[0-9a-f]{12}',raw) or raw=='000000000000' or int(raw[:2],16)&1: return None
+    return ':'.join(raw[i:i+2] for i in range(0,12,2))
+
+def parse_port_security_command(line, previous=None):
+    """Return a fresh policy only for the existing simulator CLI's valid subset."""
+    tokens=line.lower().split(); removing=tokens[:1]==['no']
+    args=tokens[1:] if removing else tokens
+    if args[:2]!=['switchport','port-security']: return None
+    policy=dict(previous or {'enabled':False,'max':1,'violation':'shutdown','macs':[]})
+    policy['macs']=list(policy['macs'])
+    if len(args)==2: policy['enabled']=not removing
+    elif len(args)==4 and args[2]=='maximum' and not removing:
+        if not re.fullmatch(r'[0-9]{1,4}',args[3]): return None
+        maximum=int(args[3])
+        if not 1<=maximum<=1024 or maximum<len(policy['macs']): return None
+        policy['max']=maximum
+    elif len(args)==4 and args[2]=='violation' and not removing and args[3] in ('shutdown','restrict','protect'):
+        policy['violation']=args[3]
+    elif len(args)==4 and args[2]=='mac-address':
+        mac=canonical_secure_mac(args[3])
+        if mac is None: return None
+        if removing: policy['macs']=[value for value in policy['macs'] if value!=mac]
+        elif mac not in policy['macs']:
+            if len(policy['macs'])>=policy['max']: return None
+            policy['macs'].append(mac)
+    else: return None
+    return policy
+
 def parse_switch_interface_range(value, ports):
     """Resolve a bounded physical-port selection atomically; never invent ports.
 
@@ -153,7 +183,7 @@ def convert(xml_bytes, original_pkt=None):
     network=root.find('NETWORK')
     if network is None or network.find('DEVICES') is None or network.find('LINKS') is None:
         raise PacketTracerError('PACKETTRACER5 içeriğinde beklenen NETWORK/DEVICES/LINKS alanları bulunamadı.')
-    switch_range_contexts={}
+    switch_range_contexts={}; switch_security_lines={}; endpoint_macs=set()
     raw_devices=[]; ref_to_id={}; unsupported=[]; notes=[]; unmapped_endpoints=set(); endpoint_ports=[]
     for idx,dev in enumerate(network.find('DEVICES')):
         eng=dev.find('ENGINE')
@@ -211,7 +241,7 @@ def convert(xml_bytes, original_pkt=None):
         elif kind=='Switch':
             ports=[f'fa0/{i}' for i in range(1,25)]+['gi0/1','gi0/2']; interfaces={p:{'mode':'access','vlan':1,'allowed':[1],'enabled':True} for p in ports}
             # Parse explicit access/trunk commands and VLAN database from the source config.
-            range_ports=None; range_context={}
+            range_ports=None; range_context={}; security_lines=set()
             current=None; vlans={1}; ignored_interfaces=[]; stp_priorities={}; explicit_allowed=set(); vlan_names={}; vlan_context=None; management_gateway=''
             for line_no,line in enumerate(cfg.splitlines(),1):
                 if line.strip() in ('!','exit','end'):
@@ -258,6 +288,12 @@ def convert(xml_bytes, original_pkt=None):
                             stp_priorities[str(vid)]=priority
                     current=None; range_ports=None; vlan_context=None; continue
                 targets=range_ports or ([current] if current in interfaces else [])
+                if re.match(r'\s*(?:no\s+)?switchport\s+port-security\b',line,re.I):
+                    updates={port:parse_port_security_command(line,interfaces[port].get('portSecurity')) for port in targets if port in ports}
+                    if updates and len(updates)==len(targets) and all(policy is not None for policy in updates.values()):
+                        for port,policy in updates.items(): interfaces[port]['portSecurity']=policy
+                        security_lines.add(line_no)
+                    continue
                 for port in targets:
                     if port.startswith('vlan'):
                         address=re.fullmatch(r'\s*ip address\s+(\d+(?:\.\d+){3})\s+(\d+(?:\.\d+){3})\s*',line,re.I)
@@ -294,6 +330,7 @@ def convert(xml_bytes, original_pkt=None):
                     iface['allowed']=list(range(1,4095))
             d={'id':f'd{len(raw_devices)+1}','name':name,'type':kind,'x':x,'y':y,'w':112,'h':72,'ip':'','mask':'','gateway':management_gateway,'vlans':sorted(vlans),'stpPriorities':stp_priorities,'ports':list(dict.fromkeys(ports)),'enabled':text(eng,'POWER','true').lower()!='false','mode':'user','config':{'packetTracerModel':model,'runningConfig':cfg,'displayName':display,'unmodeledInterfaces':ignored_interfaces},'interfaces':interfaces}
             switch_range_contexts[d['id']]=range_context
+            switch_security_lines[d['id']]=security_lines
             if vlan_names: d['vlanNames']=vlan_names
         else:
             # Bind endpoint state to one physical wired NIC, never an unrelated
@@ -310,7 +347,15 @@ def convert(xml_bytes, original_pkt=None):
             port_enabled=mapped and text(address,'POWER','true').lower()!='false'
             ports=['eth0']
             d={'id':f'd{len(raw_devices)+1}','name':name,'type':kind,'x':x,'y':y,'w':104,'h':72,'ip':ip,'mask':mask,'gateway':gateway,'vlan':1,'ports':ports,'enabled':text(eng,'POWER','true').lower()!='false','mode':'user','config':{'packetTracerModel':model,'runningConfig':cfg,'displayName':display},'interfaces':{'eth0':{'enabled':port_enabled}}}
-            endpoint_ports.append({'device':name,'sourceWiredPortCount':len(wired) if modules else None,'modeledPort':'eth0' if mapped else None,'sourcePortType':text(address,'TYPE') if wired else None})
+            source_mac=text(address,'MACADDRESS') if mapped else ''
+            if mapped and address is not None and address.find('MACADDRESS') is not None:
+                mac=canonical_secure_mac(source_mac)
+                if mac is None: raise PacketTracerError(f'{name}: fiziksel Ethernet MAC adresi geçersiz.')
+                if mac in endpoint_macs: raise PacketTracerError(f'{name}: yinelenen fiziksel Ethernet MAC adresi: {mac}')
+                endpoint_macs.add(mac); d['mac']=mac
+            elif mapped:
+                notes.append(f'{name}: kaynak Ethernet MAC adresi yok; motor sentetik MAC kullanır, statik port-security kuralıyla eşleşme garanti edilmez.')
+            endpoint_ports.append({'device':name,'sourceWiredPortCount':len(wired) if modules else None,'modeledPort':'eth0' if mapped else None,'sourcePortType':text(address,'TYPE') if wired else None,'sourceMac':d.get('mac')})
             if not mapped:
                 unmapped_endpoints.add(d['id'])
                 notes.append(f'{name}: {len(wired)} Ethernet NIC bulundu; tek kablolu NIC eşlemesi yapılamadığı için endpoint adresi/portu modellenmedi ve bağlantıları atlandı.')
@@ -388,6 +433,9 @@ def convert(xml_bytes, original_pkt=None):
                 named=re.fullmatch(r'name\s+(.+)',raw,re.I)
                 if named: modeled=report_vlan in d['vlans'] and 1 <= len(named.group(1)) <= 32 and not re.search(r'[\x00-\x1f\x7f]',named.group(1))
 
+            if re.match(r'(?:no\s+)?switchport\s+port-security\b',raw,re.I):
+                modeled=line_no in switch_security_lines.get(d['id'],set())
+
             interface_command=bool(re.match(r'interface\b',raw,re.I))
             port_command=bool(re.match(r'(?:ip address\b|encapsulation\b|switchport\b|shutdown$|no shutdown$)',raw,re.I))
             if interface_command or port_command:
@@ -405,9 +453,9 @@ def convert(xml_bytes, original_pkt=None):
       'unmodeledConfigLines':unmodeled_config_lines,
       'runningConfigPreservedFor':{d['name']:bool(d.get('config',{}).get('runningConfig')) for d in raw_devices},
       'simulationCoverage':{
-        'modeled':'Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, tek Ethernet NIC PC/Server IPv4/mask/gateway ve port POWER, router fiziksel ve etiketli 802.1Q alt arayüz IPv4/mask/shutdown, alt arayüz parent/VLAN eşlemesi, IPv4 statik rota, switch yönetim SVI IP/mask/shutdown ve default-gateway, VLAN isimleri, switch fiziksel interface range (mevcut portlar, liste/aynı-prefix aralık) ve access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.',
+        'modeled':'Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, tek Ethernet NIC PC/Server IPv4/mask/gateway, fiziksel MAC ve port POWER, router fiziksel ve etiketli 802.1Q alt arayüz IPv4/mask/shutdown, alt arayüz parent/VLAN eşlemesi, IPv4 statik rota, switch yönetim SVI IP/mask/shutdown ve default-gateway, VLAN isimleri, temel switch port-security (enabled/maximum/violation/statik MAC), switch fiziksel interface range (mevcut portlar, liste/aynı-prefix aralık) ve access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.',
         'preservedButNotFullySimulated':'Tam running-config metni config.runningConfig alanında saklanır; bu, tüm IOS komutlarının AğLab motorunda çalıştığı anlamına gelmez.',
-        'notModeled':['IOS sürüm/feature davranışları','duplex/speed ve kablo türü/medya ayrıntıları','STP zamanlaması, root bridge seçim algoritmasının tam davranışı ve tüm STP durum geçişleri','Çoklu NIC ve Ethernet dışı endpoint arayüzleri','Layer 3 switch routing (SVI yalnız yönetim endpointidir)','Router alt arayüzlerinde native VLAN ve ISL encapsulation','güç dağıtım cihazının davranışı','kaynak dosyada yer alıp AğLab modeline eşlenmeyen diğer cihaz/protokol özellikleri']
+        'notModeled':['IOS sürüm/feature davranışları','duplex/speed ve kablo türü/medya ayrıntıları','STP zamanlaması, root bridge seçim algoritmasının tam davranışı ve tüm STP durum geçişleri','Çoklu NIC ve Ethernet dışı endpoint arayüzleri','Layer 3 switch routing (SVI yalnız yönetim endpointidir)','Router alt arayüzlerinde native VLAN ve ISL encapsulation','Port-security sticky/aging, violation sayaçlarının kaynak runtime durumu ve recovery timer', 'Router/switch fiziksel port MAC adresleri (motor cihaz başına sentetik MAC kullanır)', 'güç dağıtım cihazının davranışı','kaynak dosyada yer alıp AğLab modeline eşlenmeyen diğer cihaz/protokol özellikleri']
       },
       'routerRoutes':{d['name']:d.get('staticRoutes',[]) for d in raw_devices if d['type']=='Router'},
       'endpoints':[{k:d.get(k) for k in ['name','type','ip','mask','gateway']} for d in raw_devices if d['type'] in ('PC','Server')]
