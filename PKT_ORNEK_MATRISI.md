@@ -12,6 +12,8 @@ Makine tarafından çalıştırılan tanım: `pkt-sample-matrix.json`.
 | synthetic-switch-invalid-range | Özgün sentetik PT XML | Hatalı aralıkta hiçbir porta kısmi uygulama yok; özgün komut raporu | Desteklenmeyen range çalıştırılmaz |
 | synthetic-port-security-static | Özgün sentetik PT XML | Temel port-security, maximum/violation ve statik MAC | Sticky/aging ve kaynak runtime sayaçları yok |
 | synthetic-port-security-invalid | Özgün sentetik PT XML | Geçersiz maximum/MAC ve sticky satırlarının raporlanması | Model dışı satırlar uygulanmaz |
+| synthetic-dhcp-relay | Özgün sentetik PT XML | Fiziksel/802.1Q helper hedefi, hedefe göre kaldırma | Tek aktif helper; sunucu havuzu ve VRF yok |
+| synthetic-dhcp-relay-invalid | Özgün sentetik PT XML | Geçersiz adres/VRF/bağlam dışı komut önceki hedefi bozmaz | Desteklenmeyen satırlar uygulanmaz |
 
 Gerçek örnekteki tarayıcı içe aktarımı, dört ping ve JSON arşiv round-trip kontrolleri ayrıca `test_aglab_import.py` tarafından çalıştırılır. Sayılar yalnızca ilgili koşunun raporu PASS ise doğrulanmış sayılır. Yeni örnek eklemek için izinli ve kişisel veri içermeyen kaynak kullanın; kaynak türünü, beklenen sonucu ve sınırları açıkça belirtin.
 
@@ -91,3 +93,26 @@ JSON dışa aktarmada kaynak arşivi/kural/MAC korunması doğrulanır.
 hazır JSON ve raporun kaynak PKT dönüşümüyle bütünüyle aynı olduğunu da denetler.
 Yeni port-security örnekleri sentetiktir; gerçek dosyada bu protokolün bulunduğu
 veya yeni bir Packet Tracer sürümünün doğrulandığı iddia edilmez.
+
+## DHCP relay hedefi aktarımı
+
+Router fiziksel ve etiketli 802.1Q alt arayüzündeki `ip helper-address <IPv4>`,
+`no ip helper-address <IPv4>` ve mevcut motorun temizleme biçimi olan
+`no ip helper-address` aktarılır. Adresli kaldırma yalnız o hedefi kaldırır;
+başka hedef verilirse mevcut kural korunur. Aynı hedefin tekrarı tek kayıttır.
+Eksik/geçersiz adresler, 0/8, loopback ve ilk okteti 224–255 olan hedefler ile ek
+VRF/seçenekler uygulanmaz; özgün satırları raporlanır. Switch/SVI ve bağlam dışı
+komutlar relay oluşturmaz. Kaynak XML/PKT arşivi değişmez.
+
+Motor arayüz başına yalnız bir helper hedefi tutar. Kaynak komutlar işlendiğinde
+bir arayüzde birden fazla aktif hedef kalırsa tüm dönüşüm açıklayıcı hatayla
+reddedilir; hedefler sessizce teke düşürülmez. Bu bir çoklu helper, VRF, Cisco UDP
+forwarding veya DHCP sunucu havuzu/servis aktarımı desteği değildir.
+
+`test_aglab_pkt_dhcp_relay.py`, hedefler/kaldırma/bağlam ve çoklu hedef reddini
+sınar. Chromium testleri fiziksel/802.1Q topolojide gerçek JSON içe aktarımı,
+istemcinin APIPA'da kalması, eksik/yanlış helper, kapalı istemci/sunucu arayüzü ve
+kapalı trunk VLAN yoluyla başarısız yenilemeyi; mevcut CLI ile düzeltme sonrası
+lease, gateway, sunucuya ping ve sayfa yenilemede korunmayı doğrular. DHCP sunucu
+servisi testte mevcut CLI ile açılır; kaynak PKT'den havuz aktarıldığı iddia edilmez.
+Yeni matris kayıtları sentetik XML'dir; yeni gerçek PKT sürümü sayılmaz.

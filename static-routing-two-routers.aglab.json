@@ -1313,10 +1313,11 @@
       "SW2": true
     },
     "simulationCoverage": {
-      "modeled": "Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, tek Ethernet NIC PC/Server IPv4/mask/gateway, fiziksel MAC ve port POWER, router fiziksel ve etiketli 802.1Q alt arayüz IPv4/mask/shutdown, alt arayüz parent/VLAN eşlemesi, IPv4 statik rota, switch yönetim SVI IP/mask/shutdown ve default-gateway, VLAN isimleri, temel switch port-security (enabled/maximum/violation/statik MAC), switch fiziksel interface range (mevcut portlar, liste/aynı-prefix aralık) ve access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.",
+      "modeled": "Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, tek Ethernet NIC PC/Server IPv4/mask/gateway, fiziksel MAC ve port POWER, router fiziksel ve etiketli 802.1Q alt arayüz IPv4/mask/shutdown, alt arayüz parent/VLAN eşlemesi, IPv4 statik rota, router DHCP relay için tek IPv4 helper hedefi, switch yönetim SVI IP/mask/shutdown ve default-gateway, VLAN isimleri, temel switch port-security (enabled/maximum/violation/statik MAC), switch fiziksel interface range (mevcut portlar, liste/aynı-prefix aralık) ve access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.",
       "preservedButNotFullySimulated": "Tam running-config metni config.runningConfig alanında saklanır; bu, tüm IOS komutlarının AğLab motorunda çalıştığı anlamına gelmez.",
       "notModeled": [
         "IOS sürüm/feature davranışları",
+        "DHCP çoklu helper/VRF, sunucu havuzu ve UDP forwarding ayrıntıları",
         "duplex/speed ve kablo türü/medya ayrıntıları",
         "STP zamanlaması, root bridge seçim algoritmasının tam davranışı ve tüm STP durum geçişleri",
         "Çoklu NIC ve Ethernet dışı endpoint arayüzleri",

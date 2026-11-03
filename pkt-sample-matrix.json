@@ -265,6 +265,71 @@
       "limitations": [
         "model dışı komutlar uygulanmaz, ham kaynak korunur"
       ]
+    },
+    {
+      "id": "synthetic-dhcp-relay",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Router",
+      "config": [
+        "interface g0/0",
+        "ip helper-address 10.20.0.10",
+        "no ip helper-address 192.0.2.10",
+        "!",
+        "interface g0/1.10",
+        "encapsulation dot1q 10",
+        "ip helper-address 192.0.2.10"
+      ],
+      "expectedDevice": {
+        "interfaces": {
+          "g0/0": {
+            "helperAddress": "10.20.0.10"
+          },
+          "g0/1.10": {
+            "parent": "g0/1",
+            "vlan": 10,
+            "helperAddress": "192.0.2.10"
+          }
+        }
+      },
+      "expectedUnmodeled": [],
+      "coverage": [
+        "fiziksel/802.1Q alt arayüz helper hedefi",
+        "hedefe göre kaldırmada mevcut kuralın korunması"
+      ],
+      "limitations": [
+        "tek aktif helper; çoklu helper/VRF ve DHCP sunucu havuzu aktarımı yok"
+      ]
+    },
+    {
+      "id": "synthetic-dhcp-relay-invalid",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Router",
+      "config": [
+        "interface g0/0",
+        "ip helper-address 10.20.0.10",
+        "ip helper-address 999.20.0.1",
+        "ip helper-address 10.20.0.11 vrf BLUE",
+        "exit",
+        "no ip helper-address"
+      ],
+      "expectedDevice": {
+        "interfaces": {
+          "g0/0": {
+            "helperAddress": "10.20.0.10"
+          }
+        }
+      },
+      "expectedUnmodeled": [
+        "ip helper-address 999.20.0.1",
+        "ip helper-address 10.20.0.11 vrf BLUE",
+        "no ip helper-address"
+      ],
+      "coverage": [
+        "yanlış adres/VRF ve bağlam dışı kaldırmada önceki helper korunur"
+      ],
+      "limitations": [
+        "desteklenmeyen satırlar uygulanmaz; kaynak arşivi korunur"
+      ]
     }
   ]
 }
