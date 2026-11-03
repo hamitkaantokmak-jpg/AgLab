@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');
 const {performance}=require('node:perf_hooks');
-const {simulate}=require('./engine-adapter-prototype.cjs');
+const {simulate,createSession}=require('./engine-adapter-prototype.cjs');
 function topology(n){
  const nodes=[{id:'sw1',type:'switch'}],links=[];
  for(let i=1;i<=n;i++){
@@ -23,6 +23,20 @@ assert.deepEqual(v.log.events.filter(e=>e.kind==='frame').map(e=>e.detail.protoc
 const missing=topology(2);missing.links.pop();
 assert.equal(simulate(missing,'pc1','pc2').reason,'ARP request not delivered');
 assert.deepEqual(simulate(topology(2),'pc1','pc2'),good,'deterministic');
+
+const session=createSession(),cachedTopology=topology(2);
+const cold=simulate(cachedTopology,'pc1','pc2',session);
+const warm=simulate(cachedTopology,'pc1','pc2',session);
+assert.equal(cold.ok,true);assert.equal(warm.ok,true);
+assert.deepEqual(warm.log.events.filter(e=>e.kind==='frame').map(e=>e.detail.protocol),['icmp-request','icmp-reply']);
+assert.equal(session.arp.size,1);
+cachedTopology.links.pop();
+const afterLinkChange=simulate(cachedTopology,'pc1','pc2',session);
+assert.equal(afterLinkChange.ok,false,'topology changes must invalidate cached ARP');
+assert.deepEqual(afterLinkChange.log.events.filter(e=>e.kind==='frame').map(e=>e.detail.protocol),['arp-request']);
+assert.equal(session.arp.size,0);
+assert.throws(()=>simulate(topology(2),'pc1','pc2',{arp:{}}),/Invalid ARP session/);
+
 for(const bad of ['', '00:00:00:00:00:00','01:00:5e:00:00:01']){
  const t=topology(2);t.nodes[1].mac=bad;
  assert.throws(()=>simulate(t,'pc1','pc2'),/Invalid host/);
