@@ -64,8 +64,7 @@ for(const test of [
  const adapterFrames=adapted.log.events.filter(e=>e.kind==='frame').map(e=>e.detail.protocol);
  const referenceFrames=reference.log.events.filter(e=>e.kind==='frame').map(e=>e.detail.protocol);
  assert.ok(referenceFrames.length>0,'real engine events missing: '+test.name);
- if(!test.params.isolated)assert.deepEqual(adapterFrames,referenceFrames,'frame event parity: '+test.name);
- // Known gap: the prototype rejects cross-VLAN hosts before ARP; the real motor logs a failed ARP broadcast.
+ assert.deepEqual(adapterFrames,referenceFrames,'frame event parity: '+test.name);
  if(test.expected){
   assert.deepEqual(adapterFrames,['arp-request','arp-reply','icmp-request','icmp-reply'],'adapter event order: '+test.name);
   assert.equal(adapted.log.events.at(-1).kind,'icmp-delivered');
