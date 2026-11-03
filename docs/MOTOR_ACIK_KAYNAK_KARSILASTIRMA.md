@@ -1,0 +1,38 @@
+# AğLab motorlarını açık kaynakla hızlandırma kararı (4 Kasım 2026)
+
+## Amaç ve değişmez koşullar
+AğLab'ın öğrenci arayüzü, çevrimdışı tek HTML dağıtımı, 40 Akademi görevi, rubrik puanlaması, PKT import ve Paket Dedektifi korunur. Motoru tek seferde değiştirmek yerine her protokol için ölçülebilir, geri alınabilir bir uyarlama yapılır.
+
+## İncelenen adaylar (kaynak belgelerindeki iddialar; AğLab entegrasyonu henüz test edilmedi)
+
+| Aday | Temel artısı | Sınır / risk | Karar |
+| --- | --- | --- | --- |
+| netsim-labs/netsim | Rust+WASM; Cisco/Huawei CLI; README'de VLAN/STP/OSPF ve BGP motoru anlatılıyor | AGPL-3.0 ve ticari lisans beyanı; kod/API uyum ve gerçek destek kapsamı doğrulanmalı | Doğrudan almayalım; önce salt araştırma/ayrı lisans değerlendirmesi |
+| michael-borck/netsim | MIT; browser tabanlı deterministik TS motor, ARP/IPv4/ICMP, animasyon, NAT, DHCP/DNS/HTTP, Containerlab export | Cisco CLI yerine Linux iproute2; OSPF ve 802.1Q trunk README'de gelecek iş; doğrudan motor değiştirmeye uygun değil | Öncelikli düşük riskli algoritma/test yapısı referansı |
+| FediMechergui/netforge | TS ayrık olay motoru, ARP/ICMP/TCP/DHCP/DNS; otomatik puanlama yaklaşımı | Lisans ve ayrı API uyumluluğu doğrulanmadan kod alınamaz | İkinci referans adayı |
+| Containerlab + FRRouting | Gerçek OSPF/BGP ve Linux paketleri, AğLab Gerçek Lab'de zaten mevcut | Docker/Linux gerektirir; tarayıcıda çevrimdışı çalışmaz | Gerçek davranış doğrulaması için tut |
+
+Kaynaklar:
+- https://github.com/netsim-labs/netsim
+- https://github.com/michael-borck/netsim
+- https://github.com/FediMechergui/netforge
+- https://containerlab.dev/
+- https://docs.frrouting.org/en/latest/
+
+## Önerilen küçük, geri alınabilir deneme
+1. Mevcut AğLab motorunu **referans** olarak dondur: 40 görev, kablo/VLAN, ARP-ping, routing, OSPF/eBGP ve port-security regresyonları zorunlu kalsın.
+2. Kaynak kodu kopyalamadan önce MIT adayın ayrık olay ve paket izleme veri modelini incele; uygun lisans/NOTICE kayıtlarını belgeleyerek **bağımsız** bir `engine-adapter` prototipi kur.
+3. İlk prototipte yalnız **ARP + ICMP paket olayları** ve `Topology JSON -> event list -> AğLab Packet Detective` eşlemesini dene. Mevcut simülasyon motoruna veya Akademi puanlamasına bağlama.
+4. Aynı sabit topolojilerde hedefe ulaşma, VLAN izolasyonu, TTL/time-exceeded, yanlış gateway ve kayıp nedenleri için eski/yeni sonuçları karşılaştır. Eski motorla aynı sonuç çıkmıyorsa otomatik devreye alma.
+5. 10/50/100 cihazda olay sayısı, gecikme ve bellek ölç; tarayıcı offline dosya açma, import/export, puan ve UI regresyonu geçmeden geçiş yapma.
+6. Karşılaştırma başarılıysa yalnızca seçili olay üretimini feature flag ile devreye al; tek tıklamayla eski motora dönüş mümkün olsun. OSPF/BGP'nin ileri davranışları için FRR gerçek labı referans tut.
+
+## Kabul / red kapısı
+- Orijinal 40 kaynak JSON'un SHA256 değerleri aynı.
+- Öğrenci/öğretmen dağıtımları ve PKT import değişmedi.
+- ARP/ICMP ve izolasyon sonuçları deterministik ve mevcut kabul senaryolarıyla uyumlu.
+- Offline HTML için yeni CDN/sunucu bağımlılığı yok.
+- Kullanılan herhangi bir üçüncü taraf kodun lisansı ve atfı incelendi.
+- CI ve tarayıcı testleri yeşil; performans iyileşmesi ölçüldü. **Henüz bu prototip veya ölçüm yapılmadı.**
+
+Karar: AğLab JS motorunu şimdi topluca silme veya NetSim WASM'i doğrudan gömme. Önce MIT/TS yaklaşımıyla dar kapsamlı event adapter deneyi, gelişmiş protokollerde mevcut FRR altyapısını kullan.
