@@ -44,7 +44,8 @@ function production(f){
  vm.createContext(context);
  vm.runInContext(fs.readFileSync(path.join(__dirname,'ethernet-forwarding.js'),'utf8'),context);
  const result=vm.runInContext('localEthernetPing(get("pc1"),get("pc2"),10)',context);
- const lines=vm.runInContext('Array.from(ethernetEvents)',context);
+ // Copy at the VM boundary: strict equality must compare values, not realm prototypes.
+ const lines=Array.from(vm.runInContext('ethernetEvents',context));
  return {ok:result.ok,log:normalize(lines)};
 }
 for(const test of [

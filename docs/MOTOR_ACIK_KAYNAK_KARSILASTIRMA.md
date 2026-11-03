@@ -62,3 +62,16 @@ Prototip artık her switch için VLAN+MAC → giriş portu tablosu tutar. ARP Re
 ### Deneysel ARP oturum önbelleği
 
 `createSession()` ile isteğe bağlı, yalnızca prototip içinde kullanılan ARP önbelleği eklendi. İlk başarılı ping ARP+ICMP olayları üretir; aynı topoloji ve hedefle ikinci ping yalnız ICMP üretir. Topoloji JSON'u değiştiğinde önbellek silinir; kopan kablo için eski ARP kaydı kullanılamaz. Varsayılan `simulate()` çağrısı durumsuz kaldığı için mevcut karşılaştırma/ölçek testlerinin davranışı değişmez. Bu kaba topoloji imzası ve ARP TTL bulunmayan öğretim prototipidir; üretim motoruna bağlanmadı.
+
+### VM karşılaştırması ve taşınabilir paket kapısı
+
+Üretim motorundan Node VM sınırında alınan olay satırları `Array.from` ile testin
+kendi bağlamına kopyalanır. Böylece `deepStrictEqual` aynı içerikteki dizileri farklı
+realm prototipleri nedeniyle reddetmez; çerçeve sırası ve switch kararlarının sıkı
+eşitlik kontrolleri korunur. Önceki CI hatası ve yerel tekrar bu ayrımdan kaynaklandı.
+Deneysel motorun üretim varsayılanı veya tarayıcıya bağlantısı değiştirilmedi.
+
+Çevrimdışı ZIP, karşılaştırma ve prototip testlerinin gerektirdiği
+`engine-adapter-prototype.cjs` modülünü de içerir. Paket doğrulayıcısı modülü,
+normalleştiriciyi, üretim Ethernet modülünü ve iki Node testini zorunlu tutar;
+eksik bağımlılıklı arşiv doğrulanmış dağıtım olarak kabul edilmez.

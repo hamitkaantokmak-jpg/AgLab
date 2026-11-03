@@ -14,6 +14,8 @@ def verify_release_packages(student_path, teacher_path):
             audit=read_json(archive,'academy/adaptation-audit.json')
             assert len(audit)==40 and {row['id'] for row in audit}==ids, 'Incomplete adaptation audit'
         student_names=set(student.namelist());teacher_names=set(teacher.namelist())
+        adapter_files={'simulator/engine-adapter-prototype.cjs','simulator/packet-events.js','simulator/ethernet-forwarding.js','simulator/test_engine_adapter_prototype.cjs','simulator/test_engine_adapter_parity.cjs'}
+        assert adapter_files<=student_names, 'Missing adapter test dependencies: '+str(adapter_files-student_names)
         assert not any(n.startswith(('academy/teacher/','academy/source/')) for n in student_names), 'Teacher/source data in student ZIP'
         assert {n for n in student_names if n.startswith('academy/student/') and n.endswith('.json')}=={f'academy/student/{i}.json' for i in ids}, 'Student lab inventory mismatch'
         assert {n for n in teacher_names if n.startswith('academy/teacher/') and n.endswith('.json')}=={f'academy/teacher/{i}.json' for i in ids}, 'Teacher lab inventory mismatch'
