@@ -7,7 +7,7 @@ only reads Packet Tracer files and writes a separate AgLab JSON file; it never
 modifies or overwrites the original .pkt file.
 """
 from __future__ import annotations
-import argparse, base64, ctypes, hashlib, json, re, struct, zlib
+import argparse, base64, ctypes, hashlib, ipaddress, json, re, struct, zlib
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -120,6 +120,18 @@ def parse_trunk_allowed(value):
         if not all(1 <= v <= 4094 for v in bounds) or bounds[0]>bounds[-1]: return None
     return action,parse_vlan_list(value)
 
+def parse_helper_command(line):
+    """One unicast IPv4 DHCP relay target; no VRF/options or partial matches."""
+    match=re.fullmatch(r'\s*(no\s+)?ip\s+helper-address(?:\s+(\S+))?\s*',line,re.I)
+    if not match: return None
+    removing=bool(match.group(1)); value=match.group(2)
+    if value is None: return (True,None) if removing else None
+    try: address=ipaddress.IPv4Address(value)
+    except ipaddress.AddressValueError: return None
+    first=int(address)>>24
+    if first in (0,127) or first>=224: return None
+    return removing,str(address)
+
 def canonical_secure_mac(value):
     raw=re.sub(r'[.:-]','',value.lower())
     if not re.fullmatch(r'[0-9a-f]{12}',raw) or raw=='000000000000' or int(raw[:2],16)&1: return None
@@ -183,7 +195,7 @@ def convert(xml_bytes, original_pkt=None):
     network=root.find('NETWORK')
     if network is None or network.find('DEVICES') is None or network.find('LINKS') is None:
         raise PacketTracerError('PACKETTRACER5 içeriğinde beklenen NETWORK/DEVICES/LINKS alanları bulunamadı.')
-    switch_range_contexts={}; switch_security_lines={}; endpoint_macs=set()
+    switch_range_contexts={}; switch_security_lines={}; router_helper_lines={}; endpoint_macs=set()
     raw_devices=[]; ref_to_id={}; unsupported=[]; notes=[]; unmapped_endpoints=set(); endpoint_ports=[]
     for idx,dev in enumerate(network.find('DEVICES')):
         eng=dev.find('ENGINE')
@@ -205,8 +217,8 @@ def convert(xml_bytes, original_pkt=None):
         cfg=parse_config(eng)
         if kind=='Router':
             ports=['g0/0','g0/1','g0/2']; interfaces={p:{'enabled':True} for p in ports}
-            current=None; modeled_interfaces=set(); ignored_interfaces=[]
-            for line in cfg.splitlines():
+            current=None; modeled_interfaces=set(); ignored_interfaces=[]; helper_targets={}; helper_lines=set()
+            for line_no,line in enumerate(cfg.splitlines(),1):
                 if line.strip() in ('!', 'exit', 'end'):
                     current=None; continue
                 if re.match(r'\s*interface\b',line,re.I): current=None
@@ -226,6 +238,16 @@ def convert(xml_bytes, original_pkt=None):
                     modeled_interfaces.add(current)
                     continue
                 if not current: continue
+                helper=parse_helper_command(line)
+                if helper is not None:
+                    removing,address=helper
+                    targets=helper_targets.setdefault(current,set())
+                    if removing:
+                        if address is None: targets.clear()
+                        else: targets.discard(address)
+                    else: targets.add(address)
+                    helper_lines.add(line_no)
+                    continue
                 vlan=dot1q_vlan(line)
                 if vlan is not None and interfaces[current].get('parent'):
                     interfaces[current].update({'encapsulation':'dot1q','vlan':vlan})
@@ -233,11 +255,16 @@ def convert(xml_bytes, original_pkt=None):
                 if m: interfaces[current]['ip'],interfaces[current]['mask']=m.group(1),m.group(2)
                 if re.match(r'\s*shutdown\s*$',line,re.I): interfaces[current]['enabled']=False
                 if re.match(r'\s*no shutdown\s*$',line,re.I): interfaces[current]['enabled']=True
+            for port,targets in helper_targets.items():
+                if len(targets)>1:
+                    raise PacketTracerError(f'{name}/{port}: birden fazla aktif ip helper-address desteklenmiyor; model tek hedef tutar.')
+                if targets: interfaces[port]['helperAddress']=next(iter(targets))
             routes=[]
             for line in cfg.splitlines():
                 m=re.fullmatch(r'\s*ip route\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)(?:\s+(\d+))?\s*',line,re.I)
                 if m: routes.append({'network':m.group(1),'mask':m.group(2),'nextHop':m.group(3),'distance':int(m.group(4) or 1)})
             d={'id':f'd{len(raw_devices)+1}','name':name,'type':kind,'x':x,'y':y,'w':108,'h':72,'ip':'','mask':'','gateway':'','vlan':1,'ports':list(dict.fromkeys(ports)),'route':'','enabled':text(eng,'POWER','true').lower()!='false','mode':'user','config':{'packetTracerModel':model,'runningConfig':cfg,'displayName':display,'unmodeledInterfaces':ignored_interfaces},'interfaces':interfaces,'staticRoutes':routes}
+            router_helper_lines[d['id']]=helper_lines
         elif kind=='Switch':
             ports=[f'fa0/{i}' for i in range(1,25)]+['gi0/1','gi0/2']; interfaces={p:{'mode':'access','vlan':1,'allowed':[1],'enabled':True} for p in ports}
             # Parse explicit access/trunk commands and VLAN database from the source config.
@@ -436,6 +463,9 @@ def convert(xml_bytes, original_pkt=None):
             if re.match(r'(?:no\s+)?switchport\s+port-security\b',raw,re.I):
                 modeled=line_no in switch_security_lines.get(d['id'],set())
 
+            if re.match(r'(?:no\s+)?ip\s+helper-address\b',raw,re.I):
+                modeled=line_no in router_helper_lines.get(d['id'],set())
+
             interface_command=bool(re.match(r'interface\b',raw,re.I))
             port_command=bool(re.match(r'(?:ip address\b|encapsulation\b|switchport\b|shutdown$|no shutdown$)',raw,re.I))
             if interface_command or port_command:
@@ -453,9 +483,9 @@ def convert(xml_bytes, original_pkt=None):
       'unmodeledConfigLines':unmodeled_config_lines,
       'runningConfigPreservedFor':{d['name']:bool(d.get('config',{}).get('runningConfig')) for d in raw_devices},
       'simulationCoverage':{
-        'modeled':'Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, tek Ethernet NIC PC/Server IPv4/mask/gateway, fiziksel MAC ve port POWER, router fiziksel ve etiketli 802.1Q alt arayüz IPv4/mask/shutdown, alt arayüz parent/VLAN eşlemesi, IPv4 statik rota, switch yönetim SVI IP/mask/shutdown ve default-gateway, VLAN isimleri, temel switch port-security (enabled/maximum/violation/statik MAC), switch fiziksel interface range (mevcut portlar, liste/aynı-prefix aralık) ve access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.',
+        'modeled':'Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, tek Ethernet NIC PC/Server IPv4/mask/gateway, fiziksel MAC ve port POWER, router fiziksel ve etiketli 802.1Q alt arayüz IPv4/mask/shutdown, alt arayüz parent/VLAN eşlemesi, IPv4 statik rota, router DHCP relay için tek IPv4 helper hedefi, switch yönetim SVI IP/mask/shutdown ve default-gateway, VLAN isimleri, temel switch port-security (enabled/maximum/violation/statik MAC), switch fiziksel interface range (mevcut portlar, liste/aynı-prefix aralık) ve access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.',
         'preservedButNotFullySimulated':'Tam running-config metni config.runningConfig alanında saklanır; bu, tüm IOS komutlarının AğLab motorunda çalıştığı anlamına gelmez.',
-        'notModeled':['IOS sürüm/feature davranışları','duplex/speed ve kablo türü/medya ayrıntıları','STP zamanlaması, root bridge seçim algoritmasının tam davranışı ve tüm STP durum geçişleri','Çoklu NIC ve Ethernet dışı endpoint arayüzleri','Layer 3 switch routing (SVI yalnız yönetim endpointidir)','Router alt arayüzlerinde native VLAN ve ISL encapsulation','Port-security sticky/aging, violation sayaçlarının kaynak runtime durumu ve recovery timer', 'Router/switch fiziksel port MAC adresleri (motor cihaz başına sentetik MAC kullanır)', 'güç dağıtım cihazının davranışı','kaynak dosyada yer alıp AğLab modeline eşlenmeyen diğer cihaz/protokol özellikleri']
+        'notModeled':['IOS sürüm/feature davranışları','DHCP çoklu helper/VRF, sunucu havuzu ve UDP forwarding ayrıntıları','duplex/speed ve kablo türü/medya ayrıntıları','STP zamanlaması, root bridge seçim algoritmasının tam davranışı ve tüm STP durum geçişleri','Çoklu NIC ve Ethernet dışı endpoint arayüzleri','Layer 3 switch routing (SVI yalnız yönetim endpointidir)','Router alt arayüzlerinde native VLAN ve ISL encapsulation','Port-security sticky/aging, violation sayaçlarının kaynak runtime durumu ve recovery timer', 'Router/switch fiziksel port MAC adresleri (motor cihaz başına sentetik MAC kullanır)', 'güç dağıtım cihazının davranışı','kaynak dosyada yer alıp AğLab modeline eşlenmeyen diğer cihaz/protokol özellikleri']
       },
       'routerRoutes':{d['name']:d.get('staticRoutes',[]) for d in raw_devices if d['type']=='Router'},
       'endpoints':[{k:d.get(k) for k in ['name','type','ip','mask','gateway']} for d in raw_devices if d['type'] in ('PC','Server')]
