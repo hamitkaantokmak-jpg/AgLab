@@ -10,7 +10,7 @@ function validatePortSecurity(d){
 }
 function portSecurityAllows(d,port,source){
  const i=d.interfaces?.[port],s=i?.portSecurity;if(i?.errdisabled)return false;if(!s?.enabled)return true;
- const mac=canonicalSecureMac(macOf(source));if(s.macs.map(canonicalSecureMac).includes(mac))return true;
+ const mac=canonicalSecureMac(macOf(source));if(!mac){ethernetEvent('port-security-drop '+d.id+' '+port+' invalid-mac');return false;}if(s.macs.map(canonicalSecureMac).includes(mac))return true;
  if(s.macs.length<s.max){s.macs.push(mac);saveTopology(true);return true;}
  portSecurityViolations.set(i,(portSecurityViolations.get(i)||0)+1);
  ethernetEvent('port-security-drop '+d.id+' '+port+' '+s.violation);
