@@ -31,7 +31,8 @@ Uzak uçlar arasındaki senkron ping komutu için her ölçümde 1000 ms bütçe
 komutlarındaki ek sözcükler ve statik rota seçenekleri kısmen uygulanmaz; desteklenmeyen
 satırlar raporda ve özgün XML/running-config arşivinde kalır. Tarayıcı testi birincil
 router adresine başarılı, modellenmeyen ikincil adrese başarısız yerel ping yürütür.
-Bu test gerçek ikinci bir PKT dosyası veya secondary/range desteği değildir.
+Bu bağlam regresyonları ikinci bir gerçek PKT dosyası veya secondary IP/router
+range desteği değildir; kabul edilen switch range kapsamı aşağıdadır.
 
 Dönüştürücü kaynak PKT, JSON çıktı ve rapor yollarının aynı dosyaya yönelmesini
 şifre çözmeden reddeder; symlink ve mevcut hardlink eşleşmeleri de sınanır. Normal
