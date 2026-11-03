@@ -65,6 +65,30 @@ class LocalHTTPTests(unittest.TestCase):
                 conn.close()
             run.assert_not_called()
 
+    def test_ambiguous_post_framing_rejected_without_running_lab(self):
+        with patch.object(api, "TOKEN", "x"*32), patch.object(api.subprocess, "run") as run:
+            for framing in (
+                (("Content-Length", "0"), ("Content-Length", "0")),
+                (("Content-Length", "0"), ("Content-Length", "1")),
+                (("Transfer-Encoding", "chunked"),),
+                (("Content-Length", "0"), ("Transfer-Encoding", "chunked")),
+                (("Content-Length", "1"),),
+            ):
+                with self.subTest(framing=framing):
+                    conn=http.client.HTTPConnection("127.0.0.1",self.server.server_address[1],timeout=3)
+                    try:
+                        conn.putrequest("POST", "/api/lab/start")
+                        conn.putheader("Authorization", "Bearer " + "x"*32)
+                        for name,value in framing:
+                            conn.putheader(name,value)
+                        conn.endheaders()
+                        response=conn.getresponse()
+                        self.assertEqual(response.status,400)
+                        response.read()
+                    finally:
+                        conn.close()
+            run.assert_not_called()
+
     def test_authenticated_info(self):
         with patch.object(api,"TOKEN","x"*32):
             code,body=self.request("GET","/api/lab","x"*32)
