@@ -21,6 +21,7 @@ function simulate(topology,sourceId,targetId){
   graph.get(link.b).push({next:link.a,port:link.portB,otherPort:link.portA});
  }
  const events=[];let overflow=0;
+ const forwardingTables=new Map();
  function emit(line){if(events.length<256)events.push(line);else overflow++}
  function send(from,toMac,kind){
   const vlan=from.vlan,broadcast=toMac==='ff:ff:ff:ff:ff:ff';
@@ -36,8 +37,23 @@ function simulate(topology,sourceId,targetId){
     continue;
    }
    const edges=graph.get(id).filter(edge=>{const n=nodes.get(edge.next);return n.type==='switch'||n.vlan===vlan});
-   const out=edges.filter(edge=>edge.port!==ingress||id===from.id);
-   if(node.type==='switch')emit(`${broadcast?'broadcast':'unknown-unicast'} ${id} ingress ${ingress} egress ${out.map(e=>e.port).join(',')||'-'} vlan ${vlan}`);
+   let out=edges.filter(edge=>edge.port!==ingress||id===from.id);
+   let decision=broadcast?'broadcast':'unknown-unicast';
+   if(node.type==='switch'){
+    let table=forwardingTables.get(id);
+    if(!table){table=new Map();forwardingTables.set(id,table);}
+    if(ingress!=='local')table.set(vlan+'|'+from.mac,ingress);
+    if(!broadcast){
+     const learned=table.get(vlan+'|'+toMac);
+     if(learned){
+      const edge=edges.find(e=>e.port===learned);
+      if(learned===ingress){out=[];decision='filter';}
+      else if(edge){out=[edge];decision='unicast';}
+      else table.delete(vlan+'|'+toMac);
+     }
+    }
+    emit(`${decision} ${id} ingress ${ingress} egress ${out.map(e=>e.port).join(',')||'-'} vlan ${vlan}`);
+   }
    for(const edge of out)queue.push({id:edge.next,ingress:edge.otherPort});
   }
   return delivered;
