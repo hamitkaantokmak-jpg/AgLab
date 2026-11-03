@@ -54,3 +54,7 @@ Bu bir **sonuç eşdeğerliği duman testidir**, tam trafik izi/ARP önbelleği/
 ### Çerçeve sırası eşdeğerliği (ek kontrol)
 
 Karşılaştırma artık gerçek `ethernet-forwarding.js` olay günlüğünü de yakalar; aynı VLAN'da başarılı iletim ve kopuk hedef senaryosunda çerçeve türlerinin sırasını alternatif adaptörün çıktısıyla karşılaştırır. VLAN ayrımındaki önceki fark kapatıldı: prototip artık başarısız ARP broadcast denemesini de kaydediyor. Üç dar kapsamlı senaryoda gerçek motor ve prototip çerçeve **tür sırasını** karşılaştırıyor; tam iletim/FDB olay dizisi eşdeğerliği henüz sağlanmadı.
+
+### Deneysel VLAN bazlı MAC öğrenimi
+
+Prototip artık her switch için VLAN+MAC → giriş portu tablosu tutar. ARP Request yayın olarak yayılır; ARP Reply ve sonraki ICMP çerçeveleri öğrenilen hedef portuna unicast yönlendirilir. `test_engine_adapter_parity.cjs` üç erişim VLAN senaryosunda gerçek AğLab Ethernet motoruyla **switch forward kararını, ingress/egress portlarını ve VLAN bilgisini** de karşılaştırır. Bu yalnızca basit tek-switch/access VLAN modelidir; öğrenmenin yaşlanması, MAC taşınması, trunk/STP, port-security, yönlendirme ve gerçek paketin alanları hâlâ kapsam dışındadır. En son CI sonucu doğrulanana kadar testler geçildi sayılmaz.
