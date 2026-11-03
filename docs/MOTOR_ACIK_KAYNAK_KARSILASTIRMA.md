@@ -53,4 +53,4 @@ Bu bir **sonuç eşdeğerliği duman testidir**, tam trafik izi/ARP önbelleği/
 
 ### Çerçeve sırası eşdeğerliği (ek kontrol)
 
-Karşılaştırma artık gerçek `ethernet-forwarding.js` olay günlüğünü de yakalar; aynı VLAN'da başarılı iletim ve kopuk hedef senaryosunda çerçeve türlerinin sırasını alternatif adaptörün çıktısıyla karşılaştırır. **Bilinçli fark:** VLAN ayrımında mevcut motor ARP broadcast girişimini kaydederken prototip doğrudan `VLAN isolation` sonucu üretir; bu senaryoda olay dizisinin eşit olduğu iddia edilmez. Gerçek motorla tam parite için bu fark sonraki aşamada giderilmelidir.
+Karşılaştırma artık gerçek `ethernet-forwarding.js` olay günlüğünü de yakalar; aynı VLAN'da başarılı iletim ve kopuk hedef senaryosunda çerçeve türlerinin sırasını alternatif adaptörün çıktısıyla karşılaştırır. VLAN ayrımındaki önceki fark kapatıldı: prototip artık başarısız ARP broadcast denemesini de kaydediyor. Üç dar kapsamlı senaryoda gerçek motor ve prototip çerçeve **tür sırasını** karşılaştırıyor; tam iletim/FDB olay dizisi eşdeğerliği henüz sağlanmadı.
