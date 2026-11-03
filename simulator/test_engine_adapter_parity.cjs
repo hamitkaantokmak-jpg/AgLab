@@ -65,6 +65,15 @@ for(const test of [
  const referenceFrames=reference.log.events.filter(e=>e.kind==='frame').map(e=>e.detail.protocol);
  assert.ok(referenceFrames.length>0,'real engine events missing: '+test.name);
  assert.deepEqual(adapterFrames,referenceFrames,'frame event parity: '+test.name);
+ const decisions=log=>log.events.filter(e=>e.kind==='forward').map(e=>({
+  device:e.device,decision:e.detail.decision,ingress:e.detail.ingress,
+  egress:[...e.detail.egress],vlan:e.detail.vlan
+ }));
+ assert.deepEqual(decisions(adapted.log),decisions(reference.log),'switch forwarding parity: '+test.name);
+ if(test.expected){
+  assert.equal(decisions(adapted.log).filter(e=>e.decision==='unicast').length,3,
+   'ARP reply and ICMP request/reply must use learned MAC unicast');
+ }
  if(test.expected){
   assert.deepEqual(adapterFrames,['arp-request','arp-reply','icmp-request','icmp-reply'],'adapter event order: '+test.name);
   assert.equal(adapted.log.events.at(-1).kind,'icmp-delivered');
