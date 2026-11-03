@@ -50,3 +50,7 @@ Bu kod başka bir simülatörün kaynak kodunu kopyalamaz, yeni kütüphane/lisa
 `simulator/test_engine_adapter_parity.cjs`, üretimde kullanılan `ethernet-forwarding.js` modülünü bağımlılıklarının küçük, denetlenebilir taklitleriyle ayrı bir Node VM içinde çalıştırır ve **aynı host/switch erişim topolojilerinde** bağımsız prototip ile başarı/başarısızlık sonuçlarını karşılaştırır. Üç durum: aynı access VLAN'da başarılı ICMP; ayrılmış VLAN'da başarısızlık; kopuk hedefte başarısızlık. Test `run_pipeline.py` Node listesine ve dağıtım dosya kümesine eklenmiştir.
 
 Bu bir **sonuç eşdeğerliği duman testidir**, tam trafik izi/ARP önbelleği/MAC FDB/TTL/trunk/STP veya üretim tarayıcısı davranışlarının eşdeğerliğini kanıtlamaz. Bağımlılık taklitleri gerçek motor çalışmasını kısmen soyutlar. Olay sayısı/dizisi aynı olmak zorunda değildir. Test başarılı olsa bile otomatik motor değişimi yapılmaz; sonraki iş daha kapsamlı browser fixture ve gerçek ölçüm testleridir.
+
+### Çerçeve sırası eşdeğerliği (ek kontrol)
+
+Karşılaştırma artık gerçek `ethernet-forwarding.js` olay günlüğünü de yakalar; aynı VLAN'da başarılı iletim ve kopuk hedef senaryosunda çerçeve türlerinin sırasını alternatif adaptörün çıktısıyla karşılaştırır. **Bilinçli fark:** VLAN ayrımında mevcut motor ARP broadcast girişimini kaydederken prototip doğrudan `VLAN isolation` sonucu üretir; bu senaryoda olay dizisinin eşit olduğu iddia edilmez. Gerçek motorla tam parite için bu fark sonraki aşamada giderilmelidir.
