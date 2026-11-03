@@ -19,7 +19,7 @@ TESTS.append('test_aglab_icmp_unreachable.py')
 TESTS.append('test_aglab_pkt_dot1q.py')
 TESTS.append('test_aglab_persistence.py')
 TESTS.extend(['test_aglab_large_topology.py','test_aglab_pkt_matrix.py','test_aglab_endpoint_ports.py','test_aglab_student_journey.py','test_aglab_switch_svi.py','test_aglab_svi_import.py'])
-NODE_TESTS=['simulator/test_packet_events.cjs']
+NODE_TESTS=['simulator/test_packet_events.cjs','simulator/test_port_security.cjs']
 STUDENT_FILES=['real-lab/student_api.py','real-lab/export_student_snapshot.py','real-lab/test_student_api.py','real-lab/student_isolation_smoke.py','real-lab/student_live_smoke.py','real-lab/test_student_live_smoke.py']
 STUDENT_FILES.append('real-lab/test_export_permissions.py')
 STUDENT_FILES.append('real-lab/test_snapshot_watch.py')
