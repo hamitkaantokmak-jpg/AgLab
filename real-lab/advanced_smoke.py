@@ -135,7 +135,8 @@ class Live:
     def l2(self):
         ports={'s1':['eth1','eth2','eth3'],'s2':['eth1','eth2','eth4'],'s3':['eth1','eth2','eth3']}
         for index,(node,members) in enumerate(ports.items(),1):
-            self.execute(node,'ip','link','add','br0','type','bridge','vlan_filtering','1','stp_state','1','priority',str(index*4096),'forward_delay','2','hello_time','1','max_age','6')
+            # iproute2/netlink bridge timers use USER_HZ units (centiseconds), not seconds.
+            self.execute(node,'ip','link','add','br0','type','bridge','vlan_filtering','1','stp_state','1','priority',str(index*4096),'forward_delay','400','hello_time','100','max_age','600')
             self.execute(node,'ip','link','set','br0','up')
             for port in members:
                 self.execute(node,'ip','link','set',port,'master','br0');self.execute(node,'ip','link','set',port,'up')

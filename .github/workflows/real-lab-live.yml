@@ -30,6 +30,7 @@ jobs:
       - name: Gerçek Linux bridge VLAN trunk STP ve yedek yol doğrula
         run: sudo python3 real-lab/advanced_smoke.py l2 --execute
       - name: Gerçek FRR OSPF BGP hata ve rota çekilmesini doğrula
+        if: ${{ !cancelled() }}
         run: sudo python3 real-lab/advanced_smoke.py routing --execute
       - name: Gelişmiş motor kanıtlarını sakla
         if: always()
