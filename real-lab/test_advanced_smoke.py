@@ -23,6 +23,7 @@ class AdvancedTests(unittest.TestCase):
   live=m.Live('routing')
   with patch.object(live,'show',return_value={'2.2.2.2':[{'nbrState':'Init'}]}):self.assertFalse(live.full('r1','2.2.2.2'))
   with patch.object(live,'show',return_value={'2.2.2.2':[{'nbrState':'Full/-'}]}):self.assertTrue(live.full('r1','2.2.2.2'));self.assertFalse(live.full('r1','3.3.3.3'))
+  with patch.object(live,'show',return_value={'neighbors':{'2.2.2.2':[{'nbrState':'Full/-'}]}}):self.assertTrue(live.full('r1','2.2.2.2'));self.assertFalse(live.full('r1','3.3.3.3'))
  def test_bgp_must_be_established(self):
   live=m.Live('routing')
   for state,ok in [('Active',False),('Established',True)]:

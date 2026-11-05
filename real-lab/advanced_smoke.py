@@ -60,7 +60,7 @@ class Live:
         while time.monotonic()<deadline:
             try:
                 last=fn()
-                if last:self.steps.append({'name':label,'ok':True});print('PASS',self.kind,label,flush=True);return last
+                if last:self.record(label);return last
             except (RuntimeError,ValueError,KeyError) as error:last=str(error)
             self.sleeper(1)
         raise AssertionError(label+' timed out; last='+str(last))
@@ -69,17 +69,23 @@ class Live:
         self.sleeper(4)
         values=[bool(fn()) for _ in range(3)]
         if not all(values):raise AssertionError(label+': condition did not remain negative')
-        self.steps.append({'name':label,'ok':True});print('PASS',self.kind,label,flush=True)
+        self.record(label)
+    def record(self,label):
+        self.steps.append({'name':label,'ok':True,'origin':'native-command-check','time_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'evidence':json.loads(json.dumps(self.evidence))})
+        print('PASS',self.kind,label,flush=True)
     def ping(self,ok=True):
         target='192.168.20.10' if self.kind=='routing' else '10.0.0.2'
-        return (self.execute('pc1','ping','-c','2','-W','1',target,check=False).returncode==0)==ok
+        result=self.execute('pc1','ping','-c','2','-W','1',target,check=False)
+        self.evidence['icmp']={'exit_code':result.returncode,'output':result.stdout+result.stderr}
+        return (result.returncode==0)==ok
     def route(self,protocol,via=None,prefix='192.168.20.0/24'):
         data=self.show('r1','show ip route '+prefix)
         self.evidence['route-'+protocol]=data
         return any(r.get('protocol')==protocol and (r.get('distance')==(110 if protocol=='ospf' else 20)) and (not via or any(n.get('ip')==via for n in r.get('nexthops',[]))) for r in records(data))
     def full(self,node,router_id=None):
         data=self.show(node,'show ip ospf neighbor');self.evidence['ospf-'+node]=data
-        values=data.get(router_id,[]) if router_id else data
+        neighbors=data.get('neighbors',data)
+        values=neighbors.get(router_id,[]) if router_id else neighbors
         return any(str(r.get('nbrState',r.get('state',''))).startswith('Full') for r in records(values))
     def bgp_up(self,node,ip):
         data=self.show(node,'show bgp ipv4 unicast summary');self.evidence['bgp-'+node]=data
@@ -128,7 +134,8 @@ class Live:
     def access(self,node,port,vid):
         for old in (1,10,20):self.execute(node,'bridge','vlan','del','dev',port,'vid',str(old),check=False)
         self.vlan(node,port,vid,True)
-    def state(self,node):return self.json(node,'bridge','-json','link','show')
+    def state(self,node):
+        data=self.json(node,'bridge','-json','link','show');self.evidence['bridge-ports-'+node]=data;return data
     def fdb(self,node,mac,port=None):
         data=self.json(node,'bridge','-json','fdb','show','br','br0');self.evidence['fdb-'+node]=data
         return any(r.get('mac')==mac and (not port or r.get('ifname',r.get('dev'))==port) for r in data)
@@ -156,7 +163,7 @@ class Live:
         for node in ports:
             actual=self.execute(node,'cat','/sys/class/net/br0/bridge/root_id').stdout.strip()
             if actual!=root:raise AssertionError('Unexpected STP root on '+node)
-        self.steps.append({'name':'kernel root bridge is s1','ok':True})
+        self.evidence['root_bridge']=root;self.record('kernel root bridge is s1')
         self.wait('VLAN-scoped MAC learning',lambda:self.fdb('s1','02:00:00:00:00:02') and self.fdb('s3','02:00:00:00:00:02','eth3'))
         self.access('s3','eth3',20);self.stable_negative('VLAN access isolation',lambda:self.ping(False));self.access('s3','eth3',10)
         self.wait('VLAN access repair',self.ping)
@@ -195,12 +202,13 @@ def main(argv=None):
             if any(n.startswith('clab-'+live.name+'-') for n in names):raise RuntimeError('Refusing pre-existing advanced lab; no cleanup performed')
             report['host_kernel']=live.command(['uname','-r']).stdout.strip();started=True
             live.command(['containerlab','deploy','-t',str(target)],240)
+            report['image_id']=live.command(['docker','image','inspect',IMAGE,'--format','{{.Id}}']).stdout.strip()
             (live.l2 if a.kind=='l2' else live.routing)();report['ok']=True
         except Exception as error:
             report['error']=str(error);print('FAIL',error,flush=True)
             if started and a.kind=='routing':
                 for node in ('r1','r2','r3'):
-                    for cmd in ('show running-config','show ip interface brief','show ip ospf interface','show ip ospf neighbor','show ip route'):
+                    for cmd in ('show running-config','show interface brief','show ip ospf interface','show ip ospf neighbor','show ip route'):
                         try:report['evidence'][node+' '+cmd]=live.vty(node,cmd)
                         except Exception as diagnostic:report['evidence'][node+' '+cmd]=str(diagnostic)
         finally:
