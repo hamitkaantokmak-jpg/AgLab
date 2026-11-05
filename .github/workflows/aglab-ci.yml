@@ -23,6 +23,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Sabit üçüncü taraf motoru derle ve doğrula
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build:engine
+          git diff --exit-code -- simulator/borck-engine.generated.js
+          node simulator/test_borck_engine.cjs
       - name: Akademi puanlama sözleşmesini doğrula
         run: node academy/test_grading_verdict.cjs
       - name: VLAN yalıtım sağlık kapısını doğrula
@@ -35,7 +41,10 @@ jobs:
         run: |
           python build_simulator.py
           python build_academy.py
-          git diff --exit-code -- AgLab_Final_PKT_Import.html
+          cp AgLab_Final_PKT_Import.html "$RUNNER_TEMP/aglab-first.html"
+          python build_simulator.py
+          python build_academy.py
+          cmp AgLab_Final_PKT_Import.html "$RUNNER_TEMP/aglab-first.html"
       - name: Chromium ve Playwright kur
         run: |
           python -m pip install playwright
@@ -57,6 +66,8 @@ jobs:
             dist/device-cli-mobile.png
             dist/network-scenario-results.json
             dist/network-audit.md
+            dist/borck-benchmark.json
+            dist/borck-ui-results.json
           if-no-files-found: warn
       - name: Başarılı ZIP'i sakla
         if: success()

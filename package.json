@@ -1,0 +1,6 @@
+{
+  "name": "aglab-engine-integration",
+  "private": true,
+  "scripts": {"build:engine": "node tools/build_borck_engine.cjs"},
+  "devDependencies": {"esbuild": "0.25.12"}
+}

@@ -16,6 +16,11 @@ def verify_release_packages(student_path, teacher_path):
         student_names=set(student.namelist());teacher_names=set(teacher.namelist())
         adapter_files={'simulator/engine-adapter-prototype.cjs','simulator/packet-events.js','simulator/ethernet-forwarding.js','simulator/test_engine_adapter_prototype.cjs','simulator/test_engine_adapter_parity.cjs'}
         assert adapter_files<=student_names, 'Missing adapter test dependencies: '+str(adapter_files-student_names)
+        borck_files={'simulator/borck-engine.generated.js','simulator/borck-adapter.ts','simulator/borck-ui.js','simulator/test_borck_engine.cjs','simulator/benchmark_borck_engine.cjs','third_party/borck-netsim/LICENSE','third_party/borck-netsim/provenance.json'}
+        assert borck_files<=student_names, 'Missing real third-party engine dependencies/license'
+        provenance=read_json(student,'third_party/borck-netsim/provenance.json')
+        for name,sha in provenance['sha256'].items():
+            assert hashlib.sha256(student.read('third_party/borck-netsim/'+name)).hexdigest()==sha, 'Vendored source mismatch: '+name
         assert not any(n.startswith(('academy/teacher/','academy/source/')) for n in student_names), 'Teacher/source data in student ZIP'
         assert {n for n in student_names if n.startswith('academy/student/') and n.endswith('.json')}=={f'academy/student/{i}.json' for i in ids}, 'Student lab inventory mismatch'
         assert {n for n in teacher_names if n.startswith('academy/teacher/') and n.endswith('.json')}=={f'academy/teacher/{i}.json' for i in ids}, 'Teacher lab inventory mismatch'

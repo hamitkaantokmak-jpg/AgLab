@@ -23,6 +23,14 @@ const diagnosis=document.createElement('p');diagnosis.id='packetDetectiveDiagnos
 const go=document.createElement('button');go.id='packetDetectiveGoToDevice';go.textContent='Sorunlu cihaza git';go.disabled=true;panel.append(go);
 host.append(panel);
 let allEvents={events:[],overflow:0,truncated:false},snapshot=allEvents,index=0;
+let eventOrigin='AğLab simülasyon motoru';
+document.addEventListener('aglab:external-packet-events',event=>{
+ const data=event.detail;
+ if(data?.engine?.name!=='Michael Borck NetSim'||!Array.isArray(data.events))return;
+ eventOrigin='Michael Borck NetSim · gerçek motor bildirimi, fiziksel paket yakalaması değil';
+ allEvents={events:data.events.map((e,index)=>({index,kind:'wire',device:e.fromDeviceId,detail:e,raw:e.kind+'-wire '+JSON.stringify(e)})),overflow:data.overflow||0,truncated:!!data.overflow};
+ filter.value='all';snapshot=filtered();index=0;render();
+});
 function filtered(){
  const mode=filter.value;
  if(mode==='all')return allEvents;
@@ -68,7 +76,7 @@ function render(){
   status.textContent=allEvents.events.length?'Bu filtreye uygun ağ olayı yok.':'Henüz görüntülenecek ağ olayı yok.';
   explanation.textContent='';raw.textContent='';markDevice(null);return;
  }
- status.textContent='Adım '+(step.index+1)+' / '+step.total+(snapshot.truncated?' · Kayıt sınırı aşıldı; '+snapshot.overflow+' olay gösterilemiyor.':'');
+ status.textContent='Adım '+(step.index+1)+' / '+step.total+' · '+eventOrigin+(snapshot.truncated?' · Kayıt sınırı aşıldı; '+snapshot.overflow+' olay gösterilemiyor.':'');
  explanation.textContent=step.explanation;
  raw.textContent=step.raw;
  markDevice(step.device);
@@ -85,6 +93,7 @@ go.onclick=()=>{
  if(node){node.scrollIntoView({block:'nearest',inline:'nearest'});node.setAttribute('aria-label','Sorun kaydıyla ilişkili seçili cihaz');}
 };
 refresh.onclick=()=>{
+ eventOrigin='AğLab simülasyon motoru';
  allEvents=AgLabPacketEvents.normalize(ethernetEvents.slice(),ethernetEventOverflow);
  snapshot=filtered();index=0;render();
 };

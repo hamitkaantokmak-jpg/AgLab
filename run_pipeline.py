@@ -7,6 +7,7 @@ ACADEMY_DOCS=['AKADEMI.md','academy/ADAPTATION.md','academy/adaptation-audit.jso
 TESTS=['test_aglab_pkt_trunk.py','test_aglab_import.py','test_aglab_cli_vlan.py','test_aglab_status.py','test_aglab_subinterfaces.py','test_aglab_v7.py','test_aglab_v11_routing.py','test_aglab_v12_gateway.py','test_aglab_v13_router_ping.py','test_aglab_v15_local_ping.py','test_aglab_v17_ping_validation.py','test_aglab_academy.py','test_aglab_ui.py']
 TESTS.append('test_aglab_trunk_defaults.py')
 TESTS.append('test_aglab_device_cli.py')
+TESTS.append('test_aglab_borck_engine.py')
 TESTS.append('test_aglab_network_features.py')
 TESTS.append('test_aglab_l2_router_trunk.py')
 TESTS.append('test_aglab_mac_learning.py')
@@ -22,7 +23,7 @@ TESTS.append('test_aglab_pkt_port_security.py')
 TESTS.append('test_aglab_pkt_dhcp_relay.py')
 TESTS.append('test_aglab_persistence.py')
 TESTS.extend(['test_aglab_large_topology.py','test_aglab_pkt_matrix.py','test_aglab_endpoint_ports.py','test_aglab_student_journey.py','test_aglab_switch_svi.py','test_aglab_svi_import.py'])
-NODE_TESTS=['simulator/test_packet_events.cjs','simulator/test_port_security.cjs' ,'simulator/test_engine_adapter_prototype.cjs' ,'simulator/test_engine_adapter_parity.cjs']
+NODE_TESTS=['simulator/test_borck_engine.cjs','simulator/benchmark_borck_engine.cjs','simulator/test_packet_events.cjs','simulator/test_port_security.cjs' ,'simulator/test_engine_adapter_prototype.cjs' ,'simulator/test_engine_adapter_parity.cjs']
 STUDENT_FILES=['real-lab/student_api.py','real-lab/export_student_snapshot.py','real-lab/test_student_api.py','real-lab/student_isolation_smoke.py','real-lab/student_live_smoke.py','real-lab/test_student_live_smoke.py']
 STUDENT_FILES.append('real-lab/test_export_permissions.py')
 STUDENT_FILES.append('real-lab/test_snapshot_watch.py')
@@ -36,9 +37,14 @@ ARTIFACTS.append('simulator/device-cli.js')
 ARTIFACTS.append('simulator/engine-adapter-prototype.cjs')
 ARTIFACTS.extend(['simulator/network-protocols.js','simulator/port-security.js','simulator/network-scenarios.js','simulator/network-scenarios.json'])
 ARTIFACTS.append('docs/ORTAK_MOTOR.md')
+ARTIFACTS.extend(['simulator/borck-adapter.ts','simulator/borck-engine.generated.js','simulator/borck-ui.js','simulator/borck-fixtures.cjs','simulator/borck-production-reference.cjs','tools/build_borck_engine.cjs','package.json','package-lock.json','docs/HAZIR_MOTOR_ENTEGRASYON.md'])
+ARTIFACTS.extend(p.relative_to(ROOT).as_posix() for p in sorted((ROOT/'third_party/borck-netsim').rglob('*')) if p.is_file())
 def run():
  p=argparse.ArgumentParser();p.add_argument('--out',default='dist');p.add_argument('--skip-browser',action='store_true');p.add_argument('--timeout',type=int,default=100);a=p.parse_args()
  out=(ROOT/a.out).resolve();out.mkdir(parents=True,exist_ok=True)
+ # Offline HTML is a generated artifact. Refresh it from reviewed modules before staging.
+ for build in ['build_simulator.py','build_academy.py']:
+  subprocess.run([sys.executable,str(ROOT/build)],cwd=ROOT,check=True)
  browser=None
  if not browser:
   try:
@@ -88,7 +94,7 @@ def run():
     report['tests'].append({'name':name,'status':'FAIL','error':'Node.js bulunamadı; paket olayları doğrulanamadı.'})
     continue
    try:
-    r=subprocess.run([node,str(ROOT/name)],cwd=ROOT,capture_output=True,text=True,encoding='utf-8',timeout=a.timeout)
+    r=subprocess.run([node,'--expose-gc',str(ROOT/name)],cwd=ROOT,capture_output=True,text=True,encoding='utf-8',timeout=a.timeout)
     report['tests'].append({'name':name,'status':'PASS' if r.returncode==0 else 'FAIL','exit_code':r.returncode,'stdout':r.stdout[-8000:],'stderr':r.stderr[-8000:]})
    except subprocess.TimeoutExpired:
     report['tests'].append({'name':name,'status':'FAIL','error':f'timed out after {a.timeout}s'})

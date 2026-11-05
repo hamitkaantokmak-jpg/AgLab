@@ -24,6 +24,7 @@ function explain(event){
  if(!event||typeof event!=='object')throw Error('Invalid packet event');
  const d=event.detail;
  switch(event.kind){
+ case 'wire':return event.device+' → '+d.toDeviceId+': '+d.kind.toUpperCase()+' bağlantı iletimi motor tarafından zamanlandı ('+d.start+'–'+d.end+' sanal ms). Bu bildirim alıcıya teslimi tek başına kanıtlamaz.';
  case 'frame':return event.device+' cihazı '+d.protocol+' çerçevesini VLAN '+d.vlan+' üzerinden gönderdi.';
  case 'forward':{
   const label={broadcast:'Yayın', 'unknown-unicast':'Bilinmeyen hedefe yayılım',unicast:'Öğrenilmiş MAC yönlendirmesi',filter:'Giriş portuna geri gönderim engellendi'}[d.decision]||'İletim';

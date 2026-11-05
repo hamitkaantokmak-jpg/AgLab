@@ -1,5 +1,11 @@
 # AğLab motorlarını açık kaynakla hızlandırma kararı (4 Kasım 2026)
 
+> 5 Kasım güncellemesi: Aşağıdaki bağımsız prototip geçmişi korunur. Artık
+> Michael Borck NetSim'in özgün MIT motoru gerçekten çalıştırılıyor; güncel
+> seçim, kaynak incelemesi, lisans, kapsam ve testler için
+> [Hazır motor entegrasyonu](HAZIR_MOTOR_ENTEGRASYON.md) belgesini esas alın.
+> Bağımsız prototip üçüncü taraf entegrasyonu olarak sunulmaz.
+
 ## Amaç ve değişmez koşullar
 AğLab'ın öğrenci arayüzü, çevrimdışı tek HTML dağıtımı, 40 Akademi görevi, rubrik puanlaması, PKT import ve Paket Dedektifi korunur. Motoru tek seferde değiştirmek yerine her protokol için ölçülebilir, geri alınabilir bir uyarlama yapılır.
 
