@@ -13,7 +13,7 @@ permissions:
 jobs:
   live-containerlab:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Kodu al
         uses: actions/checkout@v4
@@ -27,6 +27,17 @@ jobs:
         run: sudo python3 real-lab/student_isolation_smoke.py --execute
       - name: Canlı router tanısından öğrenci yanıtına tüm zinciri doğrula
         run: sudo python3 real-lab/student_live_smoke.py --execute
+      - name: Gerçek Linux bridge VLAN trunk STP ve yedek yol doğrula
+        run: sudo python3 real-lab/advanced_smoke.py l2 --execute
+      - name: Gerçek FRR OSPF BGP hata ve rota çekilmesini doğrula
+        run: sudo python3 real-lab/advanced_smoke.py routing --execute
+      - name: Gelişmiş motor kanıtlarını sakla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aglab-gercek-motor-kanitlari
+          path: dist/advanced-*-results.json
+          if-no-files-found: warn
       - name: Artık konteyner kalmadığını kontrol et
         if: always()
         run: |
