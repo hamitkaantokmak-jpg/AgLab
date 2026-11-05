@@ -14,4 +14,6 @@ Deneysel gerçek üçüncü taraf motor karşılaştırması: [kapsam, lisans ve
 HTML çevrimdışı çalışır; kaynak motoru yeniden derlemek için `npm ci --ignore-scripts` ve `npm run build:engine` kullanılır.
 Yeni entegrasyonu içeren HTML, `python run_pipeline.py` tarafından kaynak modüllerden üretilir ve başarılı CI ZIP'ine eklenir. Depodaki önceden üretilmiş HTML tabanı yerine güncel CI paketindeki HTML'yi kullanın. CI ayrıca iki ardışık HTML derlemesinin eşitliğini doğrular.
 
+[Motor uyumluluk matrisi](docs/UYUMLULUK_MATRISI.md) · [Gerçek VLAN/STP ve FRR testleri, ortak motor yönetimi](docs/GELISMIS_MOTOR_ENTEGRASYON.md). ZIP içindeki `html-build-manifest.json` HTML/modül bütünlüğünü doğrular; native protokoller ayrı Linux/Docker lablarında çalışır.
+
 **Sınır:** Testlerin geçmesi tüm Packet Tracer özelliklerinin desteklendiği anlamına gelmez. Yeni özellikler için ayrı regresyon testleri gereklidir.

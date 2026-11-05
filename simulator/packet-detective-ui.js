@@ -6,7 +6,7 @@ if(!host||!globalThis.AgLabPacketEvents)return;
 const panel=document.createElement('section');
 panel.id='packetDetectivePanel';panel.className='panel';
 const title=document.createElement('h2');title.textContent='Paket Dedektifi';panel.append(title);
-const help=document.createElement('p');help.textContent='Önce CLI üzerinden ping veya Ethernet testi çalıştır. Son gerçek ağ olaylarını adım adım incele; burada yeni paket gönderilmez.';panel.append(help);
+const help=document.createElement('p');help.textContent='Önce CLI üzerinden ping veya Ethernet testi çalıştır. Motor kayıtlarını adım adım incele; burada yeni paket gönderilmez. Kaynak etiketine bak: adaptör tanısı ve ayrı Lab raporu paket yakalaması değildir.';panel.append(help);
 const controls=document.createElement('div');
 const refresh=document.createElement('button');refresh.id='packetDetectiveRefresh';refresh.textContent='Son olayları göster';
 const previous=document.createElement('button');previous.id='packetDetectivePrevious';previous.textContent='← Önceki';previous.disabled=true;
@@ -24,6 +24,10 @@ const go=document.createElement('button');go.id='packetDetectiveGoToDevice';go.t
 host.append(panel);
 let allEvents={events:[],overflow:0,truncated:false},snapshot=allEvents,index=0;
 let eventOrigin='AğLab simülasyon motoru';
+document.addEventListener('aglab:external-lab-evidence',event=>{
+ const r=event.detail;if(r?.scope!=='separate-lab'||!Array.isArray(r.events))return;
+ eventOrigin=r.engine+' · ayrı Lab raporu, imzası doğrulanmadı';allEvents={events:r.events,overflow:0,truncated:false};filter.value='all';snapshot=filtered();index=0;render();
+});
 document.addEventListener('aglab:external-packet-events',event=>{
  const data=event.detail;
  if(data?.engine?.name!=='Michael Borck NetSim'||!Array.isArray(data.events))return;
@@ -34,7 +38,7 @@ document.addEventListener('aglab:external-packet-events',event=>{
 function filtered(){
  const mode=filter.value;
  if(mode==='all')return allEvents;
- const events=allEvents.events.filter(event=>mode==='forward'?event.kind==='forward':mode==='discard'?event.kind==='discard'||event.kind==='icmp-undelivered':mode==='arp'?event.raw.toLowerCase().includes('arp-'):event.raw.toLowerCase().includes('icmp-'));
+ const events=allEvents.events.filter(event=>mode==='forward'?event.kind==='forward':mode==='discard'?event.kind==='discard'||event.kind==='icmp-undelivered'||event.kind==='diagnostic'||event.kind==='lab-check'&&!event.detail.ok:mode==='arp'?event.raw.toLowerCase().includes('arp-'):event.raw.toLowerCase().includes('icmp-'));
  return {...allEvents,events};
 }
 let marked=null,markedEdge=null;

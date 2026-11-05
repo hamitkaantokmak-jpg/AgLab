@@ -9,7 +9,7 @@
  const show=document.createElement('button');show.id='borckDetective';show.textContent='NetSim olaylarını Paket Dedektifi’nde incele';show.disabled=true;block.append(show);
  parent.append(block);let result=null;
  function capture(){return {devices:devices.map(d=>({...JSON.parse(JSON.stringify(d)),mac:macOf(d)})),links:JSON.parse(JSON.stringify(links))};}
- function compare(sourceId,targetId){const topology=capture(),target=get(targetId);const check=AgLabBorckEngine.support(topology);if(!check.ok)return {supported:false,reasons:check.reasons};if(!target)return {supported:false,reasons:['Hedef cihaz seçilmedi']};return {supported:true,...AgLabBorckEngine.run(topology,sourceId,target.ip)};}
+ function compare(sourceId,targetId){const check=aglabEngines.check('borck');if(!check.ok)return {supported:false,reasons:check.reasons};if(!get(targetId))return {supported:false,reasons:['Hedef cihaz seçilmedi']};return {supported:true,...aglabEngines.run('borck',sourceId,targetId)};}
  run.onclick=()=>{
   result=null;show.disabled=true;
   try{const r=compare($p('ptSource').value,$p('ptTarget').value);output.textContent=JSON.stringify(r,null,2);if(r.supported){result=r;show.disabled=false;}}catch(e){output.textContent='NetSim yapılandırma/çalıştırma hatası: '+e.message;}

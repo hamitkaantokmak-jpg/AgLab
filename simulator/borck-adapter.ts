@@ -69,12 +69,12 @@ export function createSession(topology:any){
  // onWireTransfer is upstream evidence. We do not generate imagined forwarding/drop events.
  net.onWireTransfer=e=>emit({...e,origin:identity.name});
  function snapshot(){return {arp:Object.fromEntries([...net.devices].filter(([,d]:any)=>d.arpTable).map(([id,d]:any)=>[id,[...d.arpTable].map(([ip,v]:any)=>({ip:ipToString(ip),mac:v.mac,port:v.ifaceName}))])),mac:Object.fromEntries([...net.devices].filter(([,d]:any)=>d.macTable).map(([id,d]:any)=>[id,[...d.macTable].map(([key,p]:any)=>({key,port:p.name}))]))};}
- return {net,snapshot,ping(source:string,targetIp:string){
+ return {net,snapshot,ping(source:string,targetIp:string,{includeTables=true}={}){
   events=[];overflow=0;const src:any=net.devices.get(source),dst=parseIp(targetIp);if(!src?.sendEcho||dst===null)throw Error('Invalid ping endpoints');
   const id=++icmpId,replies:any[]=[];src.onIcmp(id,(e:any)=>replies.push(e));
   const error=src.sendEcho(dst,id,1);net.scheduler.advanceTo(net.now+10000);
   src.offIcmp(id);
-  return {engine:identity,ok:replies.some(e=>e.type==='reply'),error:error||null,replies,events:events.slice(),overflow,...snapshot()};
+  return {engine:identity,ok:replies.some(e=>e.type==='reply'),error:error||null,replies,events:events.slice(),overflow,...(includeTables?snapshot():{})};
  }};
 }
 export function run(topology:any,source:string,targetIp:string){return createSession(topology).ping(source,targetIp);}

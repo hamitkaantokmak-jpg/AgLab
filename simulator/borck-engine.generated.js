@@ -1514,7 +1514,7 @@ var AgLabBorckEngine = (() => {
     function snapshot() {
       return { arp: Object.fromEntries([...net.devices].filter(([, d]) => d.arpTable).map(([id, d]) => [id, [...d.arpTable].map(([ip, v]) => ({ ip: ipToString(ip), mac: v.mac, port: v.ifaceName }))])), mac: Object.fromEntries([...net.devices].filter(([, d]) => d.macTable).map(([id, d]) => [id, [...d.macTable].map(([key2, p]) => ({ key: key2, port: p.name }))])) };
     }
-    return { net, snapshot, ping(source, targetIp) {
+    return { net, snapshot, ping(source, targetIp, { includeTables = true } = {}) {
       events = [];
       overflow = 0;
       const src = net.devices.get(source), dst = parseIp(targetIp);
@@ -1524,7 +1524,7 @@ var AgLabBorckEngine = (() => {
       const error = src.sendEcho(dst, id, 1);
       net.scheduler.advanceTo(net.now + 1e4);
       src.offIcmp(id);
-      return { engine: identity, ok: replies.some((e) => e.type === "reply"), error: error || null, replies, events: events.slice(), overflow, ...snapshot() };
+      return { engine: identity, ok: replies.some((e) => e.type === "reply"), error: error || null, replies, events: events.slice(), overflow, ...includeTables ? snapshot() : {} };
     } };
   }
   function run(topology, source, targetIp) {

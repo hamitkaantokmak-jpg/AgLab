@@ -68,6 +68,10 @@ jobs:
             dist/network-audit.md
             dist/borck-benchmark.json
             dist/borck-ui-results.json
+            dist/browser-engine-benchmark.json
+            dist/advanced-student-journey.json
+            dist/advanced-student-journey.png
+            dist/html-build-manifest.json
           if-no-files-found: warn
       - name: Başarılı ZIP'i sakla
         if: success()

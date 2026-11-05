@@ -1,6 +1,16 @@
 """Validate the two offline Academy archives, including content and source separation."""
 import hashlib, json, re, sys, zipfile
 
+EMBEDDED_SOURCES={
+ 'BORCK ENGINE':'simulator/borck-engine.generated.js','BORCK UI':'simulator/borck-ui.js',
+ 'ENGINE MANAGER':'simulator/engine-manager.js','ENGINE MANAGER UI':'simulator/engine-manager-ui.js',
+ 'LAB EVIDENCE':'simulator/lab-evidence.js','LAB EVIDENCE UI':'simulator/lab-evidence-ui.js',
+ 'PACKET EVENTS':'simulator/packet-events.js','PACKET DETECTIVE UI':'simulator/packet-detective-ui.js'}
+
+def build_release_manifest(root):
+    return {'format':'aglab-offline-build-v1','html_sha256':hashlib.sha256((root/'AgLab_Final_PKT_Import.html').read_bytes()).hexdigest(),
+            'sources':{p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in EMBEDDED_SOURCES.values()}}
+
 def verify_release_packages(student_path, teacher_path):
     ids={f'AGL-{i:03d}' for i in range(1,41)}
     docs={'AKADEMI.md','academy/ADAPTATION.md','academy/adaptation-audit.json'}
@@ -18,6 +28,7 @@ def verify_release_packages(student_path, teacher_path):
         assert adapter_files<=student_names, 'Missing adapter test dependencies: '+str(adapter_files-student_names)
         borck_files={'simulator/borck-engine.generated.js','simulator/borck-adapter.ts','simulator/borck-ui.js','simulator/test_borck_engine.cjs','simulator/benchmark_borck_engine.cjs','third_party/borck-netsim/LICENSE','third_party/borck-netsim/provenance.json'}
         assert borck_files<=student_names, 'Missing real third-party engine dependencies/license'
+        assert {'docs/UYUMLULUK_MATRISI.md','docs/GELISMIS_MOTOR_ENTEGRASYON.md','real-lab/advanced_smoke.py'}<=student_names, 'Missing advanced motor documentation/runner'
         provenance=read_json(student,'third_party/borck-netsim/provenance.json')
         for name,sha in provenance['sha256'].items():
             assert hashlib.sha256(student.read('third_party/borck-netsim/'+name)).hexdigest()==sha, 'Vendored source mismatch: '+name
@@ -28,6 +39,14 @@ def verify_release_packages(student_path, teacher_path):
         hashes=read_json(teacher,'academy/source/SHA256.json')
         assert set(hashes)=={i+'.json' for i in ids}, 'Source hash inventory mismatch'
         html=student.read('AgLab_Final_PKT_Import.html').decode('utf-8')
+        manifest=read_json(student,'html-build-manifest.json')
+        assert manifest['html_sha256']==hashlib.sha256(student.read('AgLab_Final_PKT_Import.html')).hexdigest(), 'HTML build digest mismatch'
+        assert set(manifest['sources'])==set(EMBEDDED_SOURCES.values()), 'Build source inventory mismatch'
+        for title,source in EMBEDDED_SOURCES.items():
+            data=student.read(source)
+            assert hashlib.sha256(data).hexdigest()==manifest['sources'][source], 'Build source digest mismatch: '+source
+            generated='// BEGIN '+title+' GENERATED\n'+data.decode('utf-8').replace('\r\n','\n')+'\n// END '+title+' GENERATED\n'
+            assert generated in html, 'Stale/missing embedded module: '+source
         assert 'teacher_solution' not in html and 'target_topology' not in html, 'Teacher fields in student HTML'
         match=re.search(r'^const academyLabs = (.+);\r?$',html,re.MULTILINE)
         assert match, 'Embedded Academy data missing'

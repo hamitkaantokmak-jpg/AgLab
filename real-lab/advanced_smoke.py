@@ -26,7 +26,8 @@ def topology(kind, folder):
         nodes[f'r{i}']={'group':'routers','startup-config':str(config)}
     for i in (1,2):
         subnet=10 if i==1 else 20
-        nodes[f'pc{i}']={'kind':'linux','image':'alpine:3.20','exec':[f'ip addr add 192.168.{subnet}.10/24 dev eth1','ip link set eth1 up',f'ip route add default via 192.168.{subnet}.1']}
+        remote=20 if i==1 else 10
+        nodes[f'pc{i}']={'kind':'linux','image':'alpine:3.20','exec':[f'ip addr add 192.168.{subnet}.10/24 dev eth1','ip link set eth1 up',f'ip route add 192.168.{remote}.0/24 via 192.168.{subnet}.1']}
     edges=[('r1:eth2','r2:eth2'),('r2:eth3','r3:eth2'),('r1:eth3','r3:eth3'),('pc1:eth1','r1:eth1'),('pc2:eth1','r3:eth1')]
     return {'name':NAMES[kind],'topology':{'groups':{'routers':group},'nodes':nodes,'links':[{'endpoints':list(e)} for e in edges]}}
 
@@ -66,10 +67,12 @@ class Live:
         raise AssertionError(label+' timed out; last='+str(last))
     def stable_negative(self,label,fn):
         # A single empty sample during reconvergence is insufficient negative evidence.
-        self.sleeper(4)
-        values=[bool(fn()) for _ in range(3)]
-        if not all(values):raise AssertionError(label+': condition did not remain negative')
-        self.record(label)
+        self.sleeper(4);deadline=time.monotonic()+45;consecutive=0
+        while time.monotonic()<deadline:
+            consecutive=consecutive+1 if fn() else 0
+            if consecutive==3:self.record(label);return
+            self.sleeper(1)
+        raise AssertionError(label+': negative condition did not stabilize')
     def record(self,label):
         self.steps.append({'name':label,'ok':True,'origin':'native-command-check','time_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'evidence':json.loads(json.dumps(self.evidence))})
         print('PASS',self.kind,label,flush=True)

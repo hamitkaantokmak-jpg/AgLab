@@ -1,0 +1,39 @@
+# AğLab / Packet Tracer hedefi için uyumluluk matrisi
+
+6 Kasım 2026. Bu tablo **AğLab'da bağlanan ve test edilen yolu** sınıflandırır;
+upstream projelerin bütün özelliklerini AğLab'ın desteği gibi saymaz.
+
+Durumlar: **Tam destek**, **Sınırlı eğitim modeli**, **Deneysel**,
+**Desteklenmiyor**, **Doğrulanmadı**. Bu sürümde hiçbir satır için tüm Cisco
+IOS/Packet Tracer davranışlarını kapsayan “Tam destek” iddiası yapılmıyor.
+“Deneysel / gerçek” gerçek Linux/FRR kodunun çalıştığını, entegrasyonun belirli
+lab ve kabul senaryolarıyla sınırlandığını anlatır. Son koşunun başarısı ayrıca
+CI/JSON sonuç raporundan kontrol edilmelidir; test dosyasının varlığı başarı değildir.
+
+| Özellik | Mevcut AğLab | MIT NetSim entegrasyonu | Gerçek Lab | Test kapsamı | Eksik |
+|---|---|---|---|---|---|
+| Ethernet switching | Sınırlı eğitim modeli | Deneysel: access switch | Deneysel: Linux kernel bridge | frame_forwarding; borck_engine; advanced_smoke l2 | Fiziksel ASIC/hat kodlama/kayıp modeli eşdeğerliği yok |
+| VLAN | Sınırlı eğitim modeli | Deneysel: access üyeliği | Deneysel: bridge VLAN filtering | VLAN10/20 izolasyonu ve CLI onarımı; gerçek kernel PVID | Tüm platform/VLAN türleri yok |
+| 802.1Q trunk | Sınırlı eğitim modeli | Desteklenmiyor; açık ret | Deneysel: Linux bridge | Allowed listeden çıkarma/onarım, native VLAN eşleşme/uyuşmazlık | DTP/ISL/tüm Cisco native politikaları yok |
+| STP | Sınırlı eğitim modeli: deterministik ağaç, iletimi etkiler | Desteklenmiyor; döngü ret | Deneysel: kernel 802.1D | 3 switch, root, bir blocked port, kablo kopması ve alternatif gerçek ICMP | Tarayıcıda gerçek BPDU/timer yok; native yol PVST/MSTP/RSTP değil |
+| ARP | Sınırlı eğitim modeli | Deneysel: gerçek upstream ARP/cache | Deneysel: Linux ağ yığını | İlk/ikinci ping, tablolar, izolasyon | Her ARP saldırısı/edge case test edilmedi |
+| ICMP | Sınırlı eğitim modeli; TTL/unreachable/traceroute testleri var | Deneysel: echo; bu entegrasyonda sınırlı alanlar | Deneysel: gerçek Linux ICMP | Browser pozitif/negatif ping; gerçek lab ping | Tüm ICMP türleri ve PMTU matrisi yok |
+| DHCP/relay | Sınırlı eğitim modeli | Desteklenmiyor (upstream kodunun varlığı yeterli değil) | Doğrulanmadı | Mevcut pkt_dhcp_relay ve ortak relay senaryosu | Bu gerçek lablarda DHCP/relay testi yok |
+| Routing/statik | Sınırlı eğitim modeli: LPM/AD/return path | Desteklenmiyor (host default gateway dar eşleme dışında) | Deneysel: FRR + Linux FIB | Eski gerçek statik topoloji; yeni dinamik next-hop denetimleri | Tüm route policy/VRF/MPLS yok |
+| OSPF | Sınırlı eğitim modeli: AD110; gerçek paket/FSM değil | Desteklenmiyor | Deneysel: gerçek ospfd | Komşuluk, area uyuşmazlığı, router-ID çakışması, yedek yol, withdrawal ve AD110; advanced_smoke routing | Multi-area/ABR/auth/LSA çeşitleri henüz sınanmadı |
+| BGP | Sınırlı eğitim modeli: eBGP/AD20 | Desteklenmiyor | Deneysel: gerçek bgpd | Karşılıklı eBGP, remote-AS hatası, kısa/alternatif yol, withdrawal ve AD20 | iBGP/RR/policy/IPv6/AFI-SAFI kapsamı yok |
+| ACL | Sınırlı eğitim modeli | Desteklenmiyor | Doğrulanmadı | Mevcut routed frame/grading denetimleri | Gerçek FRR ACL/policy karşılaştırması yok |
+| NAT | Sınırlı eğitim modeli: PAT | Desteklenmiyor | Doğrulanmadı | Ortak nat-pat senaryosu | Native NAT/many-to-many/tüm protokol çeşitleri yok |
+| IPv6 | Desteklenmiyor | Desteklenmiyor | Doğrulanmadı | Bu tur gerçek IPv6 testi yok | ND/OSPFv3/MP-BGP aktarımı yok |
+| CLI | Sınırlı eğitim modeli: Cisco benzeri mevcut katman | Deneysel: ortak yapılandırma API eşlemesi; yeni parser yok | Deneysel: operatör vtysh/ip/bridge | UI CLI trunk/VLAN/shutdown/save/import; gerçek native config komutları | Aynı Cisco komutu birebir FRR/Linux komutu değildir; öğrenciye shell yok |
+| PKT import | Sınırlı eğitim modeli; kaynak arşivi korunur | Deneysel: kabul edilen ortak JSON alt kümesi | Desteklenmiyor: seçili PKT otomatik kurulmaz | Mevcut context/MAC/helper/matris/restore testleri | Tüm PT sürümleri/cihazları/seçenekleri desteklenmez |
+| Paket animasyonu / Dedektif | Sınırlı eğitim modeli; gerçek motorun simülasyon olayları | Deneysel: upstream wire notification, ham PDU değil | Deneysel: ayrı lab doğrulama raporu; PCAP değil | Gerçek kayıt oynatma, kaynak etiketi, veri-only rapor/XSS/limit ret | Native paket yakalama/animasyon ve tam ARP op/ICMP type henüz yok |
+| Öğrenci laboratuvarları | Sınırlı eğitim modeli: 40 kaynak görev korunur | Deneysel: karşılaştırma alt kümesi | Deneysel: önceden tanımlı ayrı topolojiler | 40 kaynak hash'i/paket ayrımı; 17 ortak senaryo; UI öğrenci akışı | 40 lab yeni motora veya gerçek cihazlara taşınmış sayılmaz |
+| Kaydet/yükle | Sınırlı eğitim modeli; topoloji/config/oturum | Deneysel: tekrar ortak JSON'dan kurulur | Desteklenmiyor: tarayıcı oturumuyla native durum senkronizasyonu yok | Gerçek UI export/import ve kalıcılık testleri | NetSim runtime ARP/FDB ve FRR runtime tarayıcı dosyasında birleşmez |
+
+L2 real-lab başarısı, JavaScript veya MIT motoruna trunk/STP desteği eklenmiş
+olduğu anlamına gelmez. Seçili motor bütün denemeyi tek başına yürütür.
+FRR/Linux bridge çalışmaları Docker/Linux ve operatör yetkisi gerektirir;
+çevrimdışı HTML bu daemonları çalıştırmaz. Öğrenci tanı servisi salt okunurdur.
+
+Kaynak ve test ayrıntısı: [Gelişmiş motor entegrasyonu](GELISMIS_MOTOR_ENTEGRASYON.md).

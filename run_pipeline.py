@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Portable AğLab test, quality gate, report and release pipeline."""
 import argparse, datetime, json, os, pathlib, shutil, subprocess, sys, tempfile, time, zipfile
-from verify_packages import verify_release_packages
+from verify_packages import verify_release_packages, build_release_manifest
 ROOT=pathlib.Path(__file__).resolve().parent
 ACADEMY_DOCS=['AKADEMI.md','academy/ADAPTATION.md','academy/adaptation-audit.json']
 TESTS=['test_aglab_pkt_trunk.py','test_aglab_import.py','test_aglab_cli_vlan.py','test_aglab_status.py','test_aglab_subinterfaces.py','test_aglab_v7.py','test_aglab_v11_routing.py','test_aglab_v12_gateway.py','test_aglab_v13_router_ping.py','test_aglab_v15_local_ping.py','test_aglab_v17_ping_validation.py','test_aglab_academy.py','test_aglab_ui.py']
 TESTS.append('test_aglab_trunk_defaults.py')
 TESTS.append('test_aglab_device_cli.py')
 TESTS.append('test_aglab_borck_engine.py')
+TESTS.extend(['test_aglab_advanced_engines.py','test_aglab_browser_benchmark.py','real-lab/test_advanced_smoke.py'])
 TESTS.append('test_aglab_network_features.py')
 TESTS.append('test_aglab_l2_router_trunk.py')
 TESTS.append('test_aglab_mac_learning.py')
@@ -23,13 +24,14 @@ TESTS.append('test_aglab_pkt_port_security.py')
 TESTS.append('test_aglab_pkt_dhcp_relay.py')
 TESTS.append('test_aglab_persistence.py')
 TESTS.extend(['test_aglab_large_topology.py','test_aglab_pkt_matrix.py','test_aglab_endpoint_ports.py','test_aglab_student_journey.py','test_aglab_switch_svi.py','test_aglab_svi_import.py'])
-NODE_TESTS=['simulator/test_borck_engine.cjs','simulator/benchmark_borck_engine.cjs','simulator/test_packet_events.cjs','simulator/test_port_security.cjs' ,'simulator/test_engine_adapter_prototype.cjs' ,'simulator/test_engine_adapter_parity.cjs']
+NODE_TESTS=['simulator/test_engine_manager.cjs','simulator/test_lab_evidence.cjs','simulator/test_borck_engine.cjs','simulator/benchmark_borck_engine.cjs','simulator/test_packet_events.cjs','simulator/test_port_security.cjs' ,'simulator/test_engine_adapter_prototype.cjs' ,'simulator/test_engine_adapter_parity.cjs']
 STUDENT_FILES=['real-lab/student_api.py','real-lab/export_student_snapshot.py','real-lab/test_student_api.py','real-lab/student_isolation_smoke.py','real-lab/student_live_smoke.py','real-lab/test_student_live_smoke.py']
 STUDENT_FILES.append('real-lab/test_export_permissions.py')
 STUDENT_FILES.append('real-lab/test_snapshot_watch.py')
 STUDENT_FILES.extend(['real-lab/student.html','real-lab/student.js','real-lab/student.css','real-lab/test_student_ui.py'])
 REAL_LAB_FILES=['real-lab/topology.clab.yml','real-lab/r1/frr.conf','real-lab/r2/frr.conf','real-lab/README.md','real-lab/check_topology.py','real-lab/manage.py','real-lab/test_manage.py','real-lab/live_smoke.py','real-lab/test_live_smoke.py','real-lab/api.py','real-lab/test_api.py','real-lab/dashboard.html','real-lab/test_api_http.py','real-lab/diagnostics.py','real-lab/test_diagnostics.py']
 REAL_LAB_FILES.extend(STUDENT_FILES)
+REAL_LAB_FILES.append('real-lab/advanced_smoke.py')
 ARTIFACTS=['AgLab_Final_PKT_Import.html','convert_pkt_to_aglab.py','restore_pkt_from_aglab_json.py','verify_packages.py','static-routing-two-routers.aglab.json','static-routing-two-routers-import-report.json','AgLab_PKT_Import_Kullanim.md','static-routing-two-routers(1).pkt' ]
 ARTIFACTS.extend(['simulator/mac-address.js','simulator/test_mac_address.cjs','pkt-sample-matrix.json','PKT_ORNEK_MATRISI.md','simulator/switch-management.js','simulator/mac-learning.js','simulator/ethernet-forwarding.js','simulator/routing-path.js','simulator/routed-ethernet.js','simulator/icmp.js','simulator/traceroute.js','build_simulator.py','SIMULATOR_PLAN.md'])
 ARTIFACTS.extend(['simulator/packet-events.js','simulator/packet-detective-ui.js'])
@@ -37,6 +39,7 @@ ARTIFACTS.append('simulator/device-cli.js')
 ARTIFACTS.append('simulator/engine-adapter-prototype.cjs')
 ARTIFACTS.extend(['simulator/network-protocols.js','simulator/port-security.js','simulator/network-scenarios.js','simulator/network-scenarios.json'])
 ARTIFACTS.append('docs/ORTAK_MOTOR.md')
+ARTIFACTS.extend(['simulator/engine-manager.js','simulator/engine-manager-ui.js','simulator/lab-evidence.js','simulator/lab-evidence-ui.js','docs/GELISMIS_MOTOR_ENTEGRASYON.md','docs/UYUMLULUK_MATRISI.md'])
 ARTIFACTS.extend(['simulator/borck-adapter.ts','simulator/borck-engine.generated.js','simulator/borck-ui.js','simulator/borck-fixtures.cjs','simulator/borck-production-reference.cjs','tools/build_borck_engine.cjs','package.json','package-lock.json','docs/HAZIR_MOTOR_ENTEGRASYON.md'])
 ARTIFACTS.extend(p.relative_to(ROOT).as_posix() for p in sorted((ROOT/'third_party/borck-netsim').rglob('*')) if p.is_file())
 def run():
@@ -174,11 +177,14 @@ def run():
  if report.get('error'):lines.append(report['error'])
  (out/'test-report.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
  if report['passed']:
+  (out/'html-build-manifest.json').write_text(json.dumps(build_release_manifest(ROOT),indent=2),encoding='utf-8')
   zpath=out/'AgLab_Otomatik_Dogrulanmis_Paket.zip'
   with zipfile.ZipFile(zpath,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
    for f in ARTIFACTS+TESTS+NODE_TESTS+REAL_LAB_FILES:z.write(ROOT/f,f)
    z.writestr('decoded_source.xml',base64.b64decode(source['sourceArchive']['decodedXmlBase64']))
    z.write(out/'test-report.md','test-report.md');z.write(out/'test-results.json','test-results.json')
+   z.write(out/'html-build-manifest.json','html-build-manifest.json')
+   for name in ['browser-engine-benchmark.json','advanced-student-journey.json']:z.write(out/name,name)
    for f in (ROOT/'academy/student').glob('*.json'):z.write(f,'academy/student/'+f.name)
    for name in ACADEMY_DOCS:z.write(ROOT/name,name)
   teacher=out/'AgLab_Akademi_Ogretmen.zip'
