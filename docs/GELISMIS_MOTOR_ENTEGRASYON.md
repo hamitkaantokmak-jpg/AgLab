@@ -159,7 +159,10 @@ Kök raw HTML'nin önceki commit'te üretilmiş taban olduğu kontrol edildi;
 otomatik inceleme yükleme sınırı nedeniyle kaynaklar ve CI üretimi esas.
 `run_pipeline.py` HTML'yi testlerden önce yeniden üretir. Güncel CI ZIP/teslim
 HTML'si kullanılmalı; raw GitHub HTML yeni modülleri içermeyebilir. Release
-doğrulaması gömülü modüllerin paket kaynaklarıyla eşitliğini denetler.
+doğrulaması gömülü modüllerin paket kaynaklarıyla eşitliğini denetler. Adaptör
+blokları her üretimde aynı sıraya yerleştirilir. `test_build_simulator.py`,
+önceki HTML'deki blokları ters çevirip tekrar derleyerek byte eşitliğini sınar;
+yalnız art arda aynı girdiyi derlemekle yetinmez.
 
 [Uyumluluk matrisi](UYUMLULUK_MATRISI.md). Tüm 40 lab native motorlara taşınmadı;
 otomatik native lab oluşturma, tarayıcı/FRR runtime senkronizasyonu, RSTP,

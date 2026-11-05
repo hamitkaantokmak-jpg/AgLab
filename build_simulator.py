@@ -10,11 +10,13 @@ for title,source in [('MAC ADDRESS','mac-address.js'),('TRACEROUTE','traceroute.
   a=html.index(start);b=html.index(end,a)+len(end);html=html[:a]+code+html[b:]
  else:
   anchor='// BEGIN ACADEMY GENERATED\n';assert anchor in html;html=html.replace(anchor,code+anchor,1)
+extra=[]
 for title,source in [('BORCK ENGINE','borck-engine.generated.js'),('ENGINE MANAGER','engine-manager.js'),('ENGINE MANAGER UI','engine-manager-ui.js'),('BORCK UI','borck-ui.js'),('LAB EVIDENCE','lab-evidence.js'),('LAB EVIDENCE UI','lab-evidence-ui.js')]:
  start='// BEGIN '+title+' GENERATED\n';end='// END '+title+' GENERATED\n'
  code=start+(ROOT/'simulator'/source).read_text(encoding='utf-8')+'\n'+end
- if start in html:
-  a=html.index(start);b=html.index(end,a)+len(end);html=html[:a]+code+html[b:]
- else:
-  anchor='// BEGIN ACADEMY GENERATED\n';html=html.replace(anchor,code+anchor,1)
+ while start in html:
+  a=html.index(start);b=html.index(end,a)+len(end);html=html[:a]+html[b:]
+ extra.append(code)
+anchor='// BEGIN ACADEMY GENERATED\n';assert anchor in html
+html=html.replace(anchor,''.join(extra)+anchor,1)
 path.write_text(html,encoding='utf-8',newline='\n')

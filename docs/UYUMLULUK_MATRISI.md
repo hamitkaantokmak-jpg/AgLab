@@ -10,7 +10,7 @@ IOS/Packet Tracer davranışlarını kapsayan “Tam destek” iddiası yapılm�
 lab ve kabul senaryolarıyla sınırlandığını anlatır. Son koşunun başarısı ayrıca
 CI/JSON sonuç raporundan kontrol edilmelidir; test dosyasının varlığı başarı değildir.
 
-| Özellik | Mevcut AğLab | MIT NetSim entegrasyonu | Gerçek Lab | Test kapsamı | Eksik |
+| Özellik | Mevcut AğLab | MIT NetSim entegrasyonu | Gerçek Lab | Test durumu / kapsamı | Eksik |
 |---|---|---|---|---|---|
 | Ethernet switching | Sınırlı eğitim modeli | Deneysel: access switch | Deneysel: Linux kernel bridge | frame_forwarding; borck_engine; advanced_smoke l2 | Fiziksel ASIC/hat kodlama/kayıp modeli eşdeğerliği yok |
 | VLAN | Sınırlı eğitim modeli | Deneysel: access üyeliği | Deneysel: bridge VLAN filtering | VLAN10/20 izolasyonu ve CLI onarımı; gerçek kernel PVID | Tüm platform/VLAN türleri yok |
@@ -35,5 +35,14 @@ L2 real-lab başarısı, JavaScript veya MIT motoruna trunk/STP desteği eklenmi
 olduğu anlamına gelmez. Seçili motor bütün denemeyi tek başına yürütür.
 FRR/Linux bridge çalışmaları Docker/Linux ve operatör yetkisi gerektirir;
 çevrimdışı HTML bu daemonları çalıştırmaz. Öğrenci tanı servisi salt okunurdur.
+
+6 Kasım doğrulaması: [native CI](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42117504225)
+Linux bridge **14/14**, FRR **16/16** başarılıdır. Trunk/native/allowed, STP
+root/block/failover, FDB/MAC move, OSPF area/router-ID/withdrawal ve BGP
+remote-AS/alternate/withdrawal satırlarındaki belirtilen native testler geçti.
+JS/MIT ve paket regresyonları [genel CI'da](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42117504238)
+başarılıdır. IPv6, native DHCP/ACL/NAT, RSTP ve tabloda eksik gösterilen geniş
+özellikler bu başarıdan destek kazanmış sayılmaz. En güncel build/test koşusu
+teslim raporunda ayrıca belirtilir.
 
 Kaynak ve test ayrıntısı: [Gelişmiş motor entegrasyonu](GELISMIS_MOTOR_ENTEGRASYON.md).
