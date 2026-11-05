@@ -8,6 +8,7 @@ class AdvancedTests(unittest.TestCase):
    for kind,count in [('l2',6),('routing',5)]:
     topology=m.topology(kind,pathlib.Path(t));self.assertEqual(len(topology['topology']['links']),count);self.assertTrue(topology['name'].startswith('aglab-advanced-'));self.assertNotEqual(topology['name'],'aglab-real-mvp')
    text=(pathlib.Path(t)/'r1.conf').read_text();self.assertIn('router ospf\n',text);self.assertNotIn('router ospf 1',text);self.assertNotIn('ip route ',text)
+   self.assertIn('network 10.0.12.0/24 area 0',text);self.assertNotIn('network 10.0.0.0/8',text)
    t=m.topology('routing',pathlib.Path(t));self.assertIn('ip route add 192.168.20.0/24 via 192.168.10.1',t['topology']['nodes']['pc1']['exec']);self.assertFalse(any('route add default' in c for c in t['topology']['nodes']['pc1']['exec']))
   self.assertRaises(ValueError,m.topology,'unknown',pathlib.Path('.'))
  def test_dry_run_has_no_side_effect(self):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Admin-only real Linux bridge and FRR regression labs; never an HTTP executor."""
-import argparse, json, os, pathlib, subprocess, tempfile, time
+import argparse, ipaddress, json, os, pathlib, subprocess, tempfile, time
 ROOT=pathlib.Path(__file__).resolve().parent
 IMAGE='quay.io/frrouting/frr:containerlab-10.7.1'
 NAMES={'l2':'aglab-advanced-l2','routing':'aglab-advanced-routing'}
@@ -21,7 +21,9 @@ def topology(kind, folder):
             lines.extend([f'interface {port}',f' ip address {ip}',' no shutdown'])
             if port!='eth1':lines.extend([' ip ospf network point-to-point',' ip ospf hello-interval 1',' ip ospf dead-interval 3',' ip ospf cost 10'])
             lines.append('!')
-        lines.extend(['router ospf',f' ospf router-id {i}.{i}.{i}.{i}',' network 10.0.0.0/8 area 0',' network 192.168.0.0/16 area 0','!'])
+        lines.extend(['router ospf',f' ospf router-id {i}.{i}.{i}.{i}'])
+        lines.extend(' network '+str(ipaddress.ip_interface(ip).network)+' area 0' for _,ip in interfaces)
+        lines.append('!')
         config=folder/f'r{i}.conf';config.write_text('\n'.join(lines)+'\n',encoding='utf-8')
         nodes[f'r{i}']={'group':'routers','startup-config':str(config)}
     for i in (1,2):
@@ -96,9 +98,9 @@ class Live:
     def routing(self):
         self.wait('OSPF neighbors and AD110 route',lambda:self.full('r1','2.2.2.2') and self.full('r1','3.3.3.3') and self.route('ospf','10.0.13.3'))
         self.wait('OSPF real ICMP',self.ping)
-        self.config('r2','interface eth2','ip ospf area 1')
+        self.config('r2','router ospf','no network 10.0.12.0/24 area 0','network 10.0.12.0/24 area 1')
         self.stable_negative('OSPF area mismatch blocks adjacency',lambda:not self.full('r1','2.2.2.2'))
-        self.config('r2','interface eth2','no ip ospf area 1')
+        self.config('r2','router ospf','no network 10.0.12.0/24 area 1','network 10.0.12.0/24 area 0')
         self.wait('OSPF area repair',lambda:self.full('r1','2.2.2.2'))
         # Isolate the two-router adjacency, so the collision assertion cannot pass on another link.
         self.config('r1','interface eth3','shutdown');self.config('r2','interface eth3','shutdown')
@@ -108,9 +110,9 @@ class Live:
         self.wait('OSPF router-ID repair',lambda:self.full('r1','2.2.2.2'))
         self.config('r2','interface eth3','no shutdown')
         self.wait('OSPF link failure selects alternate next-hop',lambda:self.route('ospf','10.0.12.2') and self.ping())
-        self.config('r3','router ospf','no network 192.168.0.0/16 area 0')
+        self.config('r3','router ospf','no network 192.168.20.0/24 area 0')
         self.stable_negative('OSPF withdrawal removes destination route',lambda:not self.route('ospf'))
-        self.config('r3','router ospf','network 192.168.0.0/16 area 0')
+        self.config('r3','router ospf','network 192.168.20.0/24 area 0')
         self.config('r1','interface eth3','no shutdown')
         self.wait('OSPF restoration',lambda:self.route('ospf','10.0.13.3') and self.ping())
         for i in (1,2,3):self.config(f'r{i}','no router ospf')
