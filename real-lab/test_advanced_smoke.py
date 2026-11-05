@@ -7,7 +7,7 @@ class AdvancedTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t:
    for kind,count in [('l2',6),('routing',5)]:
     topology=m.topology(kind,pathlib.Path(t));self.assertEqual(len(topology['topology']['links']),count);self.assertTrue(topology['name'].startswith('aglab-advanced-'));self.assertNotEqual(topology['name'],'aglab-real-mvp')
-   text=(pathlib.Path(t)/'r1.conf').read_text();self.assertIn('router ospf 1',text);self.assertNotIn('ip route ',text)
+   text=(pathlib.Path(t)/'r1.conf').read_text();self.assertIn('router ospf\n',text);self.assertNotIn('router ospf 1',text);self.assertNotIn('ip route ',text)
   self.assertRaises(ValueError,m.topology,'unknown',pathlib.Path('.'))
  def test_dry_run_has_no_side_effect(self):
   with patch.object(m.subprocess,'run') as run:self.assertEqual(m.main(['routing']),0);run.assert_not_called()

@@ -21,7 +21,7 @@ def topology(kind, folder):
             lines.extend([f'interface {port}',f' ip address {ip}',' no shutdown'])
             if port!='eth1':lines.extend([' ip ospf network point-to-point',' ip ospf hello-interval 1',' ip ospf dead-interval 3',' ip ospf cost 10'])
             lines.append('!')
-        lines.extend(['router ospf 1',f' ospf router-id {i}.{i}.{i}.{i}',' network 10.0.0.0/8 area 0',' network 192.168.0.0/16 area 0','!'])
+        lines.extend(['router ospf',f' ospf router-id {i}.{i}.{i}.{i}',' network 10.0.0.0/8 area 0',' network 192.168.0.0/16 area 0','!'])
         config=folder/f'r{i}.conf';config.write_text('\n'.join(lines)+'\n',encoding='utf-8')
         nodes[f'r{i}']={'group':'routers','startup-config':str(config)}
     for i in (1,2):
@@ -93,18 +93,18 @@ class Live:
         self.wait('OSPF area repair',lambda:self.full('r1','2.2.2.2'))
         # Isolate the two-router adjacency, so the collision assertion cannot pass on another link.
         self.config('r1','interface eth3','shutdown');self.config('r2','interface eth3','shutdown')
-        self.config('r2','router ospf 1','ospf router-id 1.1.1.1');self.vty('r2','clear ip ospf process')
+        self.config('r2','router ospf','ospf router-id 1.1.1.1');self.vty('r2','clear ip ospf process')
         self.stable_negative('OSPF duplicate router-ID blocks isolated pair',lambda:not self.full('r1'))
-        self.config('r2','router ospf 1','ospf router-id 2.2.2.2');self.vty('r2','clear ip ospf process')
+        self.config('r2','router ospf','ospf router-id 2.2.2.2');self.vty('r2','clear ip ospf process')
         self.wait('OSPF router-ID repair',lambda:self.full('r1','2.2.2.2'))
         self.config('r2','interface eth3','no shutdown')
         self.wait('OSPF link failure selects alternate next-hop',lambda:self.route('ospf','10.0.12.2') and self.ping())
-        self.config('r3','router ospf 1','no network 192.168.0.0/16 area 0')
+        self.config('r3','router ospf','no network 192.168.0.0/16 area 0')
         self.stable_negative('OSPF withdrawal removes destination route',lambda:not self.route('ospf'))
-        self.config('r3','router ospf 1','network 192.168.0.0/16 area 0')
+        self.config('r3','router ospf','network 192.168.0.0/16 area 0')
         self.config('r1','interface eth3','no shutdown')
         self.wait('OSPF restoration',lambda:self.route('ospf','10.0.13.3') and self.ping())
-        for i in (1,2,3):self.config(f'r{i}','no router ospf 1')
+        for i in (1,2,3):self.config(f'r{i}','no router ospf')
         peers={1:[('10.0.12.2',65002),('10.0.13.3',65003)],2:[('10.0.12.1',65001),('10.0.23.3',65003)],3:[('10.0.13.1',65001),('10.0.23.2',65002)]}
         for i in (1,2,3):
             cmds=[f'router bgp {65000+i}',f'bgp router-id {i}.{i}.{i}.{i}','no bgp ebgp-requires-policy']
@@ -196,7 +196,13 @@ def main(argv=None):
             report['host_kernel']=live.command(['uname','-r']).stdout.strip();started=True
             live.command(['containerlab','deploy','-t',str(target)],240)
             (live.l2 if a.kind=='l2' else live.routing)();report['ok']=True
-        except Exception as error:report['error']=str(error);print('FAIL',error,flush=True)
+        except Exception as error:
+            report['error']=str(error);print('FAIL',error,flush=True)
+            if started and a.kind=='routing':
+                for node in ('r1','r2','r3'):
+                    for cmd in ('show running-config','show ip interface brief','show ip ospf interface','show ip ospf neighbor','show ip route'):
+                        try:report['evidence'][node+' '+cmd]=live.vty(node,cmd)
+                        except Exception as diagnostic:report['evidence'][node+' '+cmd]=str(diagnostic)
         finally:
             if started:
                 result=live.command(['containerlab','destroy','-t',str(target),'--cleanup'],120,False)
