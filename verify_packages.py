@@ -48,6 +48,11 @@ def verify_release_packages(student_path, teacher_path):
         assert set(hashes)=={i+'.json' for i in ids}, 'Source hash inventory mismatch'
         html=student.read('AgLab_Final_PKT_Import.html').decode('utf-8')
         manifest=read_json(student,'html-build-manifest.json')
+        replay=read_json(student,'simulation-mode-results.json')
+        assert replay['passed'] and not replay['page_errors'] and replay['browser']=='Chromium', 'Simulation Mode verification missing/failed'
+        assert len(replay['performance'])==8 and {g['lab'] for g in replay['academy']}=={'AGL-001','AGL-005'}, 'Incomplete Simulation Mode scenarios'
+        assert all(g['grade'].startswith('100/100') for g in replay['academy']), 'Simulation changed Academy outcome'
+        assert replay['animation']['topology_nodes_removed_during_playback']==0 and replay['animation']['overlay_layers']==1, 'Unexpected SVG replay redraw'
         assert student.read('html-build.sha256').decode().split()[0]==manifest['html_sha256'], 'Unexpected compiled HTML identity'
         assert read_json(teacher,'html-build-manifest.json')==manifest, 'Student/teacher build identity mismatch'
         assert manifest.get('source_commit') is None or re.fullmatch('[0-9a-f]{40}',manifest['source_commit']), 'Invalid build commit'

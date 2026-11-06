@@ -41,7 +41,7 @@ Her kayıt nesil/sıra kimliği, mevcut metin, tür ve mümkünse frame kimliği
 
 ## Görselleştirme ve tutarlılık
 
-Tek SVG overlay, mevcut `line.pt-edge` geometrisini kullanır; BFS/route sonucu üzerinden yeni yol çıkarmaz. Ters yönlü aktarımda aynı çizginin yönü ters çevrilir. Model konumları/zoom/viewBox değiştiğinde aynı SVG koordinat sistemi kullanılır; mevcut topoloji çizimi her karede yenilenmez. Overlay pointer-events:none olduğu için cihaz/CLI/kablo hit alanlarını kapatmaz; paket seçimi listeden yapılır.
+Tek SVG overlay, mevcut `line.pt-edge` geometrisini kullanır; BFS/route sonucu üzerinden yeni yol çıkarmaz. Ters yönlü aktarımda aynı çizginin yönü ters çevrilir. Model konumları/zoom/viewBox değiştiğinde aynı SVG koordinat sistemi kullanılır; mevcut topoloji çizimi her karede yenilenmez. Katman pointer-events:none kalır. Yalnız duraklatılmış tel aktarımında, tüm cihaz kutularından uzakta olan 44px paket seçim hedefi açılır; cihazların üzerinde ve oynatma sırasında bu hedef etkinleşmez. Simgeye tıklama veya Enter/Space ayrıntılara götürür; liste seçimi her zaman kullanılabilir.
 
 Topoloji/port/yapılandırma değişirse eski kayıt durdurulur ve açık uyarı görünür. Cihazın yalnız x/y/boyut geometrisinin değişmesi kaydı geçersiz kılmaz; çizgi yeniden okunur. Yeniden adlandırma gibi konservatif olarak izlenen değişiklikler de yeni kayıt gerektirebilir. Görünüm dışındaki SVG koordinatları zorla ekrana taşınmaz; olay metin olarak incelenebilir. Yeni bir pan/zoom sistemi eklenmemiştir.
 

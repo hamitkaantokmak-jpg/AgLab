@@ -43,19 +43,23 @@ const style=make('style');style.textContent=`
  body.aglab-simulation-mode #ptPacketStep,body.aglab-simulation-mode #ptCanvas .pt-packet-dot,body.aglab-simulation-mode #ptCanvas .pt-packet-label,body.aglab-simulation-mode .pt-side>.pt-cli-card{display:none}
  @media(max-width:700px){.simulation-columns{display:block}#simulationDetails{margin-top:14px}.simulation-table{max-height:250px}#simulationPanel{padding:10px}}
  `;document.head.append(style);
-let active=false,captured={origin:'aglab-js',events:[],legacy:[]},raf=0,lastTime=0,progress=1,page=0,rowsKey='',version=0,stale=false,overlay=null,dot=null,label=null;
+let active=false,captured={origin:'aglab-js',events:[],legacy:[]},raf=0,lastTime=0,progress=1,page=0,rowsKey='',version=0,stale=false,overlay=null,dot=null,label=null,packetHit=null,motionRunning=false;
 let canvasVisible=true;
 new IntersectionObserver(entries=>{canvasVisible=entries[0].isIntersecting;if(!canvasVisible&&raf){stop();render();}}).observe(canvas);
 const protocol=e=>e?.frame?.protocol||(e?.kind==='ttl'?'IPv4':e?.raw?.includes('icmp-')?'ICMP':e?.raw?.includes('arp-')?'ARP':'—');
 const name=id=>get(id)?.name||id||'—';
 const result=e=>e.kind==='diagnostic'?'Motor tanısı':e.kind==='discard'?'Reddedildi':e.kind==='icmp-undelivered'?'ICMP yanıtı ulaşmadı':e.kind==='icmp-delivered'?'ICMP teslim edildi':e.kind==='wire'?'Çerçeve aktarımı':e.kind==='receive'?'Alındı':e.kind==='frame'?'Oluşturuldu':e.kind==='forward'?'L2 karar':e.kind==='learn'?'MAC öğrenme':e.kind==='ttl'?'TTL azaltıldı':'Motor kaydı';
-function stop(){model.pause();if(raf)cancelAnimationFrame(raf);raf=0;lastTime=0;pause.disabled=true;}
+function stop(){model.pause();if(raf)cancelAnimationFrame(raf);raf=0;lastTime=0;motionRunning=false;pause.disabled=true;}
 function unchanged(){stale=!!captured.events.length&&captured.topologyKey!==ethernetTopologyFingerprint();if(stale){stop();hide();}return !stale;}
 function hide(){if(overlay)overlay.setAttribute('display','none');}
 function ensureOverlay(){
  if(overlay&&canvas.contains(overlay))return;
- const ns='http://www.w3.org/2000/svg';overlay=document.createElementNS(ns,'g');overlay.id='simulationOverlay';overlay.setAttribute('pointer-events','none');overlay.setAttribute('aria-hidden','true');
- dot=document.createElementNS(ns,'circle');dot.id='simulationPacket';dot.setAttribute('r','8');dot.setAttribute('stroke','#fff');dot.setAttribute('stroke-width','2');label=document.createElementNS(ns,'text');label.setAttribute('fill','#fff');label.setAttribute('stroke','#0b1726');label.setAttribute('stroke-width','3');label.setAttribute('paint-order','stroke');label.setAttribute('font-size','12');overlay.append(dot,label);canvas.append(overlay);
+ const ns='http://www.w3.org/2000/svg';overlay=document.createElementNS(ns,'g');overlay.id='simulationOverlay';overlay.setAttribute('pointer-events','none');
+ dot=document.createElementNS(ns,'circle');dot.id='simulationPacket';dot.setAttribute('r','8');dot.setAttribute('stroke','#fff');dot.setAttribute('stroke-width','2');label=document.createElementNS(ns,'text');label.setAttribute('fill','#fff');label.setAttribute('stroke','#0b1726');label.setAttribute('stroke-width','3');label.setAttribute('paint-order','stroke');label.setAttribute('font-size','12');
+ packetHit=document.createElementNS(ns,'circle');packetHit.id='simulationPacketHit';packetHit.setAttribute('r','22');packetHit.setAttribute('fill','transparent');packetHit.setAttribute('role','button');
+ const inspect=event=>{event.preventDefault();event.stopPropagation();if(packetHit.getAttribute('aria-disabled')==='true')return;stop();render();details.scrollIntoView({block:'nearest'});const h=document.getElementById('simulationDetailsTitle');h.tabIndex=-1;h.focus({preventScroll:true});};
+ packetHit.addEventListener('click',inspect);packetHit.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' ')inspect(event);});
+ overlay.append(dot,label,packetHit);canvas.append(overlay);
 }
 function paint(value){
  const e=model.state().event;if(!active||!e||stale){hide();return;}
@@ -67,6 +71,8 @@ function paint(value){
  if(!point){hide();return;}
  const box=canvas.viewBox.baseVal;if(point.x<box.x||point.x>box.x+box.width||point.y<box.y||point.y>box.y+box.height){hide();return;}
  ensureOverlay();overlay.removeAttribute('display');overlay.setAttribute('data-event-id',e.eventId);dot.setAttribute('cx',point.x);dot.setAttribute('cy',point.y);dot.setAttribute('fill',e.kind==='discard'?'#b91c1c':protocol(e)==='ARP'?'#d97706':protocol(e)==='ICMP'?'#2563eb':'#475569');label.setAttribute('x',point.x+12);label.setAttribute('y',point.y-10);label.textContent=(e.kind==='discard'?'× ':protocol(e)+' · ')+result(e);
+ const safe=e.kind==='wire'&&!motionRunning&&!model.state().playing&&!devices.some(d=>Math.abs(point.x-d.x)<=d.w/2+24&&Math.abs(point.y-d.y)<=d.h/2+24);
+ packetHit.setAttribute('cx',point.x);packetHit.setAttribute('cy',point.y);packetHit.setAttribute('pointer-events',safe?'fill':'none');packetHit.setAttribute('tabindex',safe?'0':'-1');packetHit.setAttribute('aria-disabled',String(!safe));packetHit.setAttribute('aria-label',protocol(e)+' paket ayrıntılarını aç');packetHit.style.cursor=safe?'pointer':'default';
 }
 function renderRows(){
  const events=model.events(),key=version+':'+page;
@@ -101,7 +107,7 @@ function select(index,animate=false,keepPlaying=false){
  if(!keepPlaying)stop();model.seek(index);page=Math.floor(index/25);progress=animate&&animation.checked&&!motion.matches&&canvasVisible?0:1;lastTime=0;unchanged();render();paint(progress);notify();
  if(!stale&&(progress<1||model.state().playing))schedule();
 }
-function schedule(){if(!raf){pause.disabled=false;raf=requestAnimationFrame(tick);}}
+function schedule(){if(!raf){motionRunning=true;pause.disabled=false;raf=requestAnimationFrame(tick);}}
 function tick(time){
  raf=0;if(!active||stale||!canvasVisible||document.hidden||!panel.getClientRects().length){stop();return;}
  const state=model.state(),duration=(state.event?.kind==='wire'?650:220)/state.speed;
@@ -120,7 +126,7 @@ function mode(value){stop();active=value;panel.hidden=!value;controls.hidden=!va
 realtime.onclick=()=>mode(false);simulation.onclick=()=>mode(true);capture.onclick=captureTrace;
 forward.onclick=()=>{const s=model.state();if(s.cursor+1<s.total)select(s.cursor+1,true);};
 play.onclick=()=>{if(!unchanged()){render();return;}let s=model.state();if(!s.total)return;if(!canvasVisible){canvas.scrollIntoView({block:'center'});canvasVisible=true;}if(s.cursor<0||s.cursor===s.total-1&&progress>=1){model.reset();model.play();select(0,true,true);}else{model.play();if(progress>=1)select(s.cursor+1,true,true);else schedule();}render();};
-pause.onclick=()=>{stop();render();};reset.onclick=()=>{stop();model.reset();progress=1;hide();render();};speed.onchange=()=>model.speed(Number(speed.value));filter.onchange=applyFilter;
+pause.onclick=()=>{stop();render();paint(progress);};reset.onclick=()=>{stop();model.reset();progress=1;hide();render();};speed.onchange=()=>model.speed(Number(speed.value));filter.onchange=applyFilter;
 animation.onchange=()=>{if(!animation.checked){progress=1;paint(1);}};
 motion.addEventListener('change',()=>{animation.disabled=motion.matches;if(motion.matches){animation.checked=false;progress=1;paint(1);}});
 prevPage.onclick=()=>{page=Math.max(0,page-1);renderRows();};nextPage.onclick=()=>{if((page+1)*25<model.events().length){page++;renderRows();}};

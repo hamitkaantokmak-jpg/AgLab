@@ -2,6 +2,9 @@
 let ethernetEvents=[],ethernetEventOverflow=0;
 let ethernetTraceEvents=[],ethernetTraceOverflow=0,ethernetTraceGeneration=0,ethernetFrameNumber=0,ethernetTraceTopology='';
 function ethernetTopologyFingerprint(){
+ // Narrow production-module harnesses supply adjacency/get without the UI's
+ // complete topology arrays. Observation must not become a new engine dependency.
+ if(typeof devices==='undefined'||typeof links==='undefined')return '';
  return JSON.stringify({devices:devices.map(({x,y,w,h,...d})=>d),links});
 }
 function beginEthernetEvents(){ethernetEvents=[];ethernetEventOverflow=0;ethernetTraceEvents=[];ethernetTraceOverflow=0;ethernetFrameNumber=0;ethernetTraceGeneration++;ethernetTraceTopology=ethernetTopologyFingerprint();}
