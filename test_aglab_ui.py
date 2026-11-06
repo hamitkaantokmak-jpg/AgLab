@@ -19,6 +19,20 @@ with sync_playwright() as pw:
     expect(page.locator('#ux14Guided')).to_be_visible()
     expect(page.locator('#ux14Free')).to_be_visible()
     expect(page.locator('#academyPanel')).to_be_visible()
+    # Search selects a lab without replacing the current topology or starting it.
+    before_search = page.evaluate('academyEngine.snapshot()')
+    page.fill('#academySearch','AGL-024')
+    expect(page.locator('#academySearchStatus')).to_contain_text('1 / 40')
+    page.click('#academySearchFind')
+    expect(page.locator('#academySelect')).to_have_value('AGL-024')
+    assert page.evaluate('academyEngine.snapshot()') == before_search
+    page.fill('#academySearch','not-a-lab-999')
+    expect(page.locator('#academySearchFind')).to_be_disabled()
+    page.fill('#academySearch','')
+    expect(page.locator('#academySearchStatus')).to_contain_text('40 / 40')
+    expect(page.locator('#packetDetectiveEmptyGuide')).to_be_visible()
+    page.click('#packetDetectiveOpenCli')
+    expect(page.locator('#ptCliInput')).to_be_focused()
     page.select_option('#academySelect','AGL-005')
     page.click('#academyStart')
     if page.locator('#academyReplacePrompt').is_visible():
