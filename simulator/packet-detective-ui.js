@@ -18,6 +18,7 @@ for(const [value,label] of [['all','Tüm olaylar'],['arp','ARP'],['icmp','ICMP']
 const viewMode=document.createElement('select');viewMode.id='packetDetectiveViewMode';viewMode.setAttribute('aria-label','Paket açıklama görünümü');
 for(const [value,label] of [['technical','Teknik görünüm'],['simple','Basit görünüm']]){const option=document.createElement('option');option.value=value;option.textContent=label;viewMode.append(option);}
 controls.append(refresh,filter,previous,next,viewMode);panel.append(controls);
+const simulate=document.createElement('button');simulate.id='packetDetectiveSimulate';simulate.textContent='Simulation’da incele';simulate.disabled=true;controls.append(simulate);
 const status=document.createElement('p');status.id='packetDetectiveStatus';status.setAttribute('role','status');panel.append(status);
 const emptyGuide=document.createElement('div');emptyGuide.id='packetDetectiveEmptyGuide';
 emptyGuide.setAttribute('role','note');
@@ -27,6 +28,7 @@ const guideCli=document.createElement('button');guideCli.type='button';guideCli.
 guideCli.onclick=()=>{
  const selector=document.getElementById('ptCliDevice');
  const input=document.getElementById('ptCliInput');
+ if(globalThis.aglabSimulation?.state().active&&selector){openDeviceCli(selector.value);return;}
  (selector||input)?.scrollIntoView({block:'nearest'});
  if(input&&!input.disabled)input.focus();
  else if(selector)selector.focus();
@@ -86,6 +88,7 @@ function targetDevice(){
  return result.issues.find(issue=>issue.device&&get(issue.device))?.device||null;
 }
 function render(reviewed=false){
+ simulate.disabled=true;
  const target=targetDevice();
  go.disabled=!target;
  const result=AgLabPacketEvents.diagnose(allEvents);
@@ -98,12 +101,13 @@ function render(reviewed=false){
   explanation.textContent='';raw.textContent='';markDevice(null);return;
  }
  emptyGuide.hidden=true;
- status.textContent='Adım '+(step.index+1)+' / '+step.total+' · '+eventOrigin+(snapshot.truncated?' · Kayıt sınırı aşıldı; '+snapshot.overflow+' olay gösterilemiyor.':'');
+ status.textContent='Adım '+(step.position+1)+' / '+step.total+' · '+eventOrigin+(snapshot.truncated?' · Kayıt sınırı aşıldı; '+snapshot.overflow+' olay gösterilemiyor.':'');
  explanation.textContent=step.explanation;
  raw.textContent=step.raw;
  markDevice(step.device);
  markForwardEdge(step);
- if(reviewed)document.dispatchEvent(new CustomEvent('aglab:packet-event-viewed',{detail:{origin:eventSource,raw:step.raw,trace:allEvents.events.map(e=>e.raw)}}));
+ simulate.disabled=eventSource!=='aglab-js'||!step.eventId;
+ if(reviewed)document.dispatchEvent(new CustomEvent('aglab:packet-event-viewed',{detail:{origin:eventSource,raw:step.raw,trace:allEvents.legacy||allEvents.events.map(e=>e.raw)}}));
 }
 go.onclick=()=>{
  const id=targetDevice();
@@ -117,11 +121,17 @@ go.onclick=()=>{
 };
 refresh.onclick=()=>{
  eventSource='aglab-js';eventOrigin='AğLab simülasyon motoru';
- allEvents=AgLabPacketEvents.normalize(ethernetEvents.slice(),ethernetEventOverflow);
+ allEvents=readEthernetTrace();
  snapshot=filtered();index=0;render(true);
 };
 filter.onchange=()=>{snapshot=filtered();index=0;render(true)};
 previous.onclick=()=>{if(index>0){index--;render(true)}};
 next.onclick=()=>{if(index+1<snapshot.events.length){index++;render(true)}};
+simulate.onclick=()=>{const step=AgLabPacketEvents.at(snapshot,index);if(!simulate.disabled&&step)document.dispatchEvent(new CustomEvent('aglab:simulation-select',{detail:{eventId:step.eventId,generation:allEvents.generation}}));};
+document.addEventListener('aglab:detective-select',event=>{
+ const request=event.detail;if(!request||typeof request.eventId!=='string')return;
+ if(eventSource!=='aglab-js'||allEvents.generation!==request.generation){const current=readEthernetTrace();if(current.generation!==request.generation)return;allEvents=current;eventSource='aglab-js';eventOrigin='AğLab simülasyon motoru';}
+ filter.value='all';snapshot=allEvents;const found=snapshot.events.findIndex(e=>e.eventId===request.eventId);if(found<0)return;index=found;render(true);panel.scrollIntoView({block:'nearest'});
+});
 render();
 })();

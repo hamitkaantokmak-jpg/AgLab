@@ -3,7 +3,7 @@ import pathlib,re,shutil,subprocess,sys,tempfile,unittest,os,hashlib
 from unittest.mock import patch
 from verify_packages import build_release_manifest
 ROOT=pathlib.Path(__file__).resolve().parent
-TITLES=['BORCK ENGINE','ENGINE MANAGER','ENGINE MANAGER UI','BORCK UI','LAB EVIDENCE','LAB EVIDENCE UI']
+TITLES=['SIMULATION PLAYBACK','BORCK ENGINE','ENGINE MANAGER','ENGINE MANAGER UI','BORCK UI','LAB EVIDENCE','LAB EVIDENCE UI','SIMULATION UI']
 class BuildTests(unittest.TestCase):
  def test_device_hooks_are_generated_from_legacy_html(self):
   text=(ROOT/'AgLab_Final_PKT_Import.html').read_text(encoding='utf-8')

@@ -77,6 +77,10 @@ jobs:
             dist/device-cli.png
             dist/device-cli-mobile.png
             dist/html-build-manifest.json
+            dist/simulation-mode-results.json
+            dist/simulation-desktop.png
+            dist/simulation-mobile.png
+            dist/simulation-details-mobile.png
           if-no-files-found: warn
       - name: Başarılı ZIP'i sakla
         if: success()

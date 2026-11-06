@@ -31,13 +31,13 @@ function deliverRoutedFrames(source,path,sourceIp,targetIp,kind,context,packet={
   const segment=segments[index];
   const {source:sender,target,sourcePort,targetPort,vlan,localIp,neighborIp}=segment;
   if(index>0&&sender.type==='Router'){
-   const previous=ttl;ttl--;ethernetEvent('ttl-forward '+sender.id+' '+previous+' -> '+ttl);
+   const previous=ttl;ttl--;ethernetEvent('ttl-forward '+sender.id+' '+previous+' -> '+ttl,{ipv4:{sourceIp,destinationIp:targetIp,ttl,protocol:1}});
    if(ttl<=0)return icmpTimeExceeded(sender,source,sourceIp,targetIp,segments[index-1].neighborIp,context,kind);
   }
   const policy=aclPathDecision(segment.path,sender.id,target.id,sourceIp,targetIp,'icmp',null);
   if(!policy.ok){ethernetEvent('icmp-policy-drop '+policy.why);return {...policy,failure:'policy'};}
-  const options={sourcePort:sender.type==='Switch'?null:sourcePort,targetId:target.id,targetPort:target.type==='Switch'?null:targetPort};
-  const reverse={sourcePort:target.type==='Switch'?null:targetPort,targetId:sender.id,targetPort:sender.type==='Switch'?null:sourcePort};
+  const options={sourcePort:sender.type==='Switch'?null:sourcePort,targetId:target.id,targetPort:target.type==='Switch'?null:targetPort,arp:{senderIp:localIp,targetIp:neighborIp},packet:{...packet,sourceIp,destinationIp:targetIp,ttl}};
+  const reverse={sourcePort:target.type==='Switch'?null:targetPort,targetId:sender.id,targetPort:sender.type==='Switch'?null:sourcePort,arp:{senderIp:neighborIp,targetIp:localIp}};
   const arp=arpTables.get(sender.id)||new Map(),neighborArp=arpTables.get(target.id)||new Map();
   if(sender.type==='Router')ethernetEvent('forward '+sender.id+' egress '+sourcePort+' next-hop '+neighborIp+' ip '+sourceIp+' -> '+targetIp);
   if(arp.get(neighborIp)!==macOf(target)){
