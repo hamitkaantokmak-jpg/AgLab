@@ -47,6 +47,7 @@ jobs:
           cmp AgLab_Final_PKT_Import.html "$RUNNER_TEMP/aglab-first.html"
           sha256sum -c html-build.sha256
       - name: Chromium ve Playwright kur
+        timeout-minutes: 8
         run: |
           python -m pip install playwright
           python -m playwright install --with-deps chromium
