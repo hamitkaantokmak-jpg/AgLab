@@ -31,6 +31,11 @@ with sync_playwright() as pw:
     page.locator('#aglabFirstNetworkGuide summary').click()
     # Search selects a lab without replacing the current topology or starting it.
     before_search = page.evaluate('academyEngine.snapshot()')
+    page.select_option('#academyProgressFilter','completed')
+    expect(page.locator('#academySearchStatus')).to_contain_text('0 / 40')
+    page.select_option('#academyProgressFilter','remaining')
+    expect(page.locator('#academySearchStatus')).to_contain_text('40 / 40')
+    page.select_option('#academyProgressFilter','all')
     page.fill('#academySearch','AGL-024')
     expect(page.locator('#academySearchStatus')).to_contain_text('1 / 40')
     page.click('#academySearchFind')
