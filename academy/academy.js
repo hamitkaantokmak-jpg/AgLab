@@ -55,6 +55,62 @@ ac('academySearchFind').onclick=()=>{
  ac('academySearchStatus').textContent='Seçildi: '+matches[0].id+' — '+matches[0].title+'. Başlatmak için ayrı onay ver.';
 };
 academyRefreshSearch();
+// Optional read-only first-network guide; never imports or mutates a topology.
+const firstGuide=document.createElement('details');
+firstGuide.id='aglabFirstNetworkGuide';firstGuide.className='panel';
+firstGuide.innerHTML='<summary>İlk Ağımı Kuruyorum · isteğe bağlı rehber</summary><p>İki PC ve bir switch ile ilk ağını kur. Rehber cihazlarını değiştirmez; mevcut çalışmanda ilerlemeyi kontrol eder.</p><ol id="firstGuideSteps"></ol><p id="firstGuideStatus" role="status"></p><button id="firstGuideRefresh" type="button">Adımları kontrol et</button> <button id="firstGuidePing" type="button">Bağlantıyı gerçek simülatörde denetle</button>';
+ac('area-lab').prepend(firstGuide);
+let guidePingEvidence=null;
+function guidePCs(){return devices.filter(d=>d.type==='pc');}
+function guideSwitches(){return devices.filter(d=>d.type==='switch');}
+function guidePair(){
+ const pcs=guidePCs(),sw=guideSwitches();
+ if(pcs.length<2||!sw.length)return null;
+ for(const box of sw){const linked=pcs.filter(pc=>links.some(l=>l.up!==false&&((l.a===pc.id&&l.b===box.id)||(l.b===pc.id&&l.a===box.id))));
+  if(linked.length>=2)return [linked[0],linked[1],box];
+ }
+ return null;
+}
+function guideAddressOK(pair){
+ if(!pair)return false;
+ const [a,b]=pair;
+ if(!validIP(a.ip)||!validIP(b.ip)||a.ip===b.ip||!validIP(a.mask)||a.mask!==b.mask)return false;
+ const bits=s=>s.split('.').map(Number),ipA=bits(a.ip),ipB=bits(b.ip),mask=bits(a.mask);
+ return ipA.every((v,i)=>(v&mask[i])===(ipB[i]&mask[i]));
+}
+function firstGuideRender(){
+ const pcs=guidePCs(),switches=guideSwitches(),pair=guidePair();
+ const addressOK=guideAddressOK(pair);
+ const topologyFingerprint=JSON.stringify({devices:devices.map(d=>[d.id,d.type,d.ip,d.mask]),links:links.map(l=>[l.a,l.b,l.up])});
+ const checkedPing=guidePingEvidence?.fingerprint===topologyFingerprint&&guidePingEvidence.ok===true;
+ const evidence=Array.isArray(ethernetEvents)&&ethernetEvents.some(e=>/arp|icmp/i.test(JSON.stringify(e)));
+ const steps=[
+  ['Çalışma alanını aç ve cihaz araçlarını incele',true],
+  ['İlk PC’yi ekle',pcs.length>=1],
+  ['Bir switch ekle',switches.length>=1],
+  ['İkinci PC’yi ekle',pcs.length>=2],
+  ['PC → switch → PC kablolarını bağla',!!pair],
+  ['PC’lere aynı ağdan farklı IPv4 adresleri ve geçerli maske ver',addressOK],
+  ['Bağlantıyı simülatörde başarılı ping ile doğrula',checkedPing],
+  ['Gerçek ARP/ICMP olaylarını Paket Dedektifi’nde incele',checkedPing&&evidence],
+  ['JSON dışa aktarma düğmesiyle çalışmanı kaydet',false]
+ ];
+ const list=ac('firstGuideSteps');list.replaceChildren();
+ steps.forEach(([label,ok],i)=>{const li=document.createElement('li');li.textContent=(ok?'✓ ':'○ ')+label;li.dataset.complete=String(ok);list.append(li)});
+ ac('firstGuideStatus').textContent=steps.filter(([,ok])=>ok).length+' / 9 adım doğrulandı. Kaydetme tamamlandığında indirilen JSON dosyasını ayrıca kontrol et.';
+ ac('firstGuidePing').disabled=!addressOK;
+}
+ac('firstGuideRefresh').onclick=firstGuideRender;
+firstGuide.addEventListener('toggle',()=>{if(firstGuide.open)firstGuideRender()});
+ac('firstGuidePing').onclick=()=>{
+ const pair=guidePair();if(!guideAddressOK(pair))return;
+ const topologyFingerprint=JSON.stringify({devices:devices.map(d=>[d.id,d.type,d.ip,d.mask]),links:links.map(l=>[l.a,l.b,l.up])});
+ const result=ping(pair[0].id,pair[1].ip);
+ guidePingEvidence={fingerprint:topologyFingerprint,ok:result.ok===true};
+ firstGuideRender();
+ ac('firstGuideStatus').textContent+=' Son ping: '+(result.ok?'başarılı.':'başarısız; kabloları, adresleri ve arayüzleri kontrol et.');
+};
+
 const answerFields={
  static_route_required:{label:'Doğrudan bağlı iki ağ arasında ek statik rota gerekli mi?',options:[['true','Evet'],['false','Hayır']],boolean:true},
  gateway_same_local_subnet:{label:'Varsayılan ağ geçidi uç ile aynı yerel alt ağda olmalı mı?',options:[['true','Evet'],['false','Hayır']],boolean:true},
