@@ -24,8 +24,8 @@ def render():
   if router:
    try:convert_routed(t);frr='Başlangıç şeması kabul; native görev testi yok'
    except ValueError as error:frr='Başlangıç reddedilir: '+str(error)
-   if lab['id'] in ('AGL-034','AGL-035'):frr='Başlangıç/çözüm native senaryosu bağlı; başarı ayrı CI kanıtında'
+   if lab['id'] in ('AGL-034','AGL-035'):frr='Başlangıç/çözüm native CI geçti (a1d6382; kanıt aşağıda)'
   lines.append(f"| {lab['id']} | {lab['title'].replace('|','/')} | {len(ds)}/{len(t['links'])} | Mevcut | {mit} | {linux} | {frr} | `{hashlib.sha256(raw).hexdigest()}` |")
- lines.extend(['','AGL-024 gerçekte dört PC, iki switch, VLAN10 ve VLAN20 içerir; örnek görev tablosundan varsayım yapılmamıştır. Native test ilk VLAN10 başarısızlığını, uplink trunk onarımını ve iki VLAN’ın gerçek ICMP trafiğini denetler. AGL-034/035 özgün başlangıç/çözüm topolojileri değiştirilmeden FRR kabul takımına bağlandı; kesin başarı native CI raporundan okunur. Yeni IPv6/multi-area ve bağımsız iki/üç router örnekleri özgün 40 lab dışında operatör senaryolarıdır.',''])
+ lines.extend(['','AGL-034/035 native kanıtı: [42192382258, a1d6382](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42192382258), `aglab-integration-routed_smoke` artefaktı. Diğer labların dönüştürücü kabulü native başarı iddiası değildir.','','AGL-024 gerçekte dört PC, iki switch, VLAN10 ve VLAN20 içerir; örnek görev tablosundan varsayım yapılmamıştır. Native test ilk VLAN10 başarısızlığını, uplink trunk onarımını ve iki VLAN’ın gerçek ICMP trafiğini denetler. AGL-034/035 özgün başlangıç/çözüm topolojileri değiştirilmeden FRR kabul takımına bağlandı; başlangıç arızası, CLI rota onarımı, ICMP, RIB/FIB ve shutdown/no shutdown native CI’da geçti. Yeni IPv6/multi-area ve bağımsız iki/üç router örnekleri özgün 40 lab dışında operatör senaryolarıdır.',''])
  return '\n'.join(lines)
 if __name__=='__main__':(ROOT/'docs/LAB_MOTOR_HARITASI.md').write_text(render(),encoding='utf-8')

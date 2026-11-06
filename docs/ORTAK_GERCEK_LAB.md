@@ -146,3 +146,27 @@ running-config, ABR durumu, ospfd route tablosu, summary LSDB ve daemon logunu
 raporda saklar. Başarısız deney korunur ve varsayılan kabul testine alınmaz.
 FRR sürümü değişimi veya startup-config ile alternatif özetleme ancak ayrı native
 pozitif/negatif testlerden sonra destek sayılabilir; bu turda uygulanmadı.
+
+## Tamamlanan kabul koşusu — a1d6382
+
+[Genel CI](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42192382186)
+ve [canlı CI’ın altı işi](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42192382258)
+başarılıdır. Yerel tam pipeline da 64/64 kontrolü geçti. Genel CI öğrenci ve
+öğretmen ZIP’lerini, 40 kaynak hash’ini, paket ayrımını ve HTML eşitliğini doğruladı.
+
+`routed_smoke` iki/üç router örneklerinde ve özgün AGL-034/035’te gerçek ICMP,
+FRR static RIB/AD, Linux next-hop, eksik dönüş rotası, yanlış next-hop, CLI onarımı
+ve shutdown/no shutdown aşamalarını geçti. İki Akademi görevinin başlangıçta
+başarısız, hedef rotalar uygulandıktan sonra başarılı olduğu doğrulandı.
+`aglab-integration-routed_smoke` artefaktı dört gerçek JSON raporunu içerir.
+Native routing işi prefix-list/route-map/local-preference, uzun yol seçimi,
+filtreleme nedeniyle rota/trafik kaybı ve onarımı da geçti.
+
+İlk koşularda BusyBox `ip -json` desteği olmadığı ve FRR’nin zararsız
+`No changes found to be committed!` notunun hata sayıldığı görüldü; iki hata
+regresyon testleriyle düzeltildi. Son native koşunun başarılı olması bu
+hataların gizlendiği anlamına gelmez: shutdown’ın trafiği kestiği ayrıca sınanır.
+Özetleme deneyi bu başarılı varsayılan koşuya dâhil değildir; yukarıdaki çökme
+ve eksik /23 sonucu geçerlidir. ACL/NAT/PAT, DHCP/relay, RSTP ve LACP bu turda
+uygulanmadı; sonraki işlerdir. Öncelik, özetleme için ayrı FRR sürüm/başlangıç
+konfigürasyonu doğrulaması, ardından izole kernel ACL/NAT kabul senaryolarıdır.
