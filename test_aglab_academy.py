@@ -68,21 +68,22 @@ with sync_playwright() as pw:
   assert page.evaluate('academyEngine.snapshot()')==lab['initial_topology']
   assert page.locator('#academyHints').inner_text()==''
   assert page.locator('#academyResult').inner_text()==''
-  print('PASS',lid,'original, initial, target, reverse links, broken delivery, reset')  # Cancellation and backup are non-destructive.
-  original=page.evaluate('academyEngine.snapshot()')
-  page.select_option('#academySelect','AGL-002')
-  page.click('#academyStart')
-  assert page.locator('#academyReplacePrompt').is_visible()
-  page.click('#academyReplaceCancel')
-  assert page.evaluate('academyEngine.snapshot()')==original
-  page.click('#academyStart')
-  with page.expect_download() as download:
-   page.click('#academyReplaceExport')
-  assert download.value.suggested_filename.endswith('.json')
-  assert page.evaluate('academyEngine.snapshot()')==original
-  page.click('#academyReplaceContinue')
-  assert page.locator('#academyReplacePrompt').is_hidden()
-  assert page.evaluate('academyEngine.snapshot()')!=original
+  print('PASS',lid,'original, initial, target, reverse links, broken delivery, reset')
+ # Cancellation and backup are non-destructive.
+ original=page.evaluate('academyEngine.snapshot()')
+ page.select_option('#academySelect','AGL-002')
+ page.click('#academyStart')
+ assert page.locator('#academyReplacePrompt').is_visible()
+ page.click('#academyReplaceCancel')
+ assert page.evaluate('academyEngine.snapshot()')==original
+ page.click('#academyStart')
+ with page.expect_download() as download:
+  page.click('#academyReplaceExport')
+ assert download.value.suggested_filename.endswith('.json')
+ assert page.evaluate('academyEngine.snapshot()')==original
+ page.click('#academyReplaceContinue')
+ assert page.locator('#academyReplacePrompt').is_hidden()
+ assert page.evaluate('academyEngine.snapshot()')!=original
 
  # Import validation stays strict even though the grader can ignore derived runtime fields.
  t=json.loads((ROOT/'academy/source/AGL-031.json').read_text(encoding='utf-8'))['target_topology']
