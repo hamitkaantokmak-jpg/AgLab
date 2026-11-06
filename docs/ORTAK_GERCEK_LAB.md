@@ -227,8 +227,8 @@ Raporlar `security-acl-results.json` ve `security-nat-results.json` dosyalarıd�
 protokol/port, beklenen ve gözlenen sonuç, server peer IP/port, nft sayaçları,
 conntrack, routing, arıza/onarım ve cleanup kaydedilir. Mevcut Paket Dedektifi
 bunları yalnız güvenilmeyen ayrı lab raporu olarak kabul eder; FRR/PCAP veya
-AğLab simülasyon olayı olarak etiketlemez. HTML’de sadece bu rapor tipinin mevcut
-ayrıştırıcıya eklenmesi için kaynak eşitliği güncellenir; UX düzeni değişmez.
+AğLab simülasyon olayı olarak etiketlemez. HTML’de bu rapor tipinin mevcut ayrıştırıcıya eklenmesi ve nftables motor
+etiketinin görünmesi için kaynak eşitliği güncellenir; UX düzeni değişmez.
 
 Yeni native job’lar `Native security acl/nat`; protokol başarısı yalnız gerçek
 çalışan CI/rapor ile doğrulanır. Kod/test varlığı tek başına başarı değildir.
