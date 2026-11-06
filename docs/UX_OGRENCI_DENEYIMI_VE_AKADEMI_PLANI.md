@@ -142,3 +142,23 @@ Mevcut öğrenci paketindeki `expected` rubrik değerleri geliştirici araçlar�
 - 40 laboratuvarın yeni baştan pedagojik olarak doğrulandığı **iddia edilmez**.
 - PR #37 veya başka bir PR **birleştirilmedi**.
 - Bu çalışma yalnızca kaynak kanıtına dayalı **ilk denetim ve uygulanabilir tasarım planıdır**.
+
+---
+
+## 11. 6 Kasım 2026 — İkinci kaynak denetimi: Akademi başlatma akışında veri kaybı riski
+
+**Koddan doğrulanan bulgu UX-02 (P1, uygulamada yeniden doğrulanmalı):** `academy/academy.js` içindeki `academyStart()` seçili laboratuvarın `initial_topology` verisini doğrudan `importTopology(...)` ile yüklüyor; hemen ardından `saveTopology(true)` çağrısı yapıyor. Kaynakta bu fonksiyonun içinde ayrı bir kaydedilmemiş çalışma onayı, iptal veya önce dışa aktar eylemi yok. Kullanıcıya `academyNotice` içindeki metinsel uyarı gösteriliyor. Bu nedenle mevcut serbest çalışma alanının üzerine yazılabileceği kod düzeyinde doğrulanmıştır; gerçek tarayıcıda yanlışlıkla veri kaybı henüz gözlenmemiştir.
+
+**İyileştirme sözleşmesi:** Akademi'ye geçmeden önce değiştirilecek topoloji/oturumun varlığı ve kaydedilmemiş düzenleme durumu mevcut veri modeliyle, yalnız gerçek riskte kontrol edilmeli. Öğrenciye iptal, JSON dışa aktar ve yeni laboratuvara geç seçenekleri sunulmalı. Varsayılan iptal hiçbir topoloji/oturum/puan verisini değiştirmemeli; dışa aktar sonrası tercih edilen laboratuvar yüklenebilmeli. Sıfırlama mevcut en iyi puanı silmemeli. Motor veya rubrik değişikliği gerektirmeyen ayrı UX dalında uygulanmalı.
+
+**Açık test senaryoları:**
+1. Serbest labda yeni cihaz ekle, Akademi başlatmayı dene; onay verilmeden serbest topoloji korunmalı.
+2. İptal de, cihaz/bağlantı sayısı ve Akademi oturumu byte eşit kalmalı.
+3. JSON dışa aktar, sonra başlat; dışa alınan çalışma tekrar içe aktarılabilmeli.
+4. Etkin Akademi görevinde CLI komutuyla düzenleme yap, başka göreve geç; aynı koruma çalışmalı.
+5. Boş veya değişikliksiz çalışma alanında gereksiz uyarı çıkmamalı.
+6. Sıfırla, en iyi puanı koru; başlangıç topolojisine dön ve öğrenci/öğretmen paket ayrımı bozulmasın.
+
+**Önemli teknik not:** Bu turda Playwright/Chromium çalıştırılabilecek repo yürütme ortamı kullanılmadığından koruma kodu değiştirilmedi. Kod değişikliğinin test edilmeden üretime yazılması, öğrencinin kaydetme/başlatma akışını bozabileceği için ertelendi.
+
+**Ek kaynak doğrulamaları:** `simulator/packet-detective-ui.js` zaten filtreler, boş durum mesajı ve cihaz işaretleme sunuyor; bunlar eksik değildir. `academy/academy.js` hali hazırda 40 görevi select içine dolduruyor ve ilerleme durumlarını başlıklara ekliyor; arama/kategori filtreleri mevcut alanda görünmüyor. Akademi katalog iyileştirmesi ayrıca incelenmeli.
