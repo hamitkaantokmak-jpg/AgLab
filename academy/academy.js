@@ -80,7 +80,10 @@ function guideFingerprint(){
  const fields=['id','type','enabled','mac','ip','mask','gateway','vlan','vlans','ports','interfaces','staticRoutes','ospf','bgp','nat','acls','stpPriority','stpPriorities'];
  return JSON.stringify(acCanonical({devices:devices.map(d=>Object.fromEntries(fields.filter(k=>k in d).map(k=>[k,d[k]]))),links:acLinks(links)}));
 }
-function guideBackupFingerprint(t={devices,links,nextId}){return JSON.stringify(acCanonical({devices:t.devices,links:t.links,nextId:t.nextId}));}
+function guideBackupFingerprint(t={app:'AgLab',version:23,devices,links,nextId,...(sourceArchiveData?{sourceArchive:sourceArchiveData}:{}),...(importReportData?{importReport:importReportData}:{}),...academySessionFields()}){
+ const fields=['app','version','devices','links','nextId','sourceArchive','importReport','academySession'];
+ return JSON.stringify(acCanonical(Object.fromEntries(fields.filter(k=>k in t).map(k=>[k,t[k]]))));
+}
 function guidePair(){
  const pcs=guidePCs(),sw=guideSwitches();
  if(pcs.length<2||!sw.length)return null;
@@ -109,7 +112,7 @@ function firstGuideRender(){
   ['PC’lere aynı ağdan farklı IPv4 adresleri ve geçerli maske ver',addressOK],
   ['Bağlantıyı simülatörde başarılı ping ile doğrula',checkedPing],
   ['Gerçek ARP/ICMP olaylarını Paket Dedektifi’nde incele',checkedPing&&guidePingEvidence.reviewed===true],
-  ['JSON dışa aktar; indirdiğin yedeği seçerek doğrula',guideSavedEvidence===guideBackupFingerprint()]
+  ['JSON dışa aktar; indirdiğin yedeği seçerek doğrula',guideSavedEvidence!==null&&guideSavedEvidence===guideBackupFingerprint()]
  ];
  const list=ac('firstGuideSteps');list.replaceChildren();
  steps.forEach(([label,ok])=>{const li=document.createElement('li');li.textContent=(ok?'✓ ':'○ ')+label;li.dataset.complete=String(ok);list.append(li)});
@@ -141,7 +144,7 @@ ac('firstGuideVerifyFile').onchange=async event=>{
  try{
   if(file.size>2000000)throw new Error('JSON yedeği en fazla 2 MB olabilir.');
   const t=JSON.parse(await file.text());
-  if(t.app!=='AgLab'||t.version!==23||!Array.isArray(t.devices)||!Array.isArray(t.links)||guideBackupFingerprint(t)!==guideBackupFingerprint())throw new Error('Dosya mevcut çalışmayla aynı değil; güncel JSON yedeğini seç.');
+  if(Object.keys(t).some(k=>!['app','version','devices','links','nextId','selected','sourceArchive','importReport','academySession'].includes(k))||t.app!=='AgLab'||t.version!==23||!Array.isArray(t.devices)||!Array.isArray(t.links)||guideBackupFingerprint(t)!==guideBackupFingerprint())throw new Error('Dosya mevcut çalışmayla aynı değil; güncel JSON yedeğini seç.');
   guideSavedEvidence=guideBackupFingerprint();firstGuideRender();
  }catch(error){firstGuideRender();ac('firstGuideStatus').textContent+=' Yedek doğrulanamadı: '+error.message;}
  input.value='';

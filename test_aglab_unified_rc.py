@@ -10,6 +10,10 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  before=page.evaluate('academyEngine.snapshot()')
  for lab,label in [('AGL-024','Linux bridge doğrulaması'),('AGL-034','FRRouting doğrulaması'),('AGL-035','FRRouting doğrulaması'),('AGL-001','gerçek ortam doğrulaması yapılmadı')]:
   page.select_option('#academySelect',lab);expect(page.locator('#academyEngineScope')).to_contain_text(label);assert page.evaluate('academyEngine.snapshot()')==before
+ page.locator('#academyStart').focus();page.keyboard.press('Enter')
+ expect(page.locator('#academyReplacePrompt')).to_be_visible();expect(page.locator('#academyReplaceCancel')).to_be_focused()
+ page.keyboard.press('Enter');expect(page.locator('#academyReplacePrompt')).to_be_hidden();assert page.evaluate('academyEngine.snapshot()')==before
+ expect(page.locator('#academyStart')).to_be_focused()
  page.click('#ux14Free');page.click('#uxMoreLabActions')
  for _ in range(page.locator('#ptCanvas g[data-id]').count()):page.click('#ptDeleteDevice')
  page.locator('#aglabFirstNetworkGuide summary').click()
@@ -48,6 +52,11 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  assert saved['devices']==page.evaluate('academyEngine.snapshot().devices')
  before=page.evaluate('academyEngine.snapshot()');page.locator('#firstGuideVerifyFile').set_input_files(str(path));step(8,True);assert before==page.evaluate('academyEngine.snapshot()')
  bad=Path(tmp)/'wrong.json';bad.write_text('{"app":"AgLab","version":23,"devices":[],"links":[]}')
+ page.locator('#firstGuideVerifyFile').set_input_files(str(bad));step(8,False);assert before==page.evaluate('academyEngine.snapshot()')
+ page.locator('#firstGuideVerifyFile').set_input_files(str(path));step(8,True)
+ invalid=dict(saved,execute='untrusted');bad.write_text(json.dumps(invalid))
+ page.locator('#firstGuideVerifyFile').set_input_files(str(bad));step(8,False);assert before==page.evaluate('academyEngine.snapshot()')
+ invalid=dict(saved,sourceArchive={'fake':True});bad.write_text(json.dumps(invalid))
  page.locator('#firstGuideVerifyFile').set_input_files(str(bad));step(8,False);assert before==page.evaluate('academyEngine.snapshot()')
  page.locator('#firstGuideVerifyFile').set_input_files(str(path));step(8,True)
  page.locator('#aglabFirstNetworkGuide summary').click();page.locator('#aglabFirstNetworkGuide summary').click();step(8,True)

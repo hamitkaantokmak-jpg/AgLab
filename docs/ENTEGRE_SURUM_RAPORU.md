@@ -41,7 +41,8 @@ davranış ve derleme çakışmaları ayrıca gerçek Chromium testleriyle düze
    kaynakları ayrıdır; rehberin JS ping adımı yerine kullanılamaz.
 5. **Yedek doğrulama:** indirme düğmesine basılması diske yazma kanıtı sayılmaz. Öğrenci
    indirdiği JSON’u rehberde salt okunur doğrular; mevcut çalışma değiştirilmez. Dosya
-   mevcut topolojiyle eşleşmelidir. Hatalı dosya reddedilir, rehber kapanıp açılınca
+   mevcut topoloji, oturum ve varsa özgün PKT arşiviyle eşleşmelidir; şema dışı alanlar
+   kabul edilmez. Bu sınır için önce başarısız olan ek dosya testi düzeltildi. Hatalı dosya reddedilir, rehber kapanıp açılınca
    geçerli oturum kanıtı korunur. Sayfa yenilendiğinde ağ yüklenir; ping/inceleme kanıtı
    uydurulmaz, yeniden yapılır. Dosya üst sınırı 2 MB’dir; büyük dosya yedeği silinmez.
 6. **Offline HTML:** birleşen kaynaklar yeniden derlendi. Codex motor/rapor modülleri
@@ -71,9 +72,18 @@ davranış ve derleme çakışmaları ayrıca gerçek Chromium testleriyle düze
   Kaynak dosyasının varlığı başarı değildir; entegrasyon PR’ının gerçek CI JSON/log
   sonuçlarıyla ayrıca doğrulanır. Native deneysel özetleme başarılı koşuya eklenmez.
 
-**İlk kayıt durumu:** hedefli UX ve birleşik Chromium kontrolleri geçti; tam pipeline
-ve entegrasyon CI/paket kanıtı sonuçlanınca bu bölüme kesin sonuç eklenecektir.
-Bu ilk kayıt tek başına tüm RC kapılarının tamamlandığı iddiası değildir.
+**Doğrulama kaydı:** `10ecfbd161af4a1781649d28078910ca2c48e82f` entegrasyonunda
+[genel CI 67/67](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42211253122)
+ve [native CI sekiz iş](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42211253214)
+başarılıdır. Yerel tam pipeline da 67/67 geçti. Sonraki yedek şeması/PKT arşivi
+sınır düzeltmesi önce başarısız, sonra başarılı gerçek Chromium testiyle doğrulandı.
+Klavye ile Akademi başlatma/iptal ve odağın geri dönüşü de sınanır.
+
+Sürüm adayı **AgLab-Unified-RC1** olarak hazırlanır. Son başın zorunlu genel/native
+CI kapıları ve indirilen paket doğrulaması ayrıca teslimde esas alınır; ilk başarılı
+commit, sonraki değişikliklerin otomatik doğrulandığı anlamına gelmez. Güncel başın
+kontrolleri [taslak entegrasyon PR #39](https://github.com/hamitkaantokmak-jpg/AgLab/pull/39)
+üzerindedir. Release/tag/main merge yapılmadı.
 
 ## Performans tanı ölçümü
 
