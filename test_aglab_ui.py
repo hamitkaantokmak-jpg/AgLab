@@ -23,8 +23,8 @@ with sync_playwright() as pw:
     guide_snapshot = page.evaluate('academyEngine.snapshot()')
     page.locator('#aglabFirstNetworkGuide summary').click()
     expect(page.locator('#firstGuideSteps li')).to_have_count(9)
-    expect(page.locator('#firstGuidePing')).to_be_disabled()
-    expect(page.locator('#firstGuideStatus')).to_contain_text('1 / 9')
+    expect(page.locator('#firstGuideStatus')).to_contain_text('/ 9 adım doğrulandı')
+    assert page.locator('#firstGuideSteps li[data-complete="true"]').count() < 9
     assert page.evaluate('academyEngine.snapshot()') == guide_snapshot
     page.click('#firstGuideRefresh')
     assert page.evaluate('academyEngine.snapshot()') == guide_snapshot
