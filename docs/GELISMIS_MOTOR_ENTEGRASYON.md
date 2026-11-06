@@ -165,6 +165,8 @@ blokları her üretimde aynı sıraya yerleştirilir. `test_build_simulator.py`,
 yalnız art arda aynı girdiyi derlemekle yetinmez.
 
 [Uyumluluk matrisi](UYUMLULUK_MATRISI.md). Tüm 40 lab native motorlara taşınmadı;
-otomatik native lab oluşturma, tarayıcı/FRR runtime senkronizasyonu, RSTP,
-native PCAP, çok alanlı OSPF ve ileri BGP politika testleri sonraki önceliklerdir.
+sınırlı ortak JSON → Linux bridge aktarımı ve çok alanlı OSPF/IPv6 native
+senaryoları artık [ortak Gerçek Lab](ORTAK_GERCEK_LAB.md) kapsamında bulunur.
+Genel router dönüştürücüsü, tarayıcı/FRR runtime senkronizasyonu, RSTP,
+native PCAP ve ileri BGP politika testleri sonraki önceliklerdir.
 Gelecek ürün fikirleri ve şube senaryoları bu görevde uygulanmadı.

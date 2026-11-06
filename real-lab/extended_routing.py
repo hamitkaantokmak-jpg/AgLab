@@ -6,10 +6,6 @@ ROOT=pathlib.Path(__file__).resolve().parent
 
 def multi_area(live):
     live.wait('FRR daemons ready on all three routers',lambda:live.full('r1','2.2.2.2') and live.full('r2','3.3.3.3'),60)
-    for n in ('r1','r3'):live.config(n,'interface eth3','shutdown')
-    for n in ('r1','r2','r3'):live.config(n,'no router ospf')
-    networks={1:[('192.168.10.0/24',1),('10.0.12.0/24',0)],2:[('10.0.12.0/24',0),('10.0.23.0/24',2)],3:[('10.0.23.0/24',2),('192.168.20.0/24',2)]}
-    for i,ns in networks.items():live.config(f'r{i}','router ospf',f'ospf router-id {i}.{i}.{i}.{i}',*(f'network {prefix} area {area}' for prefix,area in ns))
     live.wait('Multi-area OSPF: backbone and area2 adjacency',lambda:live.full('r1','2.2.2.2') and live.full('r2','3.3.3.3'))
     def interarea():
         # Zebra's generic table prints O, not Cisco's O IA. ospfd owns the
@@ -23,7 +19,12 @@ def multi_area(live):
     live.config('r2','router ospf','no passive-interface eth3')
     live.wait('Passive-interface repair restores inter-area traffic',lambda:interarea() and live.ping())
     live.config('r2','router ospf','area 2 range 192.168.20.0/23')
-    live.wait('ABR summary /23 replaces external /24 and carries traffic',lambda:live.route('ospf','10.0.12.2','192.168.20.0/23') and not live.route('ospf') and live.ping())
+    def summary():
+        data=live.show('r1','show ip route ospf');live.evidence['summary-routes']=data
+        # Prefix lookup returns the covering /23 for a /24 query. Test the
+        # actual installed prefix inventory rather than treating lookup as exact.
+        return '192.168.20.0/23' in data and '192.168.20.0/24' not in data and live.route('ospf','10.0.12.2','192.168.20.0/23') and live.ping()
+    live.wait('ABR summary /23 replaces external /24 and carries traffic',summary)
     live.config('r2','router ospf','no area 2 range 192.168.20.0/23')
     live.wait('Summary removal restores specific inter-area route',lambda:interarea() and live.ping())
 
@@ -54,13 +55,26 @@ def ipv6(live):
     live.evidence['ipv6-routes']=live.vty('r2','show ipv6 route')
     live.record('FRR IPv6 route table captured; SLAAC/DHCPv6 outside scope')
 
+def extended_topology(folder):
+    lab=topology('routing',folder);lab['name']='aglab-extended-routing'
+    areas={1:{'192.168.10.0/24':1,'10.0.12.0/24':0},2:{'10.0.12.0/24':0,'10.0.23.0/24':2},3:{'10.0.23.0/24':2,'192.168.20.0/24':2}}
+    for i,networks in areas.items():
+        p=folder/f'r{i}.conf';text=p.read_text(encoding='utf-8')
+        lines=[line for line in text.splitlines() if not line.startswith(' network ')]
+        if i in (1,3):
+            # Keep the direct bypass down from startup, before any route test.
+            index=lines.index('interface eth3');end=lines.index('!',index);lines.insert(end,' shutdown')
+        lines[-1:-1]=[f' network {prefix} area {area}' for prefix,area in networks.items()]
+        p.write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    return lab
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--execute',action='store_true');p.add_argument('--out',default=str(ROOT.parent/'dist'));a=p.parse_args()
     if not a.execute:print('DRY RUN: isolated multi-area/IPv6 lab');return 0
     live=Live('routing');live.name='aglab-extended-routing';out=pathlib.Path(a.out);out.mkdir(parents=True,exist_ok=True)
     report={'kind':'routing','engine':'FRRouting','image':IMAGE,'steps':live.steps,'evidence':live.evidence,'ok':False,'cleanup':False}
     with tempfile.TemporaryDirectory(prefix='aglab-extended-') as tmp:
-        folder=pathlib.Path(tmp);lab=topology('routing',folder);lab['name']=live.name;target=folder/'lab.clab.yml';target.write_text(json.dumps(lab),encoding='utf-8');started=False
+        folder=pathlib.Path(tmp);lab=extended_topology(folder);target=folder/'lab.clab.yml';target.write_text(json.dumps(lab),encoding='utf-8');started=False
         try:
             names=live.command(['docker','ps','-a','--format','{{.Names}}']).stdout.splitlines()
             if any(n.startswith('clab-'+live.name+'-') for n in names):raise RuntimeError('Pre-existing extended lab; refusing to touch it')

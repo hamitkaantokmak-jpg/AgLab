@@ -193,6 +193,7 @@ def run():
    for name in ACADEMY_DOCS:z.write(ROOT/name,name)
   teacher=out/'AgLab_Akademi_Ogretmen.zip'
   with zipfile.ZipFile(teacher,'w',zipfile.ZIP_DEFLATED) as z:
+   z.write(out/'html-build-manifest.json','html-build-manifest.json')
    for folder in ['teacher','source']:
     for f in (ROOT/'academy'/folder).glob('*.json'):z.write(f,'academy/'+folder+'/'+f.name)
    for name in ACADEMY_DOCS:z.write(ROOT/name,name)

@@ -1,8 +1,14 @@
 """Build result must not depend on previous order of generated adapter blocks."""
-import pathlib,re,shutil,subprocess,sys,tempfile,unittest
+import pathlib,re,shutil,subprocess,sys,tempfile,unittest,os
+from unittest.mock import patch
+from verify_packages import build_release_manifest
 ROOT=pathlib.Path(__file__).resolve().parent
 TITLES=['BORCK ENGINE','ENGINE MANAGER','ENGINE MANAGER UI','BORCK UI','LAB EVIDENCE','LAB EVIDENCE UI']
 class BuildTests(unittest.TestCase):
+ def test_build_identity_is_explicit_and_bounded(self):
+  with patch.dict(os.environ,{},clear=True):self.assertIsNone(build_release_manifest(ROOT)['source_commit'])
+  with patch.dict(os.environ,{'GITHUB_SHA':'a'*40},clear=True):self.assertEqual(build_release_manifest(ROOT)['source_commit'],'a'*40)
+  with patch.dict(os.environ,{'GITHUB_SHA':'invented'},clear=True):self.assertRaises(ValueError,build_release_manifest,ROOT)
  def test_canonical_order_after_permuted_previous_build(self):
   with tempfile.TemporaryDirectory() as tmp:
    folder=pathlib.Path(tmp);shutil.copy(ROOT/'build_simulator.py',folder/'build_simulator.py');shutil.copytree(ROOT/'simulator',folder/'simulator');html=folder/'AgLab_Final_PKT_Import.html';shutil.copy(ROOT/html.name,html)
