@@ -16,6 +16,7 @@ academyPanel.innerHTML=`<h2>AğLab Akademi v1</h2>
 <label>Laboratuvar <select id="academySelect"></select></label>
 <div id="academyCatalogSearch">
 <label>Laboratuvar ara <input id="academySearch" type="search" placeholder="Numara veya konu (örn. AGL-024, VLAN)" autocomplete="off" maxlength="100"></label>
+<label>İlerleme <select id="academyProgressFilter"><option value="all">Tüm laboratuvarlar</option><option value="completed">Tamamlananlar (100 puan)</option><option value="remaining">Henüz tamamlanmayanlar</option></select></label>
 <button type="button" id="academySearchFind">İlk eşleşmeyi seç</button>
 <p id="academySearchStatus" role="status" aria-live="polite">40 laboratuvar arasından başlık veya numarayla ara; arama mevcut çalışmanı değiştirmez.</p>
 </div>
@@ -38,8 +39,13 @@ academyLabs.forEach(l=>{const o=document.createElement('option');o.value=l.id;o.
 // The catalog search only selects an option; it never starts or resets a lab.
 function academySearchMatches(){
  const term=ac('academySearch').value.trim().toLocaleLowerCase('tr-TR');
- if(!term)return academyLabs;
- return academyLabs.filter(l=>(l.id+' '+l.title+' '+(l.theory||'')+' '+(l.scenario||'')).toLocaleLowerCase('tr-TR').includes(term));
+ const progress=ac('academyProgressFilter').value;
+ return academyLabs.filter(l=>{
+  const finished=academyProgress[l.id]?.bestScore===100;
+  if(progress==='completed'&&!finished)return false;
+  if(progress==='remaining'&&finished)return false;
+  return !term||(l.id+' '+l.title+' '+(l.theory||'')+' '+(l.scenario||'')).toLocaleLowerCase('tr-TR').includes(term);
+ });
 }
 function academyRefreshSearch(){
  const matches=academySearchMatches();
@@ -47,6 +53,7 @@ function academyRefreshSearch(){
  ac('academySearchFind').disabled=!matches.length;
 }
 ac('academySearch').addEventListener('input',academyRefreshSearch);
+ac('academyProgressFilter').addEventListener('change',academyRefreshSearch);
 ac('academySearchFind').onclick=()=>{
  const matches=academySearchMatches();
  if(!matches.length)return;
@@ -272,6 +279,7 @@ function academyRecordProgress(result){
  if(result.status!=='complete')return;
  const old=academyProgress[academyActive.id]?.bestScore||0;
  academyProgress[academyActive.id]={bestScore:Math.max(old,result.earned_points)};academyRenderProgress();
+academyRefreshSearch();
  try{localStorage.setItem(academyProgressKey,JSON.stringify(academyProgress))}catch(e){ac('academyNotice').textContent+=' İlerleme geçmişi kaydedilemedi; tarayıcı depolamasını kontrol et.'}
 }
 function acCanonical(v){
