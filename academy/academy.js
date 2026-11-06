@@ -14,6 +14,11 @@ academyPanel.innerHTML=`<h2>AğLab Akademi v1</h2>
 <p>Gerçek örnek topoloji ayrı çalışır. Akademi'deki etkin görevin ve ilerlemen bu sekmede kalır.</p>
 </details>
 <label>Laboratuvar <select id="academySelect"></select></label>
+<div id="academyCatalogSearch">
+<label>Laboratuvar ara <input id="academySearch" type="search" placeholder="Numara veya konu (örn. AGL-024, VLAN)" autocomplete="off" maxlength="100"></label>
+<button type="button" id="academySearchFind">İlk eşleşmeyi seç</button>
+<p id="academySearchStatus" role="status" aria-live="polite">40 laboratuvar arasından başlık veya numarayla ara; arama mevcut çalışmanı değiştirmez.</p>
+</div>
 <button id="academyStart">Laboratuvarı başlat</button>
 <button id="academyReset" disabled>Baştan başla / sıfırla</button>
 <p id="academyNotice">Başlat ve sıfırla, çalışma alanındaki topolojiyi değiştirir. Mevcut çalışmanı önce JSON olarak dışa aktarabilirsin.</p>
@@ -30,6 +35,26 @@ academyPanel.innerHTML=`<h2>AğLab Akademi v1</h2>
 <ol id="academyHints"></ol><div id="academyResult" role="status" aria-live="polite"></div>`;
 ac('area-lab').prepend(academyPanel);
 academyLabs.forEach(l=>{const o=document.createElement('option');o.value=l.id;o.textContent=l.id+' — '+l.title;ac('academySelect').append(o)});
+// The catalog search only selects an option; it never starts or resets a lab.
+function academySearchMatches(){
+ const term=ac('academySearch').value.trim().toLocaleLowerCase('tr-TR');
+ if(!term)return academyLabs;
+ return academyLabs.filter(l=>(l.id+' '+l.title+' '+(l.theory||'')+' '+(l.scenario||'')).toLocaleLowerCase('tr-TR').includes(term));
+}
+function academyRefreshSearch(){
+ const matches=academySearchMatches();
+ ac('academySearchStatus').textContent=matches.length+' / '+academyLabs.length+' laboratuvar eşleşiyor. Arama, mevcut çalışmanı değiştirmez.';
+ ac('academySearchFind').disabled=!matches.length;
+}
+ac('academySearch').addEventListener('input',academyRefreshSearch);
+ac('academySearchFind').onclick=()=>{
+ const matches=academySearchMatches();
+ if(!matches.length)return;
+ ac('academySelect').value=matches[0].id;
+ ac('academySelect').dispatchEvent(new Event('change'));
+ ac('academySearchStatus').textContent='Seçildi: '+matches[0].id+' — '+matches[0].title+'. Başlatmak için ayrı onay ver.';
+};
+academyRefreshSearch();
 const answerFields={
  static_route_required:{label:'Doğrudan bağlı iki ağ arasında ek statik rota gerekli mi?',options:[['true','Evet'],['false','Hayır']],boolean:true},
  gateway_same_local_subnet:{label:'Varsayılan ağ geçidi uç ile aynı yerel alt ağda olmalı mı?',options:[['true','Evet'],['false','Hayır']],boolean:true},
