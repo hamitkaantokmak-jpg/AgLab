@@ -15,11 +15,22 @@ function normalize(lines,overflow=0){
   else if((m=raw.match(/^(broadcast|unknown-unicast|unicast|filter) (\S+) ingress (\S+) egress (.*?) vlan (\d+)$/))){kind='forward';device=m[2];detail={decision:m[1],ingress:m[3],egress:m[4]==='-'?[]:m[4].split(','),vlan:Number(m[5])}}
   else if((m=raw.match(/^ttl-forward (\S+) (\d+) -> (\d+)$/))){kind='ttl';device=m[1];detail={before:Number(m[2]),after:Number(m[3])}}
   else if((m=raw.match(/^discard (\S+) (.*)$/))){kind='discard';device=m[1];detail={reason:m[2]}}
+  else if((m=raw.match(/^ttl-expired (\S+) quote (.*)$/))){kind='discard';device=m[1];detail={reason:'ttl-expired',quote:m[2]}}
+  else if((m=raw.match(/^port-security-drop (\S+) (\S+) (.*)$/))){kind='discard';device=m[1];detail={reason:'port-security',port:m[2],mode:m[3]}}
   else if(raw.startsWith('icmp-delivered ')){kind='icmp-delivered'}
   else if(raw.startsWith('icmp-undelivered ')){kind='icmp-undelivered'}
   return {index,kind,device,detail,raw};
  });
  return {events:entries,overflow,truncated:overflow>0};
+}
+function fromEvidence(records,overflow=0,metadata={}){
+ if(!Array.isArray(records)||records.length>512||!Number.isSafeInteger(overflow)||overflow<0)throw Error('Invalid bounded trace');
+ const events=records.map((record,index)=>{
+  if(!record||typeof record.raw!=='string'||typeof record.eventId!=='string')throw Error('Invalid trace record');
+  const base=normalize([record.raw]).events[0];
+  return {...base,...JSON.parse(JSON.stringify(record)),index,sequence:index+1,origin:'aglab-js'};
+ });
+ return {...metadata,origin:'aglab-js',events,overflow,truncated:overflow>0};
 }
 function explain(event){
  if(!event||typeof event!=='object')throw Error('Invalid packet event');
@@ -27,7 +38,8 @@ function explain(event){
  switch(event.kind){
  case 'lab-check':return 'Ayrı Lab rapor adımı (paket olayı değil; imza doğrulanmadı): '+d.name+' — '+(d.ok?'başarılı':'başarısız');
  case 'diagnostic':return 'Adaptör tanısı (paket yakalaması değil): '+d.reason;
- case 'wire':return event.device+' → '+d.toDeviceId+': '+d.kind.toUpperCase()+' bağlantı iletimi motor tarafından zamanlandı ('+d.start+'–'+d.end+' sanal ms). Bu bildirim alıcıya teslimi tek başına kanıtlamaz.';
+ case 'wire':return event.origin==='aglab-js'?event.edge.a+' ('+event.edge.portA+') → '+event.edge.b+' ('+event.edge.portB+'): motorun gerçekleştirdiği '+event.frame.kind+' çerçeve aktarımı. Alıcı işlemesi ayrı kayıttır.':event.device+' → '+d.toDeviceId+': '+d.kind.toUpperCase()+' bağlantı iletimi motor tarafından zamanlandı ('+d.start+'–'+d.end+' sanal ms). Bu bildirim alıcıya teslimi tek başına kanıtlamaz.';
+ case 'learn':return event.device+' kaynak MAC adresini '+event.ingressPort+' üzerinde öğrendi/güncelledi.';
  case 'frame':return event.device+' cihazı '+d.protocol+' çerçevesini VLAN '+d.vlan+' üzerinden gönderdi.';
  case 'forward':{
   const label={broadcast:'Yayın', 'unknown-unicast':'Bilinmeyen hedefe yayılım',unicast:'Öğrenilmiş MAC yönlendirmesi',filter:'Giriş portuna geri gönderim engellendi'}[d.decision]||'İletim';
@@ -62,9 +74,9 @@ function diagnose(log){
 function at(log,index){
  if(!log||!Array.isArray(log.events)||!Number.isInteger(index)||index<0||index>=log.events.length)return null;
  const event=log.events[index];
- return {index,total:log.events.length,...event,explanation:explain(event),hasPrevious:index>0,hasNext:index<log.events.length-1,logTruncated:!!log.truncated};
+ return {index,total:log.events.length,...event,position:index,explanation:explain(event),hasPrevious:index>0,hasNext:index<log.events.length-1,logTruncated:!!log.truncated};
 }
-const api=Object.freeze({normalize,explain,at,diagnose});
+const api=Object.freeze({normalize,fromEvidence,explain,at,diagnose});
 if(typeof module==='object'&&module.exports)module.exports=api;
 else root.AgLabPacketEvents=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

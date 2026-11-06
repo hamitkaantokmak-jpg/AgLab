@@ -2,6 +2,8 @@
 
 Tarayıcı tabanlı ağ simülatörü ve Packet Tracer `.pkt` aktarımı.
 
+Simulation Mode V1, mevcut ARP/ICMP motor kayıtlarını adım adım ve SVG üzerinde yeniden oynatır; yeni trafik üretmez. Realtime, CLI, Akademi ve çevrimdışı kullanım korunur. Kapsam ve gerçek Lab ayrımı: [Simulation Mode V1](docs/SIMULATION_MODE_V1.md).
+
 Güncel dağıtım için başarılı PR CI çalışmasının öğrenci ZIP'ini kullanın veya `python build_simulator.py` ve `python build_academy.py` çalıştırın. Kök HTML derleme tabanıdır; yeni CLI hareket/geçmiş kancaları ve modüller derleme sırasında güncellenir. Yalnız raw HTML'yi indirmek en son düzeltmeleri garanti etmez. CI tekrar üretimde aynı HTML'yi doğrular. ZIP içindeki `html-build-manifest.json`, kaynak commit kimliğini ve cihaz CLI'si dahil HTML/modül SHA256'larını içerir. [Ortak JSON → gerçek Lab](docs/ORTAK_GERCEK_LAB.md) ve [40 laboratuvar–motor haritası](docs/LAB_MOTOR_HARITASI.md).
 
 ## Otomatik kalite kapısı

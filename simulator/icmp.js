@@ -23,7 +23,7 @@ function icmpErrorReply(router,origin,sourceIp,targetIp,incomingIp,context,kind,
  if(router.id===origin.id&&activeRouterInterfaces(router).some(([,iface])=>iface.ip===sourceIp)){delivered={ok:true};ethernetEvent('icmp-local-delivery '+origin.id);}
  else{
   const path=findPath(router.id,origin.id,endpointVlan(router.id),sourceIp,true,management?{management:true,targetVlan:svi?.vlan}:{});
-  if(path?.length)delivered=deliverRoutedFrames(router,path,errorIp,sourceIp,errorKind,context,{ttl:64});
+  if(path?.length)delivered=deliverRoutedFrames(router,path,errorIp,sourceIp,errorKind,context,{ttl:64,icmpType:type,icmpCode:code});
  }
  ethernetEvent((delivered.ok?'icmp-delivered ':'icmp-undelivered ')+origin.id+(delivered.ok?'':' '+delivered.why));
  const description=expired?'Time Exceeded':'Destination Unreachable / '+label;

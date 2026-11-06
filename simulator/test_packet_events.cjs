@@ -42,3 +42,8 @@ assert.match(report.issues[1].hint,/kesin nedeni/);
 assert.equal(report.truncated,true);
 assert.equal(diagnose(normalize(['receive d4 arp-request vlan 10'])).issues.length,0);
 assert.equal(diagnose(normalize([])).hasEvidence,false);
+const {fromEvidence}=require('./packet-events.js');
+const observed=fromEvidence([{eventId:'1:1',raw:'frame arp-request src pc dst ff:ff:ff:ff:ff:ff vlan 10',frame:{protocol:'ARP'}},{eventId:'1:2',raw:'wire arp-request pc -> sw',kind:'wire',device:'pc',edge:{a:'pc',portA:'eth0',b:'sw',portB:'fa0/1'},frame:{protocol:'ARP',kind:'arp-request'}}],0,{generation:1});
+assert.equal(observed.events[1].sequence,2);assert.equal(observed.events[1].origin,'aglab-js');assert.match(explain(observed.events[1]),/eth0/);
+assert.equal(at({...observed,events:[observed.events[1]]},0).position,0);assert.equal(at({...observed,events:[observed.events[1]]},0).index,1);
+assert.equal(normalize(['ttl-expired R1 quote 10.0.0.1 -> 10.0.1.2']).events[0].kind,'discard');

@@ -2,6 +2,8 @@
 import hashlib, json, os, re, sys, zipfile
 
 EMBEDDED_SOURCES={
+ 'SIMULATION PLAYBACK':'simulator/simulation-playback.js','SIMULATION UI':'simulator/simulation-ui.js',
+ 'ETHERNET FORWARDING':'simulator/ethernet-forwarding.js','ROUTED ETHERNET':'simulator/routed-ethernet.js','ICMP':'simulator/icmp.js',
  'DEVICE CLI':'simulator/device-cli.js',
  'BORCK ENGINE':'simulator/borck-engine.generated.js','BORCK UI':'simulator/borck-ui.js',
  'ENGINE MANAGER':'simulator/engine-manager.js','ENGINE MANAGER UI':'simulator/engine-manager-ui.js',

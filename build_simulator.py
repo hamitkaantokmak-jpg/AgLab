@@ -20,7 +20,7 @@ for title,source in [('MAC ADDRESS','mac-address.js'),('TRACEROUTE','traceroute.
  else:
   anchor='// BEGIN ACADEMY GENERATED\n';assert anchor in html;html=html.replace(anchor,code+anchor,1)
 extra=[]
-for title,source in [('BORCK ENGINE','borck-engine.generated.js'),('ENGINE MANAGER','engine-manager.js'),('ENGINE MANAGER UI','engine-manager-ui.js'),('BORCK UI','borck-ui.js'),('LAB EVIDENCE','lab-evidence.js'),('LAB EVIDENCE UI','lab-evidence-ui.js')]:
+for title,source in [('SIMULATION PLAYBACK','simulation-playback.js'),('BORCK ENGINE','borck-engine.generated.js'),('ENGINE MANAGER','engine-manager.js'),('ENGINE MANAGER UI','engine-manager-ui.js'),('BORCK UI','borck-ui.js'),('LAB EVIDENCE','lab-evidence.js'),('LAB EVIDENCE UI','lab-evidence-ui.js'),('SIMULATION UI','simulation-ui.js')]:
  start='// BEGIN '+title+' GENERATED\n';end='// END '+title+' GENERATED\n'
  code=start+(ROOT/'simulator'/source).read_text(encoding='utf-8')+'\n'+end
  while start in html:
