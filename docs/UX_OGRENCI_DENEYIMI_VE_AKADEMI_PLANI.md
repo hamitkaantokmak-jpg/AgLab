@@ -162,3 +162,13 @@ Mevcut öğrenci paketindeki `expected` rubrik değerleri geliştirici araçlar�
 **Önemli teknik not:** Bu turda Playwright/Chromium çalıştırılabilecek repo yürütme ortamı kullanılmadığından koruma kodu değiştirilmedi. Kod değişikliğinin test edilmeden üretime yazılması, öğrencinin kaydetme/başlatma akışını bozabileceği için ertelendi.
 
 **Ek kaynak doğrulamaları:** `simulator/packet-detective-ui.js` zaten filtreler, boş durum mesajı ve cihaz işaretleme sunuyor; bunlar eksik değildir. `academy/academy.js` hali hazırda 40 görevi select içine dolduruyor ve ilerleme durumlarını başlıklara ekliyor; arama/kategori filtreleri mevcut alanda görünmüyor. Akademi katalog iyileştirmesi ayrıca incelenmeli.
+
+## 12. UX ilk uygulama — korumalı Akademi geçişi
+
+**Değişiklikler:** `academy/academy.js` içinde başlat ve sıfırla işlemleri için tek bir ortak koruma eklendi. Açık topoloji veya aktif Akademi oturumu varsa “İptal et / Önce JSON dışa aktar / Çalışmayı değiştir” seçenekleri sunulur. İptal mevcut topolojiyi değiştirmez. Dışa aktar mevcut `#ptExport` düğmesini kullanır, otomatik olarak yeni laboratuvara geçmez; öğrenci ayrıca “Çalışmayı değiştir”i seçmelidir. Boş ve etkin görevi olmayan alanda engel çıkarılmaz. Akademi kaynak verisi, rubrik veya ağ motoruna müdahale edilmedi.
+
+**Regresyon:** `test_aglab_academy.py` mevcut 40 görev başlangıç/sıfırlama testlerini yeni açık onay akışına göre uyarlar; ayrıca iptal/topoloji korunması, JSON indirme ve açık devam etme senaryolarını içerir.
+
+**Doğrulama durumu:** Test kodu GitHub'a eklendi, ancak bu oturumda GitHub repo çalışma ağacı yerel test ortamına indirilemediği için Playwright ve tam pipeline **çalıştırılmadı**. Bu değişiklik **CI / tarayıcı testinden geçene kadar doğrulanmış sürüm sayılmamalıdır**. Olası regresyonlar öncelikle test koşusunda ele alınmalıdır. UX dalı ayrı tutuldu; Codex dalı ve main değiştirilmedi.
+
+**Sonraki adım:** UX dalında kaynaklardan güncel HTML üret; Chromium Akademi testini ve `run_pipeline.py` çalıştır; başarısızlık varsa düzelt; ardından Paket Dedektifi boş durum iyileştirmelerine ve Rehberli Başlangıç'a geç.
