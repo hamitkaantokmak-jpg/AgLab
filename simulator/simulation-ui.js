@@ -29,9 +29,10 @@ const rows=make('tbody','simulationRows');table.append(rows);const scroll=make('
 const paging=make('div');paging.className='simulation-controls';const prevPage=make('button','simulationPreviousPage','← Önceki sayfa'),nextPage=make('button','simulationNextPage','Sonraki sayfa →'),pageText=make('span','simulationPage');paging.append(prevPage,pageText,nextPage);eventsBox.append(paging);
 const details=make('section','simulationDetails');details.setAttribute('aria-labelledby','simulationDetailsTitle');details.append(make('h4','simulationDetailsTitle','Paket ayrıntıları'));
 const explanation=make('p','simulationExplanation'),fields=make('dl','simulationFields'),raw=make('pre','simulationRaw');raw.style.whiteSpace='pre-wrap';
+const hint=make('p','simulationHint');hint.setAttribute('role','note');
 const explain=make('button','simulationExplain','Paket Dedektifi’nde açıkla');explain.disabled=true;
 const rawBox=make('details');rawBox.append(make('summary',null,'Motor kaydı (ayrıntılı)'),raw);
-details.append(explanation,fields,make('p',null,'Model alanlarıdır; ham paket değildir. Boş değerler tahmin edilmez. VLAN mantıksal bağlamdır, tel üzerindeki 802.1Q etiketi değildir.'),rawBox,explain);columns.append(eventsBox,details);panel.append(columns);work.querySelector('.pt-workgrid').after(panel);
+details.append(explanation,hint,fields,make('p',null,'Model alanlarıdır; ham paket değildir. Boş değerler tahmin edilmez. VLAN mantıksal bağlamdır, tel üzerindeki 802.1Q etiketi değildir.'),rawBox,explain);columns.append(eventsBox,details);panel.append(columns);work.querySelector('.pt-workgrid').after(panel);
 const style=make('style');style.textContent=`
  #simulationPanel{margin-top:14px;padding:14px;border:1px solid var(--line,#3b5277);border-radius:12px;min-width:0;overflow-wrap:anywhere}
  #simulationPanel[hidden],.simulation-controls[hidden],#simulationStatus[hidden]{display:none!important}.simulation-controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0}.simulation-controls button{width:auto;min-height:44px}
@@ -70,7 +71,10 @@ function paint(value){
  }else if(['frame','receive','discard','learn','ttl'].includes(e.kind)&&get(e.device)){const d=get(e.device);point={x:d.x,y:d.y};}
  if(!point){hide();return;}
  const box=canvas.viewBox.baseVal;if(point.x<box.x||point.x>box.x+box.width||point.y<box.y||point.y>box.y+box.height){hide();return;}
- ensureOverlay();overlay.removeAttribute('display');overlay.setAttribute('data-event-id',e.eventId);dot.setAttribute('cx',point.x);dot.setAttribute('cy',point.y);dot.setAttribute('fill',e.kind==='discard'?'#b91c1c':protocol(e)==='ARP'?'#d97706':protocol(e)==='ICMP'?'#2563eb':'#475569');label.setAttribute('x',point.x+12);label.setAttribute('y',point.y-10);label.textContent=(e.kind==='discard'?'× ':protocol(e)+' · ')+result(e);
+ ensureOverlay();overlay.removeAttribute('display');overlay.setAttribute('data-event-id',e.eventId);dot.setAttribute('cx',point.x);dot.setAttribute('cy',point.y);dot.setAttribute('fill',e.kind==='discard'?'#b91c1c':protocol(e)==='ARP'?'#d97706':protocol(e)==='ICMP'?'#2563eb':'#475569');label.setAttribute('x',point.x+12);label.setAttribute('y',point.y-10);
+ // The Academy guide observes SVG childList mutations. Updating identical text
+ // each RAF would make that unrelated guide rebuild at animation frequency.
+ const caption=(e.kind==='discard'?'× ':protocol(e)+' · ')+result(e);if(label.textContent!==caption)label.textContent=caption;
  const safe=e.kind==='wire'&&!motionRunning&&!model.state().playing&&!devices.some(d=>Math.abs(point.x-d.x)<=d.w/2+24&&Math.abs(point.y-d.y)<=d.h/2+24);
  packetHit.setAttribute('cx',point.x);packetHit.setAttribute('cy',point.y);packetHit.setAttribute('pointer-events',safe?'fill':'none');packetHit.setAttribute('tabindex',safe?'0':'-1');packetHit.setAttribute('aria-disabled',String(!safe));packetHit.setAttribute('aria-label',protocol(e)+' paket ayrıntılarını aç');packetHit.style.cursor=safe?'pointer':'default';
 }
@@ -85,6 +89,7 @@ function renderRows(){
 }
 function renderDetails(){
  const e=model.state().event;fields.replaceChildren();explain.disabled=!e;raw.textContent=e?.raw||'';explanation.textContent=e?AgLabPacketEvents.explain(e):'Önce CLI ile ping/Ethernet testi yap, kaydı al ve bir olay seç.';
+ hint.textContent=e?(AgLabPacketEvents.diagnose({events:[e]}).issues[0]?.hint||''):'';hint.hidden=!hint.textContent;
  if(!e)return;const f=e.frame||{},ip=f.ipv4||e.ipv4||{},arp=f.arp||{},icmp=f.icmp||{};
  const values=[['Motor sırası',e.sequence],['Kayıt kimliği',e.eventId],['Protokol',protocol(e)],['Durum',result(e)]];
  if(e.frame)values.push(['Source MAC',f.sourceMac],['Destination MAC',f.destinationMac],['EtherType (model)',f.etherType],['Mantıksal VLAN',f.vlan]);

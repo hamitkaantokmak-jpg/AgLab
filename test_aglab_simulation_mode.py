@@ -48,6 +48,9 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  assert any(e['kind']=='wire' for e in cold['events']);assert not state()['active'];baseline=page.evaluate('JSON.stringify({topology:academyEngine.snapshot(),tables:aglabEngines.tables()})')
  page.click('#simulationMode');same_capture();assert state()['cursor']==-1
  print('PASS capture',flush=True)
+ page.locator('#aglabFirstNetworkGuide').evaluate('(d)=>d.open=true')
+ page.evaluate('()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
+ page.evaluate('''()=>{window.replayGuideChanges=0;new MutationObserver(()=>replayGuideChanges++).observe(document.getElementById('firstGuideSteps'),{childList:true});}''')
  page.click('#simulationForward');assert state()['cursor']==0
  page.click('#simulationForward');assert state()['cursor']==1 and state()['event']['kind']=='wire'
  print('PASS manual forward',state()['progress'],flush=True)
@@ -59,6 +62,7 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
   g=geometry();assert abs(g['x']-g['expected']['x'])<.1 and abs(g['y']-g['expected']['y'])<.1,g
   assert abs(g['screen']['x']-g['actualScreen']['x'])<1 and abs(g['screen']['y']-g['actualScreen']['y'])<1,g
  aligned();position=geometry();page.wait_for_timeout(170);assert state()['cursor']==paused['cursor'] and geometry()==position
+ initial_guide_updates=page.evaluate('replayGuideChanges');assert initial_guide_updates<=4,('Animation must not rebuild the unrelated guide every frame',initial_guide_updates)
  print('PASS animation geometry and pause',flush=True)
  assert page.evaluate('JSON.stringify({topology:academyEngine.snapshot(),tables:aglabEngines.tables()})')==baseline,'Replay must not change network state'
  # Select an actual paused packet in empty wire space, while device hit areas
@@ -128,7 +132,7 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  # Animation is one reused SVG layer, with no full topology redraw per frame.
  load(good);page.click('#simulationMode');cmd(a,['ping 10.0.0.2']);page.select_option('#simulationSpeed','4');page.evaluate('''()=>{window.removedSimulationNodes=0;new MutationObserver(rs=>rs.forEach(r=>r.removedNodes.forEach(n=>{if(n.matches?.('.pt-node'))removedSimulationNodes++}))).observe(document.getElementById('ptCanvas'),{childList:true});}''')
  page.click('#simulationPlay');page.wait_for_function('aglabSimulation.state().cursor>=4');page.click('#simulationPause');redraws=page.evaluate('removedSimulationNodes');layers=page.locator('#simulationOverlay').count();assert redraws==0;assert layers==1
- report['animation']={'topology_nodes_removed_during_playback':redraws,'overlay_layers':layers,'wire_geometry_drag_zoom':True,'paused_packet_click_and_space':True}
+ report['animation']={'topology_nodes_removed_during_playback':redraws,'overlay_layers':layers,'wire_geometry_drag_zoom':True,'paused_packet_click_and_space':True,'guide_rebuilds_during_initial_wire':initial_guide_updates}
  report['scenarios'].append('Performance on eight fixtures; max512 records/max25 rows; one SVG layer; zero topology-node redraw during playback')
  assert not errors,errors;context.close()
  # Mobile controls, touch CLI and reduced-motion text playback.

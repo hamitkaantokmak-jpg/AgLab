@@ -40,7 +40,11 @@ function explain(event){
  case 'diagnostic':return 'Adaptör tanısı (paket yakalaması değil): '+d.reason;
  case 'wire':return event.origin==='aglab-js'?event.edge.a+' ('+event.edge.portA+') → '+event.edge.b+' ('+event.edge.portB+'): motorun gerçekleştirdiği '+event.frame.kind+' çerçeve aktarımı. Alıcı işlemesi ayrı kayıttır.':event.device+' → '+d.toDeviceId+': '+d.kind.toUpperCase()+' bağlantı iletimi motor tarafından zamanlandı ('+d.start+'–'+d.end+' sanal ms). Bu bildirim alıcıya teslimi tek başına kanıtlamaz.';
  case 'learn':return event.device+' kaynak MAC adresini '+event.ingressPort+' üzerinde öğrendi/güncelledi.';
- case 'frame':return event.device+' cihazı '+d.protocol+' çerçevesini VLAN '+d.vlan+' üzerinden gönderdi.';
+ case 'frame':{
+  const operation=event.frame?.kind||d.protocol;
+  const purpose={'arp-request':'komşunun MAC adresini çözmek için ARP isteği oluşturdu','arp-reply':'alınan ARP isteğine kendi IP/MAC bilgisiyle yanıt verdi','icmp-request':'IP erişimini sınamak için ICMP Echo Request oluşturdu','icmp-reply':'alınan Echo Request için ICMP Echo Reply oluşturdu'}[operation];
+  return purpose?event.device+' '+purpose+' (mantıksal VLAN '+d.vlan+').':event.device+' cihazı '+d.protocol+' çerçevesini VLAN '+d.vlan+' üzerinden gönderdi.';
+ }
  case 'forward':{
   const label={broadcast:'Yayın', 'unknown-unicast':'Bilinmeyen hedefe yayılım',unicast:'Öğrenilmiş MAC yönlendirmesi',filter:'Giriş portuna geri gönderim engellendi'}[d.decision]||'İletim';
   return event.device+': '+label+'; giriş '+d.ingress+'; çıkış '+(d.egress.join(', ')||'yok')+'.';
@@ -63,7 +67,7 @@ function diagnose(log){
    issues.push({index:event.index,device:event.device,reason:'adapter-derived',summary:event.detail.reason,hint:'Bu açıklama motorun ping sonucundan türetildi; gerçek paket yakalaması değildir. İlgili yapılandırmayı CLI ile kontrol et.'});
   }else if(event.kind==='discard'){
    const reason=event.detail.reason;
-   const hint=reason==='ingress-port'?'Giriş portu kapalı veya bağlantı geçersiz olabilir; port durumunu ve kabloyu kontrol et.':reason==='destination-mac'?'Hedef MAC adresi eşleşmedi; hedef cihazın MAC adresini ve VLAN üyeliğini kontrol et.':'Bu reddetme nedenini olay kaydından incele.';
+   const hint=reason==='ttl-expired'?'IPv4 TTL değerini ve yönlendirmeyi kontrol et. Düşük başlangıç TTL değeri de bunu oluşturabilir; tek başına döngü kanıtı değildir.':reason==='port-security'?'show port-security ve show interfaces status ile ilgili fiziksel portun politikasını incele.':reason==='ingress-port'?'Giriş portu kapalı veya bağlantı geçersiz olabilir; port durumunu ve kabloyu kontrol et.':reason==='destination-mac'?'Hedef MAC adresi eşleşmedi; hedef cihazın MAC adresini ve VLAN üyeliğini kontrol et.':'Bu reddetme nedenini olay kaydından incele.';
    issues.push({index:event.index,device:event.device,reason,summary:event.device+' cihazında çerçeve reddedildi.',hint});
   }else if(event.kind==='icmp-undelivered'){
    issues.push({index:event.index,device:event.device,reason:'icmp-undelivered',summary:'ICMP yanıtı kaynağa ulaşamadı.',hint:'IP adresleme, varsayılan ağ geçidi ve gidiş-dönüş yönlendirme yolunu kontrol et; bu kayıt tek başına kesin nedeni göstermiyor.'});

@@ -47,6 +47,8 @@ Topoloji/port/yapılandırma değişirse eski kayıt durdurulur ve açık uyarı
 
 Arka plan sekmede veya görünmeyen çalışma alanında RAF durdurulur. Azaltılmış hareket tercihi ve Animasyon anahtarı, metin/olay seçimiyle incelemeyi korur. Mobilde liste açılır/kapanır, ayrıntılar altta, tablo kendi içinde kaydırılır. Tam WCAG veya fiziksel telefon/ekran okuyucu doğrulaması iddia edilmez.
 
+SVG etiketinin metni yalnız değiştiğinde güncellenir. Böylece mevcut isteğe bağlı ilk-ağ rehberinin subtree gözlemcisi her animasyon karesinde gereksiz yere yeniden çizim yapmaz. Bu durum açık rehberli Chromium regresyonuyla ölçülür. Paket açıklaması ve kontrol ipuçları, ayrı bir teşhis motoru yerine ortak `packet-events.js` açıklama/teşhis katmanından gelir; TTL dolması tek başına döngü kanıtı olarak sunulmaz.
+
 ## Derleme ve doğrulama
 
 ```sh

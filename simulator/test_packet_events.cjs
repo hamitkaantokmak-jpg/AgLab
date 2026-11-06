@@ -47,3 +47,5 @@ const observed=fromEvidence([{eventId:'1:1',raw:'frame arp-request src pc dst ff
 assert.equal(observed.events[1].sequence,2);assert.equal(observed.events[1].origin,'aglab-js');assert.match(explain(observed.events[1]),/eth0/);
 assert.equal(at({...observed,events:[observed.events[1]]},0).position,0);assert.equal(at({...observed,events:[observed.events[1]]},0).index,1);
 assert.equal(normalize(['ttl-expired R1 quote 10.0.0.1 -> 10.0.1.2']).events[0].kind,'discard');
+assert.match(explain(normalize(['frame arp-request src PC1 dst ff:ff:ff:ff:ff:ff vlan 10']).events[0]),/MAC adresini çözmek/);
+assert.match(diagnose(normalize(['ttl-expired R1 quote 10.0.0.1 -> 10.0.1.2'])).issues[0].hint,/tek başına döngü kanıtı değildir/);
