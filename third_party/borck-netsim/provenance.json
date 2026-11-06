@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/michael-borck/netsim",
+  "commit": "c3075e7fe65b7e17515d802eaef625bab751af58",
+  "license": "MIT",
+  "changes": "None; original engine files copied byte-for-byte. esbuild only compiles/bundles them.",
+  "sha256": {
+    "engine/conntrack.ts": "449cf3fc478c16ee994a4b4425b61c2807f15216fc2b3376e5c22780dff8e35d",
+    "engine/device.ts": "77f8ed6d0d9104544f1053a2d9a897fb9c54ee2af837723aaa5f192c5a127a8c",
+    "engine/firewall-fmt.ts": "d288a4cfa08e9c334a78282922d94554e0cfad33958fe7ecaadac97682621df3",
+    "engine/firewall.ts": "da7c06c874030133d63cab38a756eaab1cda668c3edba8234568dfb078cb61da",
+    "engine/ip.ts": "b9b4c555e6bb1a5839438e0cf90b5991aaae49b3a3f144ef1ea4e686c397c65d",
+    "engine/ipdevice.ts": "0930b2a260d9b60af9ec96f94a2a57262d22cd1f7a686349a8505dbd6a338b33",
+    "engine/network.ts": "e4d62697d759976bd6cce91b1f706eeb7d978c4c554e9301a9161feffd232aaa",
+    "engine/scheduler.ts": "eea324c0b7e4391ceb65a98d6af3b370b1bc00daf23815d0e48b201c77de73c4",
+    "engine/switch.ts": "cc08961e55e8327c264bac176dd3a5a1ef4253c4ddbdd9332c3c9b5ead52f991",
+    "engine/types.ts": "5624aa391bb599a4cb9f33e65291f0a0e1919c3cecc23a1425d3090604f21ee5",
+    "LICENSE": "b4fdbc9f39ced391ca05037cb99f4d4af99ca73096323e0ff1ee85ec80e3db84"
+  }
+}

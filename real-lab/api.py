@@ -11,6 +11,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from diagnostics import ROUTERS, SHOW, diagnose
 
 ROOT = Path(__file__).resolve().parent
 ACTIONS = {"start": "start", "stop": "stop", "status": "status"}
@@ -27,13 +28,15 @@ class API(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
 
     def authorized(self):
-        supplied = self.headers.get("Authorization", "")
-        return len(TOKEN) >= 32 and hmac.compare_digest(supplied, "Bearer " + TOKEN)
+        supplied = self.headers.get_all("Authorization", [])
+        return (len(TOKEN) >= 32 and len(supplied) == 1
+                and hmac.compare_digest(supplied[0], "Bearer " + TOKEN))
 
     def do_GET(self):
         if self.path == "/":
@@ -51,6 +54,20 @@ class API(BaseHTTPRequestHandler):
             return self.respond(401, {"error": "unauthorized"})
         if self.path == "/api/lab":
             return self.respond(200, {"lab": "aglab-real-mvp", "devices": sorted(DEVICES)})
+        if self.path.startswith("/api/diagnostics/"):
+            parts = self.path.split("/")
+            if len(parts) != 5 or parts[3] not in ROUTERS or parts[4] not in SHOW:
+                return self.respond(404, {"error": "unsupported diagnostic"})
+            if not OPERATION_LOCK.acquire(blocking=False):
+                return self.respond(409, {"error": "another lab operation is running"})
+            try:
+                try:
+                    result = diagnose(parts[3], parts[4])
+                except Exception:
+                    return self.respond(503, {"error": "diagnostic unavailable"})
+                return self.respond(200 if result["ok"] else 502, result)
+            finally:
+                OPERATION_LOCK.release()
         return self.respond(404, {"error": "unknown endpoint"})
 
     def do_POST(self):
@@ -58,7 +75,10 @@ class API(BaseHTTPRequestHandler):
             return self.respond(401, {"error": "unauthorized"})
         if self.path not in ("/api/lab/start", "/api/lab/stop", "/api/lab/status"):
             return self.respond(404, {"error": "unknown endpoint"})
-        if self.headers.get("Content-Length") not in (None, "0"):
+        lengths = self.headers.get_all("Content-Length", [])
+        if (len(lengths) > 1 or any(value != "0" for value in lengths)
+                or self.headers.get_all("Transfer-Encoding", [])):
+            self.close_connection = True
             return self.respond(400, {"error": "request bodies not accepted"})
         action = self.path.rsplit("/", 1)[-1]
         if not OPERATION_LOCK.acquire(blocking=False):

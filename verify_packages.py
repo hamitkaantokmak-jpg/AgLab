@@ -1,5 +1,17 @@
 """Validate the two offline Academy archives, including content and source separation."""
-import hashlib, json, re, sys, zipfile
+import hashlib, json, os, re, sys, zipfile
+
+EMBEDDED_SOURCES={
+ 'BORCK ENGINE':'simulator/borck-engine.generated.js','BORCK UI':'simulator/borck-ui.js',
+ 'ENGINE MANAGER':'simulator/engine-manager.js','ENGINE MANAGER UI':'simulator/engine-manager-ui.js',
+ 'LAB EVIDENCE':'simulator/lab-evidence.js','LAB EVIDENCE UI':'simulator/lab-evidence-ui.js',
+ 'PACKET EVENTS':'simulator/packet-events.js','PACKET DETECTIVE UI':'simulator/packet-detective-ui.js'}
+
+def build_release_manifest(root):
+    commit=os.environ.get('GITHUB_SHA') or os.environ.get('AGLAB_SOURCE_COMMIT')
+    if commit is not None and not re.fullmatch('[0-9a-f]{40}',commit):raise ValueError('Invalid source commit identity')
+    return {'format':'aglab-offline-build-v1','source_commit':commit,'source_identity':'CI checkout' if os.environ.get('GITHUB_SHA') else 'operator supplied' if commit else 'unverified local build','html_sha256':hashlib.sha256((root/'AgLab_Final_PKT_Import.html').read_bytes()).hexdigest(),
+            'sources':{p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in EMBEDDED_SOURCES.values()}}
 
 def verify_release_packages(student_path, teacher_path):
     ids={f'AGL-{i:03d}' for i in range(1,41)}
@@ -14,6 +26,16 @@ def verify_release_packages(student_path, teacher_path):
             audit=read_json(archive,'academy/adaptation-audit.json')
             assert len(audit)==40 and {row['id'] for row in audit}==ids, 'Incomplete adaptation audit'
         student_names=set(student.namelist());teacher_names=set(teacher.namelist())
+        adapter_files={'simulator/engine-adapter-prototype.cjs','simulator/packet-events.js','simulator/ethernet-forwarding.js','simulator/test_engine_adapter_prototype.cjs','simulator/test_engine_adapter_parity.cjs'}
+        assert adapter_files<=student_names, 'Missing adapter test dependencies: '+str(adapter_files-student_names)
+        borck_files={'simulator/borck-engine.generated.js','simulator/borck-adapter.ts','simulator/borck-ui.js','simulator/test_borck_engine.cjs','simulator/benchmark_borck_engine.cjs','third_party/borck-netsim/LICENSE','third_party/borck-netsim/provenance.json'}
+        assert borck_files<=student_names, 'Missing real third-party engine dependencies/license'
+        assert {'docs/UYUMLULUK_MATRISI.md','docs/GELISMIS_MOTOR_ENTEGRASYON.md','real-lab/advanced_smoke.py'}<=student_names, 'Missing advanced motor documentation/runner'
+        assert {'real-lab/routed_topology.py','real-lab/routed_smoke.py','real-lab/test_routed_topology.py','real-lab/test_routed_smoke.py','real-lab/examples/routed-2-routers.aglab.json','real-lab/examples/routed-3-routers.aglab.json'}<=student_names, 'Missing routed lab converter/examples/tests'
+        assert {'real-lab/security_smoke.py','real-lab/socket_peer.py','real-lab/test_security_smoke.py','real-lab/examples/security-topology.json'}<=student_names, 'Missing native security lab dependencies'
+        provenance=read_json(student,'third_party/borck-netsim/provenance.json')
+        for name,sha in provenance['sha256'].items():
+            assert hashlib.sha256(student.read('third_party/borck-netsim/'+name)).hexdigest()==sha, 'Vendored source mismatch: '+name
         assert not any(n.startswith(('academy/teacher/','academy/source/')) for n in student_names), 'Teacher/source data in student ZIP'
         assert {n for n in student_names if n.startswith('academy/student/') and n.endswith('.json')}=={f'academy/student/{i}.json' for i in ids}, 'Student lab inventory mismatch'
         assert {n for n in teacher_names if n.startswith('academy/teacher/') and n.endswith('.json')}=={f'academy/teacher/{i}.json' for i in ids}, 'Teacher lab inventory mismatch'
@@ -21,6 +43,16 @@ def verify_release_packages(student_path, teacher_path):
         hashes=read_json(teacher,'academy/source/SHA256.json')
         assert set(hashes)=={i+'.json' for i in ids}, 'Source hash inventory mismatch'
         html=student.read('AgLab_Final_PKT_Import.html').decode('utf-8')
+        manifest=read_json(student,'html-build-manifest.json')
+        assert read_json(teacher,'html-build-manifest.json')==manifest, 'Student/teacher build identity mismatch'
+        assert manifest.get('source_commit') is None or re.fullmatch('[0-9a-f]{40}',manifest['source_commit']), 'Invalid build commit'
+        assert manifest['html_sha256']==hashlib.sha256(student.read('AgLab_Final_PKT_Import.html')).hexdigest(), 'HTML build digest mismatch'
+        assert set(manifest['sources'])==set(EMBEDDED_SOURCES.values()), 'Build source inventory mismatch'
+        for title,source in EMBEDDED_SOURCES.items():
+            data=student.read(source)
+            assert hashlib.sha256(data).hexdigest()==manifest['sources'][source], 'Build source digest mismatch: '+source
+            generated='// BEGIN '+title+' GENERATED\n'+data.decode('utf-8').replace('\r\n','\n')+'\n// END '+title+' GENERATED\n'
+            assert generated in html, 'Stale/missing embedded module: '+source
         assert 'teacher_solution' not in html and 'target_topology' not in html, 'Teacher fields in student HTML'
         match=re.search(r'^const academyLabs = (.+);\r?$',html,re.MULTILINE)
         assert match, 'Embedded Academy data missing'

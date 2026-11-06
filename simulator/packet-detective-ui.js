@@ -6,7 +6,7 @@ if(!host||!globalThis.AgLabPacketEvents)return;
 const panel=document.createElement('section');
 panel.id='packetDetectivePanel';panel.className='panel';
 const title=document.createElement('h2');title.textContent='Paket Dedektifi';panel.append(title);
-const help=document.createElement('p');help.textContent='Önce CLI üzerinden ping veya Ethernet testi çalıştır. Son gerçek ağ olaylarını adım adım incele; burada yeni paket gönderilmez.';panel.append(help);
+const help=document.createElement('p');help.textContent='Önce CLI üzerinden ping veya Ethernet testi çalıştır. Motor kayıtlarını adım adım incele; burada yeni paket gönderilmez. Kaynak etiketine bak: adaptör tanısı ve ayrı Lab raporu paket yakalaması değildir.';panel.append(help);
 const controls=document.createElement('div');
 const refresh=document.createElement('button');refresh.id='packetDetectiveRefresh';refresh.textContent='Son olayları göster';
 const previous=document.createElement('button');previous.id='packetDetectivePrevious';previous.textContent='← Önceki';previous.disabled=true;
@@ -23,10 +23,22 @@ const diagnosis=document.createElement('p');diagnosis.id='packetDetectiveDiagnos
 const go=document.createElement('button');go.id='packetDetectiveGoToDevice';go.textContent='Sorunlu cihaza git';go.disabled=true;panel.append(go);
 host.append(panel);
 let allEvents={events:[],overflow:0,truncated:false},snapshot=allEvents,index=0;
+let eventOrigin='AğLab simülasyon motoru';
+document.addEventListener('aglab:external-lab-evidence',event=>{
+ const r=event.detail;if(r?.scope!=='separate-lab'||!Array.isArray(r.events))return;
+ eventOrigin=r.engine+' · ayrı Lab raporu, imzası doğrulanmadı';allEvents={events:r.events,overflow:0,truncated:false};filter.value='all';snapshot=filtered();index=0;render();
+});
+document.addEventListener('aglab:external-packet-events',event=>{
+ const data=event.detail;
+ if(data?.engine?.name!=='Michael Borck NetSim'||!Array.isArray(data.events))return;
+ eventOrigin='Michael Borck NetSim · gerçek motor bildirimi, fiziksel paket yakalaması değil';
+ allEvents={events:data.events.map((e,index)=>({index,kind:'wire',device:e.fromDeviceId,detail:e,raw:e.kind+'-wire '+JSON.stringify(e)})),overflow:data.overflow||0,truncated:!!data.overflow};
+ filter.value='all';snapshot=filtered();index=0;render();
+});
 function filtered(){
  const mode=filter.value;
  if(mode==='all')return allEvents;
- const events=allEvents.events.filter(event=>mode==='forward'?event.kind==='forward':mode==='discard'?event.kind==='discard'||event.kind==='icmp-undelivered':mode==='arp'?event.raw.toLowerCase().includes('arp-'):event.raw.toLowerCase().includes('icmp-'));
+ const events=allEvents.events.filter(event=>mode==='forward'?event.kind==='forward':mode==='discard'?event.kind==='discard'||event.kind==='icmp-undelivered'||event.kind==='diagnostic'||event.kind==='lab-check'&&!event.detail.ok:mode==='arp'?event.raw.toLowerCase().includes('arp-'):event.raw.toLowerCase().includes('icmp-'));
  return {...allEvents,events};
 }
 let marked=null,markedEdge=null;
@@ -68,7 +80,7 @@ function render(){
   status.textContent=allEvents.events.length?'Bu filtreye uygun ağ olayı yok.':'Henüz görüntülenecek ağ olayı yok.';
   explanation.textContent='';raw.textContent='';markDevice(null);return;
  }
- status.textContent='Adım '+(step.index+1)+' / '+step.total+(snapshot.truncated?' · Kayıt sınırı aşıldı; '+snapshot.overflow+' olay gösterilemiyor.':'');
+ status.textContent='Adım '+(step.index+1)+' / '+step.total+' · '+eventOrigin+(snapshot.truncated?' · Kayıt sınırı aşıldı; '+snapshot.overflow+' olay gösterilemiyor.':'');
  explanation.textContent=step.explanation;
  raw.textContent=step.raw;
  markDevice(step.device);
@@ -85,6 +97,7 @@ go.onclick=()=>{
  if(node){node.scrollIntoView({block:'nearest',inline:'nearest'});node.setAttribute('aria-label','Sorun kaydıyla ilişkili seçili cihaz');}
 };
 refresh.onclick=()=>{
+ eventOrigin='AğLab simülasyon motoru';
  allEvents=AgLabPacketEvents.normalize(ethernetEvents.slice(),ethernetEventOverflow);
  snapshot=filtered();index=0;render();
 };

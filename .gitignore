@@ -7,3 +7,4 @@ venv/
 playwright-report/
 test-results/
 .DS_Store
+node_modules/

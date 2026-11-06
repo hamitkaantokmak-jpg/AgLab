@@ -5,7 +5,11 @@
 <body><h1>Gerçek Lab · Yerel Yönetici</h1><p>İki FRR router ve iki Linux PC. Bu ekran yalnızca bu makinedeki yönetici içindir.</p>
 <label>Yönetici anahtarı <input type="password" id="token" autocomplete="off" minlength="32"></label>
 <p><button data-action="info">Cihazları göster</button> <button data-action="status">Durum</button> <button data-action="start">Başlat</button> <button data-action="stop">Durdur</button></p>
-<small>Bu arayüz laboratuvarı kontrol eder; henüz router terminali sunmaz. Anahtar sadece bellekte tutulur.</small>
+<fieldset><legend>Salt okunur yönlendirici tanıları</legend>
+<label>Yönlendirici <select id="diag-router"><option value="r1">r1</option><option value="r2">r2</option></select></label>
+<label>Görünüm <select id="diag-view"><option value="routes">IP yönlendirme tablosu</option><option value="interfaces">Arayüz özeti</option><option value="neighbors">OSPF komşuları</option></select></label>
+<button data-action="diagnostics">Tanıyı göster</button></fieldset>
+<small>Komutlar sabittir, yapılandırma değiştirilemez. Anahtar sadece bellekte tutulur.</small>
 <pre id="result" role="status" aria-live="polite">Henüz işlem yapılmadı.</pre>
 <script>
 'use strict';
@@ -16,12 +20,13 @@ for(const button of document.querySelectorAll('button[data-action]'))button.addE
  const token=document.getElementById('token').value;
  if(token.length<32){output.textContent='En az 32 karakterli yönetici anahtarı gerekli.';return;}
  const action=button.dataset.action;
+ const route=action==='diagnostics'?'/api/diagnostics/'+document.getElementById('diag-router').value+'/'+document.getElementById('diag-view').value:null;
  if((action==='stop'||action==='start')&&!window.confirm('Laboratuvar '+(action==='start'?'başlatılsın':'durdurulsun')+' mı?'))return;
  busy=true;
  document.querySelectorAll('button').forEach(b=>b.disabled=true);
  output.textContent='İşlem sürüyor...';
  try{
- const response=await fetch(action==='info'?'/api/lab':'/api/lab/'+action,{method:action==='info'?'GET':'POST',headers:{'Authorization':'Bearer '+token},cache:'no-store'});
+ const response=await fetch(route||(action==='info'?'/api/lab':'/api/lab/'+action),{method:(action==='info'||action==='diagnostics')?'GET':'POST',headers:{'Authorization':'Bearer '+token},cache:'no-store'});
  const body=await response.json();
  output.textContent=JSON.stringify({httpStatus:response.status,...body},null,2);
  }catch(_){output.textContent='Bağlantı hatası: API erişilemiyor.'}

@@ -49,12 +49,109 @@ class LocalHTTPTests(unittest.TestCase):
                 code,_=self.request(method,path)
                 self.assertEqual(code,401)
 
+    def test_duplicate_authorization_headers_are_rejected(self):
+        with patch.object(api, "TOKEN", "x"*32), patch.object(api.subprocess, "run") as run:
+            conn=http.client.HTTPConnection("127.0.0.1",self.server.server_address[1],timeout=3)
+            try:
+                conn.putrequest("POST", "/api/lab/start")
+                conn.putheader("Authorization", "Bearer " + "x"*32)
+                conn.putheader("Authorization", "Bearer " + "x"*32)
+                conn.putheader("Content-Length", "0")
+                conn.endheaders()
+                response=conn.getresponse()
+                self.assertEqual(response.status,401)
+                response.read()
+            finally:
+                conn.close()
+            run.assert_not_called()
+
+    def test_ambiguous_post_framing_rejected_without_running_lab(self):
+        with patch.object(api, "TOKEN", "x"*32), patch.object(api.subprocess, "run") as run:
+            for framing in (
+                (("Content-Length", "0"), ("Content-Length", "0")),
+                (("Content-Length", "0"), ("Content-Length", "1")),
+                (("Transfer-Encoding", "chunked"),),
+                (("Content-Length", "0"), ("Transfer-Encoding", "chunked")),
+                (("Content-Length", "1"),),
+            ):
+                with self.subTest(framing=framing):
+                    conn=http.client.HTTPConnection("127.0.0.1",self.server.server_address[1],timeout=3)
+                    try:
+                        conn.putrequest("POST", "/api/lab/start")
+                        conn.putheader("Authorization", "Bearer " + "x"*32)
+                        for name,value in framing:
+                            conn.putheader(name,value)
+                        conn.endheaders()
+                        response=conn.getresponse()
+                        self.assertEqual(response.status,400)
+                        response.read()
+                    finally:
+                        conn.close()
+            run.assert_not_called()
+
     def test_authenticated_info(self):
         with patch.object(api,"TOKEN","x"*32):
             code,body=self.request("GET","/api/lab","x"*32)
             self.assertEqual(code,200)
             self.assertIn('"r1"',body)
             self.assertIn('"pc2"',body)
+
+    def test_diagnostics_requires_auth_and_allowlist(self):
+        with patch.object(api, "TOKEN", "x"*32), patch.object(api, "diagnose") as diagnose:
+            code,_=self.request("GET","/api/diagnostics/r1/routes")
+            self.assertEqual(code,401)
+            for path in ("/api/diagnostics/r3/routes",
+                         "/api/diagnostics/r1/configure",
+                         "/api/diagnostics/r1/routes/extra",
+                         "/api/diagnostics/r1/routes?cmd=sh"):
+                code,_=self.request("GET",path,"x"*32)
+                self.assertEqual(code,404)
+            diagnose.assert_not_called()
+
+    def test_authenticated_diagnostics_read_only(self):
+        with patch.object(api, "TOKEN", "x"*32), patch.object(api, "diagnose") as diagnose:
+            diagnose.return_value={"router":"r2","view":"interfaces","ok":True,"output":"eth0 up"}
+            code,body=self.request("GET","/api/diagnostics/r2/interfaces","x"*32)
+            self.assertEqual(code,200)
+            self.assertIn("eth0 up",body)
+            diagnose.assert_called_once_with("r2","interfaces")
+
+    def test_failed_diagnostics_returns_bad_gateway(self):
+        with patch.object(api,"TOKEN","x"*32),patch.object(api,"diagnose") as diagnose:
+            diagnose.return_value={"router":"r1","view":"neighbors","ok":False,"output":"Docker unavailable"}
+            code,body=self.request("GET","/api/diagnostics/r1/neighbors","x"*32)
+            self.assertEqual(code,502)
+            self.assertIn("Docker unavailable",body)
+
+    def test_diagnostics_rejected_while_lab_operation_running(self):
+        with patch.object(api, "TOKEN", "x"*32), patch.object(api, "diagnose") as diagnose:
+            self.assertTrue(api.OPERATION_LOCK.acquire(blocking=False))
+            try:
+                code,body=self.request("GET","/api/diagnostics/r1/routes","x"*32)
+                self.assertEqual(code,409)
+                self.assertIn("another lab operation",body)
+                diagnose.assert_not_called()
+            finally:
+                api.OPERATION_LOCK.release()
+
+    def test_diagnostic_unexpected_error_is_redacted_and_lock_released(self):
+        with patch.object(api, "TOKEN", "x"*32), patch.object(api, "diagnose") as diagnose:
+            diagnose.side_effect=RuntimeError("sensitive internal detail")
+            code,body=self.request("GET","/api/diagnostics/r1/routes","x"*32)
+            self.assertEqual(code,503)
+            self.assertIn("diagnostic unavailable",body)
+            self.assertNotIn("sensitive internal detail",body)
+            # Reading the response can beat the handler's finally block on
+            # another thread. A leaked lock must still fail within one second.
+            self.assertTrue(api.OPERATION_LOCK.acquire(timeout=1))
+            api.OPERATION_LOCK.release()
+
+    def test_dashboard_has_diagnostic_controls(self):
+        code,body=self.request("GET","/")
+        self.assertEqual(code,200)
+        self.assertIn('data-action="diagnostics"',body)
+        self.assertIn('id="diag-router"',body)
+        self.assertIn('id="diag-view"',body)
 
     def test_unknown_action_does_not_run_process(self):
         with patch.object(api,"TOKEN","x"*32),patch.object(api.subprocess,"run") as run:
