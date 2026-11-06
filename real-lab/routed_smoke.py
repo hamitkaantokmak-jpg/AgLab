@@ -13,7 +13,11 @@ class RoutedLive(Live):
     def config(self,node,*commands):
         output=super().config(node,*commands)
         self.evidence['last-config']={'node':node,'commands':list(commands),'output':output}
-        if '%' in output:raise RuntimeError('FRR rejected operator config: '+output)
+        # mgmtd emits this exact benign note for legacy interface commands.
+        # Accept no other percent-prefixed diagnostics; dataplane checks still
+        # prove shutdown/no-shutdown actually changed forwarding.
+        diagnostic=output.replace('% Configuration applied with notes:\nNo changes found to be committed!','')
+        if '%' in diagnostic:raise RuntimeError('FRR rejected operator config: '+output)
         return output
     def apply(self):
         connected={e for l in self.plan['links'] for e in l['endpoints']}

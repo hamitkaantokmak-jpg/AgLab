@@ -45,6 +45,12 @@ class RoutedSmokeTests(unittest.TestCase):
   live.execute=execute;live.capture_routes()
   self.assertIn(('pc1','ip','route','show'),calls)
   self.assertIn(('r1','ip','-json','route','show'),calls)
+ def test_frr_noop_commit_note_is_not_a_command_error(self):
+  live=m.RoutedLive(convert(example(2)))
+  note='% Configuration applied with notes:\nNo changes found to be committed!\n'
+  with patch.object(live,'vty',return_value=note):self.assertEqual(live.config('r1','interface eth2','shutdown'),note)
+  with patch.object(live,'vty',return_value=note+'% Unknown command'):
+   self.assertRaises(RuntimeError,live.config,'r1','bad command')
  def test_frr_command_rejection_is_not_success(self):
   live=m.RoutedLive(convert(example(2)))
   with patch.object(live,'vty',return_value='% Unknown command'):
