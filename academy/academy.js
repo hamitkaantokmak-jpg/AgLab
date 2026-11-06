@@ -17,6 +17,12 @@ academyPanel.innerHTML=`<h2>AğLab Akademi v1</h2>
 <button id="academyStart">Laboratuvarı başlat</button>
 <button id="academyReset" disabled>Baştan başla / sıfırla</button>
 <p id="academyNotice">Başlat ve sıfırla, çalışma alanındaki topolojiyi değiştirir. Mevcut çalışmanı önce JSON olarak dışa aktarabilirsin.</p>
+<div id="academyReplacePrompt" role="group" aria-label="Mevcut çalışmayı koru" hidden>
+<p>Yeni laboratuvar, açık çalışma alanının üzerine yazacak. İstersen önce JSON yedeğini indir.</p>
+<button type="button" id="academyReplaceCancel">İptal et</button>
+<button type="button" id="academyReplaceExport">Önce JSON dışa aktar</button>
+<button type="button" id="academyReplaceContinue">Çalışmayı değiştir</button>
+</div>
 <p id="academyProgress" role="status"></p>
 <div id="academyLesson"></div><div id="academyAnswers"></div>
 <button id="academyCheck" disabled>Çözümümü kontrol et</button>
@@ -143,11 +149,39 @@ function academyRestoreSession(session){
  ac('academyReset').disabled=false;ac('academyCheck').disabled=false;ac('academyHint').disabled=academyHintIndex>=lab.hints.length;
  academyNotice();if(academyChecked)academyCheck(false);
 }
-function academyStart(){
- const lab=academyLabs.find(l=>l.id===ac('academySelect').value);if(!lab)return;
+// Protect existing work: the user must explicitly choose to overwrite it.
+// Export never implicitly continues; confirmation follows a completed download.
+let academyPendingReplace=null;
+function academyCloseReplace(){
+ academyPendingReplace=null;
+ ac('academyReplacePrompt').hidden=true;
+}
+function academyCommitStart(lab){
  importTopology({...clone(lab.initial_topology),academySession:{version:1,labId:lab.id,answers:{},hintIndex:0,baseline:0,checked:false}});
  academyBaseline=academyEvaluate(lab.assessment.criteria,{},lab.probe_health).earned_points;academyNotice();saveTopology(true);
+ academyCloseReplace();
 }
+function academyStart(){
+ const lab=academyLabs.find(l=>l.id===ac('academySelect').value);if(!lab)return;
+ // Preserve non-empty work and any currently active Academy session, even
+ // when storage says saved: starting another lab replaces that saved state.
+ if(!devices.length&&!links.length&&!academyActive){academyCommitStart(lab);return;}
+ academyPendingReplace=lab;
+ const box=ac('academyReplacePrompt');
+ box.hidden=false;
+ ac('academyReplaceCancel').focus();
+}
+ac('academyReplaceCancel').onclick=()=>{academyCloseReplace();ac('academyStart').focus()};
+ac('academyReplaceExport').onclick=()=>{
+ const exportButton=document.getElementById('ptExport');
+ if(!exportButton){ac('academyNotice').textContent='JSON dışa aktarma düğmesi bulunamadı. Mevcut çalışmanı değiştirmeden önce kaydet.';return;}
+ exportButton.click();
+ // Do not assume download succeeded and do not start the replacement.
+};
+ac('academyReplaceContinue').onclick=()=>{
+ const lab=academyPendingReplace;
+ if(lab)academyCommitStart(lab);
+};
 function academyRenderProgress(){
  const completed=academyLabs.filter(l=>academyProgress[l.id]?.bestScore===100).length;
  ac('academyProgress').textContent='Tamamlanan laboratuvar: '+completed+'/'+academyLabs.length+'. En iyi puanların bu tarayıcıda saklanır; sıfırlama başarı geçmişini silmez.';
