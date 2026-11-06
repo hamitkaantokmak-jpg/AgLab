@@ -49,9 +49,24 @@ with sync_playwright() as pw:
     page.select_option('#packetDetectiveViewMode','simple')
     expect(page.locator('#packetDetectiveRaw')).to_be_hidden()
     page.select_option('#packetDetectiveViewMode','technical')
-    expect(page.locator('#packetDetectiveRaw')).not_to_be_hidden()
+    # Empty pre has zero height even when the technical mode is enabled.
+    # Check the control state now; prove actual visibility with real events below.
+    expect(page.locator('#packetDetectiveRaw')).to_have_js_property('hidden',False)
+    expect(page.locator('#packetDetectiveRaw')).to_be_empty()
     page.click('#packetDetectiveOpenCli')
     expect(page.locator('#ptCliInput')).to_be_focused()
+    pcs=[d for d in page.evaluate('academyEngine.snapshot().devices') if d['type'].lower()=='pc']
+    page.select_option('#ptCliDevice',pcs[0]['id'])
+    page.fill('#ptCliInput','ping '+pcs[1]['ip']);page.press('#ptCliInput','Enter')
+    page.click('#packetDetectiveRefresh')
+    expect(page.locator('#packetDetectiveEmptyGuide')).to_be_hidden()
+    expect(page.locator('#packetDetectiveRaw')).to_be_visible()
+    raw=page.locator('#packetDetectiveRaw').inner_text();assert raw
+    page.select_option('#packetDetectiveViewMode','simple')
+    expect(page.locator('#packetDetectiveRaw')).to_be_hidden()
+    page.select_option('#packetDetectiveViewMode','technical')
+    expect(page.locator('#packetDetectiveRaw')).to_be_visible()
+    assert page.locator('#packetDetectiveRaw').inner_text()==raw
     page.select_option('#academySelect','AGL-005')
     page.click('#academyStart')
     if page.locator('#academyReplacePrompt').is_visible():
