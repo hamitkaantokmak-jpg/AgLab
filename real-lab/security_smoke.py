@@ -144,17 +144,28 @@ class Lab:
         self.probe('c1','tcp',8000,True,'translate',peer_ip='198.18.0.1');self.probe('c2','udp',8001,True,'translate',peer_ip='198.18.0.1')
         self.clear_sessions();self.record('NAT restored; TCP/UDP replies return and session state is explicitly cleared')
     def cleanup(self):
+        errors=[]
         if self.server:
-            self.server.terminate()
-            try:self.server.wait(timeout=3)
-            except subprocess.TimeoutExpired:self.server.kill();self.server.wait(timeout=3)
-        success=True
+            try:
+                self.server.terminate()
+                try:self.server.wait(timeout=3)
+                except subprocess.TimeoutExpired:self.server.kill();self.server.wait(timeout=3)
+            except Exception as error:errors.append('server: '+str(error))
+            finally:
+                for stream in (self.server.stdout,self.server.stderr):
+                    if stream:stream.close()
         for n in reversed(self.created):
-            if self.command(['ip','netns','del',self.names[n]],check=False).returncode:success=False
+            try:
+                result=self.command(['ip','netns','del',self.names[n]],check=False)
+                if result.returncode:errors.append(n+': '+result.stdout+result.stderr)
+            except Exception as error:errors.append(n+': '+str(error))
         if self.created:
-            remaining=self.command(['ip','netns','list']).stdout.splitlines()
-            success=success and not any(line.split()[0] in {self.names[n] for n in self.created} for line in remaining if line.split())
-        return success
+            try:
+                remaining=self.command(['ip','netns','list']).stdout.splitlines()
+                if any(line.split()[0] in {self.names[n] for n in self.created} for line in remaining if line.split()):errors.append('Owned namespace remains')
+            except Exception as error:errors.append('cleanup verification: '+str(error))
+        self.evidence['cleanup-errors']=errors
+        return not errors
 
 def run(scenario,out):
     lab=Lab(scenario);report={'kind':'security','engine':'Linux kernel nftables','steps':lab.steps,'evidence':lab.evidence,'ok':False,'cleanup':False}

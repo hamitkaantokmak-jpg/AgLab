@@ -29,6 +29,15 @@ class SecurityTests(unittest.TestCase):
   self.assertRaises(RuntimeError,lab.setup);self.assertTrue(lab.cleanup())
   deleted=[a[-1] for a in calls if a[:3]==['ip','netns','del']]
   self.assertEqual(deleted,[lab.names['r1']])
+ def test_one_cleanup_failure_does_not_skip_other_owned_namespaces(self):
+  lab=m.Lab('acl');lab.created=['r1','c1'];calls=[]
+  def command(args,**kw):
+   calls.append(args)
+   if args[:3]==['ip','netns','del'] and args[-1]==lab.names['c1']:raise RuntimeError('delete failed')
+   return subprocess.CompletedProcess(args,0,'','')
+  lab.command=command
+  self.assertFalse(lab.cleanup())
+  self.assertIn(['ip','netns','del',lab.names['r1']],calls)
  def test_unexpected_probe_error_cannot_pass_as_filtering(self):
   self.assertFalse(m.denied({'returncode':2,'result':{'error_type':'FileNotFoundError'}},'tcp'))
   self.assertFalse(m.denied({'returncode':0,'result':{}},'tcp'))
