@@ -30,6 +30,20 @@ class AdvancedTests(unittest.TestCase):
   live=m.Live('routing')
   for state,ok in [('Active',False),('Established',True)]:
    with patch.object(live,'show',return_value={'ipv4Unicast':{'peers':{'10.0.13.3':{'state':state}}}}):self.assertEqual(live.bgp_up('r1','10.0.13.3'),ok)
+ def test_policy_suite_declares_real_reselection_filter_and_repair(self):
+  live=m.Live('routing');calls=[];labels=[]
+  live.config=lambda *args:calls.append(args)
+  live.vty=lambda *args:calls.append(args) or ''
+  live.wait=lambda label,fn,*args:labels.append(label)
+  live.stable_negative=lambda label,fn:labels.append(label)
+  live.bgp_policy()
+  text=str(calls)
+  self.assertIn('set local-preference 200',text)
+  self.assertIn('route-map AGL-PREFER-R2 in',text)
+  self.assertIn('route-map AGL-FILTER deny 10',text)
+  self.assertTrue(any('kernel' in label for label in labels))
+  self.assertTrue(any('blocks real ICMP' in label for label in labels))
+  self.assertTrue(any('repair' in label for label in labels))
  def test_preexisting_lab_is_not_destroyed(self):
   calls=[]
   def run(self,args,timeout=30,check=True):calls.append(args);return subprocess.CompletedProcess(args,0,'clab-aglab-advanced-l2-s1\n' if args[0]=='docker' else '', '')

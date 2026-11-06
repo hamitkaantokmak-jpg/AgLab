@@ -98,3 +98,18 @@ CLI ile uygulandıktan sonra başarılı olmalıdır. Akademi source/teacher ver
 Testlerin kodlanması başarı kanıtı değildir: kesin sonuç `routed-*-results.json`
 ve ilgili native CI çalışmasından okunmalıdır. JSON doğrulama/unit testleri
 Docker/FRR çalıştırıldığını iddia etmez.
+
+## Dar BGP politika kabul senaryosu
+
+Mevcut üç FRR routerlı `advanced_smoke.py routing` altyapısı yeniden kullanılır.
+R1'de yalnız hedef /24'ü eşleyen prefix-list ve inbound route-map ile R2 yoluna
+local-preference 200 verilir. Kabul testi daha uzun AS_PATH'e rağmen R2 next-hop'u,
+gerçek kernel `ip -json route get` sonucu ve uçtan uca ICMP'yi birlikte zorunlu
+tutar. Politika kaldırıldığında kısa R3 yolu geri gelmelidir.
+
+Sonra hedef /24 iki komşudan da prefix-list/deny route-map ile filtrelenir:
+BGP/RIB rotası ve kernel yolu kaybolmalı, gerçek ICMP başarısız olmalıdır.
+Filtre kaldırıldıktan sonra next-hop ve trafik düzelmelidir. Bu bir iBGP,
+route-reflector, MED/community veya tüm policy semantiği desteği değildir.
+Kesin sonuç native routing CI raporudur; unit testte çağrıların varlığı protokol
+başarısı sayılmaz. Tarayıcı/öğrenci yetkilerinde değişiklik yoktur.

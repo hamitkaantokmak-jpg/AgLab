@@ -133,6 +133,43 @@ class Live:
         self.stable_negative('BGP withdrawal removes all destination paths',lambda:not self.route('bgp'))
         self.config('r3','router bgp 65003','address-family ipv4 unicast','network 192.168.20.0/24')
         self.wait('BGP prefix restoration',lambda:self.route('bgp','10.0.13.3') and self.ping())
+        self.bgp_policy()
+
+    def bgp_policy(self):
+        def apply(*commands):
+            response=self.config('r1',*commands)
+            self.evidence['bgp-policy-command']={'node':'r1','commands':list(commands),'observed':response}
+            if response and '%' in response:raise RuntimeError('FRR rejected BGP policy: '+response)
+        def refresh():self.vty('r1','clear bgp ipv4 unicast * soft in')
+        def selected(via):
+            data=self.json('r1','ip','-json','route','get','192.168.20.10')
+            self.evidence['bgp-policy-kernel']={'command':['ip','-json','route','get','192.168.20.10'],'expected_next_hop':via,'observed':data}
+            self.evidence['bgp-policy-rib']=self.vty('r1','show bgp ipv4 unicast 192.168.20.0/24')
+            return self.route('bgp',via) and any(r.get('gateway')==via for r in data) and self.ping()
+        self.wait('BGP baseline shortest path agrees with kernel FIB',lambda:selected('10.0.13.3'))
+        apply('ip prefix-list AGL-TARGET seq 5 permit 192.168.20.0/24',
+              'route-map AGL-PREFER-R2 permit 10','match ip address prefix-list AGL-TARGET','set local-preference 200',
+              'exit','route-map AGL-PREFER-R2 permit 20','exit','router bgp 65001',
+              'neighbor 10.0.12.2 route-map AGL-PREFER-R2 in')
+        refresh()
+        self.wait('BGP local preference selects longer r2 path in kernel with real ICMP',lambda:selected('10.0.12.2'))
+        apply('router bgp 65001','no neighbor 10.0.12.2 route-map AGL-PREFER-R2 in')
+        refresh()
+        self.wait('BGP preference removal restores shortest kernel path',lambda:selected('10.0.13.3'))
+        apply('route-map AGL-FILTER deny 10','match ip address prefix-list AGL-TARGET',
+              'exit','route-map AGL-FILTER permit 20','exit','router bgp 65001',
+              'neighbor 10.0.12.2 route-map AGL-FILTER in','neighbor 10.0.13.3 route-map AGL-FILTER in')
+        refresh()
+        def filtered():
+            absent=not self.route('bgp')
+            fib=self.execute('r1','ip','-json','route','get','192.168.20.10',check=False)
+            self.evidence['bgp-filter-fib']={'exit_code':fib.returncode,'observed':fib.stdout+fib.stderr}
+            self.evidence['bgp-filter-rib']=self.vty('r1','show bgp ipv4 unicast 192.168.20.0/24')
+            return absent and fib.returncode!=0 and self.ping(False)
+        self.stable_negative('BGP prefix-list/filter withdraws route and blocks real ICMP',filtered)
+        apply('router bgp 65001','no neighbor 10.0.12.2 route-map AGL-FILTER in','no neighbor 10.0.13.3 route-map AGL-FILTER in')
+        refresh()
+        self.wait('BGP filter repair restores kernel next-hop and real traffic',lambda:selected('10.0.13.3'))
 
     def vlan(self,node,port,vid,pvid=False,delete=False):
         return self.execute(node,'bridge','vlan','del' if delete else 'add','dev',port,'vid',str(vid),*(['pvid','untagged'] if pvid and not delete else []))
