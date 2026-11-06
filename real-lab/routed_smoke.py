@@ -48,7 +48,9 @@ class RoutedLive(Live):
         return (r.returncode==0)==ok
     def capture_routes(self):
         self.evidence['frr-rib']={n:self.show(n,'show ip route') for n,d in self.plan['nodes'].items() if d['type']=='Router'}
-        self.evidence['kernel-fib']={n:self.json(n,'ip','-json','route','show') for n in self.plan['nodes']}
+        # Alpine endpoints provide BusyBox ip; retain its real text output.
+        # FRR routers provide iproute2, so their FIB stays machine-readable.
+        self.evidence['kernel-fib']={n:(self.json(n,'ip','-json','route','show') if d['type']=='Router' else {'format':'text','output':self.execute(n,'ip','route','show').stdout}) for n,d in self.plan['nodes'].items()}
     def verify_routes(self,target):
         self.capture_routes()
         for n,d in target['nodes'].items():

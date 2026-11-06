@@ -35,6 +35,16 @@ class RoutedSmokeTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as tmp,patch.object(m.RoutedLive,'command',command):
    self.assertFalse(m.run_case(example(2),example(2),tmp,'test'))
    self.assertTrue(any('destroy' in a for a in calls));self.assertTrue(json.loads((pathlib.Path(tmp)/'test-results.json').read_text())['cleanup'])
+ def test_busybox_endpoints_use_text_routes_and_routers_keep_json(self):
+  live=m.RoutedLive(convert(example(2)));calls=[]
+  live.show=lambda *args:{}
+  def execute(n,*args,**kw):
+   calls.append((n,*args))
+   if '-json' in args and live.plan['nodes'][n]['type']!='Router':raise RuntimeError('BusyBox has no JSON option')
+   return subprocess.CompletedProcess([],0,'[]' if '-json' in args else 'default via 192.168.10.1 dev eth1\n','')
+  live.execute=execute;live.capture_routes()
+  self.assertIn(('pc1','ip','route','show'),calls)
+  self.assertIn(('r1','ip','-json','route','show'),calls)
  def test_frr_command_rejection_is_not_success(self):
   live=m.RoutedLive(convert(example(2)))
   with patch.object(live,'vty',return_value='% Unknown command'):
