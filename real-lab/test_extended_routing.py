@@ -3,7 +3,9 @@ from extended_routing import multi_area, ipv6, extended_topology
 class Fake:
  def __init__(self):self.commands=[];self.evidence={};self.labels=[]
  def config(self,*c):self.commands.append(c)
- def execute(self,*c,**kw):self.commands.append(c)
+ def execute(self,*c,**kw):
+  self.commands.append(c)
+  return type('Result',(),{'stdout':'mocked command output'})()
  def wait(self,label,fn,*a):self.labels.append(label)
  def stable_negative(self,label,fn):self.labels.append(label)
  def record(self,label):self.labels.append(label)

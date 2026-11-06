@@ -36,6 +36,10 @@ def experimental_summary(live,interarea):
     live.wait('Summary removal restores specific inter-area route',lambda:interarea() and live.ping())
 
 def ipv6(live):
+    for n in ('pc1','pc2'):
+        live.execute(n,'ip','link','set','eth0','down')
+        live.execute(n,'sysctl','-w','net.ipv6.conf.all.accept_ra=0')
+        live.execute(n,'sysctl','-w','net.ipv6.conf.eth1.accept_ra=0')
     addresses={'r1':[('eth1','fd10:10::1/64'),('eth2','fd10:12::1/64')],'r2':[('eth2','fd10:12::2/64'),('eth3','fd10:23::2/64')],'r3':[('eth1','fd10:20::1/64'),('eth2','fd10:23::3/64')],'pc1':[('eth1','fd10:10::10/64')],'pc2':[('eth1','fd10:20::10/64')]}
     for n,ports in addresses.items():
         live.execute(n,'sysctl','-w','net.ipv6.conf.all.disable_ipv6=0')
@@ -46,6 +50,9 @@ def ipv6(live):
             live.execute(n,'ip','-6','addr','add',a,'dev',p)
     for n,route in {'r1':['ipv6 route fd10:20::/64 fd10:12::2'],'r2':['ipv6 route fd10:10::/64 fd10:12::1','ipv6 route fd10:20::/64 fd10:23::3'],'r3':['ipv6 route fd10:10::/64 fd10:23::2']}.items():live.config(n,*route)
     for n,destination,via in [('pc1','fd10:20::/64','fd10:10::1'),('pc2','fd10:10::/64','fd10:20::1')]:live.execute(n,'ip','-6','route','add',destination,'via',via,'dev','eth1')
+    for n in addresses:
+        live.evidence[n+' ipv6 addresses']=live.execute(n,'ip','-6','addr','show').stdout
+        live.evidence[n+' ipv6 kernel routes']=live.execute(n,'ip','-6','route','show').stdout
     def ping(ok=True):
         r=live.execute('pc1','ping','-6','-c','2','-W','1','fd10:20::10',check=False)
         live.evidence['icmpv6']={'expected_success':ok,'exit_code':r.returncode,'output':r.stdout+r.stderr}
