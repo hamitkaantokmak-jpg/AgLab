@@ -81,6 +81,7 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  chosen=state()['event']['eventId'];page.click('#simulationExplain');assert 'AğLab simülasyon motoru' in page.locator('#packetDetectiveStatus').inner_text();page.click('#packetDetectiveSimulate');assert state()['event']['eventId']==chosen
  page.locator('#simulationModeBar').evaluate('(n)=>n.scrollIntoView({block:"start"})');page.screenshot(path=str(OUT/'simulation-desktop.png'))
  assert '100 percent' in cmd(a,['ping 10.0.0.2']);same_capture();assert not any(e.get('frame',{}).get('protocol')=='ARP' for e in trace()['events']),'Warm ping must not invent ARP'
+ page.select_option('#simulationFilter','ARP');assert state()['total']==0;expect(page.locator('#simulationStatus')).to_contain_text('filtreyi değiştir');page.select_option('#simulationFilter','all');same_capture()
  report['scenarios'].append('UI-built basic ping; exact trace; playback/Pause/reset/speed/details; drag/zoom geometry; CLI; detective bridge; warm ARP cache')
  print('PASS basic replay integration',flush=True)
  before_native=page.evaluate('JSON.stringify(aglabSimulation.trace())');native=Path(tmp)/'native.json';native.write_text(json.dumps({'kind':'routing','engine':'FRRouting','ok':True,'cleanup':True,'steps':[{'name':'Separate native report','ok':True}],'evidence':{}}));page.locator('#nativeLabReport').set_input_files(str(native));expect(page.locator('#packetDetectiveSimulate')).to_be_disabled();assert page.evaluate('JSON.stringify(aglabSimulation.trace())')==before_native
@@ -129,6 +130,7 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
    assert measured['events']<=512
    if sim:assert page.locator('#simulationRows tr').count()<=25 and not state()['rafPending']
   report['performance'].append(row)
+ page.click('#simulationNextPage');expect(page.locator('#simulationPage')).to_contain_text('2 /');page.click('#simulationReset');expect(page.locator('#simulationPage')).to_contain_text('1 /');assert state()['cursor']==-1
  # Animation is one reused SVG layer, with no full topology redraw per frame.
  load(good);page.click('#simulationMode');cmd(a,['ping 10.0.0.2']);page.select_option('#simulationSpeed','4');page.evaluate('''()=>{window.removedSimulationNodes=0;new MutationObserver(rs=>rs.forEach(r=>r.removedNodes.forEach(n=>{if(n.matches?.('.pt-node'))removedSimulationNodes++}))).observe(document.getElementById('ptCanvas'),{childList:true});}''')
  page.click('#simulationPlay');page.wait_for_function('aglabSimulation.state().cursor>=4');page.click('#simulationPause');redraws=page.evaluate('removedSimulationNodes');layers=page.locator('#simulationOverlay').count();assert redraws==0;assert layers==1
@@ -142,6 +144,8 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  page.locator('#ptCanvas g[data-id="'+a+'"]').tap();expect(page.locator('#ptCliDevice')).to_have_value(a);page.keyboard.press('Escape');assert state()['active']
  assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1');page.locator('#simulationPanel').screenshot(path=str(OUT/'simulation-details-mobile.png'));page.locator('#simulationModeBar').evaluate('(n)=>n.scrollIntoView({block:"start"})');page.screenshot(path=str(OUT/'simulation-mobile.png'))
  page.locator('#simulationRows tr[data-pos="1"] button').focus();page.keyboard.press('ArrowDown');assert state()['cursor']==2
+ # Reduced motion removes movement, not the playback dwell/speed controls.
+ page.select_option('#simulationSpeed','0.5');page.click('#simulationReset');page.click('#simulationPlay');page.wait_for_timeout(100);assert state()['cursor']==0,'Reduced-motion autoplay must not rush through one event per RAF';page.wait_for_function('aglabSimulation.state().cursor>0');page.click('#simulationPause');assert not state()['playing']
  assert not errors,errors;context.close();browser.close()
  report['scenarios'].append('390px touch controls/CLI, keyboard event navigation, reduced motion, no page horizontal overflow')
  report['page_errors']=errors;report['passed']=True;(OUT/'simulation-mode-results.json').write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf-8')

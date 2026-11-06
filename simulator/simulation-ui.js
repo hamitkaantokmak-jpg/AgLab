@@ -64,6 +64,7 @@ function ensureOverlay(){
 }
 function paint(value){
  const e=model.state().event;if(!active||!e||stale){hide();return;}
+ if(!animation.checked||motion.matches)value=1;
  let point=null;
  if(e.kind==='wire'){
   const visible=links.filter(l=>get(l.a)&&get(l.b)),i=AgLabSimulationPlayback.matchWire(e,visible),line=i>=0?canvas.querySelectorAll('line.pt-edge')[i]:null;
@@ -93,8 +94,8 @@ function renderDetails(){
  if(!e)return;const f=e.frame||{},ip=f.ipv4||e.ipv4||{},arp=f.arp||{},icmp=f.icmp||{};
  const values=[['Motor sırası',e.sequence],['Kayıt kimliği',e.eventId],['Protokol',protocol(e)],['Durum',result(e)]];
  if(e.frame)values.push(['Source MAC',f.sourceMac],['Destination MAC',f.destinationMac],['EtherType (model)',f.etherType],['Mantıksal VLAN',f.vlan]);
- if(e.edge||e.ingressPort||e.detail?.ingress||e.detail?.port)values.push(['Giriş portu',e.edge?.portB||e.ingressPort||e.detail?.ingress||e.detail?.port]);
- if(e.edge||Array.isArray(e.detail?.egress))values.push(['Çıkış portu',e.edge?.portA||(e.detail.egress.join(', ')||'Yok (motor çıkış seçmedi).')]);
+ if(e.edge||e.ingressPort||e.detail?.ingress||e.detail?.port)values.push([e.edge?'Alıcı giriş portu':'Giriş portu',e.edge?.portB||e.ingressPort||e.detail?.ingress||e.detail?.port]);
+ if(e.edge||Array.isArray(e.detail?.egress))values.push([e.edge?'Gönderen çıkış portu':'Çıkış portu',e.edge?.portA||(e.detail.egress.join(', ')||'Yok (motor çıkış seçmedi).')]);
  if(f.ipv4||e.ipv4)values.push(['Source IP',ip.sourceIp],['Destination IP',ip.destinationIp],['TTL',ip.ttl],['IP Protocol',ip.protocol]);
  if(f.arp)values.push(['ARP Operation',arp.operation],['ARP Sender IP',arp.senderIp],['ARP Sender MAC',arp.senderMac],['ARP Target IP',arp.targetIp],['ARP Target MAC',arp.targetMac]);
  if(f.icmp)values.push(['ICMP Type',icmp.type],['ICMP Code',icmp.code],['ICMP türü',f.kind]);
@@ -104,20 +105,20 @@ function renderDetails(){
 function render(){
  const s=model.state();realtime.setAttribute('aria-pressed',String(!active));simulation.setAttribute('aria-pressed',String(active));
  forward.disabled=!active||s.cursor+1>=s.total;play.disabled=!active||!s.total;reset.disabled=!active||!s.total;pause.disabled=!raf&&!s.playing;
- status.textContent=stale?'Topoloji/yapılandırma değişti. Eski kayıt canlandırılmaz; CLI testini yeniden çalıştır ve kaydı al.':s.total?'AğLab JS · '+(s.cursor<0?'Hazır':'Görüntülenen '+(s.cursor+1))+' / '+s.total+' olay'+(captured.overflow?' · Kayıt sınırlı: '+captured.overflow+' ek olay yok.':''):'Henüz bu filtreye uygun motor olayı yok. Önce CLI ile test yap.';
+ status.textContent=stale?'Topoloji/yapılandırma değişti. Eski kayıt canlandırılmaz; CLI testini yeniden çalıştır ve kaydı al.':s.total?'AğLab JS · '+(s.cursor<0?'Hazır':'Görüntülenen '+(s.cursor+1))+' / '+s.total+' olay'+(captured.overflow?' · Kayıt sınırı: '+captured.overflow+' ek olay gösterilemiyor.':''):captured.events.length?'Bu filtreye uygun olay yok; filtreyi değiştir.':'Henüz motor olayı yok. Önce CLI ile test yap.';
  renderRows();renderDetails();
 }
 function notify(){const e=model.state().event;if(e)document.dispatchEvent(new CustomEvent('aglab:packet-event-viewed',{detail:{origin:'aglab-js',raw:e.raw,trace:captured.legacy||[]}}));}
 function select(index,animate=false,keepPlaying=false){
- if(!keepPlaying)stop();model.seek(index);page=Math.floor(index/25);progress=animate&&animation.checked&&!motion.matches&&canvasVisible?0:1;lastTime=0;unchanged();render();paint(progress);notify();
+ if(!keepPlaying)stop();model.seek(index);page=Math.floor(index/25);progress=animate&&canvasVisible&&(keepPlaying||animation.checked&&!motion.matches)?0:1;lastTime=0;unchanged();render();paint(animation.checked&&!motion.matches?progress:1);notify();
  if(!stale&&(progress<1||model.state().playing))schedule();
 }
 function schedule(){if(!raf){motionRunning=true;pause.disabled=false;raf=requestAnimationFrame(tick);}}
 function tick(time){
  raf=0;if(!active||stale||!canvasVisible||document.hidden||!panel.getClientRects().length){stop();return;}
- const state=model.state(),duration=(state.event?.kind==='wire'?650:220)/state.speed;
+ const state=model.state(),moving=state.event?.kind==='wire'&&animation.checked&&!motion.matches,duration=(moving?650:220)/state.speed;
  if(lastTime)progress=Math.min(1,progress+(time-lastTime)/duration);lastTime=time;
- paint(animation.checked&&!motion.matches?progress:1);
+ if(moving)paint(progress);
  if(progress>=1){
   lastTime=0;
   if(state.playing&&state.cursor+1<state.total){if(!unchanged()){render();return;}select(state.cursor+1,true,true);return;}
@@ -131,7 +132,7 @@ function mode(value){stop();active=value;panel.hidden=!value;controls.hidden=!va
 realtime.onclick=()=>mode(false);simulation.onclick=()=>mode(true);capture.onclick=captureTrace;
 forward.onclick=()=>{const s=model.state();if(s.cursor+1<s.total)select(s.cursor+1,true);};
 play.onclick=()=>{if(!unchanged()){render();return;}let s=model.state();if(!s.total)return;if(!canvasVisible){canvas.scrollIntoView({block:'center'});canvasVisible=true;}if(s.cursor<0||s.cursor===s.total-1&&progress>=1){model.reset();model.play();select(0,true,true);}else{model.play();if(progress>=1)select(s.cursor+1,true,true);else schedule();}render();};
-pause.onclick=()=>{stop();render();paint(progress);};reset.onclick=()=>{stop();model.reset();progress=1;hide();render();};speed.onchange=()=>model.speed(Number(speed.value));filter.onchange=applyFilter;
+pause.onclick=()=>{stop();render();paint(progress);};reset.onclick=()=>{stop();model.reset();page=0;progress=1;hide();render();};speed.onchange=()=>model.speed(Number(speed.value));filter.onchange=applyFilter;
 animation.onchange=()=>{if(!animation.checked){progress=1;paint(1);}};
 motion.addEventListener('change',()=>{animation.disabled=motion.matches;if(motion.matches){animation.checked=false;progress=1;paint(1);}});
 prevPage.onclick=()=>{page=Math.max(0,page-1);renderRows();};nextPage.onclick=()=>{if((page+1)*25<model.events().length){page++;renderRows();}};
