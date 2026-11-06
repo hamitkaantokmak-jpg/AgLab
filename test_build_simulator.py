@@ -5,6 +5,11 @@ from verify_packages import build_release_manifest
 ROOT=pathlib.Path(__file__).resolve().parent
 TITLES=['BORCK ENGINE','ENGINE MANAGER','ENGINE MANAGER UI','BORCK UI','LAB EVIDENCE','LAB EVIDENCE UI']
 class BuildTests(unittest.TestCase):
+ def test_device_hooks_are_generated_from_legacy_html(self):
+  text=(ROOT/'AgLab_Final_PKT_Import.html').read_text(encoding='utf-8')
+  self.assertIn('deviceCliDragExceeded(ev,e,startX,startY)',text)
+  self.assertNotIn('Math.abs(e.clientX-startX)+Math.abs(e.clientY-startY)>3',text)
+  self.assertIn('selectDeviceCliHistory(d.id);if(ptCommandHistory',text)
  def test_build_identity_is_explicit_and_bounded(self):
   with patch.dict(os.environ,{},clear=True):self.assertIsNone(build_release_manifest(ROOT)['source_commit'])
   with patch.dict(os.environ,{'GITHUB_SHA':'a'*40},clear=True):self.assertEqual(build_release_manifest(ROOT)['source_commit'],'a'*40)

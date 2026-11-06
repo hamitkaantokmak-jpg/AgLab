@@ -73,6 +73,8 @@ jobs:
             dist/unified-rc-performance.json
             dist/advanced-student-journey.json
             dist/advanced-student-journey.png
+            dist/device-cli.png
+            dist/device-cli-mobile.png
             dist/html-build-manifest.json
           if-no-files-found: warn
       - name: Başarılı ZIP'i sakla
@@ -89,4 +91,5 @@ jobs:
           name: aglab-akademi-ogretmen
           path: dist/AgLab_Akademi_Ogretmen.zip
           if-no-files-found: error
+
 

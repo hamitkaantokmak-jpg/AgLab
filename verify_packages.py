@@ -2,6 +2,7 @@
 import hashlib, json, os, re, sys, zipfile
 
 EMBEDDED_SOURCES={
+ 'DEVICE CLI':'simulator/device-cli.js',
  'BORCK ENGINE':'simulator/borck-engine.generated.js','BORCK UI':'simulator/borck-ui.js',
  'ENGINE MANAGER':'simulator/engine-manager.js','ENGINE MANAGER UI':'simulator/engine-manager-ui.js',
  'LAB EVIDENCE':'simulator/lab-evidence.js','LAB EVIDENCE UI':'simulator/lab-evidence-ui.js',
