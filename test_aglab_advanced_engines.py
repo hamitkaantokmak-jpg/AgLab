@@ -1,5 +1,5 @@
 """Automated Chromium student journey; no claim of a human participant study."""
-import json,os,tempfile
+import json,os,tempfile,sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parent
@@ -52,6 +52,13 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  operator_file=Path(tmp)/'operator.json';download.value.save_as(str(operator_file));operator=json.loads(operator_file.read_text(encoding='utf-8'))
  assert operator['app']=='AgLab' and operator['version']==23 and operator['selected']==''
  assert all('mac' not in d for d in operator['devices'] if d['type']=='Switch')
+ sys.path.insert(0,str(ROOT/'real-lab'))
+ from shared_topology import convert
+ # Default PCs may retain an unrelated gateway after an address edit; reject it
+ # explicitly instead of silently dropping it in an L2-only export.
+ for d in operator['devices']:
+  if d['type']=='PC':d['gateway']=''
+ assert len(convert(operator)['nodes'])==4
  page.locator('#ptImportFile').set_input_files(str(operator_file));page.wait_for_timeout(80)
  assert baseline==page.evaluate('JSON.stringify(aglabEngines.capture())')
  report={'kind':'routing','engine':'FRRouting','ok':True,'cleanup':True,'steps':[{'name':'OSPF report fixture <img src=bad onerror=alert(1)>','ok':True,'evidence':{'route':{'protocol':'ospf'}}}],'evidence':{}}

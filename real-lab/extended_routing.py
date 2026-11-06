@@ -12,8 +12,10 @@ def multi_area(live):
     for i,ns in networks.items():live.config(f'r{i}','router ospf',f'ospf router-id {i}.{i}.{i}.{i}',*(f'network {prefix} area {area}' for prefix,area in ns))
     live.wait('Multi-area OSPF: backbone and area2 adjacency',lambda:live.full('r1','2.2.2.2') and live.full('r2','3.3.3.3'))
     def interarea():
-        text=live.vty('r1','show ip route ospf');live.evidence['inter-area-route']=text
-        return 'O IA' in text and '192.168.20.0/24' in text and live.route('ospf','10.0.12.2')
+        # Zebra's generic table prints O, not Cisco's O IA. ospfd owns the
+        # inter-area classification; inspect its actual N IA route record.
+        text=live.vty('r1','show ip ospf route');live.evidence['inter-area-route']=text
+        return any(line.startswith('N IA') and '192.168.20.0/24' in line for line in text.splitlines()) and live.route('ospf','10.0.12.2')
     live.wait('Inter-area O IA route through ABR r2',interarea)
     live.wait('Multi-area real IPv4 ICMP',live.ping)
     live.config('r2','router ospf','passive-interface eth3')
