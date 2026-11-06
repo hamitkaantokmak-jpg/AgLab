@@ -124,3 +124,33 @@ ayrı etiketlenir. Sıfır olayda paket uydurulmaz.
 DHCP/relay, DNS native entegrasyonu, RSTP/LACP ve yeni ileri BGP kapsamı tamamlanmış
 sayılmaz. Önceki OSPF özetleme SIGSEGV deneyi korunur; mevcut FRR imajı ve varsayılan
 motor değiştirilmedi. Bu tur yeni ağ protokolü eklemedi.
+
+## RC1 kesin kod doğrulaması
+
+`189ba468936d2862a143f6c86590e89ea98af339` kod başında:
+
+- [Genel CI 42211966947](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42211966947):
+  **67/67** grup ve paketleme başarılı.
+- [Native CI 42211967090](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42211967090):
+  **8/8 iş** başarılı. Yedi native artefaktın SHA256/CRC’si ayrıca doğrulandı.
+- **11 gerçek JSON raporu, toplam 160 native kontrol:** L2 14, routing/BGP policy 21,
+  shared VLAN 6, AGL-024 3, IPv6/multi-area 10, iki/üç router ve AGL-034/035 toplam 57,
+  ACL 28, SNAT/PAT 21. Her raporda `ok=true` ve `cleanup=true`.
+- Raporlar güncel ayrıştırıcıdan ve Chromium’da mevcut rapor dosya alanından geçirildi.
+  Her dosyanın tamamlandığı ayrı olayla beklendi; kaynak etiketi native kaldı,
+  browser topolojisi değişmedi, kimlik/imza doğrulanmış sayılmadı.
+- Son yerel tam pipeline da **67/67**, 40 kaynak hash’i ve iki paket ayrımı başarılı.
+  PKT kaynak arşivini/oturumunu değiştiren veya şema dışı alan ekleyen yedek dosyası
+  rehber tarafından reddedilir; gerçek kaydedilen JSON kabul edilir. Bu düzeltme
+  önce başarısız, sonra başarılı testle ve tam pipeline ile doğrulandı.
+
+**Durum:** Birleşik kod, doğrulanmış **AgLab-Unified-RC1 sürüm adayı** olarak hazırdır.
+Bu bölümden sonraki belge commit’i üretim kodunu değiştirmez; son başın CI/ZIP
+manifesti ve dağıtım bağlantıları PR #39 teslim kaydında esas alınır. Öğrenci ZIP’i
+HTML, rehber, kaynak etiketleri, ölçüm ve güvenlik kapılarından geçer; öğretmen ZIP’i
+ayrıdır. Kaynak PR #37 `524f809`, PR #38 `0f4a891` ve main `606e2e5` değişmeden
+korunmuştur. Entegrasyon PR’ı taslaktır. Release, git tag veya main merge yapılmadı.
+
+Kalan işler: manuel screen-reader ve browser menüsü zoom incelemesi, daha çok
+performans örneği/cihaz, native DHCP/relay/DNS ve daha önce belgelenen protokol
+sınırları. Bunlar tamamlanmış özellik veya tam WCAG uygunluğu olarak raporlanmaz.
