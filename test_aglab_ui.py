@@ -19,6 +19,16 @@ with sync_playwright() as pw:
     expect(page.locator('#ux14Guided')).to_be_visible()
     expect(page.locator('#ux14Free')).to_be_visible()
     expect(page.locator('#academyPanel')).to_be_visible()
+    # Optional guide must not rewrite the student's topology or fabricate ping evidence.
+    guide_snapshot = page.evaluate('academyEngine.snapshot()')
+    page.locator('#aglabFirstNetworkGuide summary').click()
+    expect(page.locator('#firstGuideSteps li')).to_have_count(9)
+    expect(page.locator('#firstGuidePing')).to_be_disabled()
+    expect(page.locator('#firstGuideStatus')).to_contain_text('1 / 9')
+    assert page.evaluate('academyEngine.snapshot()') == guide_snapshot
+    page.click('#firstGuideRefresh')
+    assert page.evaluate('academyEngine.snapshot()') == guide_snapshot
+    page.locator('#aglabFirstNetworkGuide summary').click()
     # Search selects a lab without replacing the current topology or starting it.
     before_search = page.evaluate('academyEngine.snapshot()')
     page.fill('#academySearch','AGL-024')
