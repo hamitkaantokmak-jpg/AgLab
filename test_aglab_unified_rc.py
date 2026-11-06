@@ -78,6 +78,14 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
   assert page.locator('#firstGuideVerifyFile').evaluate('(e)=>e.labels.length>0')
   page.keyboard.press('Shift+Tab');page.locator('#aglabFirstNetworkGuide summary').focus();page.keyboard.press('Enter')
   page.evaluate("document.body.style.zoom='1'")
+ # Scope must follow restored sessions and reset selection, not only onchange.
+ page.click('#ux14Guided');page.select_option('#academySelect','AGL-034');page.click('#academyStart');page.click('#academyReplaceContinue')
+ page.reload();expect(page.locator('#academySelect')).to_have_value('AGL-034')
+ expect(page.locator('#academyEngineScope')).to_contain_text('FRRouting doğrulaması')
+ page.click('[data-area="lab"]');page.click('#ux14Guided');before=page.evaluate('academyEngine.snapshot()')
+ page.select_option('#academySelect','AGL-001');page.click('#academyReset')
+ expect(page.locator('#academyEngineScope')).to_contain_text('FRRouting doğrulaması')
+ page.click('#academyReplaceCancel');assert before==page.evaluate('academyEngine.snapshot()')
  assert not errors,errors
  browser.close()
 print('PASS Unified RC guide: real add/cable/CLI, duplicate/subnet/shutdown failures, repair, inspected events and verified JSON round trip')

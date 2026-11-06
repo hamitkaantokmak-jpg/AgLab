@@ -50,7 +50,10 @@ davranış ve derleme çakışmaları ayrıca gerçek Chromium testleriyle düze
 7. **Motor kapsamı:** Akademi seçimi yalnız seçimdir. Salt okunur kapsam notu tüm
    görevleri tarayıcı simülasyonu olarak tanımlar; AGL-024 için Linux bridge, AGL-034/035
    için FRR native arıza/onarım kanıtını ayırır. Diğer görevlerin tamamına native başarı
-   atfedilmez. ACL/NAT ayrı operatör örnekleridir. Yeni native komut/API yetkisi eklenmedi.
+   atfedilmez. ACL/NAT ayrı operatör örnekleridir. Oturum geri yükleme ve reset seçimi
+   kapsam notunu da yeniler: AGL-034 geri açıldığında AGL-001 notunun kalması önce
+   başarısız Chromium testiyle gösterilip düzeltildi. Mevcut çalışma ve iptal koruması
+   bu kontrolde korunur. Yeni native komut/API yetkisi eklenmedi.
 
 ## Test kapsamı ve sürüm kapısı
 

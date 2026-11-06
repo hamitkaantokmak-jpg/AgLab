@@ -5869,7 +5869,7 @@ function academyNotice(){ac('academyNotice').textContent='Etkin görev: '+academ
 function academyRestoreSession(session){
  if(!session){academyClearSession();return}
  const lab=academyValidateSession(session);academyActive=lab;academyHintIndex=session.hintIndex;academyBaseline=session.baseline;academyChecked=session.checked;academyLastCheckedState=null;
- ac('academySelect').value=lab.id;
+ ac('academySelect').value=lab.id;academyRenderEngineScope();
  ac('academyLesson').replaceChildren();acText(ac('academyLesson'),'h3',lab.id+' — '+lab.title);
  acText(ac('academyLesson'),'p',lab.theory);acText(ac('academyLesson'),'p',lab.scenario);
  const ol=document.createElement('ol');lab.steps.forEach(s=>acText(ol,'li',s.text));ac('academyLesson').append(ol);
@@ -6002,7 +6002,7 @@ function academyCheck(persist=true){
  const ul=document.createElement('ul');result.criteria.forEach(r=>acText(ul,'li',r.label+' · '+(r.status==='passed'?r.points:0)+'/'+r.points+' · '+r.detail));box.append(ul);academyLastCheckedState=academyWorkSignature();if(persist){academyRecordProgress(result);saveTopology(true)}return result;
 }
 ac('academyStart').onclick=academyStart;
-ac('academyReset').onclick=()=>{if(academyActive){ac('academySelect').value=academyActive.id;academyStart()}};
+ac('academyReset').onclick=()=>{if(academyActive){ac('academySelect').value=academyActive.id;academyRenderEngineScope();academyStart()}};
 ac('academySelect').onchange=()=>{academyRenderEngineScope();ac('academyNotice').textContent='Seçilen görevi açmak için Laboratuvarı başlat düğmesine bas. Etkin görev: '+(academyActive?.id||'yok')};
 ac('academyCheck').onclick=()=>academyCheck();
 ac('academyHint').onclick=()=>{if(!academyActive)return;const hint=academyActive.hints[academyHintIndex++];if(hint)acText(ac('academyHints'),'li',hint);if(academyHintIndex>=academyActive.hints.length)ac('academyHint').disabled=true;saveTopology(true)};
