@@ -15,7 +15,9 @@ const filter=document.createElement('select');filter.id='packetDetectiveFilter';
 for(const [value,label] of [['all','Tüm olaylar'],['arp','ARP'],['icmp','ICMP'],['forward','İletim'],['discard','Kayıp / reddedilen']]){
  const option=document.createElement('option');option.value=value;option.textContent=label;filter.append(option);
 }
-controls.append(refresh,filter,previous,next);panel.append(controls);
+const viewMode=document.createElement('select');viewMode.id='packetDetectiveViewMode';viewMode.setAttribute('aria-label','Paket açıklama görünümü');
+for(const [value,label] of [['technical','Teknik görünüm'],['simple','Basit görünüm']]){const option=document.createElement('option');option.value=value;option.textContent=label;viewMode.append(option);}
+controls.append(refresh,filter,previous,next,viewMode);panel.append(controls);
 const status=document.createElement('p');status.id='packetDetectiveStatus';status.setAttribute('role','status');panel.append(status);
 const emptyGuide=document.createElement('div');emptyGuide.id='packetDetectiveEmptyGuide';
 emptyGuide.setAttribute('role','note');
@@ -32,6 +34,7 @@ guideCli.onclick=()=>{
 emptyGuide.append(guideText,guideCli);panel.append(emptyGuide);
 const explanation=document.createElement('p');explanation.id='packetDetectiveExplanation';panel.append(explanation);
 const raw=document.createElement('pre');raw.id='packetDetectiveRaw';raw.style.whiteSpace='pre-wrap';raw.style.overflowWrap='anywhere';panel.append(raw);
+viewMode.onchange=()=>{raw.hidden=viewMode.value==='simple';};
 const diagnosis=document.createElement('p');diagnosis.id='packetDetectiveDiagnosis';diagnosis.setAttribute('role','status');panel.append(diagnosis);
 const go=document.createElement('button');go.id='packetDetectiveGoToDevice';go.textContent='Sorunlu cihaza git';go.disabled=true;panel.append(go);
 host.append(panel);
