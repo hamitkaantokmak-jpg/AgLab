@@ -107,6 +107,8 @@ with sync_playwright() as pw:
         closed=page.evaluate('academyEngine.snapshot()')
         assert {k:v for k,v in closed.items() if k!='selected'}=={k:v for k,v in final_state.items() if k!='selected'}
         page.click('#ptConnectMode');page.keyboard.press('Escape')
+        router.tap() if mobile else router.click()
+        expect(dialog).to_be_visible();page.keyboard.press('Escape')
         router.focus();router.press('Space');expect(dialog).to_be_visible()
         expect(page.locator('#ptCliDevice')).to_have_value('router')
         page.keyboard.press('Escape')
@@ -117,9 +119,9 @@ with sync_playwright() as pw:
     for mobile in (False,True):
         context=browser.new_context(viewport={'width':390 if mobile else 1366,'height':900},has_touch=mobile,is_mobile=mobile)
         page=context.new_page();page.goto((ROOT/'AgLab_Final_PKT_Import.html').as_uri());page.click('[data-area="lab"]')
-        def open_and_close(kind=None):
-            if kind:
-                target=next(d for d in page.evaluate('aglabEngines.capture().devices') if d['type']==kind)
+        def open_and_close(kind=None,device_id=None):
+            if kind or device_id:
+                target=next(d for d in page.evaluate('aglabEngines.capture().devices') if d['id']==device_id or device_id is None and d['type']==kind)
                 node=page.locator('#ptCanvas g[data-id="'+target['id']+'"]')
             else:node=page.locator('#ptCanvas g[data-id]').first
             node.tap() if mobile else node.click()
@@ -132,7 +134,10 @@ with sync_playwright() as pw:
         page.click('#academyStart')
         if page.locator('#academyReplaceContinue').is_visible():page.click('#academyReplaceContinue')
         open_and_close()
-        page.click('#ux14Free');page.click('[data-pt-add="Switch"]');open_and_close('Switch')
+        page.click('#ux14Free');previous_ids={d['id'] for d in page.evaluate('aglabEngines.capture().devices')}
+        page.click('[data-pt-add="Switch"]')
+        added=next(d for d in page.evaluate('aglabEngines.capture().devices') if d['id'] not in previous_ids)
+        open_and_close(device_id=added['id'])
         with tempfile.TemporaryDirectory() as tmp:
             file=Path(tmp)/'topology.json';file.write_text(json.dumps(TOPOLOGY))
             page.locator('#ptImportFile').set_input_files(str(file))
