@@ -21,6 +21,8 @@ with sync_playwright() as pw:
     expect(page.locator('#academyPanel')).to_be_visible()
     page.select_option('#academySelect','AGL-005')
     page.click('#academyStart')
+    if page.locator('#academyReplacePrompt').is_visible():
+        page.click('#academyReplaceContinue')
     page.select_option('#ptCliDevice','SW1')
     for cmd in ('enable','configure terminal','interface fa0/2','no shutdown','end'):
         page.fill('#ptCliInput',cmd)
