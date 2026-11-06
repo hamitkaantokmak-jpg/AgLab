@@ -65,3 +65,27 @@ jobs:
           name: aglab-gercek-motor-${{ matrix.lab }}
           path: dist/advanced-*-results.json
           if-no-files-found: warn
+
+  shared-and-extended:
+    name: Shared integration ${{ matrix.script }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        script: [shared_smoke, extended_routing]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate bounded shared topology adapter
+        run: python3 real-lab/test_shared_topology.py
+      - name: Install Containerlab
+        run: curl -fsSL https://get.containerlab.dev | sudo bash
+      - name: Execute isolated native integration
+        run: sudo python3 real-lab/${{ matrix.script }}.py --execute
+      - name: Preserve actual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aglab-integration-${{ matrix.script }}
+          path: dist/*-results.json
+          if-no-files-found: error
