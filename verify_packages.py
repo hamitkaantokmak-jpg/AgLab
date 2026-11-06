@@ -46,6 +46,7 @@ def verify_release_packages(student_path, teacher_path):
         assert set(hashes)=={i+'.json' for i in ids}, 'Source hash inventory mismatch'
         html=student.read('AgLab_Final_PKT_Import.html').decode('utf-8')
         manifest=read_json(student,'html-build-manifest.json')
+        assert student.read('html-build.sha256').decode().split()[0]==manifest['html_sha256'], 'Unexpected compiled HTML identity'
         assert read_json(teacher,'html-build-manifest.json')==manifest, 'Student/teacher build identity mismatch'
         assert manifest.get('source_commit') is None or re.fullmatch('[0-9a-f]{40}',manifest['source_commit']), 'Invalid build commit'
         assert manifest['html_sha256']==hashlib.sha256(student.read('AgLab_Final_PKT_Import.html')).hexdigest(), 'HTML build digest mismatch'

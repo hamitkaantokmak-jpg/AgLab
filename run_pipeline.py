@@ -39,6 +39,7 @@ REAL_LAB_FILES.append('real-lab/advanced_smoke.py')
 REAL_LAB_FILES.extend(['real-lab/security_smoke.py','real-lab/socket_peer.py','real-lab/examples/security-topology.json'])
 REAL_LAB_FILES.extend(['real-lab/routed_topology.py','real-lab/routed_smoke.py','real-lab/examples/routed-2-routers.aglab.json','real-lab/examples/routed-3-routers.aglab.json','real-lab/shared_topology.py','real-lab/shared_smoke.py','real-lab/extended_routing.py','real-lab/examples/shared-vlan10.aglab.json'])
 ARTIFACTS=['AgLab_Final_PKT_Import.html','convert_pkt_to_aglab.py','restore_pkt_from_aglab_json.py','verify_packages.py','static-routing-two-routers.aglab.json','static-routing-two-routers-import-report.json','AgLab_PKT_Import_Kullanim.md','static-routing-two-routers(1).pkt' ]
+ARTIFACTS.append('html-build.sha256')
 ARTIFACTS.extend(['simulator/mac-address.js','simulator/test_mac_address.cjs','pkt-sample-matrix.json','PKT_ORNEK_MATRISI.md','simulator/switch-management.js','simulator/mac-learning.js','simulator/ethernet-forwarding.js','simulator/routing-path.js','simulator/routed-ethernet.js','simulator/icmp.js','simulator/traceroute.js','build_simulator.py','SIMULATOR_PLAN.md'])
 ARTIFACTS.extend(['simulator/packet-events.js','simulator/packet-detective-ui.js'])
 ARTIFACTS.append('simulator/device-cli.js')
@@ -223,4 +224,5 @@ def run():
   if t['status']=='FAIL':print(t.get('error',''),t.get('stdout',''),t.get('stderr',''))
  return 0 if report['passed'] else 1
 if __name__=='__main__':sys.exit(run())
+
 
