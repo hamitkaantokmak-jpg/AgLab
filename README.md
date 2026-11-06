@@ -2,7 +2,7 @@
 
 Tarayıcı tabanlı ağ simülatörü ve Packet Tracer `.pkt` aktarımı.
 
-Güncel dağıtım için başarılı PR CI çalışmasının öğrenci ZIP'ini kullanın. Kök HTML güncel motor ve tanı modüllerini içerir; CI yeniden üretip kaynaklarla aynı kaldığını doğrular. ZIP içindeki `html-build-manifest.json`, kaynak commit kimliğini ve HTML/modül SHA256'larını içerir. [Ortak JSON → gerçek Lab](docs/ORTAK_GERCEK_LAB.md) ve [40 laboratuvar–motor haritası](docs/LAB_MOTOR_HARITASI.md).
+Güncel dağıtım için başarılı PR CI çalışmasının öğrenci ZIP'ini kullanın veya `python build_simulator.py` ve `python build_academy.py` çalıştırın. Kök HTML derleme tabanıdır; yeni CLI hareket/geçmiş kancaları ve modüller derleme sırasında güncellenir. Yalnız raw HTML'yi indirmek en son düzeltmeleri garanti etmez. CI tekrar üretimde aynı HTML'yi doğrular. ZIP içindeki `html-build-manifest.json`, kaynak commit kimliğini ve cihaz CLI'si dahil HTML/modül SHA256'larını içerir. [Ortak JSON → gerçek Lab](docs/ORTAK_GERCEK_LAB.md) ve [40 laboratuvar–motor haritası](docs/LAB_MOTOR_HARITASI.md).
 
 ## Otomatik kalite kapısı
 
@@ -19,3 +19,4 @@ Yeni entegrasyonu içeren HTML, `python run_pipeline.py` tarafından kaynak mod�
 [Motor uyumluluk matrisi](docs/UYUMLULUK_MATRISI.md) · [Gerçek VLAN/STP ve FRR testleri, ortak motor yönetimi](docs/GELISMIS_MOTOR_ENTEGRASYON.md). ZIP içindeki `html-build-manifest.json` HTML/modül bütünlüğünü doğrular; native protokoller ayrı Linux/Docker lablarında çalışır.
 
 **Sınır:** Testlerin geçmesi tüm Packet Tracer özelliklerinin desteklendiği anlamına gelmez. Yeni özellikler için ayrı regresyon testleri gereklidir.
+

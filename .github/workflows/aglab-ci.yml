@@ -45,8 +45,9 @@ jobs:
           python build_simulator.py
           python build_academy.py
           cmp AgLab_Final_PKT_Import.html "$RUNNER_TEMP/aglab-first.html"
-          git diff --exit-code -- AgLab_Final_PKT_Import.html
+          sha256sum -c html-build.sha256
       - name: Chromium ve Playwright kur
+        timeout-minutes: 8
         run: |
           python -m pip install playwright
           python -m playwright install --with-deps chromium
@@ -73,6 +74,8 @@ jobs:
             dist/unified-rc-performance.json
             dist/advanced-student-journey.json
             dist/advanced-student-journey.png
+            dist/device-cli.png
+            dist/device-cli-mobile.png
             dist/html-build-manifest.json
           if-no-files-found: warn
       - name: Başarılı ZIP'i sakla
@@ -89,4 +92,5 @@ jobs:
           name: aglab-akademi-ogretmen
           path: dist/AgLab_Akademi_Ogretmen.zip
           if-no-files-found: error
+
 
