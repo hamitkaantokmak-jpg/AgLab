@@ -16,7 +16,7 @@ def convert(t):
     try:return _convert(t)
     except (TypeError,KeyError,AttributeError,RecursionError) as e:raise ValueError('Malformed topology') from e
 def _convert(t):
-    if len(json.dumps(t))>2000000:raise ValueError('Topology too large')
+    if len(json.dumps(t,allow_nan=False))>2000000:raise ValueError('Topology too large')
     keys(t,['app','version','devices','links','nextId','selected'])
     if t.get('app')!='AgLab' or t.get('version')!=23:raise ValueError('Expected AgLab v23')
     ds=t.get('devices');ls=t.get('links')
@@ -55,6 +55,7 @@ def _convert(t):
             item['mac']=mac.lower();macs.add(mac.lower())
             if 'mac' not in d:warnings.append(identity+': generated local MAC; source had none')
         else:
+            if d.get('ip') or d.get('mask'):raise ValueError('Switch management addressing unsupported')
             for v in d.get('vlans',[1]):vlan(v)
         nodes[n]=item
     if not 2<=counts['PC']<=4 or not 1<=counts['Switch']<=2:raise ValueError('Expected 2-4 PCs, 1-2 switches')

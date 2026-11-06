@@ -18,7 +18,10 @@ def multi_area(live):
     live.stable_negative('Passive transit interface removes adjacency and data path',lambda:not live.full('r2','3.3.3.3') and not live.route('ospf') and live.ping(False))
     live.config('r2','router ospf','no passive-interface eth3')
     live.wait('Passive-interface repair restores inter-area traffic',lambda:interarea() and live.ping())
-    live.config('r2','router ospf','area 2 range 192.168.20.0/23')
+    response=live.config('r2','router ospf','area 2 range 192.168.20.0/23')
+    live.evidence['summary-config-output']=response
+    live.evidence['summary-running-config']=live.vty('r2','show running-config')
+    if '%' in response:raise RuntimeError('FRR rejected summary configuration: '+response)
     def summary():
         data=live.show('r1','show ip route ospf');live.evidence['summary-routes']=data
         # Prefix lookup returns the covering /23 for a /24 query. Test the
@@ -80,7 +83,7 @@ def main():
             if any(n.startswith('clab-'+live.name+'-') for n in names):raise RuntimeError('Pre-existing extended lab; refusing to touch it')
             started=True;report['host_kernel']=live.command(['uname','-r']).stdout.strip();live.command(['containerlab','deploy','-t',str(target)],240)
             report['image_id']=live.command(['docker','image','inspect',IMAGE,'--format','{{.Id}}']).stdout.strip()
-            multi_area(live);ipv6(live);report['ok']=True
+            ipv6(live);multi_area(live);report['ok']=True
         except Exception as e:
             report['error']=str(e);print('FAIL',e,flush=True)
             for n in ('r1','r2','r3'):

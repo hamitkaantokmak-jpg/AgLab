@@ -54,6 +54,9 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  assert all('mac' not in d for d in operator['devices'] if d['type']=='Switch')
  sys.path.insert(0,str(ROOT/'real-lab'))
  from shared_topology import convert
+ try:convert(operator)
+ except ValueError as error:assert 'Routing/configuration' in str(error)
+ else:raise AssertionError('L2-only converter must reject the retained PC gateway')
  # Default PCs may retain an unrelated gateway after an address edit; reject it
  # explicitly instead of silently dropping it in an L2-only export.
  for d in operator['devices']:

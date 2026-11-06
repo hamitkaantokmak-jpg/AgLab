@@ -19,6 +19,7 @@ class SharedLive(Live):
             else:
                 # Data-plane tests cannot accidentally leave through the management network.
                 self.execute(n,'ip','route','del','default',check=False)
+                self.execute(n,'ip','link','set','eth0','down')
                 self.execute(n,'ip','link','set','eth1','address',d['mac'])
                 self.execute(n,'ip','addr','add',d['ip'],'dev','eth1')
         for l in self.plan['links']:
