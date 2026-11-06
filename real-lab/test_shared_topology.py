@@ -22,4 +22,7 @@ class SharedTests(unittest.TestCase):
   live=SharedLive(m.convert(self.fixture()));calls=[];live.execute=lambda *a,**kw:calls.append(a)
   live.apply()
   for n in ('pc1','pc2'):self.assertIn((n,'ip','link','set','eth0','down'),calls)
+ def test_vlan_database_and_missing_cable_are_not_silently_repaired(self):
+  t=self.fixture();t['devices'][2]['vlans']=[1];self.assertRaises(ValueError,m.convert,t)
+  t=self.fixture();t['links'].pop(0);self.assertRaises(ValueError,m.convert,t)
 if __name__=='__main__':unittest.main()

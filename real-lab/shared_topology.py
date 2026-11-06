@@ -56,7 +56,12 @@ def _convert(t):
             if 'mac' not in d:warnings.append(identity+': generated local MAC; source had none')
         else:
             if d.get('ip') or d.get('mask'):raise ValueError('Switch management addressing unsupported')
-            for v in d.get('vlans',[1]):vlan(v)
+            defined=d.get('vlans',[1])
+            if not isinstance(defined,list) or not 1<=len(defined)<=128:raise ValueError('Invalid VLAN database')
+            defined={vlan(v) for v in defined}
+            for c in item['ports'].values():
+                required={c['vlan']} if c['mode']=='access' else set(c['allowed'])
+                if not required<=defined:raise ValueError('Referenced VLAN missing from switch database')
         nodes[n]=item
     if not 2<=counts['PC']<=4 or not 1<=counts['Switch']<=2:raise ValueError('Expected 2-4 PCs, 1-2 switches')
     links=[];used=set();parents={n:n for n in nodes}
@@ -73,6 +78,7 @@ def _convert(t):
             used.add((n,p));ends.append(n+':'+nodes[n]['ports'][p]['native'])
         if nodes[a]['type']==nodes[b]['type']=='PC' or find(a)==find(b):raise ValueError('Only PC-switch forests supported; loops unsupported')
         parents[find(a)]=find(b);links.append({'endpoints':ends,'up':l.get('up',True)})
+    if any((n,'eth0') not in used for n,d in nodes.items() if d['type']=='PC'):raise ValueError('Each PC needs a physical data link; missing-cable labs unsupported')
     return {'name':NAME,'nodes':nodes,'links':links,'source_sha256':hashlib.sha256(json.dumps(t,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'warnings':warnings}
 
 def export(plan,folder):

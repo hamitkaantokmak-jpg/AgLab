@@ -4,20 +4,24 @@ import argparse, json, pathlib, tempfile
 from advanced_smoke import Live, IMAGE, topology
 ROOT=pathlib.Path(__file__).resolve().parent
 
-def multi_area(live):
-    live.wait('FRR daemons ready on all three routers',lambda:live.full('r1','2.2.2.2') and live.full('r2','3.3.3.3'),60)
-    live.wait('Multi-area OSPF: backbone and area2 adjacency',lambda:live.full('r1','2.2.2.2') and live.full('r2','3.3.3.3'))
+def multi_area(live,include_summary=False):
+    live.wait('Multi-area FRR ready: backbone and area2 adjacency',lambda:live.full('r1','2.2.2.2') and live.full('r2','3.3.3.3'),60)
     def interarea():
         # Zebra's generic table prints O, not Cisco's O IA. ospfd owns the
         # inter-area classification; inspect its actual N IA route record.
         text=live.vty('r1','show ip ospf route');live.evidence['inter-area-route']=text
         return any(line.startswith('N IA') and '192.168.20.0/24' in line for line in text.splitlines()) and live.route('ospf','10.0.12.2')
-    live.wait('Inter-area O IA route through ABR r2',interarea)
+    live.wait('Inter-area N IA route through ABR r2',interarea)
     live.wait('Multi-area real IPv4 ICMP',live.ping)
     live.config('r2','router ospf','passive-interface eth3')
     live.stable_negative('Passive transit interface removes adjacency and data path',lambda:not live.full('r2','3.3.3.3') and not live.route('ospf') and live.ping(False))
     live.config('r2','router ospf','no passive-interface eth3')
     live.wait('Passive-interface repair restores inter-area traffic',lambda:interarea() and live.ping())
+    if include_summary:experimental_summary(live,interarea)
+
+def experimental_summary(live,interarea):
+    # NOT a release capability: actual CI has not produced the expected /23.
+    # Keep the failing experiment reproducible without claiming it is supported.
     response=live.config('r2','router ospf','area 2 range 192.168.20.0/23')
     live.evidence['summary-config-output']=response
     live.evidence['summary-running-config']=live.vty('r2','show running-config')
@@ -72,7 +76,7 @@ def extended_topology(folder):
     return lab
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--execute',action='store_true');p.add_argument('--out',default=str(ROOT.parent/'dist'));a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--execute',action='store_true');p.add_argument('--experimental-summary',action='store_true',help='Known failing /23 experiment; not a supported feature');p.add_argument('--out',default=str(ROOT.parent/'dist'));a=p.parse_args()
     if not a.execute:print('DRY RUN: isolated multi-area/IPv6 lab');return 0
     live=Live('routing');live.name='aglab-extended-routing';out=pathlib.Path(a.out);out.mkdir(parents=True,exist_ok=True)
     report={'kind':'routing','engine':'FRRouting','image':IMAGE,'steps':live.steps,'evidence':live.evidence,'ok':False,'cleanup':False}
@@ -83,7 +87,7 @@ def main():
             if any(n.startswith('clab-'+live.name+'-') for n in names):raise RuntimeError('Pre-existing extended lab; refusing to touch it')
             started=True;report['host_kernel']=live.command(['uname','-r']).stdout.strip();live.command(['containerlab','deploy','-t',str(target)],240)
             report['image_id']=live.command(['docker','image','inspect',IMAGE,'--format','{{.Id}}']).stdout.strip()
-            ipv6(live);multi_area(live);report['ok']=True
+            ipv6(live);multi_area(live,a.experimental_summary);report['ok']=True
         except Exception as e:
             report['error']=str(e);print('FAIL',e,flush=True)
             for n in ('r1','r2','r3'):

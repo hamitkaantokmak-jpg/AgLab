@@ -16,13 +16,19 @@ sudo python3 real-lab/shared_smoke.py --topology aglab-operator-topology.json --
 
 ## Kesin dönüşüm sınırı
 
+PC'nin kablosu bulunmalı, referans verilen VLAN'lar switch VLAN veritabanında tanımlı olmalıdır. Eksik kablo/VLAN oluşturulmaz; bunları içeren başlangıç görevleri açıkça reddedilir. Harita her başlangıç topolojisini gerçek dönüştürücüden geçirir ve ret nedenini kaydeder.
+
+PC gateway alanı boş olmalıdır; tarayıcıda IP değiştirmek eski gateway'i otomatik temizlemeyebilir. Dönüştürücü bu alanı sessizce atmaz, açıkça reddeder. Switch yönetim IP'si de bu sürümde reddedilir. Native PC'lerin yönetim `eth0` bağlantısı veri testi öncesinde kapatılır; Docker exec kontrolü bundan etkilenmez. Böylece veri adresi yönetim alt ağıyla çakışsa bile ping yönetim ağı üzerinden başarı kazanamaz.
+
 2–4 tek arayüzlü PC, 1–2 switch, en fazla 8 bağlantı, döngüsüz topoloji. IPv4 RFC1918 host adresleri; switch access/trunk VLAN ve native/allowed VLAN bilgileri. Router, yönlendirme/gateway, port-security, bilinmeyen alanlar, döngüler, rastgele imaj/exec/bind alanları reddedilir. Fiziksel portlar sabit `ethN` adlarına eşlenir. Kaynakta PC MAC'i yoksa yerel MAC üretilir ve rapora yazılır. Dönüştürücü özgün JSON'u değiştirmez. Orman desteği STP gerektirmez; bu aktarım klasik STP veya RSTP doğrulaması değildir.
 
 Varsayılan suite sağlıklı örnekte pozitif ICMP, yanlış access VLAN, onarım, trunk allowed VLAN kaldırılması ve onarım denetler. AGL-024'te dört PC/iki switch ile VLAN10 başlangıç başarısızlığı, uplink trunk onarımı ve VLAN10/20 pozitif ICMP doğrulanır. Başarısız olması beklenen ping testinin geçmesi, ağın çalıştığı anlamına gelmez: rapordaki `expected_success` ve gerçek çıkış kodu birlikte okunmalıdır.
 
 ## İleri FRR ve IPv6 senaryosu
 
-`extended_routing.py` mevcut üç router/iki PC altyapısını kullanır. Doğrudan r1–r3 bağlantısı kapatılır; r1 LAN area1, r1–r2 area0, r2–r3 ve hedef LAN area2 olur. O IA rota, ABR r2 üzerinden gerçek ICMP, passive transit arızası/onarımı ve area2 `/23` özetinin `/24` yerine kullanılması sınanır. Yalnız show çıktısına dayanılmaz.
+`extended_routing.py` mevcut üç router/iki PC altyapısını kullanır. Doğrudan r1–r3 bağlantısı kapatılır; r1 LAN area1, r1–r2 area0, r2–r3 ve hedef LAN area2 olur. FRR'nin OSPF tablosunda `N IA` rota, ABR r2 üzerinden gerçek ICMP ve passive transit arızası/onarımı sınanır. Genel Zebra tablosu Cisco'nun `O IA` gösterimi yerine `O` basar; test bu ayrımı korur. Yalnız show çıktısına dayanılmaz.
+
+**Özetleme tamamlanmadı:** 46cfb0c commit'inin gerçek CI denemesinde `area 2 range 192.168.20.0/23` running-config'e girdi, ancak r1'de beklenen `/23` rota oluşmadı; `/24` kaldı. Bu nedenle özetleme destek matrisinde başarılı değildir. Başarısız deney `--experimental-summary --execute` ile yeniden üretilebilir ve başarısız çıkış kodu verir; standart kabul suite'inin veya öğrenci desteğinin parçası değildir. OSPF authentication ve ileri BGP politika senaryoları da sonraki kapsamdır.
 
 IPv6 ayrı ULA adresleri, üç router üzerinden statik rotalar, gerçek ND komşu MAC öğrenmesi ve ICMPv6 kullanır. r2 hedef rotası kaldırıldığında veri iletimi kesilmeli, geri konunca düzelmelidir. SLAAC, DHCPv6, OSPFv3, IPv6 tarayıcı CLI'si uygulanmamıştır. Bu görevler 40 özgün Akademi labının dışında operatör senaryolarıdır.
 
@@ -42,6 +48,8 @@ IPv6 ayrı ULA adresleri, üç router üzerinden statik rotalar, gerçek ND kom�
 Kaynaklar: [FRR OSPF](https://docs.frrouting.org/en/latest/ospfd.html), [FRR IPv6](https://docs.frrouting.org/en/latest/ipv6.html), [Linux bonding](https://docs.kernel.org/networking/bonding.html), [mstpd](https://github.com/mstpd/mstpd), [Cisco CCNA](https://www.cisco.com/site/us/en/learn/training-certifications/exams/ccna.html). CCNA ağ erişimi/IP bağlantısı/IP servisleri kapsamı ve mevcut 40 görevden bağımsız eksik IPv6 nedeniyle bu turda öncelik statik IPv6 ve tekrar kullanılabilir ortak VLAN aktarımıdır. Yeni üçüncü taraf kod eklenmemiştir; mevcut FRR/Linux çalışma ortamı kullanılır. mstpd kaynakları kopyalanmamıştır.
 
 ## Dağıtım ve kanıt
+
+Pull request CI'da `source_commit`, GitHub'ın gerçekten checkout ettiği geçici birleştirme commit'i olabilir; bu, PR'ın main'e birleştirildiği anlamına gelmez. İlgili workflow'un `head_sha` alanı PR dalı commit'ini, manifest ise derlenen checkout kimliğini gösterir. Öğrenci ve öğretmen ZIP'leri aynı manifesti taşır.
 
 Kök HTML eski kaynak tabanıdır. Kullanılacak sürüm başarılı genel CI'nın öğrenci ZIP'indeki derlenmiş HTML'dir. `html-build-manifest.json` HTML ve gömülü modül SHA256'larına ek olarak `source_commit` içerir. Yerel kaynaksız derlemede commit `null`, kimlik `unverified local build` olur; kimlik uydurulmaz. Commit kimliği dosya imzası değildir. Native raporları ayrı workflow artifact'lerinden alınır; genel ZIP başarısı yeni native job başarısı yerine geçmez.
 
