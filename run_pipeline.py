@@ -3,13 +3,14 @@
 import argparse, datetime, json, os, pathlib, shutil, subprocess, sys, tempfile, time, zipfile
 from verify_packages import verify_release_packages, build_release_manifest
 ROOT=pathlib.Path(__file__).resolve().parent
-ACADEMY_DOCS=['AKADEMI.md','academy/ADAPTATION.md','academy/adaptation-audit.json']
+ACADEMY_DOCS=['AKADEMI.md','academy/ADAPTATION.md','academy/adaptation-audit.json','docs/ENTEGRE_SURUM_RAPORU.md']
 TESTS=['test_aglab_pkt_trunk.py','test_aglab_import.py','test_aglab_cli_vlan.py','test_aglab_status.py','test_aglab_subinterfaces.py','test_aglab_v7.py','test_aglab_v11_routing.py','test_aglab_v12_gateway.py','test_aglab_v13_router_ping.py','test_aglab_v15_local_ping.py','test_aglab_v17_ping_validation.py','test_aglab_academy.py','test_aglab_ui.py']
 TESTS.append('test_aglab_trunk_defaults.py')
 TESTS.append('test_aglab_device_cli.py')
 TESTS.append('test_aglab_borck_engine.py')
 TESTS.extend(['test_aglab_advanced_engines.py','test_aglab_browser_benchmark.py','real-lab/test_advanced_smoke.py'])
 TESTS.append('test_build_simulator.py')
+TESTS.extend(['test_aglab_unified_rc.py','test_aglab_unified_performance.py'])
 TESTS.append('real-lab/test_security_smoke.py')
 TESTS.extend(['real-lab/test_routed_topology.py','real-lab/test_routed_smoke.py','real-lab/test_shared_topology.py','real-lab/test_extended_routing.py','test_lab_engine_map.py'])
 TESTS.append('test_aglab_network_features.py')
@@ -190,7 +191,7 @@ def run():
    z.writestr('decoded_source.xml',base64.b64decode(source['sourceArchive']['decodedXmlBase64']))
    z.write(out/'test-report.md','test-report.md');z.write(out/'test-results.json','test-results.json')
    z.write(out/'html-build-manifest.json','html-build-manifest.json')
-   for name in ['browser-engine-benchmark.json','advanced-student-journey.json']:z.write(out/name,name)
+   for name in ['browser-engine-benchmark.json','advanced-student-journey.json','unified-rc-performance.json']:z.write(out/name,name)
    for f in (ROOT/'academy/student').glob('*.json'):z.write(f,'academy/student/'+f.name)
    for name in ACADEMY_DOCS:z.write(ROOT/name,name)
   teacher=out/'AgLab_Akademi_Ogretmen.zip'

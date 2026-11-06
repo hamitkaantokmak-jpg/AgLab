@@ -15,7 +15,7 @@ def build_release_manifest(root):
 
 def verify_release_packages(student_path, teacher_path):
     ids={f'AGL-{i:03d}' for i in range(1,41)}
-    docs={'AKADEMI.md','academy/ADAPTATION.md','academy/adaptation-audit.json'}
+    docs={'AKADEMI.md','academy/ADAPTATION.md','academy/adaptation-audit.json','docs/ENTEGRE_SURUM_RAPORU.md'}
     def read_json(archive,name):return json.loads(archive.read(name).decode('utf-8'))
     with zipfile.ZipFile(student_path) as student,zipfile.ZipFile(teacher_path) as teacher:
         for archive in [student,teacher]:
@@ -33,6 +33,7 @@ def verify_release_packages(student_path, teacher_path):
         assert {'docs/UYUMLULUK_MATRISI.md','docs/GELISMIS_MOTOR_ENTEGRASYON.md','real-lab/advanced_smoke.py'}<=student_names, 'Missing advanced motor documentation/runner'
         assert {'real-lab/routed_topology.py','real-lab/routed_smoke.py','real-lab/test_routed_topology.py','real-lab/test_routed_smoke.py','real-lab/examples/routed-2-routers.aglab.json','real-lab/examples/routed-3-routers.aglab.json'}<=student_names, 'Missing routed lab converter/examples/tests'
         assert {'real-lab/security_smoke.py','real-lab/socket_peer.py','real-lab/test_security_smoke.py','real-lab/examples/security-topology.json'}<=student_names, 'Missing native security lab dependencies'
+        assert {'test_aglab_unified_rc.py','test_aglab_unified_performance.py','unified-rc-performance.json'}<=student_names, 'Missing unified RC evidence/tests'
         provenance=read_json(student,'third_party/borck-netsim/provenance.json')
         for name,sha in provenance['sha256'].items():
             assert hashlib.sha256(student.read('third_party/borck-netsim/'+name)).hexdigest()==sha, 'Vendored source mismatch: '+name

@@ -14,6 +14,7 @@ academyPanel.innerHTML=`<h2>AğLab Akademi v1</h2>
 <p>Gerçek örnek topoloji ayrı çalışır. Akademi'deki etkin görevin ve ilerlemen bu sekmede kalır.</p>
 </details>
 <label>Laboratuvar <select id="academySelect"></select></label>
+<p id="academyEngineScope" role="note"></p>
 <div id="academyCatalogSearch">
 <label>Laboratuvar ara <input id="academySearch" type="search" placeholder="Numara veya konu (örn. AGL-024, VLAN)" autocomplete="off" maxlength="100"></label>
 <label>İlerleme <select id="academyProgressFilter"><option value="all">Tüm laboratuvarlar</option><option value="completed">Tamamlananlar (100 puan)</option><option value="remaining">Henüz tamamlanmayanlar</option></select></label>
@@ -37,6 +38,11 @@ academyPanel.innerHTML=`<h2>AğLab Akademi v1</h2>
 ac('area-lab').prepend(academyPanel);
 academyLabs.forEach(l=>{const o=document.createElement('option');o.value=l.id;o.textContent=l.id+' — '+l.title;ac('academySelect').append(o)});
 // The catalog search only selects an option; it never starts or resets a lab.
+function academyRenderEngineScope(){
+ const id=ac('academySelect').value;
+ const evidence=id==='AGL-024'?'Bu görevin başlangıç arızası ve onarımı için gerçek Linux bridge doğrulaması vardır.':id==='AGL-034'||id==='AGL-035'?'Bu görevin başlangıç arızası ve onarımı için gerçek FRRouting doğrulaması vardır.':'Bu görevin tamamı için gerçek ortam doğrulaması yapılmadı.';
+ ac('academyEngineScope').textContent='Seçilen görev '+id+': tarayıcıdaki AğLab eğitim simülasyonunda çalışır. '+evidence+' Gerçek Lab ayrı Linux ortamında operatör kontrolü gerektirir; burada native komut çalıştırılmaz. ACL/NAT örnekleri ayrı native senaryolardır.';
+}
 function academySearchMatches(){
  const term=ac('academySearch').value.trim().toLocaleLowerCase('tr-TR');
  const progress=ac('academyProgressFilter').value;
@@ -62,14 +68,19 @@ ac('academySearchFind').onclick=()=>{
  ac('academySearchStatus').textContent='Seçildi: '+matches[0].id+' — '+matches[0].title+'. Başlatmak için ayrı onay ver.';
 };
 academyRefreshSearch();
-// Optional read-only first-network guide; never imports or mutates a topology.
+// Optional guide reads current state; only the student's explicit controls mutate it.
 const firstGuide=document.createElement('details');
 firstGuide.id='aglabFirstNetworkGuide';firstGuide.className='panel';
-firstGuide.innerHTML='<summary>İlk Ağımı Kuruyorum · isteğe bağlı rehber</summary><p>İki PC ve bir switch ile ilk ağını kur. Rehber cihazlarını değiştirmez; mevcut çalışmanda ilerlemeyi kontrol eder.</p><ol id="firstGuideSteps"></ol><p id="firstGuideStatus" role="status"></p><button id="firstGuideRefresh" type="button">Adımları kontrol et</button> <button id="firstGuidePing" type="button">Bağlantıyı gerçek simülatörde denetle</button>';
+firstGuide.innerHTML='<summary>İlk Ağımı Kuruyorum · isteğe bağlı rehber</summary><p>İki PC ve bir switch ile ilk ağını kur. Rehber cihazlarını değiştirmez; mevcut çalışmanda ilerlemeyi kontrol eder.</p><ol id="firstGuideSteps"></ol><p id="firstGuideStatus" role="status"></p><button id="firstGuideRefresh" type="button">Adımları kontrol et</button> <button id="firstGuidePing" type="button">Bağlantıyı gerçek simülatörde denetle</button><label>İndirdiğim JSON yedeğini doğrula (çalışmayı değiştirmez) <input id="firstGuideVerifyFile" type="file" accept=".json,application/json"></label>';
 ac('area-lab').prepend(firstGuide);
-let guidePingEvidence=null;
-function guidePCs(){return devices.filter(d=>d.type==='pc');}
-function guideSwitches(){return devices.filter(d=>d.type==='switch');}
+let guidePingEvidence=null,guideSavedEvidence=null;
+function guidePCs(){return devices.filter(d=>d.type==='PC');}
+function guideSwitches(){return devices.filter(d=>d.type==='Switch');}
+function guideFingerprint(){
+ const fields=['id','type','enabled','mac','ip','mask','gateway','vlan','vlans','ports','interfaces','staticRoutes','ospf','bgp','nat','acls','stpPriority','stpPriorities'];
+ return JSON.stringify(acCanonical({devices:devices.map(d=>Object.fromEntries(fields.filter(k=>k in d).map(k=>[k,d[k]]))),links:acLinks(links)}));
+}
+function guideBackupFingerprint(t={devices,links,nextId}){return JSON.stringify(acCanonical({devices:t.devices,links:t.links,nextId:t.nextId}));}
 function guidePair(){
  const pcs=guidePCs(),sw=guideSwitches();
  if(pcs.length<2||!sw.length)return null;
@@ -81,16 +92,14 @@ function guidePair(){
 function guideAddressOK(pair){
  if(!pair)return false;
  const [a,b]=pair;
- if(!validIP(a.ip)||!validIP(b.ip)||a.ip===b.ip||!validIP(a.mask)||a.mask!==b.mask)return false;
+ if(!validIP(a.ip)||!validIP(b.ip)||a.ip===b.ip||!validIP(a.mask)||a.mask!==b.mask||prefixLen(a.mask)<0)return false;
  const bits=s=>s.split('.').map(Number),ipA=bits(a.ip),ipB=bits(b.ip),mask=bits(a.mask);
  return ipA.every((v,i)=>(v&mask[i])===(ipB[i]&mask[i]));
 }
 function firstGuideRender(){
  const pcs=guidePCs(),switches=guideSwitches(),pair=guidePair();
- const addressOK=guideAddressOK(pair);
- const topologyFingerprint=JSON.stringify({devices:devices.map(d=>[d.id,d.type,d.ip,d.mask]),links:links.map(l=>[l.a,l.b,l.up])});
- const checkedPing=guidePingEvidence?.fingerprint===topologyFingerprint&&guidePingEvidence.ok===true;
- const evidence=Array.isArray(ethernetEvents)&&ethernetEvents.some(e=>/arp|icmp/i.test(JSON.stringify(e)));
+ const addressOK=guideAddressOK(pair),fingerprint=guideFingerprint();
+ const checkedPing=guidePingEvidence?.fingerprint===fingerprint&&guidePingEvidence.ok===true;
  const steps=[
   ['Çalışma alanını aç ve cihaz araçlarını incele',true],
   ['İlk PC’yi ekle',pcs.length>=1],
@@ -99,23 +108,43 @@ function firstGuideRender(){
   ['PC → switch → PC kablolarını bağla',!!pair],
   ['PC’lere aynı ağdan farklı IPv4 adresleri ve geçerli maske ver',addressOK],
   ['Bağlantıyı simülatörde başarılı ping ile doğrula',checkedPing],
-  ['Gerçek ARP/ICMP olaylarını Paket Dedektifi’nde incele',checkedPing&&evidence],
-  ['JSON dışa aktarma düğmesiyle çalışmanı kaydet',false]
+  ['Gerçek ARP/ICMP olaylarını Paket Dedektifi’nde incele',checkedPing&&guidePingEvidence.reviewed===true],
+  ['JSON dışa aktar; indirdiğin yedeği seçerek doğrula',guideSavedEvidence===guideBackupFingerprint()]
  ];
  const list=ac('firstGuideSteps');list.replaceChildren();
- steps.forEach(([label,ok],i)=>{const li=document.createElement('li');li.textContent=(ok?'✓ ':'○ ')+label;li.dataset.complete=String(ok);list.append(li)});
- ac('firstGuideStatus').textContent=steps.filter(([,ok])=>ok).length+' / 9 adım doğrulandı. Kaydetme tamamlandığında indirilen JSON dosyasını ayrıca kontrol et.';
+ steps.forEach(([label,ok])=>{const li=document.createElement('li');li.textContent=(ok?'✓ ':'○ ')+label;li.dataset.complete=String(ok);list.append(li)});
+ ac('firstGuideStatus').textContent=steps.filter(([,ok])=>ok).length+' / 9 adım doğrulandı. Yedek doğrulama dosyanı okur; mevcut çalışmanı değiştirmez.';
  ac('firstGuidePing').disabled=!addressOK;
 }
 ac('firstGuideRefresh').onclick=firstGuideRender;
 firstGuide.addEventListener('toggle',()=>{if(firstGuide.open)firstGuideRender()});
+let guideFramePending=false;
+new MutationObserver(()=>{
+ if(!firstGuide.open||guideFramePending)return;
+ guideFramePending=true;requestAnimationFrame(()=>{guideFramePending=false;firstGuideRender()});
+}).observe(ac('ptCanvas'),{childList:true,subtree:true});
 ac('firstGuidePing').onclick=()=>{
  const pair=guidePair();if(!guideAddressOK(pair))return;
- const topologyFingerprint=JSON.stringify({devices:devices.map(d=>[d.id,d.type,d.ip,d.mask]),links:links.map(l=>[l.a,l.b,l.up])});
  const result=ping(pair[0].id,pair[1].ip);
- guidePingEvidence={fingerprint:topologyFingerprint,ok:result.ok===true};
+ guidePingEvidence={fingerprint:guideFingerprint(),source:pair[0].id,target:pair[1].id,ok:result.ok===true,trace:ethernetEvents.slice(),reviewed:false};
  firstGuideRender();
  ac('firstGuideStatus').textContent+=' Son ping: '+(result.ok?'başarılı.':'başarısız; kabloları, adresleri ve arayüzleri kontrol et.');
+};
+document.addEventListener('aglab:packet-event-viewed',event=>{
+ const d=event.detail;
+ if(!guidePingEvidence?.ok||guidePingEvidence.fingerprint!==guideFingerprint()||d?.origin!=='aglab-js'||!guidePingEvidence.trace.includes(d.raw)||JSON.stringify(d.trace)!==JSON.stringify(guidePingEvidence.trace))return;
+ guidePingEvidence.reviewed=true;firstGuideRender();
+});
+ac('firstGuideVerifyFile').onchange=async event=>{
+ const input=event.target,file=input.files?.[0];if(!file)return;
+ guideSavedEvidence=null;
+ try{
+  if(file.size>2000000)throw new Error('JSON yedeği en fazla 2 MB olabilir.');
+  const t=JSON.parse(await file.text());
+  if(t.app!=='AgLab'||t.version!==23||!Array.isArray(t.devices)||!Array.isArray(t.links)||guideBackupFingerprint(t)!==guideBackupFingerprint())throw new Error('Dosya mevcut çalışmayla aynı değil; güncel JSON yedeğini seç.');
+  guideSavedEvidence=guideBackupFingerprint();firstGuideRender();
+ }catch(error){firstGuideRender();ac('firstGuideStatus').textContent+=' Yedek doğrulanamadı: '+error.message;}
+ input.value='';
 };
 
 const answerFields={
@@ -279,6 +308,7 @@ function academyRecordProgress(result){
  if(result.status!=='complete')return;
  const old=academyProgress[academyActive.id]?.bestScore||0;
  academyProgress[academyActive.id]={bestScore:Math.max(old,result.earned_points)};academyRenderProgress();
+academyRenderEngineScope();
 academyRefreshSearch();
  try{localStorage.setItem(academyProgressKey,JSON.stringify(academyProgress))}catch(e){ac('academyNotice').textContent+=' İlerleme geçmişi kaydedilemedi; tarayıcı depolamasını kontrol et.'}
 }
@@ -350,7 +380,7 @@ function academyCheck(persist=true){
 }
 ac('academyStart').onclick=academyStart;
 ac('academyReset').onclick=()=>{if(academyActive){ac('academySelect').value=academyActive.id;academyStart()}};
-ac('academySelect').onchange=()=>{ac('academyNotice').textContent='Seçilen görevi açmak için Laboratuvarı başlat düğmesine bas. Etkin görev: '+(academyActive?.id||'yok')};
+ac('academySelect').onchange=()=>{academyRenderEngineScope();ac('academyNotice').textContent='Seçilen görevi açmak için Laboratuvarı başlat düğmesine bas. Etkin görev: '+(academyActive?.id||'yok')};
 ac('academyCheck').onclick=()=>academyCheck();
 ac('academyHint').onclick=()=>{if(!academyActive)return;const hint=academyActive.hints[academyHintIndex++];if(hint)acText(ac('academyHints'),'li',hint);if(academyHintIndex>=academyActive.hints.length)ac('academyHint').disabled=true;saveTopology(true)};
 window.academy={check:academyCheck,evaluate:academyEvaluate};
@@ -358,3 +388,4 @@ window.academyEngine={load:t=>importTopology({...clone(t),...academySessionField
 
 try{const saved=JSON.parse(localStorage.getItem(academyProgressKey)||'{}');for(const lab of academyLabs){const score=saved?.[lab.id]?.bestScore;if(Number.isInteger(score)&&score>=0&&score<=100)academyProgress[lab.id]={bestScore:score}}}catch(e){}
 academyRenderProgress();
+academyRenderEngineScope();

@@ -39,15 +39,15 @@ const diagnosis=document.createElement('p');diagnosis.id='packetDetectiveDiagnos
 const go=document.createElement('button');go.id='packetDetectiveGoToDevice';go.textContent='Sorunlu cihaza git';go.disabled=true;panel.append(go);
 host.append(panel);
 let allEvents={events:[],overflow:0,truncated:false},snapshot=allEvents,index=0;
-let eventOrigin='AğLab simülasyon motoru';
+let eventOrigin='AğLab simülasyon motoru',eventSource='aglab-js';
 document.addEventListener('aglab:external-lab-evidence',event=>{
  const r=event.detail;if(r?.scope!=='separate-lab'||!Array.isArray(r.events))return;
- eventOrigin=r.engine+' · ayrı Lab raporu, imzası doğrulanmadı';allEvents={events:r.events,overflow:0,truncated:false};filter.value='all';snapshot=filtered();index=0;render();
+ eventSource='native-report';eventOrigin=r.engine+' · ayrı Lab raporu, imzası doğrulanmadı';allEvents={events:r.events,overflow:0,truncated:false};filter.value='all';snapshot=filtered();index=0;render();
 });
 document.addEventListener('aglab:external-packet-events',event=>{
  const data=event.detail;
  if(data?.engine?.name!=='Michael Borck NetSim'||!Array.isArray(data.events))return;
- eventOrigin='Michael Borck NetSim · gerçek motor bildirimi, fiziksel paket yakalaması değil';
+ eventSource='borck';eventOrigin='Michael Borck NetSim · gerçek motor bildirimi, fiziksel paket yakalaması değil';
  allEvents={events:data.events.map((e,index)=>({index,kind:'wire',device:e.fromDeviceId,detail:e,raw:e.kind+'-wire '+JSON.stringify(e)})),overflow:data.overflow||0,truncated:!!data.overflow};
  filter.value='all';snapshot=filtered();index=0;render();
 });
@@ -85,7 +85,7 @@ function targetDevice(){
  const result=AgLabPacketEvents.diagnose(allEvents);
  return result.issues.find(issue=>issue.device&&get(issue.device))?.device||null;
 }
-function render(){
+function render(reviewed=false){
  const target=targetDevice();
  go.disabled=!target;
  const result=AgLabPacketEvents.diagnose(allEvents);
@@ -103,6 +103,7 @@ function render(){
  raw.textContent=step.raw;
  markDevice(step.device);
  markForwardEdge(step);
+ if(reviewed)document.dispatchEvent(new CustomEvent('aglab:packet-event-viewed',{detail:{origin:eventSource,raw:step.raw,trace:allEvents.events.map(e=>e.raw)}}));
 }
 go.onclick=()=>{
  const id=targetDevice();
@@ -115,12 +116,12 @@ go.onclick=()=>{
  if(node){node.scrollIntoView({block:'nearest',inline:'nearest'});node.setAttribute('aria-label','Sorun kaydıyla ilişkili seçili cihaz');}
 };
 refresh.onclick=()=>{
- eventOrigin='AğLab simülasyon motoru';
+ eventSource='aglab-js';eventOrigin='AğLab simülasyon motoru';
  allEvents=AgLabPacketEvents.normalize(ethernetEvents.slice(),ethernetEventOverflow);
- snapshot=filtered();index=0;render();
+ snapshot=filtered();index=0;render(true);
 };
-filter.onchange=()=>{snapshot=filtered();index=0;render()};
-previous.onclick=()=>{if(index>0){index--;render()}};
-next.onclick=()=>{if(index+1<snapshot.events.length){index++;render()}};
+filter.onchange=()=>{snapshot=filtered();index=0;render(true)};
+previous.onclick=()=>{if(index>0){index--;render(true)}};
+next.onclick=()=>{if(index+1<snapshot.events.length){index++;render(true)}};
 render();
 })();

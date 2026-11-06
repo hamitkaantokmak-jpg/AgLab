@@ -70,6 +70,7 @@ jobs:
             dist/borck-benchmark.json
             dist/borck-ui-results.json
             dist/browser-engine-benchmark.json
+            dist/unified-rc-performance.json
             dist/advanced-student-journey.json
             dist/advanced-student-journey.png
             dist/html-build-manifest.json
