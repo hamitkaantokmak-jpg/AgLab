@@ -37,6 +37,8 @@ try:
         context, page = open_student()
         page.select_option('#academySelect', 'AGL-005')
         page.click('#academyStart')
+        if page.locator('#academyReplacePrompt').is_visible():
+            page.click('#academyReplaceContinue')
         page.click('#academyHint')
         page.click('#academyCheck')
         expect(page.locator('#academyResult h3')).not_to_contain_text('100/100')
@@ -75,6 +77,8 @@ try:
         # Answers and hints survive, without loading teacher target topology.
         page.select_option('#academySelect', 'AGL-001')
         page.click('#academyStart')
+        if page.locator('#academyReplacePrompt').is_visible():
+            page.click('#academyReplaceContinue')
         page.select_option('#academyAnswer-router_required', 'false')
         page.click('#academyHint')
         page.reload()
@@ -102,6 +106,8 @@ try:
         expect(page.locator('#academyResult h3')).not_to_contain_text('100/100')
         expect(page.locator('#academyProgress')).to_contain_text('2/40')
         page.click('#academyReset')
+        if page.locator('#academyReplacePrompt').is_visible():
+            page.click('#academyReplaceContinue')
         expect(page.locator('#academyAnswer-router_required')).to_have_value('')
         expect(page.locator('#academyHints li')).to_have_count(0)
         expect(page.locator('#academyResult')).to_be_empty()

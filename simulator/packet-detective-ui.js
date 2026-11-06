@@ -15,10 +15,26 @@ const filter=document.createElement('select');filter.id='packetDetectiveFilter';
 for(const [value,label] of [['all','Tüm olaylar'],['arp','ARP'],['icmp','ICMP'],['forward','İletim'],['discard','Kayıp / reddedilen']]){
  const option=document.createElement('option');option.value=value;option.textContent=label;filter.append(option);
 }
-controls.append(refresh,filter,previous,next);panel.append(controls);
+const viewMode=document.createElement('select');viewMode.id='packetDetectiveViewMode';viewMode.setAttribute('aria-label','Paket açıklama görünümü');
+for(const [value,label] of [['technical','Teknik görünüm'],['simple','Basit görünüm']]){const option=document.createElement('option');option.value=value;option.textContent=label;viewMode.append(option);}
+controls.append(refresh,filter,previous,next,viewMode);panel.append(controls);
 const status=document.createElement('p');status.id='packetDetectiveStatus';status.setAttribute('role','status');panel.append(status);
+const emptyGuide=document.createElement('div');emptyGuide.id='packetDetectiveEmptyGuide';
+emptyGuide.setAttribute('role','note');
+const guideText=document.createElement('p');
+guideText.textContent='İlk paketini görmek için: (1) Bir PC seç, (2) CLI üzerinden diğer PC’ye ping gönder, (3) Son olayları göster düğmesine bas.';
+const guideCli=document.createElement('button');guideCli.type='button';guideCli.id='packetDetectiveOpenCli';guideCli.textContent='CLI alanına git';
+guideCli.onclick=()=>{
+ const selector=document.getElementById('ptCliDevice');
+ const input=document.getElementById('ptCliInput');
+ (selector||input)?.scrollIntoView({block:'nearest'});
+ if(input&&!input.disabled)input.focus();
+ else if(selector)selector.focus();
+};
+emptyGuide.append(guideText,guideCli);panel.append(emptyGuide);
 const explanation=document.createElement('p');explanation.id='packetDetectiveExplanation';panel.append(explanation);
 const raw=document.createElement('pre');raw.id='packetDetectiveRaw';raw.style.whiteSpace='pre-wrap';raw.style.overflowWrap='anywhere';panel.append(raw);
+viewMode.onchange=()=>{raw.hidden=viewMode.value==='simple';};
 const diagnosis=document.createElement('p');diagnosis.id='packetDetectiveDiagnosis';diagnosis.setAttribute('role','status');panel.append(diagnosis);
 const go=document.createElement('button');go.id='packetDetectiveGoToDevice';go.textContent='Sorunlu cihaza git';go.disabled=true;panel.append(go);
 host.append(panel);
@@ -77,9 +93,11 @@ function render(){
  const step=AgLabPacketEvents.at(snapshot,index);
  previous.disabled=!step?.hasPrevious;next.disabled=!step?.hasNext;
  if(!step){
+  emptyGuide.hidden=allEvents.events.length>0;
   status.textContent=allEvents.events.length?'Bu filtreye uygun ağ olayı yok.':'Henüz görüntülenecek ağ olayı yok.';
   explanation.textContent='';raw.textContent='';markDevice(null);return;
  }
+ emptyGuide.hidden=true;
  status.textContent='Adım '+(step.index+1)+' / '+step.total+' · '+eventOrigin+(snapshot.truncated?' · Kayıt sınırı aşıldı; '+snapshot.overflow+' olay gösterilemiyor.':'');
  explanation.textContent=step.explanation;
  raw.textContent=step.raw;

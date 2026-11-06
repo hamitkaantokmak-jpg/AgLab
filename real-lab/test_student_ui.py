@@ -90,6 +90,8 @@ class StudentBrowserTests(unittest.TestCase):
         self.page.click('#ux14Guided')
         self.page.select_option('#academySelect', 'AGL-005')
         self.page.click('#academyStart')
+        if self.page.locator('#academyReplacePrompt').is_visible():
+            self.page.click('#academyReplaceContinue')
         self.page.click('#academyHint')
         before = self.page.evaluate('academyEngine.snapshot()')
         hints = self.page.locator('#academyHints').inner_text()
