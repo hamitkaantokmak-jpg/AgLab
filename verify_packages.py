@@ -32,6 +32,7 @@ def verify_release_packages(student_path, teacher_path):
         assert borck_files<=student_names, 'Missing real third-party engine dependencies/license'
         assert {'docs/UYUMLULUK_MATRISI.md','docs/GELISMIS_MOTOR_ENTEGRASYON.md','real-lab/advanced_smoke.py'}<=student_names, 'Missing advanced motor documentation/runner'
         assert {'real-lab/routed_topology.py','real-lab/routed_smoke.py','real-lab/test_routed_topology.py','real-lab/test_routed_smoke.py','real-lab/examples/routed-2-routers.aglab.json','real-lab/examples/routed-3-routers.aglab.json'}<=student_names, 'Missing routed lab converter/examples/tests'
+        assert {'real-lab/security_smoke.py','real-lab/socket_peer.py','real-lab/test_security_smoke.py','real-lab/examples/security-topology.json'}<=student_names, 'Missing native security lab dependencies'
         provenance=read_json(student,'third_party/borck-netsim/provenance.json')
         for name,sha in provenance['sha256'].items():
             assert hashlib.sha256(student.read('third_party/borck-netsim/'+name)).hexdigest()==sha, 'Vendored source mismatch: '+name

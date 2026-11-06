@@ -92,3 +92,29 @@ jobs:
           name: aglab-integration-${{ matrix.script }}
           path: dist/*-results.json
           if-no-files-found: error
+
+  security-native:
+    name: Native security ${{ matrix.scenario }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [acl, nat]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Security lifecycle and failure classification tests
+        run: python3 real-lab/test_security_smoke.py
+      - name: Install distribution kernel networking tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iproute2 nftables conntrack iputils-ping procps
+      - name: Execute isolated actual socket and kernel tests
+        run: sudo python3 real-lab/security_smoke.py "${{ matrix.scenario }}" --execute
+      - name: Preserve actual security evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aglab-native-security-${{ matrix.scenario }}
+          path: dist/security-*-results.json
+          if-no-files-found: error

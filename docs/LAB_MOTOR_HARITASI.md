@@ -45,6 +45,8 @@ Bu tablo gerçek öğrenci JSON içeriklerinden üretilir. Yapısal adaylık, ak
 | AGL-039 | Üç routerla temel çok atlamalı statik routing | 7/6 | Mevcut | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `e2e2c268fce97c32d6ef641cbab7673d55f6b11efac0a78dd56ebfbcadf2569b` |
 | AGL-040 | Bitirme laboratuvarı: iki şube, üç bağımsız hata | 7/6 | Mevcut | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `1fcdeb4db6775ccb3db7fe2f512e056d6910f5289f7cb5b4f4bbdecf9e75c3a8` |
 
+ACL/NAT için security_smoke ayrı native operatör örnekleridir; mevcut 40 görevin ACL/NAT alanlarını dönüştürdüğü veya native doğruladığı iddia edilmez. TCP/UDP gerçek soket ve kernel firewall/NAT kabulü ayrı CI raporundan okunur.
+
 AGL-034/035 native kanıtı: [42192382258, a1d6382](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42192382258), `aglab-integration-routed_smoke` artefaktı. Diğer labların dönüştürücü kabulü native başarı iddiası değildir.
 
 AGL-024 gerçekte dört PC, iki switch, VLAN10 ve VLAN20 içerir; örnek görev tablosundan varsayım yapılmamıştır. Native test ilk VLAN10 başarısızlığını, uplink trunk onarımını ve iki VLAN’ın gerçek ICMP trafiğini denetler. AGL-034/035 özgün başlangıç/çözüm topolojileri değiştirilmeden FRR kabul takımına bağlandı; başlangıç arızası, CLI rota onarımı, ICMP, RIB/FIB ve shutdown/no shutdown native CI’da geçti. Yeni IPv6/multi-area ve bağımsız iki/üç router örnekleri özgün 40 lab dışında operatör senaryolarıdır.

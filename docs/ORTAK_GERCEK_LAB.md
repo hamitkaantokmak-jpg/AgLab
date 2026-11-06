@@ -170,3 +170,67 @@ hataların gizlendiği anlamına gelmez: shutdown’ın trafiği kestiği ayrıc
 ve eksik /23 sonucu geçerlidir. ACL/NAT/PAT, DHCP/relay, RSTP ve LACP bu turda
 uygulanmadı; sonraki işlerdir. Öncelik, özetleme için ayrı FRR sürüm/başlangıç
 konfigürasyonu doğrulaması, ardından izole kernel ACL/NAT kabul senaryolarıdır.
+
+## Native ACL ve SNAT/PAT — operatör kabul laboratuvarı
+
+`security_smoke.py` mevcut FRR imajını veya dönüştürücülerini değiştirmeden,
+Linux kernel nftables/conntrack ve gerçek Python TCP/UDP soketlerini kullanır.
+Yeni protokol motoru veya üçüncü taraf kaynak kopyası yoktur. Dağıtım paketleri:
+nftables ve conntrack-tools (GPL-2.0), iproute2/iputils (ilgili dağıtım lisansları),
+Linux kernel ve Python. Bileşenler Ubuntu/Debian paket yöneticisinden kurulur;
+binary/kaynak paketler AğLab ZIP’ine kopyalanmaz.
+
+Ayrı, sabit örnek: `real-lab/examples/security-topology.json`. İki istemci
+(10.10.1.2 ve 10.10.2.2), Linux router ve 198.18.0.2 sunucusu kullanılır.
+Bu bir AğLab v23 dönüştürücü girdisi değildir; operatör senaryosunun açıklamasıdır.
+Özgün 40 Akademi görevi ve JSON’ları değiştirilmez, ACL/NAT alanları mevcut
+router dönüştürücüsünde desteklenmiş sayılmaz. Öğrenciye yeni bir canlı shell yoktur.
+
+Yetkili Linux operatörü için (komutlar root namespace firewall’unu değiştirmez):
+
+```sh
+sudo apt-get update
+sudo apt-get install -y python3 iproute2 nftables conntrack iputils-ping procps
+python3 real-lab/security_smoke.py acl                 # dry run
+sudo python3 real-lab/security_smoke.py acl --execute
+sudo python3 real-lab/security_smoke.py nat --execute
+```
+
+Her koşu rastgele kimlikli dört namespace oluşturur. Veth uçları yalnız bu
+namespace’lerde oluşturulur; host arayüzü/bridge’i, Docker soketi, yönetim ağı,
+host mount veya dış bağlantı kullanılmaz. Router/sunucu default route’u yoktur;
+istemcilerin default route’u yalnız izole router’a gider. Var olan isimler
+reddedilir. Yalnız başarıyla oluşturulduğu kaydedilen kaynaklar temizlenir;
+server süreci sonlandırılır, kalan namespace olmadığı kontrol edilir.
+`--execute` olmadan native komut çağrılmaz. Root yetkisi yalnız operatör/CI içindir.
+
+ACL: kaynak izin/ret, hedef ret, kaynak+hedef subnet eşleşmesi, açık TCP 8000’e
+izin ve açık TCP 8002’ye ret, UDP 8001’e ret/8003’e izin, ICMP ret/TCP’nin sürmesi,
+hatalı kural sırası, sırayı değiştirme ve gerçek kural silme sonrası onarım.
+TCP/UDP sunucusu gerçekten dinler ve istemcinin token’ını gördüğü peer IP/port
+ile döndürür. 8999 kapalı TCP/yanlış UDP portu denetiminde connection-refused
+beklenir; ACL retlerinde timeout ve eşleşen nft packet sayacı zorunludur.
+Yanlış komut, eksik araç veya connection-refused, ACL timeout başarısı sayılmaz.
+
+NAT: sunucunun iç ağlara dönüş rotası yoktur. Yanlış source selector ile trafik
+başarısız ve NAT sayacı sıfır olmalıdır. SNAT onarımından sonra iki istemcinin
+TCP/UDP yanıtında sunucu kaynak olarak aynı 198.18.0.1’i görmelidir. PAT testinde
+iki istemci aynı orijinal 35000 portunu kullanır; sunucunun gördüğü portlar farklı
+ve 40000–40010 aralığında olmalıdır. Gerçek conntrack original/reply tuple’ları
+iki iç IP ve çevrilmiş dış IP ile doğrulanır. NAT kaldırıldıktan **ve conntrack
+temizlendikten** sonra yeni trafik başarısız; kural onarımından sonra başarılı
+olmalıdır. Oturum temizliğinde conntrack count=0 kontrol edilir. Burada PAT
+stateful port çevirisidir; dış internete bağlantı kurulmaz.
+
+Raporlar `security-acl-results.json` ve `security-nat-results.json` dosyalarıdır:
+`kind=security`, `engine=Linux kernel nftables`. Komut/stdin, kaynak/hedef,
+protokol/port, beklenen ve gözlenen sonuç, server peer IP/port, nft sayaçları,
+conntrack, routing, arıza/onarım ve cleanup kaydedilir. Mevcut Paket Dedektifi
+bunları yalnız güvenilmeyen ayrı lab raporu olarak kabul eder; FRR/PCAP veya
+AğLab simülasyon olayı olarak etiketlemez. HTML’de sadece bu rapor tipinin mevcut
+ayrıştırıcıya eklenmesi için kaynak eşitliği güncellenir; UX düzeni değişmez.
+
+Yeni native job’lar `Native security acl/nat`; protokol başarısı yalnız gerçek
+çalışan CI/rapor ile doğrulanır. Kod/test varlığı tek başına başarı değildir.
+DHCP/relay ve DNS bu senaryolara eklenmedi; RSTP/LACP ve ileri BGP kapsamı da
+önceki durumundadır. OSPF özetleme deneyi ve mevcut FRR imajı değiştirilmedi.

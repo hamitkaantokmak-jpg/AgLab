@@ -10,6 +10,7 @@ TESTS.append('test_aglab_device_cli.py')
 TESTS.append('test_aglab_borck_engine.py')
 TESTS.extend(['test_aglab_advanced_engines.py','test_aglab_browser_benchmark.py','real-lab/test_advanced_smoke.py'])
 TESTS.append('test_build_simulator.py')
+TESTS.append('real-lab/test_security_smoke.py')
 TESTS.extend(['real-lab/test_routed_topology.py','real-lab/test_routed_smoke.py','real-lab/test_shared_topology.py','real-lab/test_extended_routing.py','test_lab_engine_map.py'])
 TESTS.append('test_aglab_network_features.py')
 TESTS.append('test_aglab_l2_router_trunk.py')
@@ -34,6 +35,7 @@ STUDENT_FILES.extend(['real-lab/student.html','real-lab/student.js','real-lab/st
 REAL_LAB_FILES=['real-lab/topology.clab.yml','real-lab/r1/frr.conf','real-lab/r2/frr.conf','real-lab/README.md','real-lab/check_topology.py','real-lab/manage.py','real-lab/test_manage.py','real-lab/live_smoke.py','real-lab/test_live_smoke.py','real-lab/api.py','real-lab/test_api.py','real-lab/dashboard.html','real-lab/test_api_http.py','real-lab/diagnostics.py','real-lab/test_diagnostics.py']
 REAL_LAB_FILES.extend(STUDENT_FILES)
 REAL_LAB_FILES.append('real-lab/advanced_smoke.py')
+REAL_LAB_FILES.extend(['real-lab/security_smoke.py','real-lab/socket_peer.py','real-lab/examples/security-topology.json'])
 REAL_LAB_FILES.extend(['real-lab/routed_topology.py','real-lab/routed_smoke.py','real-lab/examples/routed-2-routers.aglab.json','real-lab/examples/routed-3-routers.aglab.json','real-lab/shared_topology.py','real-lab/shared_smoke.py','real-lab/extended_routing.py','real-lab/examples/shared-vlan10.aglab.json'])
 ARTIFACTS=['AgLab_Final_PKT_Import.html','convert_pkt_to_aglab.py','restore_pkt_from_aglab_json.py','verify_packages.py','static-routing-two-routers.aglab.json','static-routing-two-routers-import-report.json','AgLab_PKT_Import_Kullanim.md','static-routing-two-routers(1).pkt' ]
 ARTIFACTS.extend(['simulator/mac-address.js','simulator/test_mac_address.cjs','pkt-sample-matrix.json','PKT_ORNEK_MATRISI.md','simulator/switch-management.js','simulator/mac-learning.js','simulator/ethernet-forwarding.js','simulator/routing-path.js','simulator/routed-ethernet.js','simulator/icmp.js','simulator/traceroute.js','build_simulator.py','SIMULATOR_PLAN.md'])
