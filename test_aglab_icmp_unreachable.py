@@ -48,6 +48,8 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  print('PASS: no ICMP error replies for multicast/limited or directed broadcast',flush=True)
  # A host used as a static next-hop can answer ARP without forwarding IP: it is not an ARP failure.
  host_hop=copy.deepcopy(base);transit=copy.deepcopy(base['devices'][6]);transit.update(id='d9',name='Transit');host=copy.deepcopy(base['devices'][3]);host.update(id='d10',name='NextHopPC',ip='10.0.0.9',gateway='',vlan=1)
+ # This is a new synthetic host, not a second NIC with the original PC's physical MAC.
+ host.pop('mac',None)
  host_hop['devices'] += [transit,host];host_hop['devices'][0]['staticRoutes'][0]['nextHop']='10.0.0.9';host_hop['devices'][0]['interfaces']['g0/1']['mask']='255.255.255.0';host_hop['devices'][1]['interfaces']['g0/0']['mask']='255.255.255.0'
  host_hop['links']=[link for link in host_hop['links'] if {link['a'],link['b']}!={'d1','d2'}]
  host_hop['links'] += [dict(a='d1',portA='g0/1',b='d9',portB='fa0/1',up=True),dict(a='d2',portA='g0/0',b='d9',portB='fa0/2',up=True),dict(a='d10',portA='eth0',b='d9',portB='fa0/3',up=True)];host_hop['nextId']=11;load(host_hop)

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AğLab · Öğrenci Tanıları</title>
+  <link rel="stylesheet" href="/student.css">
+  <script src="/student.js" defer></script>
+</head>
+<body>
+<main>
+  <header><span class="brand">AĞLAB / GERÇEK LAB</span><span class="badge">Salt okunur</span></header>
+  <h1>Öğrenci Tanıları</h1>
+  <p class="intro">Yönlendiricinin ağ görünümünü incele. Bu ekrandan yapılandırma değiştirilmez.</p>
+  <section id="access-panel" aria-labelledby="access-title">
+    <h2 id="access-title">Laboratuvarına bağlan</h2>
+    <p>Öğretmeninin verdiği öğrenci erişim anahtarını kullan.</p>
+    <form id="access-form">
+      <label for="access-key">Öğrenci erişim anahtarı</label>
+      <div class="access-row"><input id="access-key" type="password" autocomplete="off" minlength="32" required spellcheck="false"><button id="connect" type="submit">Bağlan</button></div>
+    </form>
+    <small>Anahtar yalnızca bu açık sayfanın belleğinde tutulur. Sayfadan ayrılınca silinir.</small>
+  </section>
+  <section id="diagnostics-panel" aria-labelledby="diagnostics-title" hidden>
+    <div class="section-heading"><h2 id="diagnostics-title">Ağını incele</h2><button id="disconnect" class="secondary" type="button">Bağlantıyı kapat</button></div>
+    <div class="controls">
+      <div><label for="router">Yönlendirici</label><select id="router"></select></div>
+      <div><label for="view">Görünüm</label><select id="view"></select></div>
+      <button id="refresh" type="button">Tanıyı göster</button>
+    </div>
+    <p id="view-help" class="hint"></p>
+    <p id="captured" class="timestamp"></p>
+    <pre id="output" aria-label="Tanılama çıktısı" tabindex="0">Bir görünüm seçip tanıyı göster.</pre>
+    <small>Bu bir anlık görüntüdür. Öğretmenin yenilediği veriyi gösterir; 60 saniyeden eski sonuçlar sunulmaz.</small>
+  </section>
+  <p id="status" role="status" aria-live="polite">Bağlanmak için öğrenci anahtarını gir.</p>
+  <footer>Gerçek Lab · Öğrenci erişimi</footer>
+</main>
+</body>
+</html>

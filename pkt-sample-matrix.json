@@ -26,7 +26,8 @@
       "limitations": [
         "Power Distribution Device simüle edilmez",
         "model dışı IOS komutları raporlanır"
-      ]
+      ],
+      "report": "static-routing-two-routers-import-report.json"
     },
     {
       "id": "synthetic-switch-state",
@@ -104,6 +105,230 @@
       ],
       "limitations": [
         "bu sentetik örnek tek başına paket iletimini doğrulamaz"
+      ]
+    },
+    {
+      "id": "synthetic-switch-interface-range",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Switch",
+      "config": [
+        "interface range FastEthernet0/1 - 3, GigabitEthernet0/1",
+        "switchport access vlan 10",
+        "shutdown",
+        "exit",
+        "interface FastEthernet0/2",
+        "no shutdown"
+      ],
+      "expectedDevice": {
+        "vlans": [
+          1,
+          10
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "vlan": 10,
+            "enabled": false
+          },
+          "fa0/2": {
+            "vlan": 10,
+            "enabled": true
+          },
+          "fa0/3": {
+            "vlan": 10,
+            "enabled": false
+          },
+          "gi0/1": {
+            "vlan": 10,
+            "enabled": false
+          },
+          "fa0/4": {
+            "vlan": 1,
+            "enabled": true
+          }
+        }
+      },
+      "expectedUnmodeled": [],
+      "coverage": [
+        "mevcut fiziksel switch portlarında liste/aralık",
+        "VLAN/shutdown ve sonraki tek-port override"
+      ],
+      "limitations": [
+        "router/SVI range ve eksik prefixli liste üyeleri desteklenmez",
+        "bu sentetik örnek gerçek yeni PKT sürümü değildir"
+      ]
+    },
+    {
+      "id": "synthetic-switch-invalid-range",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Switch",
+      "config": [
+        "interface FastEthernet0/1",
+        "switchport access vlan 10",
+        "interface range FastEthernet0/1, bad",
+        "shutdown"
+      ],
+      "expectedDevice": {
+        "vlans": [
+          1,
+          10
+        ],
+        "interfaces": {
+          "fa0/1": {
+            "vlan": 10,
+            "enabled": true
+          },
+          "fa0/2": {
+            "vlan": 1,
+            "enabled": true
+          }
+        }
+      },
+      "expectedUnmodeled": [
+        "interface range FastEthernet0/1, bad",
+        "shutdown"
+      ],
+      "coverage": [
+        "hatalı aralıkta kısmi uygulama yok",
+        "özgün satırlarla desteklenmeyen komut raporu"
+      ],
+      "limitations": [
+        "desteklenmeyen range çalışıyor sayılmaz"
+      ]
+    },
+    {
+      "id": "synthetic-port-security-static",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Switch",
+      "config": [
+        "interface fa0/1",
+        "switchport port-security",
+        "switchport port-security maximum 2",
+        "switchport port-security violation restrict",
+        "switchport port-security mac-address 02aa.0000.0011"
+      ],
+      "expectedDevice": {
+        "interfaces": {
+          "fa0/1": {
+            "portSecurity": {
+              "enabled": true,
+              "max": 2,
+              "violation": "restrict",
+              "macs": [
+                "02:aa:00:00:00:11"
+              ]
+            }
+          }
+        }
+      },
+      "expectedUnmodeled": [],
+      "coverage": [
+        "temel port-security aktarımı",
+        "statik MAC kanonikleştirme ve ihlal modu"
+      ],
+      "limitations": [
+        "sticky/aging ve kaynak runtime sayaçları aktarılmaz",
+        "bu sentetik örnek tek başına paket iletimini doğrulamaz"
+      ]
+    },
+    {
+      "id": "synthetic-port-security-invalid",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Switch",
+      "config": [
+        "interface fa0/1",
+        "switchport port-security",
+        "switchport port-security maximum 0",
+        "switchport port-security mac-address 01:00:5e:00:00:01",
+        "switchport port-security mac-address sticky"
+      ],
+      "expectedDevice": {
+        "interfaces": {
+          "fa0/1": {
+            "portSecurity": {
+              "enabled": true,
+              "max": 1,
+              "violation": "shutdown",
+              "macs": []
+            }
+          }
+        }
+      },
+      "expectedUnmodeled": [
+        "switchport port-security maximum 0",
+        "switchport port-security mac-address 01:00:5e:00:00:01",
+        "switchport port-security mac-address sticky"
+      ],
+      "coverage": [
+        "geçersiz maksimum/multicast MAC reddi",
+        "sticky komutunun açıkça model dışı kalması"
+      ],
+      "limitations": [
+        "model dışı komutlar uygulanmaz, ham kaynak korunur"
+      ]
+    },
+    {
+      "id": "synthetic-dhcp-relay",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Router",
+      "config": [
+        "interface g0/0",
+        "ip helper-address 10.20.0.10",
+        "no ip helper-address 192.0.2.10",
+        "!",
+        "interface g0/1.10",
+        "encapsulation dot1q 10",
+        "ip helper-address 192.0.2.10"
+      ],
+      "expectedDevice": {
+        "interfaces": {
+          "g0/0": {
+            "helperAddress": "10.20.0.10"
+          },
+          "g0/1.10": {
+            "parent": "g0/1",
+            "vlan": 10,
+            "helperAddress": "192.0.2.10"
+          }
+        }
+      },
+      "expectedUnmodeled": [],
+      "coverage": [
+        "fiziksel/802.1Q alt arayüz helper hedefi",
+        "hedefe göre kaldırmada mevcut kuralın korunması"
+      ],
+      "limitations": [
+        "tek aktif helper; çoklu helper/VRF ve DHCP sunucu havuzu aktarımı yok"
+      ]
+    },
+    {
+      "id": "synthetic-dhcp-relay-invalid",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Router",
+      "config": [
+        "interface g0/0",
+        "ip helper-address 10.20.0.10",
+        "ip helper-address 999.20.0.1",
+        "ip helper-address 10.20.0.11 vrf BLUE",
+        "exit",
+        "no ip helper-address"
+      ],
+      "expectedDevice": {
+        "interfaces": {
+          "g0/0": {
+            "helperAddress": "10.20.0.10"
+          }
+        }
+      },
+      "expectedUnmodeled": [
+        "ip helper-address 999.20.0.1",
+        "ip helper-address 10.20.0.11 vrf BLUE",
+        "no ip helper-address"
+      ],
+      "coverage": [
+        "yanlış adres/VRF ve bağlam dışı kaldırmada önceki helper korunur"
+      ],
+      "limitations": [
+        "desteklenmeyen satırlar uygulanmaz; kaynak arşivi korunur"
       ]
     }
   ]

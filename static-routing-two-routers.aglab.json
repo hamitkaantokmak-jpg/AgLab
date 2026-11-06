@@ -132,7 +132,8 @@
         "eth0": {
           "enabled": true
         }
-      }
+      },
+      "mac": "00:d0:58:e2:24:08"
     },
     {
       "id": "d4",
@@ -160,7 +161,8 @@
         "eth0": {
           "enabled": true
         }
-      }
+      },
+      "mac": "00:d0:bc:60:76:d1"
     },
     {
       "id": "d5",
@@ -188,7 +190,8 @@
         "eth0": {
           "enabled": true
         }
-      }
+      },
+      "mac": "00:02:16:a1:9e:06"
     },
     {
       "id": "d6",
@@ -216,7 +219,8 @@
         "eth0": {
           "enabled": true
         }
-      }
+      },
+      "mac": "00:40:0b:ee:28:63"
     },
     {
       "id": "d7",
@@ -267,9 +271,7 @@
         "packetTracerModel": "2960-24TT",
         "runningConfig": "!\nversion 15.0\nno service timestamps log datetime msec\nno service timestamps debug datetime msec\nno service password-encryption\n!\nhostname SW1\n!\n!\n!\n!\n!\n!\nspanning-tree mode pvst\nspanning-tree extend system-id\n!\ninterface FastEthernet0/1\n!\ninterface FastEthernet0/2\n!\ninterface FastEthernet0/3\n!\ninterface FastEthernet0/4\n!\ninterface FastEthernet0/5\n!\ninterface FastEthernet0/6\n!\ninterface FastEthernet0/7\n!\ninterface FastEthernet0/8\n!\ninterface FastEthernet0/9\n!\ninterface FastEthernet0/10\n!\ninterface FastEthernet0/11\n!\ninterface FastEthernet0/12\n!\ninterface FastEthernet0/13\n!\ninterface FastEthernet0/14\n!\ninterface FastEthernet0/15\n!\ninterface FastEthernet0/16\n!\ninterface FastEthernet0/17\n!\ninterface FastEthernet0/18\n!\ninterface FastEthernet0/19\n!\ninterface FastEthernet0/20\n!\ninterface FastEthernet0/21\n!\ninterface FastEthernet0/22\n!\ninterface FastEthernet0/23\n!\ninterface FastEthernet0/24\n!\ninterface GigabitEthernet0/1\n!\ninterface GigabitEthernet0/2\n!\ninterface Vlan1\nno ip address\nshutdown\n!\n!\n!\n!\nline con 0\n!\nline vty 0 4\nlogin\nline vty 5 15\nlogin\n!\n!\n!\n!\nend",
         "displayName": "LAN A",
-        "unmodeledInterfaces": [
-          "Vlan1"
-        ]
+        "unmodeledInterfaces": []
       },
       "interfaces": {
         "fa0/1": {
@@ -479,6 +481,12 @@
             1
           ],
           "enabled": true
+        },
+        "vlan1": {
+          "ip": "",
+          "mask": "255.255.255.0",
+          "enabled": false,
+          "vlan": 1
         }
       }
     },
@@ -531,9 +539,7 @@
         "packetTracerModel": "2960-24TT",
         "runningConfig": "!\nversion 15.0\nno service timestamps log datetime msec\nno service timestamps debug datetime msec\nno service password-encryption\n!\nhostname SW2\n!\n!\n!\n!\n!\n!\nspanning-tree mode pvst\nspanning-tree extend system-id\n!\ninterface FastEthernet0/1\n!\ninterface FastEthernet0/2\n!\ninterface FastEthernet0/3\n!\ninterface FastEthernet0/4\n!\ninterface FastEthernet0/5\n!\ninterface FastEthernet0/6\n!\ninterface FastEthernet0/7\n!\ninterface FastEthernet0/8\n!\ninterface FastEthernet0/9\n!\ninterface FastEthernet0/10\n!\ninterface FastEthernet0/11\n!\ninterface FastEthernet0/12\n!\ninterface FastEthernet0/13\n!\ninterface FastEthernet0/14\n!\ninterface FastEthernet0/15\n!\ninterface FastEthernet0/16\n!\ninterface FastEthernet0/17\n!\ninterface FastEthernet0/18\n!\ninterface FastEthernet0/19\n!\ninterface FastEthernet0/20\n!\ninterface FastEthernet0/21\n!\ninterface FastEthernet0/22\n!\ninterface FastEthernet0/23\n!\ninterface FastEthernet0/24\n!\ninterface GigabitEthernet0/1\n!\ninterface GigabitEthernet0/2\n!\ninterface Vlan1\nno ip address\nshutdown\n!\n!\n!\n!\nline con 0\n!\nline vty 0 4\nlogin\nline vty 5 15\nlogin\n!\n!\n!\n!\nend",
         "displayName": "LAN B",
-        "unmodeledInterfaces": [
-          "Vlan1"
-        ]
+        "unmodeledInterfaces": []
       },
       "interfaces": {
         "fa0/1": {
@@ -743,6 +749,12 @@
             1
           ],
           "enabled": true
+        },
+        "vlan1": {
+          "ip": "",
+          "mask": "255.255.255.0",
+          "enabled": false,
+          "vlan": 1
         }
       }
     }
@@ -877,7 +889,37 @@
       }
     ],
     "notes": [],
-    "unmodeledConfigLineCount": 72,
+    "endpointPorts": [
+      {
+        "device": "PC1",
+        "sourceWiredPortCount": 1,
+        "modeledPort": "eth0",
+        "sourcePortType": "eCopperFastEthernet",
+        "sourceMac": "00:d0:58:e2:24:08"
+      },
+      {
+        "device": "PC2",
+        "sourceWiredPortCount": 1,
+        "modeledPort": "eth0",
+        "sourcePortType": "eCopperFastEthernet",
+        "sourceMac": "00:d0:bc:60:76:d1"
+      },
+      {
+        "device": "PC3",
+        "sourceWiredPortCount": 1,
+        "modeledPort": "eth0",
+        "sourcePortType": "eCopperFastEthernet",
+        "sourceMac": "00:02:16:a1:9e:06"
+      },
+      {
+        "device": "PC4",
+        "sourceWiredPortCount": 1,
+        "modeledPort": "eth0",
+        "sourcePortType": "eCopperFastEthernet",
+        "sourceMac": "00:40:0b:ee:28:63"
+      }
+    ],
+    "unmodeledConfigLineCount": 76,
     "unmodeledConfigLines": [
       {
         "device": "R1",
@@ -961,8 +1003,18 @@
       },
       {
         "device": "R1",
+        "line": 59,
+        "command": "interface Vlan1"
+      },
+      {
+        "device": "R1",
         "line": 60,
         "command": "no ip address"
+      },
+      {
+        "device": "R1",
+        "line": 61,
+        "command": "shutdown"
       },
       {
         "device": "R1",
@@ -1076,8 +1128,18 @@
       },
       {
         "device": "R2",
+        "line": 59,
+        "command": "interface Vlan1"
+      },
+      {
+        "device": "R2",
         "line": 60,
         "command": "no ip address"
+      },
+      {
+        "device": "R2",
+        "line": 61,
+        "command": "shutdown"
       },
       {
         "device": "R2",
@@ -1251,13 +1313,18 @@
       "SW2": true
     },
     "simulationCoverage": {
-      "modeled": "Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, PC IPv4/mask/gateway, router fiziksel arayüz IPv4/mask/shutdown, IPv4 statik rota, switch access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa).",
+      "modeled": "Topoloji bağlantıları, cihaz türü/model etiketi, koordinatlar, tek Ethernet NIC PC/Server IPv4/mask/gateway, fiziksel MAC ve port POWER, router fiziksel ve etiketli 802.1Q alt arayüz IPv4/mask/shutdown, alt arayüz parent/VLAN eşlemesi, IPv4 statik rota, router DHCP relay için tek IPv4 helper hedefi, switch yönetim SVI IP/mask/shutdown ve default-gateway, VLAN isimleri, temel switch port-security (enabled/maximum/violation/statik MAC), switch fiziksel interface range (mevcut portlar, liste/aynı-prefix aralık) ve access/trunk modu, access VLAN ve trunk allowed VLAN (kaynak configte varsa); VLAN veritabanı açık vlan <ID> satırlarından ayrıştırılır.",
       "preservedButNotFullySimulated": "Tam running-config metni config.runningConfig alanında saklanır; bu, tüm IOS komutlarının AğLab motorunda çalıştığı anlamına gelmez.",
       "notModeled": [
         "IOS sürüm/feature davranışları",
+        "DHCP çoklu helper/VRF, sunucu havuzu ve UDP forwarding ayrıntıları",
         "duplex/speed ve kablo türü/medya ayrıntıları",
         "STP zamanlaması, root bridge seçim algoritmasının tam davranışı ve tüm STP durum geçişleri",
-        "VLAN SVI arayüzleri",
+        "Çoklu NIC ve Ethernet dışı endpoint arayüzleri",
+        "Layer 3 switch routing (SVI yalnız yönetim endpointidir)",
+        "Router alt arayüzlerinde native VLAN ve ISL encapsulation",
+        "Port-security sticky/aging, violation sayaçlarının kaynak runtime durumu ve recovery timer",
+        "Router/switch fiziksel port MAC adresleri (motor cihaz başına sentetik MAC kullanır)",
         "güç dağıtım cihazının davranışı",
         "kaynak dosyada yer alıp AğLab modeline eşlenmeyen diğer cihaz/protokol özellikleri"
       ]

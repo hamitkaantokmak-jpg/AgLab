@@ -9,7 +9,8 @@ function normalize(lines,overflow=0){
   if(typeof raw!=='string')throw Error('Invalid packet event');
   let kind='other',device=null,detail=raw;
   let m=raw.match(/^frame (\S+) src (\S+) dst (\S+) vlan (\d+)$/);
-  if(m){kind='frame';device=m[2];detail={protocol:m[1],source:m[2],destinationMac:m[3],vlan:Number(m[4])}}
+  if(raw.startsWith('diagnostic ')){try{const d=JSON.parse(raw.slice(11));if(d.origin==='adapter-derived'&&typeof d.reason==='string'&&typeof d.source==='string'){kind='diagnostic';device=d.source;detail=d;}}catch{}}
+  else if(m){kind='frame';device=m[2];detail={protocol:m[1],source:m[2],destinationMac:m[3],vlan:Number(m[4])}}
   else if((m=raw.match(/^receive (\S+) (\S+) vlan (\d+)(?: svi vlan (\d+))?$/))){kind='receive';device=m[1];detail={protocol:m[2],vlan:Number(m[3]),svi:m[4]!==undefined}}
   else if((m=raw.match(/^(broadcast|unknown-unicast|unicast|filter) (\S+) ingress (\S+) egress (.*?) vlan (\d+)$/))){kind='forward';device=m[2];detail={decision:m[1],ingress:m[3],egress:m[4]==='-'?[]:m[4].split(','),vlan:Number(m[5])}}
   else if((m=raw.match(/^ttl-forward (\S+) (\d+) -> (\d+)$/))){kind='ttl';device=m[1];detail={before:Number(m[2]),after:Number(m[3])}}
@@ -24,6 +25,9 @@ function explain(event){
  if(!event||typeof event!=='object')throw Error('Invalid packet event');
  const d=event.detail;
  switch(event.kind){
+ case 'lab-check':return 'Ayrı Lab rapor adımı (paket olayı değil; imza doğrulanmadı): '+d.name+' — '+(d.ok?'başarılı':'başarısız');
+ case 'diagnostic':return 'Adaptör tanısı (paket yakalaması değil): '+d.reason;
+ case 'wire':return event.device+' → '+d.toDeviceId+': '+d.kind.toUpperCase()+' bağlantı iletimi motor tarafından zamanlandı ('+d.start+'–'+d.end+' sanal ms). Bu bildirim alıcıya teslimi tek başına kanıtlamaz.';
  case 'frame':return event.device+' cihazı '+d.protocol+' çerçevesini VLAN '+d.vlan+' üzerinden gönderdi.';
  case 'forward':{
   const label={broadcast:'Yayın', 'unknown-unicast':'Bilinmeyen hedefe yayılım',unicast:'Öğrenilmiş MAC yönlendirmesi',filter:'Giriş portuna geri gönderim engellendi'}[d.decision]||'İletim';
@@ -41,7 +45,11 @@ function diagnose(log){
  if(!log||!Array.isArray(log.events))throw Error('Invalid packet event log');
  const issues=[];
  for(const event of log.events){
-  if(event.kind==='discard'){
+  if(event.kind==='lab-check'&&!event.detail.ok){
+   issues.push({index:event.index,device:null,reason:'imported-lab-check',summary:'Rapordaki doğrulama başarısız: '+event.detail.name,hint:'Bu ayrı Lab raporudur; imza/kaynak doğrulanmadı. Paket düşme nedeni olarak yorumlama.'});
+  }else if(event.kind==='diagnostic'){
+   issues.push({index:event.index,device:event.device,reason:'adapter-derived',summary:event.detail.reason,hint:'Bu açıklama motorun ping sonucundan türetildi; gerçek paket yakalaması değildir. İlgili yapılandırmayı CLI ile kontrol et.'});
+  }else if(event.kind==='discard'){
    const reason=event.detail.reason;
    const hint=reason==='ingress-port'?'Giriş portu kapalı veya bağlantı geçersiz olabilir; port durumunu ve kabloyu kontrol et.':reason==='destination-mac'?'Hedef MAC adresi eşleşmedi; hedef cihazın MAC adresini ve VLAN üyeliğini kontrol et.':'Bu reddetme nedenini olay kaydından incele.';
    issues.push({index:event.index,device:event.device,reason,summary:event.device+' cihazında çerçeve reddedildi.',hint});

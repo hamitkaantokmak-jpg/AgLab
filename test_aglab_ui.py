@@ -19,8 +19,58 @@ with sync_playwright() as pw:
     expect(page.locator('#ux14Guided')).to_be_visible()
     expect(page.locator('#ux14Free')).to_be_visible()
     expect(page.locator('#academyPanel')).to_be_visible()
+    # Optional guide must not rewrite the student's topology or fabricate ping evidence.
+    guide_snapshot = page.evaluate('academyEngine.snapshot()')
+    page.locator('#aglabFirstNetworkGuide summary').click()
+    expect(page.locator('#firstGuideSteps li')).to_have_count(9)
+    expect(page.locator('#firstGuideStatus')).to_contain_text('/ 9 adım doğrulandı')
+    assert page.locator('#firstGuideSteps li[data-complete="true"]').count() < 9
+    assert page.evaluate('academyEngine.snapshot()') == guide_snapshot
+    page.click('#firstGuideRefresh')
+    assert page.evaluate('academyEngine.snapshot()') == guide_snapshot
+    page.locator('#aglabFirstNetworkGuide summary').click()
+    # Search selects a lab without replacing the current topology or starting it.
+    before_search = page.evaluate('academyEngine.snapshot()')
+    page.select_option('#academyProgressFilter','completed')
+    expect(page.locator('#academySearchStatus')).to_contain_text('0 / 40')
+    page.select_option('#academyProgressFilter','remaining')
+    expect(page.locator('#academySearchStatus')).to_contain_text('40 / 40')
+    page.select_option('#academyProgressFilter','all')
+    page.fill('#academySearch','AGL-024')
+    expect(page.locator('#academySearchStatus')).to_contain_text('1 / 40')
+    page.click('#academySearchFind')
+    expect(page.locator('#academySelect')).to_have_value('AGL-024')
+    assert page.evaluate('academyEngine.snapshot()') == before_search
+    page.fill('#academySearch','not-a-lab-999')
+    expect(page.locator('#academySearchFind')).to_be_disabled()
+    page.fill('#academySearch','')
+    expect(page.locator('#academySearchStatus')).to_contain_text('40 / 40')
+    expect(page.locator('#packetDetectiveEmptyGuide')).to_be_visible()
+    page.select_option('#packetDetectiveViewMode','simple')
+    expect(page.locator('#packetDetectiveRaw')).to_be_hidden()
+    page.select_option('#packetDetectiveViewMode','technical')
+    # Empty pre has zero height even when the technical mode is enabled.
+    # Check the control state now; prove actual visibility with real events below.
+    expect(page.locator('#packetDetectiveRaw')).to_have_js_property('hidden',False)
+    expect(page.locator('#packetDetectiveRaw')).to_be_empty()
+    page.click('#packetDetectiveOpenCli')
+    expect(page.locator('#ptCliInput')).to_be_focused()
+    pcs=[d for d in page.evaluate('academyEngine.snapshot().devices') if d['type'].lower()=='pc']
+    page.select_option('#ptCliDevice',pcs[0]['id'])
+    page.fill('#ptCliInput','ping '+pcs[1]['ip']);page.press('#ptCliInput','Enter')
+    page.click('#packetDetectiveRefresh')
+    expect(page.locator('#packetDetectiveEmptyGuide')).to_be_hidden()
+    expect(page.locator('#packetDetectiveRaw')).to_be_visible()
+    raw=page.locator('#packetDetectiveRaw').inner_text();assert raw
+    page.select_option('#packetDetectiveViewMode','simple')
+    expect(page.locator('#packetDetectiveRaw')).to_be_hidden()
+    page.select_option('#packetDetectiveViewMode','technical')
+    expect(page.locator('#packetDetectiveRaw')).to_be_visible()
+    assert page.locator('#packetDetectiveRaw').inner_text()==raw
     page.select_option('#academySelect','AGL-005')
     page.click('#academyStart')
+    if page.locator('#academyReplacePrompt').is_visible():
+        page.click('#academyReplaceContinue')
     page.select_option('#ptCliDevice','SW1')
     for cmd in ('enable','configure terminal','interface fa0/2','no shutdown','end'):
         page.fill('#ptCliInput',cmd)

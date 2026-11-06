@@ -54,6 +54,7 @@ function switchConfigurationLines(d){
   lines.push('interface '+(isSwitchSvi(d,name)?'Vlan'+i.vlan:name));
   if(isSwitchSvi(d,name)){if(i.ip)lines.push(' ip address '+i.ip+' '+i.mask);}
   else{lines.push(' switchport mode '+i.mode);if(i.mode==='access')lines.push(' switchport access vlan '+i.vlan);else{lines.push(' switchport trunk allowed vlan '+((i.allowed||[]).length?i.allowed.join(','):'none'));lines.push(' switchport trunk native vlan '+(i.nativeVlan??1));}}
+  if(i.portSecurity){lines.push(' switchport port-security'+(i.portSecurity.enabled?'':' disabled'));lines.push(' switchport port-security maximum '+i.portSecurity.max);lines.push(' switchport port-security violation '+i.portSecurity.violation);i.portSecurity.macs.forEach(mac=>lines.push(' switchport port-security mac-address '+mac));if(i.errdisabled)lines.push(' ! err-disabled');}
   lines.push(i.enabled!==false?' no shutdown':' shutdown');
  }
  return lines;

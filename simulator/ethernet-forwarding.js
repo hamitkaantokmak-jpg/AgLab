@@ -26,6 +26,7 @@ function transmitEthernet(source,destinationMac,vlan,kind,context,options={}){
    continue; // Endpoints and routers do not bridge Ethernet frames.
   }
   if(ingress&&device.type==='Switch'){
+   if(!portSecurityAllows(device,linkPort(ingress,device.id),source))continue;
    learnSwitchMac(device,source,vlan,linkPort(ingress,device.id));
    if(activeSwitchSvis(device).some(([,iface])=>Number(iface.vlan)===Number(vlan))&&(broadcast||macOf(device)===destinationMac)){
     delivered.add(device.id);ethernetEvent('receive '+device.id+' '+kind+' svi vlan '+vlan);if(!broadcast)continue;

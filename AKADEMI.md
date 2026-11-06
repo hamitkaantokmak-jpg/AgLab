@@ -1,5 +1,11 @@
 # AğLab Akademi — AGL-001–040
 
+Ortak motor senaryoları Lab'da kapalı menülerin dışında görünür. Sorun Çöz'deki
+OSPF, BGP, port güvenliği ve alt arayüz görevleri aynı cihaz/CLI/iletim motoruna
+yönlenir. Özellik kapsamı, desteklenmeyen ileri komutlar ve erişilebilirlik
+denetimi için [ortak motor belgesine](docs/ORTAK_MOTOR.md) bakın. Senaryolar genel
+eğitim örnekleridir; şubede yaşanmış olay olarak sunulmaz.
+
 AGL-006–040 uyarlaması ve motor sınırlarının denetimi için
 [uyarlama raporuna](academy/ADAPTATION.md) bakın. Aşağıdaki v1 notları
 ilk beş görevin kapsamını anlatır.
@@ -9,6 +15,27 @@ Başlat/sıfırla mevcut çalışma topolojisini değiştirir; önce JSON dışa
 Cihaz, kablo ve CLI düzenlemeleri mevcut simülatör üzerinden yapılır. Kavramsal
 soruları Akademi bölümünde cevapla ve Çözümümü kontrol et düğmesini kullan.
 İpuçları sırayla açılır. Sıfırla, etkin görevin özgün başlangıcını ve boş cevapları yükler.
+
+Topolojide cihaza tek tıkla o cihazın CLI penceresini yanında açabilirsin; komut
+alanı yazmaya hazır gelir. Klavyeyle cihazı odaklayıp Enter veya boşluk da kullanılır.
+Kapat düğmesi veya Esc pencereyi kapatıp CLI'yi yan panele geri taşır. Sürükleme
+cihazı taşır; kablo modu açıkken tıklamalar bağlantı kurmak için kullanılır.
+CLI kısayolu ve `/` tuşu da seçili cihazın penceresini açar. Komutlar mevcut
+simülasyon motorunu kullanır; pencere gerçek Cisco IOS çalıştırdığı anlamına gelmez.
+
+## Gerçek Lab tanılarına geçiş
+
+Akademi panelindeki **Gerçek Lab tanıları** bölümünü açıp **Öğrenci tanılarını aç**
+bağlantısını kullan. Aynı bilgisayarda çalışan `http://127.0.0.1:8766/` öğrenci
+servisi yeni sekmede açılır; öğrenci anahtarını yalnızca oraya girersin. Akademi
+anahtarı almaz, kaydetmez veya servise istek yapmaz. Yeni sekmenin Akademi
+sekmesine erişimi ve kaynak adres aktarımı kapalıdır.
+
+Bu, iki router ve iki PC'lik ayrı gerçek örnek topolojiye erişimdir; seçili AGL
+görevini otomatik olarak gerçek cihazlara kurmaz. Mevcut 40 görevin simülatör
+topolojisi, cevapları, ipuçları ve ilerlemesi Akademi sekmesinde kalır. Öğrenci
+servisi çalışmıyorsa yeni sekme bağlantı kuramaz; kurulum için
+[Gerçek Lab belgesine](real-lab/README.md) bak.
 
 ## Kaldığın yerden devam etme
 

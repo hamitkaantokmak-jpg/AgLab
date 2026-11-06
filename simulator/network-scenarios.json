@@ -1,0 +1,981 @@
+[
+  {
+    "id": "subif-missing",
+    "title": "Alt arayüz eksik · router-on-a-stick",
+    "symptom": "Aynı switch üzerindeki VLAN 10 ile VLAN 20 haberleşmiyor.",
+    "cause": "R1 VLAN 20 alt arayüzü yok.",
+    "hints": [
+      "Önce arayüz ve komşuluk/port durumunu incele.",
+      "Hedefe gidiş ve dönüş ağlarını ayrı kontrol et."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 150,
+          "y": 100,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 400,
+          "y": 170,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "R1",
+          "type": "Router",
+          "x": 400,
+          "y": 330,
+          "w": 108,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/0.10": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true,
+              "parent": "g0/0",
+              "vlan": 10,
+              "encapsulation": "dot1q"
+            }
+          },
+          "staticRoutes": []
+        },
+        {
+          "id": "d4",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 670,
+          "y": 100,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.20.20",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "vlan": 20,
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "gi0/1",
+          "portB": "g0/0",
+          "up": true
+        }
+      ],
+      "nextId": 20
+    },
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface g0/0.20",
+          "encapsulation dot1q 20",
+          "ip address 192.168.20.1 255.255.255.0",
+          "no shutdown",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "ospf-area",
+    "title": "OSPF area uyuşmazlığı",
+    "symptom": "R1 ve R2 aynı transit ağda; uzak LAN rotaları öğrenilmiyor.",
+    "cause": "Transit OSPF area değerleri farklı.",
+    "hints": [
+      "Önce arayüz ve komşuluk/port durumunu incele.",
+      "Hedefe gidiş ve dönüş ağlarını ayrı kontrol et."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 80,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d2",
+          "name": "R1",
+          "type": "Router",
+          "x": 300,
+          "y": 170,
+          "w": 108,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.12.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "ospf": {
+            "pid": 1,
+            "routerId": "1.1.1.1",
+            "networks": [
+              {
+                "network": "10.0.12.0",
+                "wildcard": "0.0.0.3",
+                "area": 0
+              },
+              {
+                "network": "192.168.10.0",
+                "wildcard": "0.0.0.255",
+                "area": 0
+              }
+            ]
+          }
+        },
+        {
+          "id": "d3",
+          "name": "R2",
+          "type": "Router",
+          "x": 550,
+          "y": 170,
+          "w": 108,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "10.0.12.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "ospf": {
+            "pid": 1,
+            "routerId": "2.2.2.2",
+            "networks": [
+              {
+                "network": "10.0.12.0",
+                "wildcard": "0.0.0.3",
+                "area": 1
+              },
+              {
+                "network": "192.168.20.0",
+                "wildcard": "0.0.0.255",
+                "area": 0
+              }
+            ]
+          }
+        },
+        {
+          "id": "d4",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 760,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.20.20",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "eth0",
+          "up": true
+        }
+      ],
+      "nextId": 20
+    },
+    "solution": [
+      {
+        "device": "R2",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "router ospf 1",
+          "no network 10.0.12.0 0.0.0.3 area 1",
+          "network 10.0.12.0 0.0.0.3 area 0",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "bgp-as",
+    "title": "BGP remote-AS uyuşmazlığı",
+    "symptom": "BGP komşuluğu kurulamıyor; uzak LAN ilanı öğrenilmiyor.",
+    "cause": "R1 komşusu için yanlış remote-as tanımlı.",
+    "hints": [
+      "Önce arayüz ve komşuluk/port durumunu incele.",
+      "Hedefe gidiş ve dönüş ağlarını ayrı kontrol et."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 80,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d2",
+          "name": "R1",
+          "type": "Router",
+          "x": 300,
+          "y": 170,
+          "w": 108,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.12.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "bgp": {
+            "asn": 65001,
+            "neighbors": [
+              {
+                "ip": "10.0.12.2",
+                "remoteAs": 65003
+              }
+            ],
+            "networks": [
+              {
+                "network": "192.168.10.0",
+                "mask": "255.255.255.0"
+              }
+            ]
+          }
+        },
+        {
+          "id": "d3",
+          "name": "R2",
+          "type": "Router",
+          "x": 550,
+          "y": 170,
+          "w": 108,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "10.0.12.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "bgp": {
+            "asn": 65002,
+            "neighbors": [
+              {
+                "ip": "10.0.12.1",
+                "remoteAs": 65001
+              }
+            ],
+            "networks": [
+              {
+                "network": "192.168.20.0",
+                "mask": "255.255.255.0"
+              }
+            ]
+          }
+        },
+        {
+          "id": "d4",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 760,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.20.20",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "eth0",
+          "up": true
+        }
+      ],
+      "nextId": 20
+    },
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "router bgp 65001",
+          "neighbor 10.0.12.2 remote-as 65002",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "port-security",
+    "title": "Port-security ihlali",
+    "symptom": "İlk trafik denemesinde switch portu err-disabled oluyor.",
+    "cause": "Güvenli MAC listesi bağlı istemciye ait değil.",
+    "hints": [
+      "Önce arayüz ve komşuluk/port durumunu incele.",
+      "Hedefe gidiş ve dönüş ağlarını ayrı kontrol et."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 150,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.10",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 400,
+          "y": 170,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true,
+              "portSecurity": {
+                "enabled": true,
+                "max": 1,
+                "violation": "shutdown",
+                "macs": [
+                  "02:00:00:00:00:fe"
+                ]
+              }
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 680,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.20",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ],
+      "nextId": 20
+    },
+    "solution": [
+      {
+        "device": "SW-01",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface fa0/1",
+          "no switchport port-security mac-address 0200.0000.00fe",
+          "switchport port-security mac-address $SOURCE_MAC",
+          "shutdown",
+          "no shutdown",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "return-route",
+    "title": "return-route",
+    "solution": [
+      {
+        "device": "R2",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip route 192.168.1.0 255.255.255.0 10.0.0.1",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "forward-route",
+    "title": "forward-route",
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip route 10.20.0.0 255.255.255.0 10.0.0.2",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "default-route",
+    "title": "default-route",
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip route 0.0.0.0 0.0.0.0 10.0.0.2",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "wrong-prefix",
+    "title": "wrong-prefix",
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip route 10.20.0.0 255.255.255.0 10.0.0.2",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "unresolved-next-hop",
+    "title": "unresolved-next-hop",
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "no ip route 10.20.0.0 255.255.255.0 10.0.1.2",
+          "ip route 10.20.0.0 255.255.255.0 10.0.0.2",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "lpm-next-hop",
+    "title": "lpm-next-hop",
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "no ip route 10.20.0.0 255.255.255.0 192.168.1.254",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "floating-static",
+    "title": "floating-static",
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip route 10.20.0.0 255.255.255.0 10.0.0.2 5",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "access-vlan",
+    "title": "access-vlan",
+    "solution": [
+      {
+        "device": "SW-01",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface fa0/1",
+          "switchport access vlan 10",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "trunk-allowed",
+    "title": "trunk-allowed",
+    "solution": [
+      {
+        "device": "SW-01",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface gi0/1",
+          "switchport trunk allowed vlan 10,20",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "native-vlan",
+    "title": "native-vlan",
+    "solution": [
+      {
+        "device": "SW-01",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface gi0/1",
+          "switchport trunk native vlan 1",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "nat-pat",
+    "title": "nat-pat",
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip nat inside source list 1 interface g0/1 overload",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "ping"
+    }
+  },
+  {
+    "id": "relay-trunk",
+    "title": "relay-trunk",
+    "solution": [
+      {
+        "device": "SW-01",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface gi0/1",
+          "switchport trunk allowed vlan 10,20",
+          "end"
+        ]
+      },
+      {
+        "device": "PC-01",
+        "commands": [
+          "ipconfig /renew"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "dhcp"
+    }
+  },
+  {
+    "id": "stp-loop",
+    "title": "stp-loop",
+    "solution": [
+      {
+        "device": "SW-03",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "spanning-tree vlan 10 priority 0",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "stp-root"
+    }
+  }
+]

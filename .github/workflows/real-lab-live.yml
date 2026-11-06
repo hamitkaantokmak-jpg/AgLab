@@ -13,7 +13,7 @@ permissions:
 jobs:
   live-containerlab:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Kodu al
         uses: actions/checkout@v4
@@ -23,6 +23,10 @@ jobs:
           containerlab version
       - name: Gerçek topolojiyi çalıştır ve ICMP doğrula
         run: sudo python3 real-lab/live_smoke.py --execute
+      - name: Yetkisiz öğrenci hesabı ve Docker yalıtımını doğrula
+        run: sudo python3 real-lab/student_isolation_smoke.py --execute
+      - name: Canlı router tanısından öğrenci yanıtına tüm zinciri doğrula
+        run: sudo python3 real-lab/student_live_smoke.py --execute
       - name: Artık konteyner kalmadığını kontrol et
         if: always()
         run: |
@@ -34,3 +38,83 @@ jobs:
             exit 1
           fi
           echo "Real-lab cleanup verified"
+
+  advanced-native:
+    name: Native ${{ matrix.lab }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        lab: [l2, routing]
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+      - name: Native adaptör güvenlik ve şema testleri
+        run: python3 real-lab/test_advanced_smoke.py
+      - name: Containerlab kur
+        run: |
+          curl -fsSL https://get.containerlab.dev | sudo bash
+          containerlab version
+      - name: Ayrı native laboratuvarı doğrula
+        run: sudo python3 real-lab/advanced_smoke.py "${{ matrix.lab }}" --execute
+      - name: Native motor kanıtlarını sakla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aglab-gercek-motor-${{ matrix.lab }}
+          path: dist/advanced-*-results.json
+          if-no-files-found: warn
+
+  shared-and-extended:
+    name: Shared integration ${{ matrix.script }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        script: [shared_smoke, extended_routing, routed_smoke]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate bounded shared topology adapter
+        run: |
+          python3 real-lab/test_shared_topology.py
+          python3 real-lab/test_routed_topology.py
+          python3 real-lab/test_routed_smoke.py
+      - name: Install Containerlab
+        run: curl -fsSL https://get.containerlab.dev | sudo bash
+      - name: Execute isolated native integration
+        run: sudo python3 real-lab/${{ matrix.script }}.py --execute
+      - name: Preserve actual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aglab-integration-${{ matrix.script }}
+          path: dist/*-results.json
+          if-no-files-found: error
+
+  security-native:
+    name: Native security ${{ matrix.scenario }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [acl, nat]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Security lifecycle and failure classification tests
+        run: python3 real-lab/test_security_smoke.py
+      - name: Install distribution kernel networking tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iproute2 nftables conntrack iputils-ping procps
+      - name: Execute isolated actual socket and kernel tests
+        run: sudo python3 real-lab/security_smoke.py "${{ matrix.scenario }}" --execute
+      - name: Preserve actual security evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aglab-native-security-${{ matrix.scenario }}
+          path: dist/security-*-results.json
+          if-no-files-found: error
