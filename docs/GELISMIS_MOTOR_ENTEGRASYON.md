@@ -155,10 +155,10 @@ okunur öğrenci yalıtımı/zinciri yanında iki yeni native labı çalıştır
 Native protokol başarısı mock unit sonuçlarından çıkarılmaz. Koşu raporları
 başarı/başarısızlık, cleanup ve kanıt snapshot'larını saklar.
 
-Kök raw HTML'nin önceki commit'te üretilmiş taban olduğu kontrol edildi;
-otomatik inceleme yükleme sınırı nedeniyle kaynaklar ve CI üretimi esas.
-`run_pipeline.py` HTML'yi testlerden önce yeniden üretir. Güncel CI ZIP/teslim
-HTML'si kullanılmalı; raw GitHub HTML yeni modülleri içermeyebilir. Release
+Kök hazır HTML güncel motor seçimi, NetSim ve kanıt modüllerini içerir.
+`run_pipeline.py` HTML'yi testlerden önce yeniden üretir. CI, depodaki HTML ile
+kaynaklardan üretilen çıktının eşitliğini zorunlu tutar; güncel CI ZIP'i ayrıca
+commit ve modül hash'lerini içeren manifest sunar. Release
 doğrulaması gömülü modüllerin paket kaynaklarıyla eşitliğini denetler. Adaptör
 blokları her üretimde aynı sıraya yerleştirilir. `test_build_simulator.py`,
 önceki HTML'deki blokları ters çevirip tekrar derleyerek byte eşitliğini sınar;

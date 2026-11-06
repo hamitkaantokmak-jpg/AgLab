@@ -103,10 +103,9 @@ python run_pipeline.py
 
 CI, derlenmiş bundle'ın kaynaklara eşitliğini ve iki ardışık HTML üretiminin
 byte eşitliğini denetler. `run_pipeline.py` HTML'yi testlerden önce kaynaklardan
-yeniler; başarılı ZIP güncel HTML'yi içerir. Büyük üretilmiş HTML'yi GitHub'a
-yazma çağrısı otomatik inceleme veri sınırına takıldığı için bu tur depodaki
-önceden üretilmiş HTML tabanı değiştirilmedi. Yeni entegrasyon için kaynakları
-derleyin veya doğrulanmış CI ZIP'ini kullanın; eski raw HTML yeni motor içermez.
+yeniler; başarılı ZIP güncel HTML'yi içerir. Depodaki hazır HTML de NetSim,
+motor seçimi ve tanı modüllerini içerir. CI, yeniden üretilen HTML ile kaydedilmiş
+HTML arasında fark varsa başarısız olur; hazır çevrimdışı dosya kaynaklardan geri kalamaz.
 Yeni motor testleri, karşılaştırma ve ölçüm pipeline'a dahildir. ZIP doğrulama
 lisans, özgün kaynak hashleri, yeni bağımlılıklar, 40 lab ve öğrenci/öğretmen
 ayrımını kontrol eder. Geçmeyen koşuda doğrulanmış ZIP üretilmez.

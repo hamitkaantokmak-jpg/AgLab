@@ -2,7 +2,7 @@
 
 Tarayıcı tabanlı ağ simülatörü ve Packet Tracer `.pkt` aktarımı.
 
-Güncel dağıtım için başarılı PR CI çalışmasının öğrenci ZIP'ini kullanın. Kök HTML, derlemeye giren eski tabandır; güncel modüller CI'da gömülür. ZIP içindeki `html-build-manifest.json`, kaynak commit kimliğini ve HTML/modül SHA256'larını içerir. [Ortak JSON → gerçek Lab](docs/ORTAK_GERCEK_LAB.md) ve [40 laboratuvar–motor haritası](docs/LAB_MOTOR_HARITASI.md).
+Güncel dağıtım için başarılı PR CI çalışmasının öğrenci ZIP'ini kullanın. Kök HTML güncel motor ve tanı modüllerini içerir; CI yeniden üretip kaynaklarla aynı kaldığını doğrular. ZIP içindeki `html-build-manifest.json`, kaynak commit kimliğini ve HTML/modül SHA256'larını içerir. [Ortak JSON → gerçek Lab](docs/ORTAK_GERCEK_LAB.md) ve [40 laboratuvar–motor haritası](docs/LAB_MOTOR_HARITASI.md).
 
 ## Otomatik kalite kapısı
 
@@ -14,7 +14,7 @@ Detaylı kurulum: `OTOMASYON.md`.
 
 Deneysel gerçek üçüncü taraf motor karşılaştırması: [kapsam, lisans ve testler](docs/HAZIR_MOTOR_ENTEGRASYON.md).
 HTML çevrimdışı çalışır; kaynak motoru yeniden derlemek için `npm ci --ignore-scripts` ve `npm run build:engine` kullanılır.
-Yeni entegrasyonu içeren HTML, `python run_pipeline.py` tarafından kaynak modüllerden üretilir ve başarılı CI ZIP'ine eklenir. Depodaki önceden üretilmiş HTML tabanı yerine güncel CI paketindeki HTML'yi kullanın. CI ayrıca iki ardışık HTML derlemesinin eşitliğini doğrular.
+Yeni entegrasyonu içeren HTML, `python run_pipeline.py` tarafından kaynak modüllerden üretilir ve başarılı CI ZIP'ine eklenir. Depodaki hazır HTML de aynı modüllerle günceldir. CI hem iki ardışık derlemenin hem de kaydedilmiş HTML ile yeniden üretilen çıktının eşitliğini doğrular.
 
 [Motor uyumluluk matrisi](docs/UYUMLULUK_MATRISI.md) · [Gerçek VLAN/STP ve FRR testleri, ortak motor yönetimi](docs/GELISMIS_MOTOR_ENTEGRASYON.md). ZIP içindeki `html-build-manifest.json` HTML/modül bütünlüğünü doğrular; native protokoller ayrı Linux/Docker lablarında çalışır.
 
