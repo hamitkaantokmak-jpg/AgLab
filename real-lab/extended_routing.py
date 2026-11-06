@@ -22,6 +22,17 @@ def multi_area(live,include_summary=False):
 def experimental_summary(live,interarea):
     # NOT a release capability: actual CI has not produced the expected /23.
     # Keep the failing experiment reproducible without claiming it is supported.
+    def diagnostics(stage):
+        data={}
+        for n in ('r1','r2','r3'):
+            for cmd in ('show version','show running-config','show ip ospf','show ip ospf route','show ip ospf database summary','show ip route'):
+                try:data[n+' '+cmd]=live.vty(n,cmd)
+                except Exception as error:data[n+' '+cmd]=str(error)
+        try:data['daemon-log']=live.execute('r2','cat','/tmp/aglab-summary-ospfd.log',check=False).stdout
+        except Exception as error:data['daemon-log']=str(error)
+        live.evidence['summary-'+stage]=data
+    live.config('r2','log file /tmp/aglab-summary-ospfd.log')
+    diagnostics('before')
     response=live.config('r2','router ospf','area 2 range 192.168.20.0/23')
     live.evidence['summary-config-output']=response
     live.evidence['summary-running-config']=live.vty('r2','show running-config')
@@ -31,7 +42,11 @@ def experimental_summary(live,interarea):
         # Prefix lookup returns the covering /23 for a /24 query. Test the
         # actual installed prefix inventory rather than treating lookup as exact.
         return '192.168.20.0/23' in data and '192.168.20.0/24' not in data and live.route('ospf','10.0.12.2','192.168.20.0/23') and live.ping()
-    live.wait('ABR summary /23 replaces external /24 and carries traffic',summary)
+    try:
+        live.wait('ABR summary /23 replaces external /24 and carries traffic',summary)
+    finally:
+        # Preserve real LSDB/ABR/version/log evidence even if ospfd crashes.
+        diagnostics('after')
     live.config('r2','router ospf','no area 2 range 192.168.20.0/23')
     live.wait('Summary removal restores specific inter-area route',lambda:interarea() and live.ping())
 

@@ -28,7 +28,7 @@ Varsayılan suite sağlıklı örnekte pozitif ICMP, yanlış access VLAN, onar�
 
 `extended_routing.py` mevcut üç router/iki PC altyapısını kullanır. Doğrudan r1–r3 bağlantısı kapatılır; r1 LAN area1, r1–r2 area0, r2–r3 ve hedef LAN area2 olur. FRR'nin OSPF tablosunda `N IA` rota, ABR r2 üzerinden gerçek ICMP ve passive transit arızası/onarımı sınanır. Genel Zebra tablosu Cisco'nun `O IA` gösterimi yerine `O` basar; test bu ayrımı korur. Yalnız show çıktısına dayanılmaz.
 
-**Özetleme tamamlanmadı:** 46cfb0c commit'inin gerçek CI denemesinde `area 2 range 192.168.20.0/23` running-config'e girdi, ancak r1'de beklenen `/23` rota oluşmadı; `/24` kaldı. Bu nedenle özetleme destek matrisinde başarılı değildir. Başarısız deney `--experimental-summary --execute` ile yeniden üretilebilir ve başarısız çıkış kodu verir; standart kabul suite'inin veya öğrenci desteğinin parçası değildir. OSPF authentication ve ileri BGP politika senaryoları da sonraki kapsamdır.
+**Özetleme tamamlanmadı:** 46cfb0c commit'inin gerçek CI denemesinde `area 2 range 192.168.20.0/23` running-config'e girdi, ancak r1'de beklenen `/23` rota oluşmadı; `/24` kaldı. Bu nedenle özetleme destek matrisinde başarılı değildir. Başarısız deney `--experimental-summary --execute` ile yeniden üretilebilir ve başarısız çıkış kodu verir; standart kabul suite'inin veya öğrenci desteğinin parçası değildir. OSPF authentication sonraki kapsamdır; dar BGP policy denetimi aşağıda ayrı olarak tanımlanır.
 
 IPv6 ayrı ULA adresleri, üç router üzerinden statik rotalar, gerçek ND komşu MAC öğrenmesi ve ICMPv6 kullanır. r2 hedef rotası kaldırıldığında veri iletimi kesilmeli, geri konunca düzelmelidir. SLAAC, DHCPv6, OSPFv3, IPv6 tarayıcı CLI'si uygulanmamıştır. Bu görevler 40 özgün Akademi labının dışında operatör senaryolarıdır.
 
@@ -113,3 +113,36 @@ Filtre kaldırıldıktan sonra next-hop ve trafik düzelmelidir. Bu bir iBGP,
 route-reflector, MED/community veya tüm policy semantiği desteği değildir.
 Kesin sonuç native routing CI raporudur; unit testte çağrıların varlığı protokol
 başarısı sayılmaz. Tarayıcı/öğrenci yetkilerinde değişiklik yoktur.
+
+## Özetleme hata incelemesi — 6 Kasım 2026
+
+Aynı sabit `quay.io/frrouting/frr:containerlab-10.7.1` imajı, gerçek Docker/Linux
+veri ağları ve mevcut `extended_topology`/`multi_area` koduyla yeniden sınandı.
+İmaj digest’i `sha256:f7d98e4faa24333c1fdb638f72678111de07a7aef90566132655dbadceca86c7`;
+`show version`: `FRRouting 10.7.1_git (fb7b13a821a9)`; host kernel `6.18.57`.
+Bu yerel araştırma Containerlab CI koşusuyla aynı şey değildir.
+
+Özetlemeden önce area0/area2 komşulukları, R1’de `N IA 192.168.20.0/24`,
+R2’nin area0+area2 ABR yapılandırması, area0 LSDB’sindeki R2 kaynaklı /24 Type-3
+LSA ve gerçek ICMP doğrulandı. Passive-interface arızası ve onarımı da geçti.
+`area 2 range 192.168.20.0/23` running-config’e kabul edildi. Ardından gerçek
+daemon logunda aşağıdaki hata görüldü:
+
+```text
+OSPF: Received signal 11 ... (si_addr 0x0 ...); aborting...
+OSPF: in thread ospf_abr_task_timer scheduled from ospfd/ospf_abr.c:2189 ospf_schedule_abr_task()
+ZEBRA: client 34 disconnected 2 ospf routes removed from the rib
+```
+
+Beklenen /23 oluşmadı; sonraki RIB’de OSPF rotaları yoktu. Bu yeniden üretimde
+sorun komutun reddedilmesi veya yalnız yanlış prefix araması değildir: seçili
+FRR imajındaki ABR görevi çökmesi somut olarak gözlendi. Çöken fonksiyonun içindeki
+asıl kaynak hatası/backtrace henüz çözülmedi; eski CI başarısızlığının da aynı
+çökmeden kaynaklandığına dair eski log kanıtı yoktur. FRR kaynak kodundaki
+`ospf_area_range_set` ve ABR zamanlama yolu incelendi; üçüncü taraf kod kopyalanmadı.
+
+`--experimental-summary` başarısızlık durumunda artık önce/sonra sürüm,
+running-config, ABR durumu, ospfd route tablosu, summary LSDB ve daemon logunu
+raporda saklar. Başarısız deney korunur ve varsayılan kabul testine alınmaz.
+FRR sürümü değişimi veya startup-config ile alternatif özetleme ancak ayrı native
+pozitif/negatif testlerden sonra destek sayılabilir; bu turda uygulanmadı.
