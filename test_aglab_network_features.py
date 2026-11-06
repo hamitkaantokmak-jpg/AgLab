@@ -34,8 +34,8 @@ class CommonEngineTests(unittest.TestCase):
  def probe(self):return self.run_js('aglabSharedEngine.probe()')
  def test_01_all_scenarios_fail_goal_then_solve_and_restore_academy(self):
   self.page.select_option('#academySelect','AGL-005');self.page.click('#academyStart')
-   if self.page.locator('#academyReplacePrompt').is_visible():self.page.click('#academyReplaceContinue')
-   self.page.click('#academyHint')
+  if self.page.locator('#academyReplacePrompt').is_visible():self.page.click('#academyReplaceContinue')
+  self.page.click('#academyHint')
   before=self.run_js('academyEngine.snapshot()');hints=self.page.locator('#academyHints').inner_text()
   REPORT['scenarios']=self.run_js('aglabSharedEngine.validateScenarios()')
   self.assertGreaterEqual(len(REPORT['scenarios']),17)
