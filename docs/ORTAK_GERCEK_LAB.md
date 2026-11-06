@@ -14,7 +14,7 @@ sudo python3 real-lab/shared_smoke.py --topology aglab-operator-topology.json --
 
 İlk komut, mevcut JSON'dan `lab.clab.yml` ve incelenebilir `plan.json` oluşturur. Çalıştırma betiği plan dosyasını komut olarak kabul etmez; kaynak topolojiyi yeniden doğrular. Hazır suite iki temsilî girdi kullanır: 2 PC/2 switch VLAN10 örneği ve özgün AGL-024 başlangıç topolojisi. Operatör kendi dışa aktarılan JSON'unu aşağıdaki seçenekle aynı doğrulama sınırları içinde çalıştırabilir. Genel bir öğrenciden komut çalıştırma servisi yoktur.
 
-## Kesin dönüşüm sınırı
+## Linux bridge dönüştürücüsünün sınırı
 
 PC'nin kablosu bulunmalı, referans verilen VLAN'lar switch VLAN veritabanında tanımlı olmalıdır. Eksik kablo/VLAN oluşturulmaz; bunları içeren başlangıç görevleri açıkça reddedilir. Harita her başlangıç topolojisini gerçek dönüştürücüden geçirir ve ret nedenini kaydeder.
 
@@ -51,6 +51,50 @@ Kaynaklar: [FRR OSPF](https://docs.frrouting.org/en/latest/ospfd.html), [FRR IPv
 
 Pull request CI'da `source_commit`, GitHub'ın gerçekten checkout ettiği geçici birleştirme commit'i olabilir; bu, PR'ın main'e birleştirildiği anlamına gelmez. İlgili workflow'un `head_sha` alanı PR dalı commit'ini, manifest ise derlenen checkout kimliğini gösterir. Öğrenci ve öğretmen ZIP'leri aynı manifesti taşır.
 
-Kök HTML eski kaynak tabanıdır. Kullanılacak sürüm başarılı genel CI'nın öğrenci ZIP'indeki derlenmiş HTML'dir. `html-build-manifest.json` HTML ve gömülü modül SHA256'larına ek olarak `source_commit` içerir. Yerel kaynaksız derlemede commit `null`, kimlik `unverified local build` olur; kimlik uydurulmaz. Commit kimliği dosya imzası değildir. Native raporları ayrı workflow artifact'lerinden alınır; genel ZIP başarısı yeni native job başarısı yerine geçmez.
+Kök HTML kaynaklarla eşitlik kontrolünden geçer. Dağıtım için başarılı genel CI öğrenci ZIP'i ve içindeki manifest esas alınır. `html-build-manifest.json` HTML ve gömülü modül SHA256'larına ek olarak `source_commit` içerir. Yerel kaynaksız derlemede commit `null`, kimlik `unverified local build` olur; kimlik uydurulmaz. Commit kimliği dosya imzası değildir. Native raporları ayrı workflow artifact'lerinden alınır; genel ZIP başarısı yeni native job başarısı yerine geçmez.
 
 Özgün 40 görev ve öğrenci/öğretmen ayrımı değiştirilmemiştir. `LAB_MOTOR_HARITASI.md`, öğrenci dosyalarının gerçek içeriği ve hash'lerinden yeniden üretilebilir. UX/Akademi planlama dalına değişiklik yapılmaz. PR taslak kalır.
+
+## Router JSON → FRRouting (operatör yolu)
+
+```sh
+python3 real-lab/routed_topology.py real-lab/examples/routed-2-routers.aglab.json --out /tmp/aglab-frr-export
+# Yalnız lab.clab.yml, plan.json ve rN.conf veri dosyaları; hiçbir süreç başlamaz.
+sudo python3 real-lab/routed_smoke.py --execute
+# Öğretmen kaynak paketi olmayan dağıtımda bağımsız iki/üç router örnekleri:
+sudo python3 real-lab/routed_smoke.py --demo-only --execute
+# Öğrenci JSON'unda beklenen arızayı gözle; ayrı, incelenmiş rota onarımını uygula:
+sudo python3 real-lab/routed_smoke.py --topology aglab-operator-topology.json --expect failure --repair repaired-topology.json --source PC1 --target PC2 --execute
+```
+
+`routed_topology.py` mevcut v23 şemasını değiştirmez: 2–4 tek NIC PC, 1–3 router,
+0–2 isteğe bağlı VLAN1 access bridge, en fazla 9 cihaz/12 kablo kabul edilir.
+Bütün uç/arayüz adresleri RFC1918 host IPv4/mask; PC gateway on-link olmalıdır.
+Statik private/default prefix, private next-hop, AD 1–255 ve shutdown/power/kablo
+up alanları korunur. Yanlış ama sözdizimsel olarak geçerli next-hop düzeltilmez;
+FRR/kernel'de başarısızlığının gözlenmesi gerekir. Orijinal portlar ethN'e,
+cihaz kimlikleri pcN/rN/sN'e sabit eşlenir; özgün JSON değişmez ve SHA256 kaydedilir.
+
+OSPF/BGP, ACL/NAT, helper, trunk, VLAN1 dışındaki switch ayarları, SVI/alt arayüz,
+çoklu NIC, raw config, bilinmeyen exec/image/bind/host-path alanları reddedilir.
+İmajlar sabittir. Kaynak isimleri FRR komutuna veya host dosya yoluna konmaz.
+Export edilmiş plan değişirse yeniden kaynak doğrulaması yapılmadan yazılamaz;
+çalıştırıcı planı shell olarak yüklemez. Yalnız yetkili operatör `--execute`
+kullanır; tarayıcı, yönetici API'si veya öğrenci servisine yeni yetki eklenmedi.
+
+Her native düğümün yönetim eth0 arayüzü kapatılır; PC varsayılan rotası yalnız
+veri gateway'ine gider. Konteynerler sabit, ayrı lab adındadır; önceden var olan
+lab reddedilir, kısmi deploy dâhil sahip olunan kaynakların temizliği doğrulanır.
+Operatör raporu mevcut `routing/FRRouting` veri şemasıyla alınır; gerçek komut,
+beklenen ve gözlenen ICMP, FRR RIB, kernel FIB ve seçilen gateway kanıtları saklanır.
+Rapor dosyası imzalı veya PCAP değildir; mevcut Dedektif onu güvenilmeyen metin/veri
+olarak gösterir. Onarım JSON'u yalnız statik rotaları değiştirebilir.
+
+Bağımsız iki/üç router örnekleri sağlıklı trafik, eksik dönüş rotası, yanlış
+next-hop ve interface shutdown/no shutdown aşamalarını çalıştırır. AGL-034/035
+özgün başlangıç topolojisi başarısız, özgün target topolojisinin statik rotaları
+CLI ile uygulandıktan sonra başarılı olmalıdır. Akademi source/teacher verileri
+öğrenci ZIP'ine konmaz; bu iki doğrulama checkout/öğretmen paketi gerektirir.
+Testlerin kodlanması başarı kanıtı değildir: kesin sonuç `routed-*-results.json`
+ve ilgili native CI çalışmasından okunmalıdır. JSON doğrulama/unit testleri
+Docker/FRR çalıştırıldığını iddia etmez.

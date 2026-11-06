@@ -1,0 +1,145 @@
+{
+  "app": "AgLab",
+  "version": 23,
+  "devices": [
+    {
+      "id": "PC1",
+      "name": "PC1",
+      "type": "PC",
+      "x": 100,
+      "y": 100,
+      "enabled": true,
+      "config": {},
+      "ports": [
+        "eth0"
+      ],
+      "interfaces": {
+        "eth0": {
+          "enabled": true
+        }
+      },
+      "ip": "192.168.10.10",
+      "mask": "255.255.255.0",
+      "gateway": "192.168.10.1"
+    },
+    {
+      "id": "R1",
+      "name": "R1",
+      "type": "Router",
+      "x": 100,
+      "y": 100,
+      "enabled": true,
+      "config": {},
+      "ports": [
+        "g0/0",
+        "g0/1",
+        "g0/2"
+      ],
+      "interfaces": {
+        "g0/0": {
+          "enabled": true,
+          "ip": "192.168.10.1",
+          "mask": "255.255.255.0"
+        },
+        "g0/1": {
+          "enabled": true,
+          "ip": "10.0.12.1",
+          "mask": "255.255.255.0"
+        },
+        "g0/2": {
+          "enabled": true
+        }
+      },
+      "staticRoutes": [
+        {
+          "network": "192.168.20.0",
+          "mask": "255.255.255.0",
+          "nextHop": "10.0.12.2",
+          "distance": 1
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "name": "R2",
+      "type": "Router",
+      "x": 100,
+      "y": 100,
+      "enabled": true,
+      "config": {},
+      "ports": [
+        "g0/0",
+        "g0/1",
+        "g0/2"
+      ],
+      "interfaces": {
+        "g0/0": {
+          "enabled": true,
+          "ip": "192.168.20.1",
+          "mask": "255.255.255.0"
+        },
+        "g0/1": {
+          "enabled": true,
+          "ip": "10.0.12.2",
+          "mask": "255.255.255.0"
+        },
+        "g0/2": {
+          "enabled": true
+        }
+      },
+      "staticRoutes": [
+        {
+          "network": "192.168.10.0",
+          "mask": "255.255.255.0",
+          "nextHop": "10.0.12.1",
+          "distance": 1
+        }
+      ]
+    },
+    {
+      "id": "PC2",
+      "name": "PC2",
+      "type": "PC",
+      "x": 100,
+      "y": 100,
+      "enabled": true,
+      "config": {},
+      "ports": [
+        "eth0"
+      ],
+      "interfaces": {
+        "eth0": {
+          "enabled": true
+        }
+      },
+      "ip": "192.168.20.20",
+      "mask": "255.255.255.0",
+      "gateway": "192.168.20.1"
+    }
+  ],
+  "links": [
+    {
+      "a": "PC1",
+      "portA": "eth0",
+      "b": "R1",
+      "portB": "g0/0",
+      "up": true
+    },
+    {
+      "a": "R2",
+      "portA": "g0/0",
+      "b": "PC2",
+      "portB": "eth0",
+      "up": true
+    },
+    {
+      "a": "R1",
+      "portA": "g0/1",
+      "b": "R2",
+      "portB": "g0/1",
+      "up": true
+    }
+  ],
+  "nextId": 5,
+  "selected": "PC1"
+}

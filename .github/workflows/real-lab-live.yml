@@ -73,11 +73,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        script: [shared_smoke, extended_routing]
+        script: [shared_smoke, extended_routing, routed_smoke]
     steps:
       - uses: actions/checkout@v4
       - name: Validate bounded shared topology adapter
-        run: python3 real-lab/test_shared_topology.py
+        run: |
+          python3 real-lab/test_shared_topology.py
+          python3 real-lab/test_routed_topology.py
+          python3 real-lab/test_routed_smoke.py
       - name: Install Containerlab
         run: curl -fsSL https://get.containerlab.dev | sudo bash
       - name: Execute isolated native integration
