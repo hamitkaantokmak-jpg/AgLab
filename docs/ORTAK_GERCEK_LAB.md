@@ -234,3 +234,34 @@ Yeni native job’lar `Native security acl/nat`; protokol başarısı yalnız ge
 çalışan CI/rapor ile doğrulanır. Kod/test varlığı tek başına başarı değildir.
 DHCP/relay ve DNS bu senaryolara eklenmedi; RSTP/LACP ve ileri BGP kapsamı da
 önceki durumundadır. OSPF özetleme deneyi ve mevcut FRR imajı değiştirilmedi.
+
+### V5 doğrulanmış sonuç ve sınır
+
+`38c854d` ve `6f651fe` kaynaklarının gerçek Ubuntu CI’ında iki güvenlik işi
+başarılıdır: [native koşu](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42205155584).
+ACL raporunda 28, NAT/PAT raporunda 21 native kontrol vardır; her ikisinde `ok=true`
+ve `cleanup=true`. İlk koşunun artefaktları ayrıca indirildi, SHA256/CRC kontrol
+edildi ve mevcut rapor ayrıştırıcısından geçirildi: kimlik doğrulanmış sayılmadı,
+PCAP/FRR/simülasyon olarak yeniden etiketlenmedi. Rapor boyutları yaklaşık 218 KB
+ve 142 KB’dir; mevcut 2 MB sınırındadır. CI host kernel’i `7.0.0-1017-azure`;
+Debian araçlarıyla izole yerel Docker/Linux koşusunda da aynı 28+21 kontrol geçti.
+
+Yerel tam pipeline 65/65 doğrulama grubunu ve öğrenci/öğretmen paket üretimini
+geçti. Yeni namespace cleanup testi, tek silme hatası olduğunda diğer sahip olunan
+kaynakların temizliğinin atlanmadığını sınar; cleanup başarısızlığı raporu da
+başarısız yapar. Önceden var olan namespace’e dokunmama, dry-run’ın proses
+başlatmaması ve beklenmeyen komut hatasının ACL ret başarısı sayılmaması ayrı
+unit testleridir. Özgün topoloji verisi, 40 Akademi kaynağı ve paket ayrımı korunur.
+
+İlk yerel denemelerde eksik procps/sysctl, Docker’ın salt okunur sysctl kısıtı,
+nft dosya kapanış sözdizimi ve PAT için transport eşleşmesi gerekliliği görüldü.
+Başarısız denemeler başarı sayılmadı. Araç bağımlılıkları belirlendi; kurallar
+gerçek nft ile düzeltildi. Yerel test konteyneri dış ağa kapalı, yalnız geliştirme
+aracıdır; öğrenci paketinde otomatik Docker çalıştırma veya yetki yükseltme yoktur.
+CI doğrudan yetkili geçici Linux runner’da namespace testlerini çalıştırır.
+
+Bu V5 turunda zorunlu ACL/SNAT/PAT, gerçek TCP/UDP ve onarım senaryoları
+uygulandı. DHCP/relay ve DNS hazır daemon entegrasyonu, RSTP/LACP ve yeni ileri
+BGP senaryoları yapılmadı. OSPF özetleme bu turda yeniden çalıştırılmadı; önceki
+SIGSEGV deneyi, varsayılan FRR imajı ve deneysel statüsü korundu. Sonraki öncelik
+hazır DHCP/relay bileşeni, gerçek DORA/lease kanıtı ve ayrı FRR sürüm karşılaştırmasıdır.

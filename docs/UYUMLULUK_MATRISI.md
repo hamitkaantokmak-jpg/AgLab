@@ -13,8 +13,8 @@ upstream projelerin bütün özelliklerini AğLab'ın desteği gibi saymaz.
 | IPv6 statik rota / ND / ICMPv6 | Yeni tarayıcı IPv6 yok | Entegre değil | L2 altyapı; bu senaryo routing | Sınırlı native senaryo entegre | extended_routing CI: pozitif, transit rota kaybı, onarım; rapor inceleme | SLAAC/DHCPv6/OSPFv3 yok |
 | Multi-area / ABR / passive | Mevcut basit eğitim OSPF'si | Yok | Gerekmez | Native area0/1/2 senaryosu entegre | FRR N IA + gerçek trafik, passive arızası/onarımı | Authentication/iBGP yok; dar BGP policy ayrı native senaryoya bağlı |
 | ABR özetleme | Entegre değil | Yok | Gerekmez | Kaynakta var; deneysel test yazıldı | Önceki CI: /23 yok; yeni yerel native deney: ABR timer içinde ospfd SIGSEGV; sunulmadı | `--experimental-summary` yalnız yeniden üretim; tamamlanmadı |
-| Native ACL / TCP / UDP | Eğitim modeli korunur | Yok | Gerekmez | FRR yerine kernel nftables | security_smoke acl: gerçek socket/ICMP, sayaç, ret/onarım; başarı ayrı native CI kanıtındadır | Ayrı operatör örneği; Akademi ACL görevleri otomatik aktarılmaz |
-| Native SNAT / PAT | Eğitim modeli korunur | Yok | Gerekmez | Kernel nftables + conntrack | security_smoke nat: iki istemci, hedefte peer IP/port, conntrack, ret/onarım | İnternetsiz; sınırlı sabit IPv4 senaryosu; genel NAT dönüştürücüsü yok |
+| Native ACL / TCP / UDP | Eğitim modeli korunur | Yok | Gerekmez | FRR yerine kernel nftables | security_smoke acl: 28 native kontrol geçti; CI 42205155584 / 6f651fe | Ayrı operatör örneği; Akademi ACL görevleri otomatik aktarılmaz |
+| Native SNAT / PAT | Eğitim modeli korunur | Yok | Gerekmez | Kernel nftables + conntrack | security_smoke nat: 21 native kontrol geçti; iki istemci, peer IP/port, conntrack; CI 42205155584 | İnternetsiz; sınırlı sabit IPv4 senaryosu; genel NAT dönüştürücüsü yok |
 | RSTP / LACP | Gerçek protokol yok | Entegre değil | mstpd/bonding kaynakta mümkün; entegre edilmedi | Kapsam dışı | Çalıştırılmadı; öğrenciye sunulmadı | Kaynak yeteneği başarı sayılmaz |
 
 Gerçek koşunun **başarı** durumu dağıtımla verilen CI/JSON kanıtından okunmalıdır. Yukarıdaki “entegre” ifadesi dosya/senaryo bağlandığını belirtir; test sayısı bir uyumluluk yüzdesi değildir. Ayrıntı: [ortak Gerçek Lab](ORTAK_GERCEK_LAB.md), [40 görev haritası](LAB_MOTOR_HARITASI.md). Mevcut klasik STP14 ve temel FRR16 denetimleri korunur.
@@ -38,8 +38,8 @@ CI/JSON sonuç raporundan kontrol edilmelidir; test dosyasının varlığı baş
 | Routing/statik | Sınırlı eğitim modeli: LPM/AD/return path | Desteklenmiyor (host default gateway dar eşleme dışında) | Deneysel: FRR + Linux FIB | Eski gerçek statik topoloji; yeni dinamik next-hop denetimleri | Tüm route policy/VRF/MPLS yok |
 | OSPF | Sınırlı eğitim modeli: AD110; gerçek paket/FSM değil | Desteklenmiyor | Deneysel: gerçek ospfd | Komşuluk, area uyuşmazlığı, router-ID çakışması, yedek yol, withdrawal ve AD110; advanced_smoke routing | Multi-area/ABR ayrı native senaryoda; authentication ve tüm LSA çeşitleri kapsam dışı |
 | BGP | Sınırlı eğitim modeli: eBGP/AD20 | Desteklenmiyor | Deneysel: gerçek bgpd | Karşılıklı eBGP, remote-AS hatası, kısa/alternatif yol, withdrawal ve AD20 | iBGP/RR/MED/community ve geniş AFI-SAFI kapsamı yok; dar prefix-list/route-map/local-pref testi native CI kanıtında |
-| ACL | Sınırlı eğitim modeli | Desteklenmiyor | Doğrulanmadı | Mevcut routed frame/grading denetimleri | Gerçek FRR ACL/policy karşılaştırması yok |
-| NAT | Sınırlı eğitim modeli: PAT | Desteklenmiyor | Doğrulanmadı | Ortak nat-pat senaryosu | Native NAT/many-to-many/tüm protokol çeşitleri yok |
+| ACL | Sınırlı eğitim modeli | Desteklenmiyor | Dar native nftables operatör senaryosu | Gerçek TCP/UDP/ICMP ve sayaçlar, kaynak/hedef/port/sıra/onarım | Cisco ACL sözdizimi/genel JSON aktarımı ve FRR ACL karşılaştırması yok |
+| NAT | Sınırlı eğitim modeli: PAT | Desteklenmiyor | Dar native nftables SNAT/PAT senaryosu | İki gerçek istemci, TCP/UDP, hedef peer IP/port ve conntrack; arıza/onarım | Genel JSON aktarımı, DNAT/hairpin/many-to-many/IPv6 NAT yok |
 | IPv6 | Desteklenmiyor | Desteklenmiyor | Sınırlı native statik senaryo | extended_routing: ND, ICMPv6, rota kaldırma/onarım | SLAAC/DHCPv6/OSPFv3/MP-BGP aktarımı yok |
 | CLI | Sınırlı eğitim modeli: Cisco benzeri mevcut katman | Deneysel: ortak yapılandırma API eşlemesi; yeni parser yok | Deneysel: operatör vtysh/ip/bridge | UI CLI trunk/VLAN/shutdown/save/import; gerçek native config komutları | Aynı Cisco komutu birebir FRR/Linux komutu değildir; öğrenciye shell yok |
 | PKT import | Sınırlı eğitim modeli; kaynak arşivi korunur | Deneysel: kabul edilen ortak JSON alt kümesi | Desteklenmiyor: seçili PKT otomatik kurulmaz | Mevcut context/MAC/helper/matris/restore testleri | Tüm PT sürümleri/cihazları/seçenekleri desteklenmez |
@@ -57,7 +57,7 @@ Linux bridge **14/14**, FRR **16/16** başarılıdır. Trunk/native/allowed, STP
 root/block/failover, FDB/MAC move, OSPF area/router-ID/withdrawal ve BGP
 remote-AS/alternate/withdrawal satırlarındaki belirtilen native testler geçti.
 JS/MIT ve paket regresyonları [genel CI'da](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42117504238)
-başarılıdır. Native DHCP/ACL/NAT, RSTP ve tabloda eksik gösterilen geniş
+başarılıdır. ACL/NAT için daha sonraki ayrı native kanıt üst tablodadır. Native DHCP, RSTP ve tabloda eksik gösterilen geniş
 özellikler bu başarıdan destek kazanmış sayılmaz. En güncel build/test koşusu
 teslim raporunda ayrıca belirtilir.
 
