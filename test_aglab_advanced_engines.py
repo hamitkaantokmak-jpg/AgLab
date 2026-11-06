@@ -47,12 +47,21 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as pw:
  assert page.evaluate('([s,t])=>aglabEngines.run("aglab-js",s,t)',[pcs[0]['id'],pcs[1]['id']])['ok']
  assert page.evaluate('aglabEngines.capture().links.length')==3
  baseline=page.evaluate('JSON.stringify(aglabEngines.capture())')
+ page.locator('#engineCapabilities').evaluate('(d)=>d.open=true')
+ with page.expect_download() as download:page.click('#engineExportTopology')
+ operator_file=Path(tmp)/'operator.json';download.value.save_as(str(operator_file));operator=json.loads(operator_file.read_text(encoding='utf-8'))
+ assert operator['app']=='AgLab' and operator['version']==23 and operator['selected']==''
+ assert all('mac' not in d for d in operator['devices'] if d['type']=='Switch')
+ page.locator('#ptImportFile').set_input_files(str(operator_file));page.wait_for_timeout(80)
+ assert baseline==page.evaluate('JSON.stringify(aglabEngines.capture())')
  report={'kind':'routing','engine':'FRRouting','ok':True,'cleanup':True,'steps':[{'name':'OSPF report fixture <img src=bad onerror=alert(1)>','ok':True,'evidence':{'route':{'protocol':'ospf'}}}],'evidence':{}}
  report_file=Path(tmp)/'report.json';report_file.write_text(json.dumps(report),encoding='utf-8');page.locator('#nativeLabReport').set_input_files(str(report_file))
  page.wait_for_function("document.querySelector('#nativeLabReportStatus').textContent.includes('imzası doğrulanmadı')")
  assert 'ayrı Lab' in page.locator('#packetDetectiveStatus').inner_text()
  assert 'paket olayı değil' in page.locator('#packetDetectiveExplanation').inner_text()
  assert page.locator('#packetDetectivePanel img[src="bad"]').count()==0
+ page.locator('#nativeLabChecks').evaluate('(d)=>d.parentElement.open=true')
+ assert 'Beklenti karşılandı' in page.locator('#nativeLabChecks').inner_text()
  assert baseline==page.evaluate('JSON.stringify(aglabEngines.capture())')
  report['execute']='shell';report_file.write_text(json.dumps(report),encoding='utf-8');page.locator('#nativeLabReport').set_input_files(str(report_file));page.wait_for_function("document.querySelector('#nativeLabReportStatus').textContent.startsWith('Rapor açılmadı')")
  assert not errors,errors

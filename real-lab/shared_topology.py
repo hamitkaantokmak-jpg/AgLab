@@ -13,12 +13,15 @@ def vlan(n):
     if type(n) is not int or not 1<=n<=4094:raise ValueError('Invalid VLAN')
     return n
 def convert(t):
+    try:return _convert(t)
+    except (TypeError,KeyError,AttributeError,RecursionError) as e:raise ValueError('Malformed topology') from e
+def _convert(t):
     if len(json.dumps(t))>2000000:raise ValueError('Topology too large')
     keys(t,['app','version','devices','links','nextId','selected'])
     if t.get('app')!='AgLab' or t.get('version')!=23:raise ValueError('Expected AgLab v23')
     ds=t.get('devices');ls=t.get('links')
     if not isinstance(ds,list) or not 3<=len(ds)<=6 or not isinstance(ls,list) or len(ls)>8:raise ValueError('Lab size unsupported')
-    nodes={};ids={};macs=set();counts={'PC':0,'Switch':0};warnings=[]
+    nodes={};ids={};macs=set();ips=set();counts={'PC':0,'Switch':0};warnings=[]
     for d in ds:
         keys(d,['id','name','type','mac','x','y','w','h','ip','mask','gateway','enabled','mode','config','ports','interfaces','vlan','vlans'])
         typ=d.get('type');identity=d.get('id')
@@ -45,8 +48,10 @@ def convert(t):
             private=any(address.ip in ipaddress.ip_network(x) for x in ('10.0.0.0/8','172.16.0.0/12','192.168.0.0/16'))
             if not private or address.network.prefixlen<31 and address.ip in (address.network.network_address,address.network.broadcast_address):raise ValueError('Only RFC1918 host addresses supported')
             item['ip']=str(address)
+            if address.ip in ips:raise ValueError('Duplicate PC IP')
+            ips.add(address.ip)
             mac=d.get('mac',f'02:ee:00:00:00:{counts[typ]:02x}')
-            if not isinstance(mac,str) or not re.fullmatch(r'(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}',mac) or int(mac[:2],16)&1 or mac.lower() in macs:raise ValueError('Invalid/duplicate MAC')
+            if not isinstance(mac,str) or not re.fullmatch(r'(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}',mac) or int(mac[:2],16)&1 or mac=='00:00:00:00:00:00' or mac.lower() in macs:raise ValueError('Invalid/duplicate MAC')
             item['mac']=mac.lower();macs.add(mac.lower())
             if 'mac' not in d:warnings.append(identity+': generated local MAC; source had none')
         else:

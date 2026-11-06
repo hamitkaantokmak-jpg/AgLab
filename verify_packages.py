@@ -1,5 +1,5 @@
 """Validate the two offline Academy archives, including content and source separation."""
-import hashlib, json, re, sys, zipfile
+import hashlib, json, os, re, sys, zipfile
 
 EMBEDDED_SOURCES={
  'BORCK ENGINE':'simulator/borck-engine.generated.js','BORCK UI':'simulator/borck-ui.js',
@@ -8,7 +8,9 @@ EMBEDDED_SOURCES={
  'PACKET EVENTS':'simulator/packet-events.js','PACKET DETECTIVE UI':'simulator/packet-detective-ui.js'}
 
 def build_release_manifest(root):
-    return {'format':'aglab-offline-build-v1','html_sha256':hashlib.sha256((root/'AgLab_Final_PKT_Import.html').read_bytes()).hexdigest(),
+    commit=os.environ.get('GITHUB_SHA') or os.environ.get('AGLAB_SOURCE_COMMIT')
+    if commit is not None and not re.fullmatch('[0-9a-f]{40}',commit):raise ValueError('Invalid source commit identity')
+    return {'format':'aglab-offline-build-v1','source_commit':commit,'source_identity':'CI checkout' if os.environ.get('GITHUB_SHA') else 'operator supplied' if commit else 'unverified local build','html_sha256':hashlib.sha256((root/'AgLab_Final_PKT_Import.html').read_bytes()).hexdigest(),
             'sources':{p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in EMBEDDED_SOURCES.values()}}
 
 def verify_release_packages(student_path, teacher_path):

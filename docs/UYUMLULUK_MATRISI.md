@@ -3,6 +3,18 @@
 6 Kasım 2026. Bu tablo **AğLab'da bağlanan ve test edilen yolu** sınıflandırır;
 upstream projelerin bütün özelliklerini AğLab'ın desteği gibi saymaz.
 
+## Ortak aktarım ve yeni native senaryolar (6 Kasım)
+
+| Özellik | AğLab JS | MIT NetSim | Linux bridge | FRRouting | Gerçek test / öğrenciye sunum | Sınır |
+|---|---|---|---|---|---|---|
+| Ortak v23 JSON → VLAN/trunk | Mevcut biçim; JSON indirme | Access LAN karşılaştırması korunur | Sınırlı operatör dönüştürücüsü entegre | Router dönüşümü yok | shared_smoke CI raporu; öğrenci yalnız JSON/rapor kullanır | 2–4 PC, 1–2 switch, döngüsüz; gateway/security reddedilir |
+| AGL-024 arıza/onarım | Özgün görev değişmedi | Trunk desteklenmez | Gerçek dört PC/iki switch, VLAN10/20 | Gerekmez | Başlangıç ping kaybı, trunk onarımı ve iki VLAN ICMP | Yalnız bu temsilî Akademi görevi native test edildi |
+| IPv6 statik rota / ND / ICMPv6 | Yeni tarayıcı IPv6 yok | Entegre değil | L2 altyapı; bu senaryo routing | Sınırlı native senaryo entegre | extended_routing CI: pozitif, transit rota kaybı, onarım; rapor inceleme | SLAAC/DHCPv6/OSPFv3 yok |
+| Multi-area / ABR / özet / passive | Mevcut basit eğitim OSPF'si | Yok | Gerekmez | Native area0/1/2 senaryosu entegre | O IA + gerçek trafik, passive arızası/onarımı, /23 özet | Authentication, iBGP/policy bu turda yok |
+| RSTP / LACP | Gerçek protokol yok | Entegre değil | mstpd/bonding kaynakta mümkün; entegre edilmedi | Kapsam dışı | Çalıştırılmadı; öğrenciye sunulmadı | Kaynak yeteneği başarı sayılmaz |
+
+Gerçek koşunun **başarı** durumu dağıtımla verilen CI/JSON kanıtından okunmalıdır. Yukarıdaki “entegre” ifadesi dosya/senaryo bağlandığını belirtir; test sayısı bir uyumluluk yüzdesi değildir. Ayrıntı: [ortak Gerçek Lab](ORTAK_GERCEK_LAB.md), [40 görev haritası](LAB_MOTOR_HARITASI.md). Mevcut klasik STP14 ve temel FRR16 denetimleri korunur.
+
 Durumlar: **Tam destek**, **Sınırlı eğitim modeli**, **Deneysel**,
 **Desteklenmiyor**, **Doğrulanmadı**. Bu sürümde hiçbir satır için tüm Cisco
 IOS/Packet Tracer davranışlarını kapsayan “Tam destek” iddiası yapılmıyor.

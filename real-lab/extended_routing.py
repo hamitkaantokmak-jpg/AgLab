@@ -5,6 +5,7 @@ from advanced_smoke import Live, IMAGE, topology
 ROOT=pathlib.Path(__file__).resolve().parent
 
 def multi_area(live):
+    live.wait('FRR daemons ready on all three routers',lambda:live.full('r1','2.2.2.2') and live.full('r2','3.3.3.3'),60)
     for n in ('r1','r3'):live.config(n,'interface eth3','shutdown')
     for n in ('r1','r2','r3'):live.config(n,'no router ospf')
     networks={1:[('192.168.10.0/24',1),('10.0.12.0/24',0)],2:[('10.0.12.0/24',0),('10.0.23.0/24',2)],3:[('10.0.23.0/24',2),('192.168.20.0/24',2)]}

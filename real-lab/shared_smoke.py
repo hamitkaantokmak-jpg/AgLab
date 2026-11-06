@@ -62,7 +62,7 @@ class SharedLive(Live):
         self.evidence['vlan-tables']={n:self.json(n,'bridge','-json','vlan','show') for n,d in self.plan['nodes'].items() if d['type']=='Switch'}
         self.record('Actual kernel VLAN membership captured')
 
-def run_case(t,out,label,initial_failure=False):
+def run_case(t,out,label,initial_failure=False,pair=None,expected=True):
     plan=convert(t);live=SharedLive(plan)
     report={'kind':'l2','engine':'Linux kernel bridge','image':IMAGE,'steps':live.steps,'evidence':live.evidence,'ok':False,'cleanup':False}
     with tempfile.TemporaryDirectory(prefix='aglab-shared-') as tmp:
@@ -73,7 +73,14 @@ def run_case(t,out,label,initial_failure=False):
             started=True;report['host_kernel']=live.command(['uname','-r']).stdout.strip()
             live.command(['containerlab','deploy','-t',str(target)],240)
             report['image_id']=live.command(['docker','image','inspect',IMAGE,'--format','{{.Id}}']).stdout.strip()
-            live.apply();live.verify(initial_failure);report['ok']=True
+            live.apply()
+            if pair:
+                a,b=pair
+                if any(n not in plan['nodes'] or plan['nodes'][n]['type']!='PC' for n in pair) or a==b:raise ValueError('Select two different mapped PCs')
+                if expected:live.wait('Operator topology: expected ICMP success',lambda:live.ping_pair(a,b))
+                else:live.stable_negative('Operator topology: expected ICMP failure',lambda:live.ping_pair(a,b,False))
+            else:live.verify(initial_failure)
+            report['ok']=True
         except Exception as e:report['error']=str(e);print('FAIL',e,flush=True)
         finally:
             if started:
@@ -84,8 +91,12 @@ def run_case(t,out,label,initial_failure=False):
             (out/(label+'-results.json')).write_text(json.dumps(report,indent=2),encoding='utf-8')
     return report['ok']
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--execute',action='store_true');p.add_argument('--out',default=str(ROOT.parent/'dist'));a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--execute',action='store_true');p.add_argument('--out',default=str(ROOT.parent/'dist'));p.add_argument('--topology');p.add_argument('--source',default='pc1');p.add_argument('--target',default='pc2');p.add_argument('--expect',choices=['success','failure'],default='success');a=p.parse_args()
     if not a.execute:print('DRY RUN: operator-only shared topology suite');return 0
+    if a.topology:
+        source=pathlib.Path(a.topology)
+        if source.stat().st_size>2000000:raise ValueError('Topology too large')
+        return 0 if run_case(json.loads(source.read_text(encoding='utf-8')),pathlib.Path(a.out),'shared-operator',pair=(a.source,a.target),expected=a.expect=='success') else 1
     example=json.loads((ROOT/'examples/shared-vlan10.aglab.json').read_text(encoding='utf-8'))
     academy=json.loads((ROOT.parent/'academy/student/AGL-024.json').read_text(encoding='utf-8'))['initial_topology']
     results=[run_case(example,pathlib.Path(a.out),'shared-vlan10'),run_case(academy,pathlib.Path(a.out),'shared-agl024',True)]

@@ -2,6 +2,8 @@
 
 Tarayıcı tabanlı ağ simülatörü ve Packet Tracer `.pkt` aktarımı.
 
+Güncel dağıtım için başarılı PR CI çalışmasının öğrenci ZIP'ini kullanın. Kök HTML, derlemeye giren eski tabandır; güncel modüller CI'da gömülür. ZIP içindeki `html-build-manifest.json`, kaynak commit kimliğini ve HTML/modül SHA256'larını içerir. [Ortak JSON → gerçek Lab](docs/ORTAK_GERCEK_LAB.md) ve [40 laboratuvar–motor haritası](docs/LAB_MOTOR_HARITASI.md).
+
 ## Otomatik kalite kapısı
 
 `python -m pip install playwright` ve `python -m playwright install chromium` sonrasında `python run_pipeline.py` çalıştırın.
