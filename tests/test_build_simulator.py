@@ -6,7 +6,8 @@ from verify_packages import build_release_manifest
 TITLES=['SIMULATION PLAYBACK','BORCK ENGINE','ENGINE MANAGER','ENGINE MANAGER UI','BORCK UI','LAB EVIDENCE','LAB EVIDENCE UI','SIMULATION UI']
 class BuildTests(unittest.TestCase):
  def test_device_hooks_are_generated_from_legacy_html(self):
-  text=(ROOT/'AgLab_Final_PKT_Import.html').read_text(encoding='utf-8')
+  # Kaynak biçimlendirildiğinde de geçerli olsun diye kod parçaları boşluktan bağımsız aranır.
+  text=re.sub(r'\s+','',(ROOT/'AgLab_Final_PKT_Import.html').read_text(encoding='utf-8'))
   self.assertIn('deviceCliDragExceeded(ev,e,startX,startY)',text)
   self.assertNotIn('Math.abs(e.clientX-startX)+Math.abs(e.clientY-startY)>3',text)
   self.assertIn('selectDeviceCliHistory(d.id);if(ptCommandHistory',text)

@@ -11,7 +11,11 @@ const large=Array.from({length:3000},(_,i)=>({id:(i%2?'R':'PC')+i}));
 assert.equal(new Set(large.map(d=>resolve(d,large))).size,large.length);
 const html=fs.readFileSync(require('node:path').join(__dirname,'../../AgLab_Final_PKT_Import.html'),'utf8');
 assert(html.includes('// BEGIN MAC ADDRESS GENERATED\n'+fs.readFileSync(require('node:path').join(__dirname,'../../simulator/mac-address.js'),'utf8')+'\n// END MAC ADDRESS GENERATED\n'));
-const fn=html.split('\n').find(l=>l.includes('function macOf(d)'));
+// Gömülü macOf tanımını (biçimden bağımsız olarak) dengeli süslü parantezlerle çıkar.
+const start=html.indexOf('function macOf(d)');assert(start>=0,'macOf not embedded');
+let depth=0,end=html.indexOf('{',start);
+do{if(html[end]==='{')depth++;else if(html[end]==='}')depth--;end++;}while(depth>0);
+const fn=html.slice(start,end);
 const context=vm.createContext({AgLabMacAddress:api,devices});vm.runInContext(fn,context);
 assert.notEqual(context.macOf({id:'PC1'}),context.macOf({id:'R1'}));
 console.log('PASS full device-ID MAC uniqueness, legacy addresses, order and embedded binding');
