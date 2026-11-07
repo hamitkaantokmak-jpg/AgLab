@@ -1,0 +1,10 @@
+# Derleme çıktıları ve üçüncü taraf kod: biçimlendirilmez.
+AgLab_Final_PKT_Import.html
+simulator/borck-engine.generated.js
+simulator/borck-adapter.ts
+third_party/
+node_modules/
+dist/
+# Tek satırlık gömülü Akademi verisi; verify_packages.py `const academyLabs = …;`
+# satırını tek satır olarak okur.
+academy/student-data.js

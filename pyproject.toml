@@ -1,0 +1,5 @@
+[tool.black]
+line-length = 100
+# Yalnızca yeniden yapılanmada elden geçen Python dosyaları biçimlenir;
+# .pkt dönüştürücüleri ve real-lab/ ayrı adımlarda ele alınacak.
+include = '^/(tests/.*|tools/.*|run_pipeline|verify_packages)\.pyi?$'

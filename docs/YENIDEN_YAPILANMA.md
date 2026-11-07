@@ -1,7 +1,7 @@
 # AğLab yeniden yapılanma planı
 
-> Durum: 1. adım bu PR'da. Sonraki adımlar ayrı PR'lar olarak gelir; her biri
-> kendi testleriyle doğrulanır ve kullanıcı onayıyla birleştirilir.
+> Durum: 1. adım birleşti (#43); 2. adım bu PR'da. Sonraki adımlar ayrı PR'lar
+> olarak gelir; her biri kendi testleriyle doğrulanır ve kullanıcı onayıyla birleştirilir.
 
 ## Neden
 
@@ -47,13 +47,16 @@ FRR gerçek Linux yönlendirme yazılımıdır ve tarayıcıda çalışamaz. Bu 
 
 ## Adımlar (her biri ayrı PR)
 
-1. **Kaynağı HTML'den çıkar** *(bu PR)*: tüm inline JS/CSS/JSON `src/` altında;
+1. **Kaynağı HTML'den çıkar** *(tamamlandı)*: tüm inline JS/CSS/JSON `src/` altında;
    `tools/build_html.py` tek derleyici; çıktı önceki derlemeyle bayt bayt aynı;
    metin-değiştirme yamaları kaynağa işlendi; CI `--check` ile bayat HTML'yi reddeder.
-2. **Okunabilirlik ve test düzeni:** kaynakların formatlanması (davranış değişmez,
-   tarayıcı testleri doğrular); testlerin `tests/` altına taşınması; sabit
-   `/mnt/data` ve `/usr/bin/chromium` yolları yerine ortak fixture; test listesinin
-   elle değil keşifle toplanması.
+2. **Okunabilirlik ve test düzeni** *(bu PR)*: JS kaynakları Prettier, test/araç
+   Python dosyaları Black ile biçimlendi; davranışın değişmediği
+   `tools/js_equivalence.cjs` (esbuild ile AST eşdeğerliği) ve tüm testlerle
+   kanıtlandı. Testler `tests/` ve `tests/node/` altında; sabit `/mnt/data` ve
+   `/usr/bin/chromium` yolları yerine `tests/aglab_test_support.py`; test listesi
+   `run_pipeline.py` içinde keşifle toplanıyor. CSS ve `academy/student-data.js`
+   bilinçli olarak biçimlenmedi.
 3. **Motor API'si:** `main.js` içindeki topoloji modeli, L2/ARP/IP/routing/ICMP
    mantığı DOM'dan ayrılıp `src/engine/` altına saf modüller olarak çıkarılır;
    Node'da tarayıcısız test edilebilir hale gelir. CLI bu API'yi çağırır.

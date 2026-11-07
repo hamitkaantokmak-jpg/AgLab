@@ -6,6 +6,17 @@
 
 Python 3.11+, Chromium ve `pip install playwright` gerekir. `python run_pipeline.py` komutunu proje kökünde çalıştırın. Sonuçlar `dist/` klasörüne kaydedilir. Tekrar çalıştırmak için ek soru veya manuel ZIP hazırlama gerekmez.
 
+## Test düzeni
+
+- `tests/test_*.py` – Python/Playwright regresyonları; `tests/node/*.cjs` – Node testleri ve kıyaslamalar; `real-lab/test_*.py` – Gerçek Lab testleri.
+- `run_pipeline.py` bu dizinleri **keşfeder** (`collect_checks`); yeni bir test için yalnızca dosyayı uygun dizine `test_` önekiyle eklemek yeterlidir. Test listesi elle tutulmaz.
+- Testler ortak `tests/aglab_test_support.py` yardımcısını kullanır (`ROOT`, `HTML`, `artifact_dir()`, `work_dir()`, `decoded_source_xml()`, `launch_chromium()`). Sabit `/mnt/data` veya `/usr/bin/chromium` yolu yoktur; tek bir test doğrudan çalıştırılabilir: `python tests/test_aglab_import.py`, `node tests/node/test_packet_events.cjs`.
+- `AGLAB_CHROMIUM` belirli bir Chromium ikilisini seçer; boşsa Playwright'ın Chromium'u kullanılır. `AGLAB_TEST_ARTIFACT_DIR` kanıt dosyalarının dizinidir (varsayılan `dist/`).
+
+## Kaynak biçimi
+
+JavaScript kaynakları Prettier (`npm run format`, `npm run format:check`), test/araç Python dosyaları Black (`black .`) ile biçimlenir; CI her ikisini de denetler. Tek satırlık gömülü veri (`academy/student-data.js`), derlenmiş üçüncü taraf motor ve CSS bilinçli olarak biçimlenmez (bkz. `.prettierignore`). Biçim değişikliğinin davranışı değiştirmediği `node tools/js_equivalence.cjs <eski-kök> <yeni-kök> <dosyalar…>` ile kanıtlanır: esbuild ile boşlukları atılmış çıktılar bayt bayt karşılaştırılır.
+
 ## GitHub Actions
 
 Projeyi GitHub deposuna yükleyin. `.github/workflows/aglab-ci.yml` her push, pull request ve manuel tetiklemede testleri çalıştırır. Raporlar her durumda Actions artifacts bölümünde; doğrulanmış ZIP yalnızca başarı durumunda görünür. Depo bağlama/yükleme işlemi kullanıcı hesabında yetki gerektirir; bu paket kendi başına GitHub'da çalışma başlatmaz.

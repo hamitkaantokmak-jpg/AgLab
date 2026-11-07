@@ -9,7 +9,7 @@ Two kinds of placeholders are expanded:
 
 * ``@@include <path>@@`` in ``src/index.html`` and in the files it includes:
   replaced verbatim by the content of ``<path>`` (relative to the repo root).
-* A line ``//@@module <TITLE>@@`` inside JavaScript sources: replaced by a
+* A line ``//@@module <TITLE>@@`` (optionally indented) inside JavaScript sources: replaced by a
   ``// BEGIN <TITLE> GENERATED`` ... ``// END <TITLE> GENERATED`` block whose
   body comes from ``MODULES``. The markers are kept in the output because
   regression tests and release verification look for them.
@@ -18,6 +18,7 @@ Usage:
     python tools/build_html.py          # write the HTML
     python tools/build_html.py --check  # fail if the committed HTML is stale
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,7 +33,8 @@ OUTPUT = ROOT / "AgLab_Final_PKT_Import.html"
 DIGEST = ROOT / "html-build.sha256"
 
 INCLUDE = re.compile(r"@@include ([\w./-]+)@@")
-MODULE = re.compile(r"^//@@module ([A-Z ]+)@@\n", re.M)
+# Formatters indent the placeholder inside the main IIFE; the indentation is dropped.
+MODULE = re.compile(r"^[ \t]*//@@module ([A-Z ]+)@@\n", re.M)
 
 # Title -> source files concatenated (in order) into the generated block.
 MODULES: dict[str, list[str]] = {
@@ -78,7 +80,12 @@ def module_block(title: str) -> str:
     body = "".join(read(p) for p in MODULES[title])
     if title == "NETWORK SCENARIOS":
         # Scenario data is embedded as a JS literal, never evaluated as code from JSON.
-        body = "const sharedNetworkScenarios=" + read("simulator/network-scenarios.json") + ";\n" + body
+        body = (
+            "const sharedNetworkScenarios="
+            + read("simulator/network-scenarios.json")
+            + ";\n"
+            + body
+        )
     return f"// BEGIN {title} GENERATED\n{body}\n// END {title} GENERATED\n"
 
 
@@ -104,7 +111,9 @@ def build() -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--check", action="store_true", help="only verify the committed HTML is up to date")
+    parser.add_argument(
+        "--check", action="store_true", help="only verify the committed HTML is up to date"
+    )
     args = parser.parse_args()
     html = build().encode("utf-8")
     digest = hashlib.sha256(html).hexdigest()

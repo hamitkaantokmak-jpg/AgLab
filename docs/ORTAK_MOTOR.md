@@ -47,7 +47,7 @@ Ping şablonlarında kaynak `PC-01`, hedef `PC-02` adları kullanılır; IP, VLA
 ara cihazlar veri dosyasında değiştirilebilir. Denetim kayıt sayısını dosyadan
 okur; yeni genel örnek eklemek için test betiğine kimlik veya sayı eklenmez.
 
-Yerleşik regresyon düğmesi ve `python test_aglab_network_features.py` aynı 17
+Yerleşik regresyon düğmesi ve `python tests/test_aglab_network_features.py` aynı 17
 tarifi ortak motorda yürütür: başlangıç hedefi sağlanmamalı, çözüm komutları sonrası
 sağlanmalıdır. STP halka görevi bir erişim arızası değildir; başlangıçta hedef
 root SW-03 değildir, çözüm sonrası SW-03 root olmalı ve ping sürmelidir. DHCP

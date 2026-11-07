@@ -74,7 +74,7 @@ Mevcut CLI aynen korunur; paralel Cisco komut ayrıştırıcısı eklenmedi.
 
 ## Performans yöntemi ve sınırları
 
-`node --expose-gc simulator/benchmark_borck_engine.cjs` aynı Node sürecinde
+`node --expose-gc tests/node/benchmark_borck_engine.cjs` aynı Node sürecinde
 iki access switch + 8/48/98/248 PC ağını çalıştırır. İki ısınma + yedi örnek
 medyanı: başlangıç, soğuk/sıcak ping, heap tahsis farkı ve olay sayısı kaydedilir.
 Mevcut gerçek Ethernet/MAC modülleri VM içinde, dış uygulama bağımlılıkları
@@ -96,8 +96,8 @@ npm ci --ignore-scripts --no-audit --no-fund
 npm run build:engine
 python build_simulator.py
 python build_academy.py
-node simulator/test_borck_engine.cjs
-python test_aglab_borck_engine.py
+node tests/node/test_borck_engine.cjs
+python tests/test_aglab_borck_engine.py
 python run_pipeline.py
 ```
 

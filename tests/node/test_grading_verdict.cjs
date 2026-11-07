@@ -1,0 +1,41 @@
+#!/usr/bin/env node
+'use strict';
+const assert = require('node:assert/strict');
+const { finalize } = require('../../academy/grading-verdict.js');
+const row = (id, status, points = 50) => ({ id, status, points });
+const full = finalize([row('link', 'passed'), row('ping', 'passed')]);
+assert.equal(full.status, 'complete');
+assert.equal(full.earned_points, 100);
+assert.equal(full.coverage, 1);
+const broken = finalize([row('link', 'passed'), row('ping', 'failed')]);
+assert.equal(broken.status, 'complete');
+assert.equal(broken.earned_points, 50);
+const uncertain = finalize([row('link', 'passed'), row('ping', 'not_evaluated')]);
+assert.equal(uncertain.status, 'incomplete');
+assert.equal(uncertain.earned_points, 50);
+assert.equal(uncertain.coverage, 0.5);
+assert.equal(finalize([row('link', 'passed'), row('ping', 'error')]).status, 'incomplete');
+assert.equal(finalize([row('only', 'passed')]).status, 'incomplete');
+for (const status of ['error', 'not_evaluated']) {
+  const zeroPoint = finalize([row('score', 'passed', 100), row('diagnostic', status, 0)]);
+  assert.equal(
+    zeroPoint.status,
+    'incomplete',
+    'unresolved zero-point criteria must prevent completion',
+  );
+  assert.equal(zeroPoint.earned_points, 100);
+  assert.equal(zeroPoint.coverage, 1);
+}
+assert.equal(
+  finalize([row('score', 'passed', 100), row('diagnostic', 'failed', 0)]).status,
+  'complete',
+);
+assert.throws(() => finalize([row('x', 'passed'), row('x', 'failed')]));
+assert.throws(() => finalize([row('x', 'passed', 101)]));
+assert.throws(() => finalize([row('x', 'passed', -1)]));
+assert.throws(() => finalize([row('x', 'unknown', 100)]));
+const input = [row('a', 'passed', 100)];
+const result = finalize(input);
+result.criteria[0].status = 'failed';
+assert.equal(input[0].status, 'passed', 'result must not mutate input');
+console.log('PASS academy grading verdict contract');

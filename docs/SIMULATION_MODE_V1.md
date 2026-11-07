@@ -54,8 +54,8 @@ SVG etiketinin metni yalnız değiştiğinde güncellenir. Böylece mevcut iste�
 ```sh
 python build_simulator.py
 python build_academy.py
-node simulator/test_simulation_playback.cjs
-python test_aglab_simulation_mode.py
+node tests/node/test_simulation_playback.cjs
+python tests/test_aglab_simulation_mode.py
 python run_pipeline.py
 ```
 
