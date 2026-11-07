@@ -6854,6 +6854,29 @@ labLoadExperiment();
 
 // AğLab interactive topology and IOS-like educational CLI
 (() => {
+  //@@module ENGINE@@
+  // Saf, DOM'suz motor API'si (src/engine). Simülatör durumu (devices/links) bu IIFE'de
+  // kalır ve motora parametre olarak verilir.
+  const engineTopo = {
+    get devices() {
+      return devices;
+    },
+    get links() {
+      return links;
+    },
+  };
+  const {
+    validIP,
+    ipNum,
+    prefixLen,
+    subnet,
+    inNetwork,
+    routePrefixText,
+    maskFromPrefix,
+    maskFromWildcard,
+  } = AgLabEngineIpv4;
+  const { portState, linkPort } = AgLabEngineTopology;
+  const { activeRouterInterfaces, staticRoutes, routeKey } = AgLabEngineRouting;
   const $p = (id) => document.getElementById(id);
   const svg = $p('ptCanvas');
   if (!svg) return;
@@ -7548,39 +7571,16 @@ labLoadExperiment();
     );
   }
   function get(id) {
-    return devices.find((d) => d.id === id);
+    return AgLabEngineTopology.getDevice(engineTopo, id);
   }
   function label(d) {
     return d ? d.name : '?';
   }
-  function portState(d, p) {
-    if (!d) return null;
-    return d.interfaces?.[p] || null;
-  }
   function linkUp(l) {
-    let a = get(l.a),
-      b = get(l.b),
-      pa = portState(a, l.portA),
-      pb = portState(b, l.portB);
-    return !!(
-      l.up &&
-      a &&
-      b &&
-      a.enabled &&
-      b.enabled &&
-      (!pa || (pa.enabled !== false && !pa.errdisabled)) &&
-      (!pb || (pb.enabled !== false && !pb.errdisabled))
-    );
+    return AgLabEngineTopology.linkUp(engineTopo, l);
   }
   function freePort(d) {
-    if (!d) return null;
-    const used = new Set(
-      links.flatMap((l) => (l.a === d.id ? [l.portA] : l.b === d.id ? [l.portB] : [])),
-    );
-    return (d.ports || []).find((p) => !used.has(p) && portState(d, p)?.enabled !== false) || null;
-  }
-  function linkPort(l, id) {
-    return l.a === id ? l.portA : l.portB;
+    return AgLabEngineTopology.freePort(engineTopo, d);
   }
   function render() {
     svg.innerHTML = '';
@@ -7905,157 +7905,11 @@ labLoadExperiment();
     el.appendChild(div);
     el.scrollTop = el.scrollHeight;
   }
-  function validIP(s) {
-    return /^\d{1,3}(\.\d{1,3}){3}$/.test(s) && s.split('.').every((n) => +n >= 0 && +n <= 255);
-  }
-  function subnet(ip, mask) {
-    if (!validIP(ip) || prefixLen(mask) < 0) return '';
-    return ip
-      .split('.')
-      .map((n, i) => +n & +mask.split('.')[i])
-      .join('.');
-  }
-  function ipNum(ip) {
-    if (!validIP(ip)) return null;
-    return ip.split('.').reduce((a, n) => a * 256 + Number(n), 0);
-  }
-  function prefixLen(mask) {
-    if (!validIP(mask)) return -1;
-    const bits = mask
-      .split('.')
-      .map((n) => Number(n).toString(2).padStart(8, '0'))
-      .join('');
-    if (!/^1*0*$/.test(bits)) return -1;
-    return (bits.match(/1/g) || []).length;
-  }
-  function inNetwork(ip, network, mask) {
-    const a = ipNum(ip),
-      n = ipNum(network),
-      m = ipNum(mask);
-    return prefixLen(mask) >= 0 && a !== null && n !== null && m !== null && (a & m) === (n & m);
-  }
-  function activeRouterInterfaces(r) {
-    return Object.entries(r?.interfaces || {}).filter(
-      ([name, i]) =>
-        i.ip &&
-        validIP(i.ip) &&
-        prefixLen(i.mask) >= 0 &&
-        i.enabled !== false &&
-        r.enabled !== false &&
-        (!i.parent ||
-          (r.interfaces?.[i.parent]?.enabled !== false &&
-            r.interfaces?.[i.parent]?.enabled !== undefined)) &&
-        (!name.includes('.') || (i.encapsulation === 'dot1q' && Number(i.vlan) > 0)),
-    );
-  }
   function connectedRoutes(r) {
-    return activeRouterInterfaces(r)
-      .filter(([name, i]) => {
-        const physical = i.parent || (name.includes('.') ? name.split('.')[0] : name);
-        return links.some(
-          (l) =>
-            ((l.a === r.id && l.portA === physical) || (l.b === r.id && l.portB === physical)) &&
-            linkUp(l),
-        );
-      })
-      .map(([name, i]) => ({
-        network: subnet(i.ip, i.mask),
-        mask: i.mask,
-        prefix: prefixLen(i.mask),
-        via: null,
-        iface: name,
-        type: 'connected',
-      }))
-      .filter((x) => x.prefix >= 0);
+    return AgLabEngineRouting.connectedRoutes(engineTopo, r);
   }
-  function staticRoutes(r) {
-    const rows = Array.isArray(r?.staticRoutes) ? r.staticRoutes.slice() : [];
-    if (r?.route && !rows.some((x) => x.network === '0.0.0.0' && x.mask === '0.0.0.0'))
-      rows.push({ network: '0.0.0.0', mask: '0.0.0.0', nextHop: r.route, distance: 1 });
-    return rows
-      .filter(
-        (x) =>
-          validIP(x.network) &&
-          validIP(x.mask) &&
-          validIP(x.nextHop) &&
-          prefixLen(x.mask) >= 0 &&
-          Number.isInteger(Number(x.distance ?? 1)) &&
-          Number(x.distance ?? 1) >= 1 &&
-          Number(x.distance ?? 1) <= 255,
-      )
-      .map((x) => ({
-        ...x,
-        distance: Number(x.distance ?? 1),
-        prefix: prefixLen(x.mask),
-        type: 'static',
-      }));
-  }
-  function routeKey(x) {
-    return [x.type, x.network, x.mask, x.nextHop || '', x.distance ?? 1].join('|');
-  }
-  function routeLookup(r, destIp, seen = new Set()) {
-    if (!validIP(destIp)) return { ok: false, why: 'Geçersiz hedef IPv4 adresi: ' + destIp };
-    const connected = connectedRoutes(r),
-      statics = staticRoutes(r);
-    const matches = [...connected, ...statics, ...dynamicRoutes(r)]
-      .filter((x) => inNetwork(destIp, x.network, x.mask) && !seen.has(routeKey(x)))
-      .sort(
-        (a, b) =>
-          b.prefix - a.prefix ||
-          (a.type === 'connected' && b.type !== 'connected'
-            ? -1
-            : b.type === 'connected' && a.type !== 'connected'
-              ? 1
-              : 0) ||
-          (a.distance ?? 1) - (b.distance ?? 1) ||
-          (a.metric ?? 0) - (b.metric ?? 0),
-      );
-    if (!matches.length)
-      return {
-        ok: false,
-        why: r.name + ' üzerinde ' + destIp + ' için eşleşen ve kullanılabilir rota yok.',
-      };
-    let lastError = '';
-    for (const route of matches) {
-      if (route.type === 'connected')
-        return { ok: true, route: { ...route, resolvedVia: 'connected' } };
-      const key = routeKey(route),
-        nextSeen = new Set(seen);
-      nextSeen.add(key);
-      const direct = connected.find((c) => inNetwork(route.nextHop, c.network, c.mask));
-      if (direct) {
-        return {
-          ok: true,
-          route: { ...route, iface: direct.iface, resolvedVia: 'direct', recursiveHops: 0 },
-        };
-      }
-      const recursive = routeLookup(r, route.nextHop, nextSeen);
-      if (recursive.ok && recursive.route.iface) {
-        return {
-          ok: true,
-          route: {
-            ...route,
-            iface: recursive.route.iface,
-            resolvedVia: 'recursive',
-            recursiveHops: 1 + (recursive.route.recursiveHops || 0),
-            resolutionRoute: recursive.route.network + routePrefixText(recursive.route.mask),
-            resolution: recursive.route,
-          },
-        };
-      }
-      lastError =
-        'Statik rota ' +
-        route.network +
-        routePrefixText(route.mask) +
-        ' via ' +
-        route.nextHop +
-        ' çözümlenemedi: ' +
-        recursive.why;
-    }
-    return {
-      ok: false,
-      why: lastError || r.name + ' üzerinde ' + destIp + ' için kullanılabilir rota yok.',
-    };
+  function routeLookup(r, destIp, seen) {
+    return AgLabEngineRouting.routeLookup(engineTopo, r, destIp, { seen, dynamicRoutes });
   }
   function auditTopology() {
     const findings = [];
@@ -8289,15 +8143,6 @@ labLoadExperiment();
     );
   }
 
-  function routePrefixText(mask) {
-    const n = prefixLen(mask);
-    return n < 0 ? '?' : '/' + n;
-  }
-  function maskFromPrefix(prefix) {
-    if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) return '';
-    const m = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
-    return [24, 16, 8, 0].map((shift) => (m >>> shift) & 255).join('.');
-  }
   function stpPriorityForVlan(d, vlan) {
     return Number(d?.stpPriorities?.[Number(vlan)] ?? d?.stpPriority ?? 32768);
   }
@@ -8909,13 +8754,6 @@ labLoadExperiment();
     if (rule.port !== undefined && rule.port !== null && Number(rule.port) !== Number(port))
       return false;
     return true;
-  }
-  function maskFromWildcard(w) {
-    if (!validIP(w)) return '0.0.0.0';
-    return w
-      .split('.')
-      .map((n) => 255 - Number(n))
-      .join('.');
   }
   function aclEvaluate(router, aclId, srcIp, dstIp, protocol, port) {
     const rules = (router.acls || []).filter((r) => String(r.id) === String(aclId));
