@@ -23,7 +23,7 @@ Güncel dağıtım için başarılı PR CI çalışmasının öğrenci ZIP'ini k
 
 GitHub Actions her push ve pull request'te tüm regresyon gruplarını çalıştırır. Tüm testler başarılıysa doğrulanmış ZIP üretir, aksi durumda test raporunu saklar.
 
-Detaylı kurulum: `OTOMASYON.md`.
+Testler `tests/` (Python/Playwright) ve `tests/node/` (Node) altındadır; pipeline bunları keşifle toplar. JS kaynakları Prettier, test/araç Python dosyaları Black ile biçimlenir. Detaylı kurulum, test düzeni ve biçim kuralları: `OTOMASYON.md`.
 
 Deneysel gerçek üçüncü taraf motor karşılaştırması: [kapsam, lisans ve testler](docs/HAZIR_MOTOR_ENTEGRASYON.md).
 HTML çevrimdışı çalışır; kaynak motoru yeniden derlemek için `npm ci --ignore-scripts` ve `npm run build:engine` kullanılır.
