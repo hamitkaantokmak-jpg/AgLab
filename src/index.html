@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AğLab — Kararlı teslim sürümü</title>
+<style>@@include src/styles/01-base.css@@</style>
+<!-- v47: LPM migration. -->
+<!-- v48: VLAN access-port and trunk allowed-VLAN scenarios now use shared topology, IOS-like CLI, and real ping engine. -->
+<!-- v50: Added simplified STP loop-prevention model tied to path selection and CLI output. -->
+<!-- v51: STP bridge priority is stored and displayed per VLAN; running-config reflects per-VLAN values. -->
+
+<style>@@include src/styles/02-theme-light.css@@</style>
+<script>@@include src/app/theme-init.js@@</script>
+
+<style id="studentFlowStyles">@@include src/styles/03-student-flow.css@@</style>
+
+<style id="aglabProgressiveUX">@@include src/styles/04-ux-v11-progressive.css@@</style>
+<style id="ux-v12-style">@@include src/styles/05-ux-v12.css@@</style>
+<style id="ux-v13-style">@@include src/styles/06-ux-v13-reader.css@@</style>
+<style id="ux-v14-style">@@include src/styles/07-ux-v14-lab-focus.css@@</style>
+</head>
+<body>
+<div class="app">
+<header class="top">
+  <div class="brand"><div class="logo">⌁</div><div><h1>AğLab</h1><p>Öğren · Lab · Sorun Çöz</p></div></div>
+  <div class="status"><b>●</b> Yerel simülasyon <span style="margin:0 5px">·</span> İnternet bağlantısı gerekmez</div>
+</header>
+<section class="hero">
+  <div><div class="eyebrow">NETWORK TROUBLESHOOTING LAB · KARARLI TESLİM</div><h2>Ağı öğren. Mantığını kavra. Sorunları çöz.</h2><p>Üç ayrı alanda ilerle: temelden öğren, uygulama içi laboratuvarda dene, ardından belirtilerden arızayı teşhis et.</p></div>
+  <div class="progress"><span id="progressText">0 / 8 senaryo tamamlandı</span><div class="bar"><span id="progressBar"></span></div></div>
+</section>
+<nav class="area-tabs" id="areaTabs" aria-label="AğLab ana alanları">
+  <button class="area-tab active" data-area="learn"><span class="area-num">01</span><span><b>Öğren</b><small>Konuları sıfırdan öğren</small></span></button>
+  <button class="area-tab" data-area="lab"><span class="area-num">02</span><span><b>Lab</b><small>Yapılandır ve dene</small></span></button>
+  <button class="area-tab" data-area="troubleshoot"><span class="area-num">03</span><span><b>Sorun Çöz</b><small>Arızayı teşhis et</small></span></button>
+</nav>
+<section class="workspace active" id="area-learn">
+
+<section id="studentFlow" aria-label="Tek müfredat ve öğrenci yolculuğu">
+  <h2>Öğrenme yolun</h2>
+  <p class="sf-sub">Bir konu seç ve sırayla ilerle: <b>Öğren → Örnek → Test → Lab → Sorun Çöz.</b> Diğer araçlar gerektiğinde açılabilir.</p>
+  <div class="sf-metrics" aria-label="İlerleme özeti"><div class="sf-metric"><strong id="sfVisited">0/33</strong><span>Çalışılan konu</span></div><div class="sf-metric"><strong id="sfMastered">0</strong><span>70+ test puanı</span></div><div class="sf-metric"><strong id="sfProgress">0%</strong><span>Genel konu başarısı</span></div></div>
+  <div class="sf-tools"><label for="sfLevel">Seviye <select id="sfLevel"><option value="all">Tüm seviyeler</option><option value="beginner">Başlangıç</option><option value="intermediate">Orta</option><option value="advanced">İleri</option></select></label><label for="sfSearch">Konu ara <input id="sfSearch" type="search" placeholder="Ör. subnetting, SD-WAN, VLAN"></label></div>
+  <div class="sf-layout"><nav id="sfList" class="sf-list" aria-label="33 konuluk tek müfredat"></nav><article id="sfSheet" class="sf-sheet" aria-live="polite"></article></div>
+  <details><summary>İlerlememi yedekle veya geri yükle</summary><p class="sf-sub">Bu dosyanın eğitim verileri bu tarayıcıda yerel olarak tutulur. Cihazlar arası eşitleme veya kimlik doğrulama yapılmaz.</p><div class="sf-toolbar"><button id="sfExport" class="sf-action">JSON yedeğini indir</button><label class="sf-action" for="sfImport">JSON yedeğini yükle <input id="sfImport" type="file" accept="application/json,.json" style="max-width:100%;display:block"></label><button id="sfReset" class="sf-action">İlerlememi sıfırla</button></div><p id="sfStorage" role="status"></p></details>
+  <details><summary>7 kurumsal ağ atölyesi ve önceki kayıtlarım</summary><p class="sf-sub">Kurumsal atölyedeki mevcut senaryolar ayrı bir eğitim aracı olarak korunmuştur. Atölyenin yerel kayıtları bu birleşik ilerleme sayacına otomatik dahil edilmez.</p><button id="sfLoadWorkshop" class="sf-action">Kurumsal atölyeyi aç</button><iframe id="sfWorkshop" title="AğLab kurumsal ağ eğitim atölyesi" sandbox="allow-scripts allow-same-origin allow-downloads" style="width:100%;min-height:710px;border:1px solid #4c6378;border-radius:9px;margin-top:12px" hidden></iframe></details>
+</section>
+
+<details id="extraLearnTools" class="ux-extra-tools"><summary><span><b>Ek öğrenme araçları</b><small>Eski konu görünümü ve ileri düzey etkileşimli atölyeler — isteğe bağlı</small></span></summary><div class="ux-extra-body">
+<section class="learn-wrap panel" id="learningHub">
+  <div class="panel-head"><div><h3>01 · Öğren</h3><span>Sıfırdan konu anlatımları ve örnekler</span></div><span id="lessonCount">9 konu · derinleştirilmiş anlatım</span></div>
+  <section class="level-picker" aria-label="Öğrenme seviyeleri">
+    <button class="level-card active" data-level="beginner"><span class="level-index">01</span><span><b>Başlangıç</b><small>Ağ temelleri ve temel yapılandırma</small><em id="beginnerCount">9 konu</em></span></button>
+    <button class="level-card" data-level="intermediate"><span class="level-index">02</span><span><b>Orta</b><small>Kurumsal switching ve routing</small><em id="intermediateCount">5 konu</em></span></button>
+    <button class="level-card" data-level="advanced"><span class="level-index">03</span><span><b>İleri</b><small>Ölçek, politika ve tasarım</small><em id="advancedCount">5 konu</em></span></button>
+  </section>
+  <div class="level-intro" id="levelIntro"><b>Başlangıç seviyesi</b><span>Önce ağların nasıl çalıştığını öğren; ardından cihaz yapılandırmasına geç.</span></div>
+  <div class="learn-grid">
+    <aside class="lesson-nav" id="lessonNav" aria-label="Ders konuları"></aside>
+    <article class="lesson-content" id="lessonContent" aria-live="polite"></article>
+  </div>
+  <div class="learn-actions"><div><b>02 · Pekiştir</b><p>Seçili konunun testini çöz veya tüm konuları karıştırarak kendini sına. Soru sayısı konuya göre değişebilir.</p></div><div class="quiz-controls"><label for="quizMode">Soru modu</label><select id="quizMode"><option value="topic">Seçili konu (10 soru)</option><option value="mixed">Karma sınav (20 soru)</option></select><button class="primary" id="startQuiz">Teste başla →</button></div></div>
+  <section class="quiz" id="quizPanel" hidden>
+    <div class="quiz-head"><div><span class="eyebrow">BİLGİNİ SIN A</span><h3 id="quizTitle">Konu testi</h3></div><div class="quiz-score" id="quizProgress">1 / 10</div></div>
+    <div class="bar"><span id="quizBar"></span></div>
+    <div id="quizQuestion" class="quiz-question"></div>
+    <div id="quizAnswers" class="quiz-answers"></div>
+    <div id="quizFeedback" aria-live="polite"></div>
+    <div class="quiz-footer"><button id="quitQuiz">Testi kapat</button><button class="primary" id="nextQuestion" disabled>Sonraki soru →</button></div>
+  </section>
+</section>
+<section class="panel route-workshop" id="routeWorkshop" aria-labelledby="routeWorkshopTitle">
+  <div class="panel-head"><div><h3 id="routeWorkshopTitle">Uygulama · Routing ve erişim teşhis atölyesi</h3><span>LPM, Administrative Distance ve metric sırasını uygula</span></div><span class="tag">ETKİLEŞİMLİ</span></div>
+  <div class="route-workshop-body">
+    <p>Bir senaryo seç, hedef IP'yi değiştir ve routing kararını incele. Bu eğitim modeli aynı prefix için rota kaynağı tercihini (AD), aynı protokol içindeki metric'i ve farklı prefix'ler arasındaki LPM seçimini ayrı ayrı gösterir.</p>
+    <div class="route-workshop-controls">
+      <label for="routeCalcScenario">Senaryo<select id="routeCalcScenario"><option value="static-ospf">1 · Hatalı statik rota / OSPF</option><option value="lpm">2 · LPM: /16 ile /24</option><option value="metric">3 · OSPF metric karşılaştırması</option><option value="ecmp">4 · Eşit maliyetli yollar (ECMP)</option><option value="default">5 · Varsayılan rota</option></select></label>
+      <label for="routeCalcDest">Hedef IP<input id="routeCalcDest" value="10.20.30.10" inputmode="decimal" autocomplete="off"></label>
+      <label class="route-toggle" id="routeCalcRemoveLabel"></label>
+      <button type="button" class="primary" id="routeCalcRun">Rotayı hesapla</button>
+      <button type="button" id="routeCalcReset">Senaryoyu sıfırla</button>
+    </div>
+    <div class="route-table-wrap"><table class="route-table"><thead><tr><th>Prefix</th><th>Kaynak</th><th>AD</th><th>Metric</th><th>Next-hop</th><th>Durum</th></tr></thead><tbody id="routeCalcRows"></tbody></table></div>
+    <div id="routeCalcResult" class="route-calc-result" aria-live="polite" role="status">Hesaplamak için hedef IP'yi kontrol et ve “Rotayı hesapla” düğmesine bas.</div>
+    <div class="route-rule-grid"><div><b>1 · Aynı prefix</b><span>Düşük AD, rota kaynağını tercih ettirir. Aynı kaynak/protokol ve prefix için düşük metric daha iyi yolu belirleyebilir (protokolün kendi kurallarına göre).</span></div><div><b>2 · Paket iletimi</b><span>Routing table'a kurulmuş rotalar içinde en uzun prefix eşleşmesi (LPM) kullanılır.</span></div><div><b>3 · Önemli ayrım</b><span>AD ve metric, farklı uzunluktaki prefix'ler arasında LPM'nin yerine geçmez. Model, gerçek cihaz/IOS yerine eğitim amaçlı sadeleştirilmiş seçimleri gösterir.</span></div></div>
+    <section class="route-diagnostic" aria-labelledby="routeDiagTitle">
+      <div class="route-diag-head"><div><h4 id="routeDiagTitle">İleri uygulama · Uçtan uca erişim teşhisi</h4><p>Gidiş rotası tek başına yeterli değildir. Katmanları sırayla kontrol et ve ilk başarısız noktayı bul.</p></div><span class="tag">TEŞHİS</span></div>
+      <div class="route-diag-controls">
+        <label for="routeDiagPreset">Arıza senaryosu<select id="routeDiagPreset"><option value="healthy">1 · Her şey doğru</option><option value="route">2 · Hedef rotası eksik</option><option value="nextHop">3 · Next-hop erişilemiyor</option><option value="return">4 · Dönüş rotası eksik</option><option value="acl">5 · ACL trafiği engelliyor</option><option value="link">6 · Fiziksel bağlantı / L2 sorunu</option></select></label>
+        <button type="button" class="primary" id="routeDiagRun">Teşhis et</button>
+        <button type="button" id="routeDiagReset">Senaryoyu sıfırla</button>
+      </div>
+      <div class="route-diag-checks" id="routeDiagChecks">
+        <label><input type="checkbox" id="routeDiagLink" checked> Fiziksel bağlantı ve L2/VLAN doğru</label>
+        <label><input type="checkbox" id="routeDiagRoute" checked> Hedef prefix için rota var</label>
+        <label><input type="checkbox" id="routeDiagNextHop" checked> Next-hop erişilebilir</label>
+        <label><input type="checkbox" id="routeDiagReturn" checked> Dönüş rotası var</label>
+        <label><input type="checkbox" id="routeDiagAcl" checked> ACL / güvenlik politikası izin veriyor</label>
+      </div>
+      <div id="routeDiagResult" class="route-calc-result" aria-live="polite" role="status">Bir senaryo seçip “Teşhis et” düğmesine bas.</div>
+      <div class="route-diag-hint"><b>Kontrol komutları:</b> <code>show ip interface brief</code> · <code>show ip route</code> · <code>show arp</code> · <code>show access-lists</code> · <code>ping</code> · <code>trace</code>. Komutlar kontrol rehberidir; bu panelin işaretleri gerçek cihazdan okunmaz.</div>
+    </section>
+    <section class="proto-workshop" aria-labelledby="protoWorkshopTitle">
+      <div class="proto-head"><div><h4 id="protoWorkshopTitle">Protokol → RIB → FIB · OSPF ve BGP teşhis atölyesi</h4><p>Komşuluk kurulması, prefix öğrenilmesi ve paketin iletilebilmesi farklı aşamalardır. Senaryoyu seç; arızayı incele, düzelt ve rota akışındaki değişimi izle.</p></div><span class="tag">V53 · PROTOKOL</span></div>
+      <div class="proto-body">
+        <div class="proto-controls">
+          <label for="protoScenario">Arıza senaryosu<select id="protoScenario"><option value="ospf-area">1 · OSPF area uyuşmazlığı</option><option value="ospf-passive">2 · OSPF arayüzü passive</option><option value="bgp-advertise">3 · BGP Established ama prefix ilan edilmiyor</option><option value="bgp-filter">4 · BGP outbound prefix-list filtresi</option><option value="bgp-next-hop">5 · BGP rotası alındı, NEXT_HOP çözümlenemiyor</option></select></label>
+          <button type="button" class="primary" id="protoFixBtn">Arızayı düzelt</button><button type="button" id="protoResetBtn">Sıfırla</button>
+        </div>
+        <div class="proto-flow" id="protoFlow" aria-label="Protokolden paket iletimine aşamalar">
+          <div class="proto-stage" id="protoStage1"><b>1 · Komşuluk / oturum</b><span class="stage-state">Kontrol ediliyor</span><p></p></div>
+          <div class="proto-stage" id="protoStage2"><b>2 · Prefix öğrenme / ilan</b><span class="stage-state">Kontrol ediliyor</span><p></p></div>
+          <div class="proto-stage" id="protoStage3"><b>3 · RIB / routing table</b><span class="stage-state">Kontrol ediliyor</span><p></p></div>
+          <div class="proto-stage" id="protoStage4"><b>4 · FIB / forwarding</b><span class="stage-state">Kontrol ediliyor</span><p></p></div>
+        </div>
+        <div class="proto-table-wrap"><table class="proto-table"><thead><tr><th>Kontrol</th><th>Örnek çıktı / durum</th><th>Yorum</th></tr></thead><tbody id="protoRows"></tbody></table></div>
+        <div id="protoResult" class="proto-result bad" role="status" aria-live="polite">Senaryo seçildiğinde protokol, routing table ve forwarding aşamaları birlikte gösterilir.</div>
+        <p class="proto-note"><b>Komut rehberi:</b> OSPF için <code>show ip ospf neighbor</code>, <code>show ip route ospf</code>, <code>show ip ospf database</code>; BGP için <code>show ip bgp summary</code>, <code>show ip bgp</code>, <code>show ip bgp neighbors</code> ve platforma uygunsa advertised-routes çıktısı. Bu panel örnek çıktılar üreten bağımsız bir eğitim modelidir; mevcut topolojideki router yapılandırmasını otomatik değiştirmez ve canlı cihazdan veri almaz.</p>
+      </div>
+    </section>
+  </div>
+</section>
+</div></details>
+</section>
+<section class="workspace" id="area-lab">
+  <div class="lab-heading"><div><div class="eyebrow">02 · LABORATUVAR</div><h2>Kendi ağını kur ve dene</h2><p>Bu alan bir eğitim simülasyonudur: ayarları değiştir, komut çalıştır ve paketin neden ulaşıp ulaşmadığını gözlemle. Gerçek donanıma veya internete bağlanmaz.</p></div></div>
+  <section class="panel pt-workbench" id="ptWorkbench">
+    <div class="pt-head"><div><div class="eyebrow">INTERACTIVE NETWORK BUILDER</div><h3>Packet Tracer tarzı çalışma alanı</h3><p>Cihaz ekle, kablo bağla, cihazı seç ve CLI üzerinden yapılandır. Değişiklikler simülasyon ağına uygulanır; topolojiyi tarayıcıya kaydedebilir veya JSON olarak taşıyabilirsin.</p><p class="pt-import-note" style="margin-top:8px;padding:10px 12px;border:1px solid #52627b;border-radius:9px;background:#101c2e;color:#d3e2f6;font-size:12px;line-height:1.6"><b>Packet Tracer içe aktarma:</b> .pkt dosyasını önce <a href="convert_pkt_to_aglab.py" download style="color:#9dc8ff;text-decoration:underline">dönüştürücü betiği</a> ile AgLab JSON biçimine çevir, ardından <b>İçe aktar</b> ile oluşturulan .aglab.json dosyasını seç. Aktarımda desteklenmeyen cihazlar raporlanır; kaynak .pkt değiştirilmez.</p></div><div class="pt-head-actions"><button id="ptSave">Kaydet</button><button id="ptAudit" class="primary">Ağı denetle</button><button id="ptExport">Dışa aktar</button><button id="ptDeleteDevice">Seçili cihazı sil</button><button id="ptImport">İçe aktar (JSON)</button><input id="ptImportFile" type="file" accept="application/json,.json" hidden><button id="ptReset">Topolojiyi sıfırla</button><button class="primary" id="ptConnectMode">Kablo bağla</button></div></div>
+    <section class="pt-quickstart" aria-labelledby="ptQuickTitle">
+      <div class="pt-quick-copy"><div class="eyebrow">HIZLI BAŞLANGIÇ</div><h4 id="ptQuickTitle">İlk ağını 4 adımda kur</h4><p>Cihaz ekle → kablo bağla → CLI ile kontrol et → ağı denetle. Aşağıdaki kısayollar çalışma alanında ilgili işlemi açar.</p></div>
+      <ol class="pt-quick-steps"><li><span>1</span><b>Cihaz ekle</b><small>PC, switch veya router</small></li><li><span>2</span><b>Bağlantı kur</b><small>Kaynak ve hedef seç</small></li><li><span>3</span><b>Komut çalıştır</b><small><code>help</code> veya <code>ping</code></small></li><li><span>4</span><b>Denetle</b><small>Hataları ve uyarıları gör</small></li></ol>
+      <div class="pt-quick-actions"><button type="button" id="ptQuickCli">CLI'ye odaklan</button><button type="button" id="ptQuickAudit" class="primary">Ağı denetle</button><button type="button" id="ptQuickTroubleshoot">Sorun Çöz'e geç →</button><span class="pt-key-hint"><kbd>/</kbd> CLI <kbd>Ctrl</kbd>+<kbd>Enter</kbd> denetle <kbd>Esc</kbd> kablo modundan çık</span></div>
+    </section>
+    <div class="pt-toolbar">
+      <div class="pt-addgroup"><span>Cihaz ekle</span><button data-pt-add="PC">＋ PC</button><button data-pt-add="Switch">＋ Switch</button><button data-pt-add="Router">＋ Router</button><button data-pt-add="Server">＋ Server</button></div>
+      <div class="pt-connectgroup"><label>Kaynak<select id="ptSource"></select></label><label>Hedef<select id="ptTarget"></select></label><button id="ptMakeLink">Kabloyu bağla</button><button type="button" id="ptRestoreLink" title="Seçilen iki cihaz arasındaki mevcut, pasif kabloyu yeniden etkinleştirir">Pasif kabloyu etkinleştir</button><button id="ptRemoveLink">Kabloyu sök</button></div>
+    </div>
+    <details class="ux-extra-tools" id="uxLabScenarios"><summary><span><b>Hazır ağ arızası senaryoları</b><small>İleri düzey laboratuvar görevlerini aç</small></span></summary><div class="ux-extra-body">
+<section id="sharedScenarioPanel" aria-labelledby="sharedScenarioTitle" style="margin:12px 0;padding:14px;border:1px solid #3b5f79;border-radius:12px;background:linear-gradient(135deg,rgba(34,73,98,.35),rgba(20,30,44,.55));">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="min-width:220px;flex:1"><h3 id="sharedScenarioTitle" style="margin:0 0 5px">Gerçek motorlu senaryolar · Ortak motor</h3><p style="margin:0;color:var(--muted,#a9b7c8);font-size:13px">Routing ve switching görevleri bu ortak motorda çalışır. Çözüm bayrağı yok: cihaz CLI’sinde IOS-benzeri komutla yapılandırmayı düzelt; başarı, topolojinin VLAN/L2, routing ve ping motoruyla doğrulanır. İçe aktarmada STP, ACL ve NAT alanları da şema doğrulamasından geçer. Desteklenen görevler Sorun Çöz listesinden de buraya yönlendirilir.</p></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label for="sharedScenarioSelect" style="font-size:12px">Senaryo</label><select id="sharedScenarioSelect" style="max-width:260px"><option value="return-route">Dönüş rotası eksik</option><option value="forward-route">İleri rota eksik</option><option value="default-route">Varsayılan rota eksik</option><option value="wrong-prefix">Statik rota yanlış prefix</option><option value="unresolved-next-hop">Çözümlenemeyen recursive next-hop</option><option value="lpm-next-hop">LPM: daha spesifik rota yanlış next-hop</option><option value="floating-static">Administrative Distance: yedek statik rota</option><option value="access-vlan">VLAN: yanlış access VLAN</option><option value="trunk-allowed">Trunk: allowed VLAN eksik</option><option value="native-vlan">Trunk: native VLAN uyuşmazlığı</option><option value="nat-pat">NAT/PAT: overload yapılandırması eksik</option><option value="relay-trunk">DHCP relay: trunk VLAN eksik</option><option value="stp-loop">STP: yedek bağlantı döngüsü</option></select><button type="button" id="sharedScenarioLoad" class="primary">Senaryoyu yükle</button></div>
+      </div>
+      <div id="sharedScenarioInstructions" style="margin-top:10px;font-size:13px;line-height:1.55">Senaryo seçip yükle. Topoloji, arızalı yapılandırmayla oluşturulacak.</div>
+      <div id="sharedScenarioStatus" role="status" aria-live="polite" style="margin-top:8px;padding:9px 11px;border-radius:8px;background:rgba(100,116,139,.15);font-size:13px">Henüz gerçek motorlu senaryo yüklenmedi.</div>
+      <div id="troubleSharedBridge" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px"><span id="troubleSharedBridgeText" role="status" style="font-size:12px;color:var(--muted)">Sorun Çöz görevi Lab motorunda sürüyor.</span><button type="button" id="troubleReturn" class="primary">← Sorun Çöz'e dön</button></div>
+      <div id="regressionAuditPanel" style="margin-top:10px;padding:12px;border:1px solid #3b5277;border-radius:10px;background:rgba(15,23,42,.45)">
+        <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div><b style="font-size:13px">Ortak senaryo regresyon denetimi</b><div style="font-size:11px;color:var(--muted,#a9b7c8);margin-top:3px">Senaryo tanımları ve temel başlangıç koşulları için yerel statik kontrol. Gerçek paket/CLI uçtan uca testi yerine geçmez.</div></div><button type="button" id="runRegressionAudit" class="primary">Kontrolleri çalıştır</button></div>
+        <div id="regressionAuditSummary" role="status" aria-live="polite" style="margin-top:9px;font-size:12px;color:var(--muted,#a9b7c8)">Denetim henüz çalıştırılmadı.</div><div id="regressionAuditResults" style="display:grid;gap:5px;margin-top:8px"></div>
+      </div>
+    </section>
+</div></details>
+    <div class="pt-workgrid">
+      <div class="pt-canvas-wrap"><div class="pt-canvas-title"><b>Logical Workspace</b><span id="ptCanvasStatus">6 cihaz · 5 bağlantı</span></div><svg id="ptCanvas" viewBox="0 0 850 420" role="img" aria-label="Sürüklenebilir ağ topolojisi"></svg><div class="pt-legend"><span><i class="pt-dot up"></i>Bağlantı var</span><span><i class="pt-dot down"></i>Bağlantı yok / port kapalı</span><span>Cihaza tıkla: CLI açılır. Taşımak için sürükle. Kablo modunda iki cihaz seç.</span></div></div>
+      <aside class="pt-side">
+        <div class="pt-device-card"><div class="pt-card-head"><b>Seçili cihaz</b><span id="ptDeviceType">PC</span></div><h4 id="ptSelectedName">PC-01</h4><div class="pt-device-info" id="ptDeviceInfo"></div><div id="ptAuditFocus" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid #a85f24;background:#392515;color:#ffd5a8;border-radius:8px;font-size:11px"></div><div class="pt-rename"><input id="ptRenameInput" placeholder="Yeni cihaz adı"><button id="ptRenameBtn">Adlandır</button></div></div>
+        <div class="pt-device-card pt-cli-card"><div class="pt-card-head"><b>CLI · Komut satırı</b><select id="ptCliDevice"></select></div><div class="pt-cli-help">Cisco benzeri komutlar: <code>enable</code>, <code>conf t</code>, <code>interface g0/1</code>, <code>show running-config</code></div><div class="pt-terminal-tools"><span class="pt-terminal-hint">↑ / ↓ komut geçmişi · Ctrl+L temizle</span><button type="button" id="ptClearTerminal" title="Terminal çıktısını temizle (Ctrl+L)">Terminali temizle</button></div><div class="pt-terminal" id="ptTerminal" aria-live="polite"></div><form id="ptCliForm" class="pt-cli-form"><span id="ptPrompt">PC-01&gt;</span><input id="ptCliInput" autocomplete="off" spellcheck="false" placeholder="help · ↑/↓ geçmiş"><button class="primary">Enter</button></form><div class="pt-shortcuts"><button data-pt-cmd="help">help</button><button data-pt-cmd="show running-config">show run</button><button data-pt-cmd="show ip interface brief">show ip int brief</button><button data-pt-cmd="ping 192.168.1.1">ping gateway</button><button data-pt-cmd="ping 192.168.1.11">ping PC-02</button><button data-pt-cmd="trace 192.168.1.11">trace PC-02</button><button id="ptPacketStep">Paket adımı →</button><button data-pt-cmd="show arp">show arp</button><button data-pt-cmd="show mac address-table">show mac</button><button data-pt-cmd="show interfaces status">port durumu</button><button data-pt-cmd="show spanning-tree">STP</button></div></div>
+      </aside>
+    </div>
+    <div class="pt-bottom-note"><b>Önemli:</b> Bu, tarayıcı içinde çalışan eğitim amaçlı bir simülatördür; Cisco IOS'u birebir çalıştırmaz. Komutlar cihazların simüle edilen yapılandırmasını değiştirir. Bu başlangıç topolojisinde iki switch, iki PC, trunk bağlantısı ve ayrı sunucu ağı bulunur. trace komutu yolun hangi portlardan geçtiğini gösterir; VLAN, trunk ve routing davranışları eğitim amaçlı modellenir.</div>
+  </section>
+  <details class="pt-legacy"><summary>Hazır deneyler ve rehberli laboratuvarlar (önceki sürüm)</summary>
+  <div class="lab-sim-grid">
+    <section class="panel lab-sim-panel">
+      <h3>Topoloji</h3>
+      <svg class="lab-sim-topology" id="labTopologySvg" viewBox="0 0 620 205" role="img" aria-label="PC-01, SW-01, R1 ve SRV-01 cihazları, port etiketleri ve konfigürasyona göre güncellenen bağlantı durumları">
+        <line id="labLink1" class="link ok" x1="115" y1="62" x2="205" y2="62"/><line id="labLink2" class="link ok" x1="300" y1="62" x2="390" y2="62"/><line id="labLink3" class="link ok" x1="485" y1="62" x2="535" y2="62"/>
+        <text class="topo-port-label" x="160" y="48">Fa0/1 ↔ Fa0/1</text><text id="labLink1State" class="topo-state" x="160" y="81">LINK UP</text>
+        <text class="topo-port-label" x="345" y="48">Gi0/1 ↔ Gi0/0</text><text id="labLink2State" class="topo-state" x="345" y="81">TRUNK / UP</text>
+        <text class="topo-port-label" x="510" y="48">Gi0/1</text><text id="labLink3State" class="topo-state" x="510" y="81">SERVER UP</text>
+        <g transform="translate(20 33)"><rect class="node" width="95" height="58" rx="10"/><text class="node-label" x="47" y="24">PC-01</text><text class="node-sub" id="labTopoIp" x="47" y="42">192.168.1.10</text></g>
+        <g transform="translate(205 33)"><rect class="node" width="95" height="58" rx="10"/><text class="node-label" x="47" y="24">SW-01</text><text class="node-sub" id="labTopoVlan" x="47" y="42">VLAN 10</text></g>
+        <g transform="translate(390 33)"><rect class="node-accent" width="95" height="58" rx="10"/><text class="node-label" x="47" y="24">R1</text><text class="node-sub" id="labTopoGw" x="47" y="42">192.168.1.1</text></g>
+        <g transform="translate(535 33)"><rect class="node" width="75" height="58" rx="10"/><text class="node-label" x="37" y="24">SRV-01</text><text class="node-sub" x="37" y="42">192.168.1.50</text></g>
+        <circle id="labPacketDot" class="packet-dot" cx="65" cy="62" r="5" opacity="0"/>
+        <text id="labTopoStatus" x="310" y="132" fill="#9eacc7" font-size="11" text-anchor="middle">Başlangıç topolojisi hazır</text>
+        <text id="labTopoSubnet" x="310" y="153" fill="#9eacc7" font-size="10" text-anchor="middle">Ağ: 192.168.1.0/24</text>
+        <text id="labTopoService" x="310" y="173" fill="#9eacc7" font-size="10" text-anchor="middle">DHCP: ON · DNS: ON · HTTP: ON</text>
+      </svg>
+      <div class="lab-trace-row"><button class="primary" id="labTraceBtn" type="button">Paketi topolojide göster →</button><div class="lab-note"><b>Canlı topoloji:</b> Port modu, allowed VLAN listesi, router arayüzü, IP/mask/gateway ve servis durumları bu görünümü etkiler. Bu, gerçek donanıma bağlanmayan bir eğitim modelidir.</div></div>
+      <div class="divider"></div>
+      <h3>Deney seç</h3>
+      <div class="lab-controls">
+        <label>Deney<select id="labExperiment"><option value="clean">1 · Sağlıklı ağ</option><option value="gateway">2 · Yanlış gateway</option><option value="mask">3 · Yanlış subnet maskesi</option><option value="vlan">4 · VLAN uyuşmazlığı</option><option value="dns">5 · Yanlış DNS</option><option value="dhcp">6 · DHCP kapalı</option><option value="uplink">7 · Trunk VLAN eksik</option><option value="routerdown">8 · Router arayüzü down</option><option value="route">9 · Uzak ağ rotası eksik</option><option value="http">10 · HTTP servisi kapalı</option></select></label>
+        <label>Switch access VLAN<select id="labVlan"><option value="10">VLAN 10</option><option value="20">VLAN 20</option></select></label>
+        <label>PC IP adresi<input id="labIp" value="192.168.1.10" inputmode="decimal" /></label>
+        <label>Subnet maskesi<input id="labMask" value="255.255.255.0" inputmode="decimal" /></label>
+        <label>Default gateway<input id="labGateway" value="192.168.1.1" inputmode="decimal" /></label>
+        <label>DNS sunucusu<input id="labDns" value="8.8.8.8" inputmode="decimal" /></label>
+      </div>
+      <div class="lab-toolbar"><button class="primary" id="labApply">İstemci ayarlarını uygula</button><button id="labReset">Deneyi sıfırla</button></div>
+      <div class="divider"></div><h3>Switch / Router / Servis ayarları</h3>
+      <div class="lab-config-grid">
+        <label>SW-01 uplink modu<select id="labUplinkMode"><option value="trunk">Trunk</option><option value="access">Access</option><option value="down">Shutdown</option></select></label>
+        <label>Trunk allowed VLANs<input id="labAllowedVlans" value="10,20" /></label>
+        <label>Router LAN arayüzü<select id="labRouterState"><option value="up">Up / up</option><option value="down">Administratively down</option></select></label>
+        <label>DHCP servisi<select id="labDhcpState"><option value="on">Açık</option><option value="off">Kapalı</option></select></label>
+        <label>DNS servisi<select id="labDnsState"><option value="on">Açık</option><option value="off">Kapalı</option></select></label>
+        <label>HTTP servisi<select id="labHttpState"><option value="on">Açık</option><option value="off">Kapalı</option></select></label>
+      </div>
+      <div class="lab-toolbar"><button class="primary" id="labDeviceApply">Cihaz yapılandırmasını uygula</button></div>
+    </section>
+    <section class="panel lab-sim-panel">
+      <h3>Komut satırı</h3><p>Desteklenen komutlar: <code>help</code>, <code>ipconfig</code>, <code>ping 192.168.1.1</code>, <code>ping 192.168.1.50</code>, <code>nslookup example.com</code>, <code>show route</code>.</p>
+      <div class="lab-console" id="labConsole" aria-live="polite"></div>
+      <div class="lab-config-grid" style="grid-template-columns:minmax(140px,.35fr) minmax(0,1fr);margin:10px 0"><label style="align-content:center">Komut çalıştırılacak cihaz<select id="labDeviceSelect"><option value="PC-01">PC-01 · İstemci</option><option value="SW-01">SW-01 · Switch</option><option value="R1">R1 · Router</option></select></label><div class="lab-concept" style="margin:0">Cihazı seç; ilgili komutları o cihazın bağlamında çalıştır. Komut grupları için <code>help</code> yaz.</div></div><form class="prompt" id="labForm"><label id="labPromptLabel">PC-01 &gt;</label><input id="labCommand" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Lab komutu" placeholder="ping 192.168.1.1"><button class="primary send" type="submit">Çalıştır ↵</button></form>
+      <div class="lab-toolbar"><button data-labcmd="ipconfig">ipconfig</button><button data-labcmd="ping 192.168.1.1">ping gateway</button><button data-labcmd="ping 192.168.1.50">ping sunucu</button><button data-labcmd="nslookup example.com">nslookup</button><button data-labcmd="show route">show route</button></div>
+      <div class="lab-command-groups"><button data-labcmd="show vlan brief">show vlan brief</button><button data-labcmd="show interfaces trunk">show interfaces trunk</button><button data-labcmd="show mac address-table">show mac address-table</button><button data-labcmd="show ip interface brief">show ip interface brief</button><button data-labcmd="show running-config">show running-config</button><button data-labcmd="show ip dhcp binding">show ip dhcp binding</button></div>
+      <div class="lab-steps"><div class="lab-step"><b>1.</b> Bir deney seç ve başlangıç durumunu gözlemle.</div><div class="lab-step"><b>2.</b> Komutları çalıştırarak bulgularını topla.</div><div class="lab-step"><b>3.</b> Yapılandırmayı değiştir ve aynı testi yeniden yap.</div></div>
+    </section>
+  </div>
+  <div class="panel" style="padding:16px;margin-top:16px">
+    <div class="section-title"><span>Cihaz durum panosu</span><small>Yapılandırma uygulandıkça güncellenir</small></div>
+    <div class="lab-device-grid">
+      <div class="lab-device"><h4>PC-01 · İstemci</h4><p>IP: <code id="labDashIp">192.168.1.10/24</code></p><p>Gateway: <code id="labDashGw">192.168.1.1</code></p><p>Access VLAN: <code id="labDashVlan">10</code></p><p>DHCP: <span id="labDashDhcp" class="lab-status-pill up">Açık</span></p></div>
+      <div class="lab-device"><h4>SW-01 · Layer 2</h4><p>PC portu: <span id="labDashAccess" class="lab-status-pill up">Access VLAN 10</span></p><p>Uplink: <span id="labDashTrunk" class="lab-status-pill up">Trunk up</span></p><p>Allowed VLANs: <code id="labDashAllowed">10,20</code></p><p>MAC öğrenme: <span class="lab-status-pill up">Simüle ediliyor</span></p></div>
+      <div class="lab-device"><h4>R1 · Layer 3 / Servisler</h4><p>LAN arayüzü: <span id="labDashRouter" class="lab-status-pill up">Up / up</span></p><p>DNS: <span id="labDashDns" class="lab-status-pill up">Açık</span></p><p>HTTP: <span id="labDashHttp" class="lab-status-pill up">Açık</span></p><p>Uzak ağ rotası: <span id="labDashRoute" class="lab-status-pill up">Var</span></p></div>
+    </div>
+    <div class="lab-concept"><b>Nasıl çalış:</b> Önce <code>show vlan brief</code>, <code>show interfaces trunk</code> ve <code>show ip route</code> ile kanıt topla. Sonra yapılandırmayı değiştir ve aynı testi tekrar et. Bu bir eğitim simülasyonudur; komutlar gerçek cihazda çalıştırılmaz.</div>
+  </div>
+</details>
+</section>
+<section class="workspace" id="area-troubleshoot">
+<div class="lab-heading"><div><div class="eyebrow">03 · SORUN ÇÖZ</div><h2>Belirtilerden arızayı teşhis et</h2><p>Çözüm komutu doğrudan verilmez. Belirtiyi araştır, teşhis koy, ayarı düzelt ve test ederek doğrula.</p></div></div>
+<details class="ux-extra-tools" id="uxTopologyAudit"><summary><span><b>Kendi topolojimden arıza görevi oluştur</b><small>Önce Lab'da ağ denetimi yaptıysan kullan</small></span></summary><div class="ux-extra-body">
+<section class="panel" id="topologyTaskCard" style="padding:16px;margin-bottom:17px">
+  <div class="panel-head" style="padding:0 0 12px;border:0"><div><h3>Kendi topolojinden sorun çözme görevi</h3><span>Lab denetim bulgularını teşhis görevine dönüştür</span></div><button id="loadTopologyTask">Son denetimi yükle</button></div>
+  <div id="topologyTaskBody" aria-live="polite"><p style="color:var(--muted);margin:0">Önce Lab bölümünde topolojini kurup <b>Ağı denetle</b> düğmesine bas. Buradan bulguları görev olarak açabilir, önerilen komutlarla araştırabilir ve düzeltme sonrası yeniden denetleyebilirsin.</p></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="primary" id="runTopologyAuditTask">Lab'da denetle ve görevi oluştur</button><button id="verifyTopologyTask">Görevi doğrula</button></div>
+  <div id="topologyTaskFeedback" aria-live="polite" style="margin-top:10px"></div>
+</section>
+</div></details>
+<div class="layout">
+  <aside class="panel">
+    <div class="panel-head"><h3>Arıza senaryoları</h3><span id="countText">13 görev</span></div>
+    <div class="scenario-list" id="scenarioList"></div>
+    <div class="side-foot">İlerleme bu tarayıcıda saklanır. Ortak motorlu görevler ancak başarılı Lab ping’iyle tamamlanır.</div>
+  </aside>
+  <main class="maincol">
+    <section class="panel mission" id="mission"></section>
+    <section class="panel topology">
+      <h3 class="section-title">Ağ topolojisi <small id="topoCaption">Mantıksal görünüm</small></h3>
+      <svg viewBox="0 0 760 142" role="img" aria-label="Bilgisayar, switch, router, DNS ve internet topolojisi">
+        <defs><linearGradient id="ng" x1="0" x2="1"><stop stop-color="#6ba8ff"/><stop offset="1" stop-color="#63e1d0"/></linearGradient></defs>
+        <line id="l1" class="link ok" x1="112" y1="66" x2="205" y2="66"/><line id="l2" class="link ok" x1="300" y1="66" x2="390" y2="66"/><line id="l3" class="link ok" x1="485" y1="66" x2="575" y2="66"/>
+        <g transform="translate(17 37)"><rect class="node" width="95" height="58" rx="10"/><text class="node-label" x="47" y="24">PC-01</text><text class="node-sub" id="pcIp" x="47" y="42">192.168.1.20</text></g>
+        <g transform="translate(205 37)"><rect class="node" width="95" height="58" rx="10"/><text class="node-label" x="47" y="25">SW-01</text><text class="node-sub" x="47" y="42">Layer 2</text></g>
+        <g transform="translate(390 37)"><rect class="node-accent" width="95" height="58" rx="10"/><text class="node-label" x="47" y="24">R1</text><text class="node-sub" id="gwIp" x="47" y="42">192.168.1.1</text></g>
+        <g transform="translate(575 37)"><rect class="node" width="95" height="58" rx="10"/><text class="node-label" x="47" y="24">DNS / WAN</text><text class="node-sub" x="47" y="42">Dış ağ</text></g>
+        <text id="topoStatus" x="380" y="125" fill="#9eacc7" font-size="11" text-anchor="middle">Bağlantılar normal görünüyor</text>
+      </svg>
+      <div class="legend"><span><i class="dot"></i>Çalışan bağlantı</span><span><i class="dot red"></i>Arıza belirtisi</span></div>
+    </section>
+    <div class="workgrid">
+      <section class="panel terminal-panel">
+        <div class="panel-head"><h3>İstemci terminali</h3><span>Windows benzeri CLI</span></div>
+        <div class="terminal" id="terminal" aria-live="polite"></div>
+        <form class="prompt" id="cmdForm"><label>PC-01 &gt;</label><input id="command" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Terminal komutu" placeholder="help yazıp Enter'a bas"><button class="primary send" type="submit">Çalıştır ↵</button></form>
+        <div class="cmdbar"><button data-cmd="ipconfig">ipconfig</button><button data-cmd="ping 192.168.1.1">ping gateway</button><button data-cmd="ping 8.8.8.8">ping 8.8.8.8</button><button data-cmd="nslookup example.com">nslookup</button><button data-cmd="arp -a">arp -a</button><button data-cmd="show vlan brief">show vlan brief</button><button data-cmd="show interfaces trunk">show interfaces trunk</button><button data-cmd="show mac address-table">show mac address-table</button><button data-cmd="trace 192.168.1.11">trace</button><button data-cmd="clear">clear</button></div>
+      </section>
+      <section class="panel guide">
+        <h3>Görev rehberi</h3><p>Önce komutlarla kanıt topla, ardından teşhisini seç. Doğru teşhis tek başına yetmez; ağı düzeltip tekrar test et.</p>
+        <button class="hintbtn" id="hintBtn"><b>İpucu al</b><span id="hintCount">0 / 3</span></button>
+        <div class="hints" id="hints"></div>
+        <div class="divider"></div>
+        <h3>1 · Teşhis koy</h3><div class="options" id="options"></div><div id="diagnosis" class="diagnose-result"></div>
+        <div class="divider"></div>
+        <h3>2 · Düzelt ve doğrula</h3><p id="fixText">Sorunu düzelttikten sonra ilgili komutla yeniden test et.</p>
+      </section>
+    </div>
+    <section class="panel bottom"><p>Öğrenme döngüsü: <span class="kbd">gözlemle</span> → <span class="kbd">hipotez kur</span> → <span class="kbd">düzelt</span> → <span class="kbd">doğrula</span></p><div class="actions"><button id="resetBtn">Senaryoyu sıfırla</button><button class="primary" id="nextBtn" disabled>Sonraki senaryo →</button></div></section>
+  </main>
+</div>
+</section>
+</div><div class="toast" id="toast"></div>
+<script>@@include src/app/main.js@@</script>
+
+<script>@@include src/app/regression-audit.js@@</script>
+
+
+<script>@@include src/app/theme-toggle.js@@</script>
+<script id="sfCourseData" type="application/json">@@include src/data/courses.json@@</script>
+<script id="sfDetailData" type="application/json">@@include src/data/course-details.json@@</script>
+<script id="sfStudentFlowScript">@@include src/app/student-flow.js@@</script>
+<script id="ux-v12-code">@@include src/app/ux-v12.js@@</script>
+<script id="ux-v13-code">@@include src/app/ux-v13.js@@</script>
+<script id="ux-v14-code">@@include src/app/ux-v14.js@@</script>
+</body>
+</html>

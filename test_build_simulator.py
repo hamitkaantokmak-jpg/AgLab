@@ -15,15 +15,19 @@ class BuildTests(unittest.TestCase):
   with patch.dict(os.environ,{},clear=True):self.assertIsNone(build_release_manifest(ROOT)['source_commit'])
   with patch.dict(os.environ,{'GITHUB_SHA':'a'*40},clear=True):self.assertEqual(build_release_manifest(ROOT)['source_commit'],'a'*40)
   with patch.dict(os.environ,{'GITHUB_SHA':'invented'},clear=True):self.assertRaises(ValueError,build_release_manifest,ROOT)
- def test_canonical_order_after_permuted_previous_build(self):
+ def _copy_sources(self,folder):
+  for name in ['src','tools','simulator','academy']:shutil.copytree(ROOT/name,folder/name)
+ def test_build_is_independent_of_previous_html(self):
+  """The HTML is a pure build output: a missing or corrupted copy rebuilds identically."""
+  expected=(ROOT/'AgLab_Final_PKT_Import.html').read_bytes()
   with tempfile.TemporaryDirectory() as tmp:
-   folder=pathlib.Path(tmp);shutil.copy(ROOT/'build_simulator.py',folder/'build_simulator.py');shutil.copytree(ROOT/'simulator',folder/'simulator');html=folder/'AgLab_Final_PKT_Import.html';shutil.copy(ROOT/html.name,html)
-   subprocess.run([sys.executable,str(folder/'build_simulator.py')],check=True);expected=html.read_text(encoding='utf-8')
-   blocks=[];base=expected
-   for title in TITLES:
-    start='// BEGIN '+title+' GENERATED\n';end='// END '+title+' GENERATED\n';a=base.index(start);b=base.index(end,a)+len(end);blocks.append(base[a:b]);base=base[:a]+base[b:]
-   anchor='// BEGIN ACADEMY GENERATED\n';html.write_text(base.replace(anchor,''.join(reversed(blocks))+anchor,1),encoding='utf-8')
-   subprocess.run([sys.executable,str(folder/'build_simulator.py')],check=True)
-   self.assertEqual(html.read_text(encoding='utf-8'),expected,'Build depends on previous module order')
-   positions=[expected.index('// BEGIN '+t+' GENERATED\n') for t in TITLES];self.assertEqual(positions,sorted(positions))
+   folder=pathlib.Path(tmp);self._copy_sources(folder);html=folder/'AgLab_Final_PKT_Import.html'
+   subprocess.run([sys.executable,str(folder/'tools/build_html.py')],check=True)
+   self.assertEqual(html.read_bytes(),expected,'Committed HTML differs from a clean source build')
+   html.write_text('stale',encoding='utf-8')
+   self.assertNotEqual(subprocess.run([sys.executable,str(folder/'tools/build_html.py'),'--check']).returncode,0,'--check must reject a stale HTML')
+   subprocess.run([sys.executable,str(folder/'tools/build_html.py')],check=True)
+   self.assertEqual(html.read_bytes(),expected,'Build depends on previous HTML content')
+  text=expected.decode('utf-8')
+  positions=[text.index('// BEGIN '+t+' GENERATED\n') for t in TITLES];self.assertEqual(positions,sorted(positions))
 if __name__=='__main__':unittest.main()

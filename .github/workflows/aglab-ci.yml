@@ -39,6 +39,7 @@ jobs:
         run: node simulator/test_mac_address.cjs
       - name: Simülatör ve Akademi HTML derlemesini doğrula
         run: |
+          python tools/build_html.py --check
           python build_simulator.py
           python build_academy.py
           cp AgLab_Final_PKT_Import.html "$RUNNER_TEMP/aglab-first.html"
