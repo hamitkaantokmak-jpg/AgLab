@@ -3,7 +3,7 @@
 import ast, copy, json, math, os, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, TESTS_DIR, launch_chromium
 
 OUT = Path(os.environ.get("AGLAB_TEST_ARTIFACT_DIR", ROOT / "dist"))
 OUT.mkdir(exist_ok=True, parents=True)
@@ -442,7 +442,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         "AGL-001/005 grade equality, progress, save/reload and JSON roundtrip; replay history not persisted"
     )
     # Reuse the existing large-topology fixture, not another implementation.
-    tree = ast.parse((ROOT / "test_aglab_unified_performance.py").read_text())
+    tree = ast.parse((TESTS_DIR / "test_aglab_unified_performance.py").read_text())
     fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "topology")
     ns = {}
     exec(compile(ast.Module(body=[fn], type_ignores=[]), "<existing fixture>", "exec"), ns)
