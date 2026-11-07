@@ -13,6 +13,7 @@ Testler ortak ``tests/aglab_test_support.py`` yardımcılarını kullanır; sabi
 ``/mnt/data`` veya ``/usr/bin/chromium`` yolu yoktur, bu yüzden geçici bir kopya
 dizine "staging" ve metin değiştirme yapılmaz.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -140,7 +141,9 @@ ARTIFACTS += [
     if p.is_file()
 ]
 # HTML kaynak ağacı (HTML'nin kendisi derleme çıktısıdır).
-ARTIFACTS += [p.relative_to(ROOT).as_posix() for p in sorted((ROOT / "src").rglob("*")) if p.is_file()]
+ARTIFACTS += [
+    p.relative_to(ROOT).as_posix() for p in sorted((ROOT / "src").rglob("*")) if p.is_file()
+]
 
 # Başarılı testlerin ürettiği ve ZIP'e eklenen kanıt dosyaları.
 EVIDENCE = [
@@ -191,7 +194,11 @@ def find_browser() -> str | None:
                 return str(candidate)
     except Exception:
         pass
-    return shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
+    return (
+        shutil.which("chromium")
+        or shutil.which("chromium-browser")
+        or shutil.which("google-chrome")
+    )
 
 
 def run_check(check: Check, env: dict, timeout: int, node: str | None) -> dict:
@@ -297,7 +304,9 @@ def run() -> int:
     student_zip = out / "AgLab_Otomatik_Dogrulanmis_Paket.zip"
     teacher_zip = out / "AgLab_Akademi_Ogretmen.zip"
     if report["passed"]:
-        source = json.loads((ROOT / "static-routing-two-routers.aglab.json").read_text(encoding="utf-8"))
+        source = json.loads(
+            (ROOT / "static-routing-two-routers.aglab.json").read_text(encoding="utf-8")
+        )
         (out / "html-build-manifest.json").write_text(
             json.dumps(build_release_manifest(ROOT), indent=2), encoding="utf-8"
         )
@@ -307,7 +316,12 @@ def run() -> int:
             z.writestr(
                 "decoded_source.xml", base64.b64decode(source["sourceArchive"]["decodedXmlBase64"])
             )
-            for name in ["test-report.md", "test-results.json", "html-build-manifest.json", *EVIDENCE]:
+            for name in [
+                "test-report.md",
+                "test-results.json",
+                "html-build-manifest.json",
+                *EVIDENCE,
+            ]:
                 z.write(out / name, name)
             for f in sorted((ROOT / "academy/student").glob("*.json")):
                 z.write(f, "academy/student/" + f.name)

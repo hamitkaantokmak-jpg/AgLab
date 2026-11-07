@@ -23,6 +23,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Kaynak biçimini doğrula (Prettier, Black)
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run format:check
+          python -m pip install black==26.5.1
+          black --check .
       - name: Sabit üçüncü taraf motoru derle ve doğrula
         run: |
           npm ci --ignore-scripts --no-audit --no-fund

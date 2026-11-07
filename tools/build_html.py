@@ -18,6 +18,7 @@ Usage:
     python tools/build_html.py          # write the HTML
     python tools/build_html.py --check  # fail if the committed HTML is stale
 """
+
 from __future__ import annotations
 
 import argparse
@@ -79,7 +80,12 @@ def module_block(title: str) -> str:
     body = "".join(read(p) for p in MODULES[title])
     if title == "NETWORK SCENARIOS":
         # Scenario data is embedded as a JS literal, never evaluated as code from JSON.
-        body = "const sharedNetworkScenarios=" + read("simulator/network-scenarios.json") + ";\n" + body
+        body = (
+            "const sharedNetworkScenarios="
+            + read("simulator/network-scenarios.json")
+            + ";\n"
+            + body
+        )
     return f"// BEGIN {title} GENERATED\n{body}\n// END {title} GENERATED\n"
 
 
@@ -105,7 +111,9 @@ def build() -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--check", action="store_true", help="only verify the committed HTML is up to date")
+    parser.add_argument(
+        "--check", action="store_true", help="only verify the committed HTML is up to date"
+    )
     args = parser.parse_args()
     html = build().encode("utf-8")
     digest = hashlib.sha256(html).hexdigest()
