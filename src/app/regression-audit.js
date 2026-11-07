@@ -22,7 +22,8 @@
    const srcText=[...document.scripts].map(x=>x.textContent||'').join('\n');
    const natSetupStart=srcText.indexOf('function loadSharedNatScenario');
    const natSetupEnd=srcText.indexOf('function loadSharedScenario',natSetupStart+1);
-   const natSetup=natSetupStart>=0?srcText.slice(natSetupStart,natSetupEnd>natSetupStart?natSetupEnd:undefined):'';
+   // Kaynak metni boşluktan bağımsız karşılaştırılır; biçimlendirme denetimin sonucunu değiştirmez.
+   const natSetup=(natSetupStart>=0?srcText.slice(natSetupStart,natSetupEnd>natSetupStart?natSetupEnd:undefined):'').replace(/\s+/g,'');
    add('NAT/PAT ortak motor senaryosu tanımlı',optionValues.includes('nat-pat')&&natSetup.includes("key:'nat-pat'")&&natSetup.includes("natRole:'inside'")&&natSetup.includes("natRole:'outside'"),'NAT/PAT, ortak topoloji yükleyicisi üzerinden tanımlanıyor; öğrenme senaryoları dizisinde aranmaz.');
    add('NAT overload komutu ve akış kontrolü kodda var',srcText.includes('ip nat inside source list')&&srcText.includes('natOverload')&&srcText.includes('natTranslations'),'NAT yapılandırma komutu, akış denetimi ve çeviri tablosu kontrol edildi');
    add('NAT tanılama komutları kodda var',srcText.includes('show ip nat translations')&&srcText.includes('show ip nat statistics'),'Çeviri tablosu ve istatistik komut metinleri aranıyor');
