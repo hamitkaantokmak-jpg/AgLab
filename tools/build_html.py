@@ -44,6 +44,8 @@ MODULES: dict[str, list[str]] = {
         "src/engine/routing.js",
         "src/engine/stp.js",
         "src/engine/acl.js",
+        "src/engine/nat.js",
+        "src/engine/dhcp.js",
     ],
     "MAC ADDRESS": ["simulator/mac-address.js"],
     "SWITCH MANAGEMENT": ["simulator/switch-management.js"],

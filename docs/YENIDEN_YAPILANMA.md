@@ -58,10 +58,13 @@ FRR gerçek Linux yönlendirme yazılımıdır ve tarayıcıda çalışamaz. Bu 
    `run_pipeline.py` içinde keşifle toplanıyor. CSS ve `academy/student-data.js`
    bilinçli olarak biçimlenmedi.
 3. **Motor API'si** *(sürüyor)*: ilk dilimler hazır — `src/engine/ipv4.js`,
-   `topology.js`, `routing.js` (LPM, AD, özyinelemeli next-hop), `stp.js`, `acl.js`;
-   Node'da `tests/node/test_engine_*.cjs` ile tarayıcısız test ediliyor. Kalanlar:
-   L2 iletim/MAC tablosu, ARP, ICMP/ping/traceroute yolu, NAT, DHCP, ardından
-   simülatör durumunun (devices/links) motora taşınması.
+   `topology.js`, `routing.js` (LPM, AD, özyinelemeli next-hop), `stp.js`, `acl.js`
+   (kural ve yol kararı), `nat.js` (PAT denetimi + açık çeviri kaydı), `dhcp.js`
+   (relay araması, kira tahsisi); Node'da `tests/node/test_engine_*.cjs` ile
+   tarayıcısız test ediliyor. Bekletilen: L2 iletim/MAC tablosu ve ARP (ayrı bir
+   switch simülatörüyle karşılaştırılacak). Ping/traceroute yol hesabı bunlara
+   bağlı olduğu için onlarla birlikte ele alınacak. Ardından simülatör durumunun
+   (devices/links) motora taşınması.
    Hedef: `main.js` içindeki topoloji modeli, L2/ARP/IP/routing/ICMP
    mantığı DOM'dan ayrılıp `src/engine/` altına saf modüller olarak çıkarılır;
    Node'da tarayıcısız test edilebilir hale gelir. CLI bu API'yi çağırır.

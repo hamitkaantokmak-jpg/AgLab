@@ -7524,7 +7524,18 @@ const AgLabEngineTopology = (() => {
   function linkPort(l, id) {
     return l.a === id ? l.portA : l.portB;
   }
-  return { getDevice, portState, linkUp, freePort, linkPort };
+  // Kaynaktan başlayarak bir bağlantı yolunun geçtiği cihazlar (kaynak dahil, sırayla).
+  function orderedPathNodes(topo, srcId, path) {
+    const nodes = [getDevice(topo, srcId)];
+    let cur = srcId;
+    for (const l of path) {
+      const next = l.a === cur ? l.b : l.a;
+      nodes.push(getDevice(topo, next));
+      cur = next;
+    }
+    return nodes;
+  }
+  return { getDevice, portState, linkUp, freePort, linkPort, orderedPathNodes };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngineTopology;
 // AğLab motoru — yönlendirici rota tablosu ve en uzun önek eşleşmesi (LPM).
@@ -7812,10 +7823,11 @@ const AgLabEngineStp = ((topology) => {
 })(typeof AgLabEngineTopology !== 'undefined' ? AgLabEngineTopology : require('./topology.js'));
 if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngineStp;
 // AğLab motoru — IPv4 erişim listesi (ACL) değerlendirmesi.
-// Saf fonksiyonlar: yalnızca yönlendiricinin `acls` yapılandırmasını okur.
+// Saf fonksiyonlar: yönlendiricinin `acls` yapılandırmasını ve verilen yolu okur.
 // İlk eşleşen kural uygulanır; hiçbiri eşleşmezse Cisco'daki gibi örtük "deny".
-const AgLabEngineAcl = ((ipv4) => {
+const AgLabEngineAcl = ((ipv4, topology) => {
   const { inNetwork, maskFromWildcard } = ipv4;
+  const { orderedPathNodes, linkPort } = topology;
 
   function aclRuleMatches(rule, srcIp, dstIp, protocol, port) {
     if (rule.protocol !== 'ip' && rule.protocol !== protocol) return false;
@@ -7839,9 +7851,213 @@ const AgLabEngineAcl = ((ipv4) => {
     }
     return { action: 'deny', rule: null };
   }
-  return { aclRuleMatches, aclEvaluate };
-})(typeof AgLabEngineIpv4 !== 'undefined' ? AgLabEngineIpv4 : require('./ipv4.js'));
+  // Yol üzerindeki her yönlendiricide giriş (in) ve çıkış (out) arayüzüne bağlı
+  // ACL'leri sırayla uygular; ilk engelleyen karar akışı durdurur.
+  function aclPathDecision(topo, path, srcId, dstId, srcIp, dstIp, protocol, port) {
+    const nodes = orderedPathNodes(topo, srcId, path);
+    for (let i = 0; i < nodes.length; i++) {
+      const r = nodes[i];
+      if (r?.type !== 'Router') continue;
+      const inPort = i > 0 ? linkPort(path[i - 1], r.id) : null;
+      const outPort = i < path.length ? linkPort(path[i], r.id) : null;
+      for (const [iface, direction] of [
+        [inPort, 'in'],
+        [outPort, 'out'],
+      ]) {
+        if (!iface) continue;
+        const intf = r.interfaces?.[iface];
+        const aclId = direction === 'in' ? intf?.aclIn : intf?.aclOut;
+        if (!aclId) continue;
+        const decision = aclEvaluate(r, aclId, srcIp, dstIp, protocol, port);
+        if (decision.action !== 'permit')
+          return {
+            ok: false,
+            why:
+              'ACL ' +
+              aclId +
+              ' ' +
+              direction +
+              ' yönünde ' +
+              r.name +
+              ' ' +
+              iface +
+              ' arayüzünde ' +
+              protocol.toUpperCase() +
+              (port ? ' / ' + port : '') +
+              ' trafiğini engelliyor' +
+              (decision.rule
+                ? ' (eşleşen ' + decision.rule.action + ' kuralı).'
+                : '; eşleşen izin kuralı yok, varsayılan deny.'),
+          };
+      }
+    }
+    return { ok: true };
+  }
+  return { aclRuleMatches, aclEvaluate, aclPathDecision };
+})(
+  typeof AgLabEngineIpv4 !== 'undefined' ? AgLabEngineIpv4 : require('./ipv4.js'),
+  typeof AgLabEngineTopology !== 'undefined' ? AgLabEngineTopology : require('./topology.js'),
+);
 if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngineAcl;
+// AğLab motoru — NAT overload (PAT) yol denetimi.
+// `natPathCheck` saftır: verilen yol üzerinde inside → outside geçişi yapan ilk
+// yönlendiricinin NAT yapılandırmasını denetler ve oluşacak çeviri kaydını döndürür.
+// Çeviri tablosuna yazmak ayrı ve açık bir adımdır (`recordNatTranslation`).
+// Model sınırı: port numarası çevirisi ve zaman aşımı modellenmez; kayıt anahtarı
+// kaynak|hedef|protokol üçlüsüdür.
+const AgLabEngineNat = ((topology, acl) => {
+  const { orderedPathNodes, linkPort } = topology;
+  const { aclEvaluate } = acl;
+
+  function natPathCheck(topo, path, srcId, dstId, srcIp, dstIp, protocol) {
+    const nodes = orderedPathNodes(topo, srcId, path);
+    for (let i = 0; i < nodes.length; i++) {
+      const r = nodes[i];
+      if (r?.type !== 'Router' || r.enabled === false) continue;
+      const inPort = i > 0 ? linkPort(path[i - 1], r.id) : null;
+      const outPort = i < path.length ? linkPort(path[i], r.id) : null;
+      const ingress = inPort ? r.interfaces?.[inPort] : null,
+        egress = outPort ? r.interfaces?.[outPort] : null;
+      if (ingress?.natRole === 'inside' && egress?.natRole === 'outside') {
+        const n = r.natOverload;
+        if (!n)
+          return {
+            ok: false,
+            why:
+              r.name + ' üzerinde inside → outside akışı var ancak NAT overload yapılandırılmamış.',
+          };
+        if (ingress.enabled === false)
+          return { ok: false, why: r.name + ' NAT inside arayüzü ' + inPort + ' kapalı.' };
+        if (egress.enabled === false)
+          return { ok: false, why: r.name + ' NAT outside arayüzü ' + outPort + ' kapalı.' };
+        if (n.outsideInterface !== outPort)
+          return {
+            ok: false,
+            why:
+              'NAT overload yanlış outside arayüzünü (' +
+              n.outsideInterface +
+              ') referanslıyor; bu akış ' +
+              outPort +
+              ' arayüzünden çıkıyor.',
+          };
+        const configuredOutside = r.interfaces?.[n.outsideInterface];
+        if (
+          !configuredOutside ||
+          configuredOutside.natRole !== 'outside' ||
+          !configuredOutside.ip ||
+          configuredOutside.enabled === false
+        )
+          return {
+            ok: false,
+            why:
+              'NAT outside arayüzü ' +
+              n.outsideInterface +
+              ' outside olarak işaretli, etkin ve IP adresli olmalı.',
+          };
+        const decision = aclEvaluate(
+          r,
+          n.aclId,
+          srcIp,
+          dstIp,
+          protocol,
+          protocol === 'tcp' ? 80 : null,
+        );
+        if (decision.action !== 'permit')
+          return {
+            ok: false,
+            why: 'NAT ACL ' + n.aclId + ' iç kaynak ' + srcIp + ' adresine izin vermiyor.',
+          };
+        const entry = {
+          key: [srcIp, dstIp, protocol].join('|'),
+          protocol,
+          insideLocal: srcIp,
+          insideGlobal: configuredOutside.ip,
+          outsideLocal: dstIp,
+        };
+        return { ok: true, translated: true, router: r.name, natRouter: r, entry };
+      }
+    }
+    return { ok: true, translated: false };
+  }
+  // Çeviri tablosuna kayıt ekler (aynı anahtar varsa eklemez). Yönlendiriciyi değiştirir.
+  function recordNatTranslation(router, entry) {
+    router.natTranslations = Array.isArray(router.natTranslations) ? router.natTranslations : [];
+    if (!router.natTranslations.some((x) => x.key === entry.key))
+      router.natTranslations.push(entry);
+  }
+  return { natPathCheck, recordNatTranslation };
+})(
+  typeof AgLabEngineTopology !== 'undefined' ? AgLabEngineTopology : require('./topology.js'),
+  typeof AgLabEngineAcl !== 'undefined' ? AgLabEngineAcl : require('./acl.js'),
+);
+if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngineNat;
+// AğLab motoru — DHCP relay araması ve adres kiralama.
+// Saf fonksiyonlar: topoloji parametre olarak verilir, hiçbir cihaz değiştirilmez.
+// İstemciye adresi yazmak ve kullanıcı mesajları çağıranın (CLI) işidir.
+// Sunucuya giden yolun bulunması (L2 keşif) bu modülün kapsamı dışındadır.
+const AgLabEngineDhcp = ((ipv4, topology) => {
+  const { prefixLen, ipNum } = ipv4;
+  const { orderedPathNodes, linkPort } = topology;
+
+  // Yol üzerinde, istemci tarafındaki giriş arayüzünde `ip helper-address <sunucu>`
+  // yapılandırılmış ilk etkin yönlendirici.
+  function findRelayOnPath(topo, clientId, path, serverIp) {
+    const nodes = orderedPathNodes(topo, clientId, path);
+    for (let i = 0; i < nodes.length; i++) {
+      const r = nodes[i];
+      if (r?.type !== 'Router') continue;
+      const inPort = i > 0 ? linkPort(path[i - 1], r.id) : null;
+      const ingress = inPort ? r.interfaces?.[inPort] : null;
+      if (
+        ingress?.helperAddress === serverIp &&
+        ingress.ip &&
+        ingress.enabled !== false &&
+        r.enabled !== false
+      )
+        return { router: r, iface: ingress };
+    }
+    return null;
+  }
+
+  function numToIp(n) {
+    return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+  }
+
+  // Havuzdan boş adres seçer: ağın 100. adresinden (daha küçük ağlarda son kullanılabilir
+  // adresten) başlayıp yukarı doğru en çok 4096 aday dener, sonra baştaki adreslere döner.
+  // İstemcinin kendisi dışındaki tüm cihaz/arayüz adresleri, ağ geçidi ve sunucu adresi
+  // dolu sayılır.
+  // Dönüş: { ok: true, ip } | { ok: false, reason: 'invalid-subnet' | 'pool-exhausted' }
+  function allocateLease(topo, client, { network, mask, gateway = '', serverIp = '' }) {
+    const prefix = prefixLen(mask),
+      networkInt = ipNum(network);
+    if (prefix < 0 || prefix >= 31 || networkInt === null)
+      return { ok: false, reason: 'invalid-subnet' };
+    const broadcastInt = networkInt + Math.pow(2, 32 - prefix) - 1;
+    const occupied = new Set(
+      topo.devices
+        .filter((x) => x !== client)
+        .flatMap((x) => [x.ip, ...Object.values(x.interfaces || {}).map((i) => i.ip)])
+        .filter(Boolean),
+    );
+    const reserved = new Set([gateway, serverIp].filter(Boolean));
+    const startOffset = Math.min(100, Math.max(1, broadcastInt - networkInt - 1));
+    for (const offset of [...Array(4096)]
+      .map((_, i) => startOffset + i)
+      .concat([...Array(Math.max(0, startOffset - 1))].map((_, i) => i + 1))) {
+      const candidateInt = networkInt + offset;
+      if (candidateInt >= broadcastInt) continue;
+      const candidate = numToIp(candidateInt);
+      if (!occupied.has(candidate) && !reserved.has(candidate)) return { ok: true, ip: candidate };
+    }
+    return { ok: false, reason: 'pool-exhausted' };
+  }
+  return { findRelayOnPath, allocateLease };
+})(
+  typeof AgLabEngineIpv4 !== 'undefined' ? AgLabEngineIpv4 : require('./ipv4.js'),
+  typeof AgLabEngineTopology !== 'undefined' ? AgLabEngineTopology : require('./topology.js'),
+);
+if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngineDhcp;
 
 // END ENGINE GENERATED
   // Saf, DOM'suz motor API'si (src/engine). Simülatör durumu (devices/links) bu IIFE'de
@@ -9690,121 +9906,34 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
     return !!findPath(a, b);
   }
   function orderedPathNodes(srcId, path) {
-    const nodes = [get(srcId)];
-    let cur = srcId;
-    for (const l of path) {
-      const next = l.a === cur ? l.b : l.a;
-      nodes.push(get(next));
-      cur = next;
-    }
-    return nodes;
+    return AgLabEngineTopology.orderedPathNodes(engineTopo, srcId, path);
   }
   function aclPathDecision(path, srcId, dstId, srcIp, dstIp, protocol, port) {
-    const nodes = orderedPathNodes(srcId, path);
-    for (let i = 0; i < nodes.length; i++) {
-      const r = nodes[i];
-      if (r?.type !== 'Router') continue;
-      const inPort = i > 0 ? linkPort(path[i - 1], r.id) : null;
-      const outPort = i < path.length ? linkPort(path[i], r.id) : null;
-      for (const [iface, direction] of [
-        [inPort, 'in'],
-        [outPort, 'out'],
-      ]) {
-        if (!iface) continue;
-        const intf = r.interfaces?.[iface];
-        const aclId = direction === 'in' ? intf?.aclIn : intf?.aclOut;
-        if (!aclId) continue;
-        const decision = aclEvaluate(r, aclId, srcIp, dstIp, protocol, port);
-        if (decision.action !== 'permit')
-          return {
-            ok: false,
-            why:
-              'ACL ' +
-              aclId +
-              ' ' +
-              direction +
-              ' yönünde ' +
-              r.name +
-              ' ' +
-              iface +
-              ' arayüzünde ' +
-              protocol.toUpperCase() +
-              (port ? ' / ' + port : '') +
-              ' trafiğini engelliyor' +
-              (decision.rule
-                ? ' (eşleşen ' + decision.rule.action + ' kuralı).'
-                : '; eşleşen izin kuralı yok, varsayılan deny.'),
-          };
-      }
-    }
-    return { ok: true };
+    return AgLabEngineAcl.aclPathDecision(
+      engineTopo,
+      path,
+      srcId,
+      dstId,
+      srcIp,
+      dstIp,
+      protocol,
+      port,
+    );
   }
+  // Denetim motorda saf; çeviri kaydı burada açıkça yazılır.
   function natPathCheck(path, srcId, dstId, srcIp, dstIp, protocol) {
-    const nodes = orderedPathNodes(srcId, path);
-    for (let i = 0; i < nodes.length; i++) {
-      const r = nodes[i];
-      if (r?.type !== 'Router' || r.enabled === false) continue;
-      const inPort = i > 0 ? linkPort(path[i - 1], r.id) : null;
-      const outPort = i < path.length ? linkPort(path[i], r.id) : null;
-      const ingress = inPort ? r.interfaces?.[inPort] : null,
-        egress = outPort ? r.interfaces?.[outPort] : null;
-      if (ingress?.natRole === 'inside' && egress?.natRole === 'outside') {
-        const n = r.natOverload;
-        if (!n)
-          return {
-            ok: false,
-            why:
-              r.name + ' üzerinde inside → outside akışı var ancak NAT overload yapılandırılmamış.',
-          };
-        if (ingress.enabled === false)
-          return { ok: false, why: r.name + ' NAT inside arayüzü ' + inPort + ' kapalı.' };
-        if (egress.enabled === false)
-          return { ok: false, why: r.name + ' NAT outside arayüzü ' + outPort + ' kapalı.' };
-        if (n.outsideInterface !== outPort)
-          return {
-            ok: false,
-            why:
-              'NAT overload yanlış outside arayüzünü (' +
-              n.outsideInterface +
-              ') referanslıyor; bu akış ' +
-              outPort +
-              ' arayüzünden çıkıyor.',
-          };
-        const configuredOutside = r.interfaces?.[n.outsideInterface];
-        if (
-          !configuredOutside ||
-          configuredOutside.natRole !== 'outside' ||
-          !configuredOutside.ip ||
-          configuredOutside.enabled === false
-        )
-          return {
-            ok: false,
-            why:
-              'NAT outside arayüzü ' +
-              n.outsideInterface +
-              ' outside olarak işaretli, etkin ve IP adresli olmalı.',
-          };
-        const acl = aclEvaluate(r, n.aclId, srcIp, dstIp, protocol, protocol === 'tcp' ? 80 : null);
-        if (acl.action !== 'permit')
-          return {
-            ok: false,
-            why: 'NAT ACL ' + n.aclId + ' iç kaynak ' + srcIp + ' adresine izin vermiyor.',
-          };
-        const outsideIp = configuredOutside.ip;
-        r.natTranslations = Array.isArray(r.natTranslations) ? r.natTranslations : [];
-        const key = [srcIp, dstIp, protocol].join('|');
-        if (!r.natTranslations.some((x) => x.key === key))
-          r.natTranslations.push({
-            key,
-            protocol,
-            insideLocal: srcIp,
-            insideGlobal: outsideIp,
-            outsideLocal: dstIp,
-          });
-        return { ok: true, translated: true, router: r.name };
-      }
-    }
-    return { ok: true, translated: false };
+    const result = AgLabEngineNat.natPathCheck(
+      engineTopo,
+      path,
+      srcId,
+      dstId,
+      srcIp,
+      dstIp,
+      protocol,
+    );
+    if (!result.translated) return result;
+    AgLabEngineNat.recordNatTranslation(result.natRouter, result.entry);
+    return { ok: true, translated: true, router: result.router };
   }
   function directNextHopNeighborExists(router, route) {
     if (!router || router.type !== 'Router' || !route?.nextHop || !route?.iface) return false;
@@ -11282,23 +11411,14 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
             'DHCP Discover gönderildi; DHCP sunucusuna fiziksel yol bulunamadı.',
             'outerr',
           );
-        const nodes = orderedPathNodes(d.id, pathToServer.path);
-        let relay = pathToServer.relay || null;
-        for (let i = 0; !relay && i < nodes.length; i++) {
-          const r = nodes[i];
-          if (r?.type !== 'Router') continue;
-          const inPort = i > 0 ? linkPort(pathToServer.path[i - 1], r.id) : null;
-          const ingress = inPort ? r.interfaces?.[inPort] : null;
-          if (
-            ingress?.helperAddress === pathToServer.server.ip &&
-            ingress.ip &&
-            ingress.enabled !== false &&
-            r.enabled !== false
-          ) {
-            relay = { router: r, iface: ingress };
-            break;
-          }
-        }
+        const relay =
+          pathToServer.relay ||
+          AgLabEngineDhcp.findRelayOnPath(
+            engineTopo,
+            d.id,
+            pathToServer.path,
+            pathToServer.server.ip,
+          );
         if (!relay)
           return out(
             'DHCP Discover gönderildi; farklı ağdaki sunucuya ulaşacak ip helper-address yapılandırması bulunamadı.',
@@ -11312,44 +11432,23 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
         leaseMask = relay.iface.mask;
         leaseGateway = relay.iface.ip;
       }
-      const prefix = prefixLen(leaseMask),
-        networkInt = ipNum(leaseNetwork);
-      if (prefix < 0 || prefix >= 31 || networkInt === null)
+      const lease = AgLabEngineDhcp.allocateLease(engineTopo, d, {
+        network: leaseNetwork,
+        mask: leaseMask,
+        gateway: leaseGateway,
+        serverIp: srv.ip,
+      });
+      if (!lease.ok && lease.reason === 'invalid-subnet')
         return out(
           'DHCP başarısız: sunucu veya relay geçerli bir IPv4 alt ağı sağlamadı.',
           'outerr',
         );
-      const broadcastInt = networkInt + Math.pow(2, 32 - prefix) - 1;
-      const occupied = new Set(
-        devices
-          .filter((x) => x !== d)
-          .flatMap((x) => [x.ip, ...Object.values(x.interfaces || {}).map((i) => i.ip)])
-          .filter(Boolean),
-      );
-      const reserved = new Set([leaseGateway, srv.ip].filter(Boolean));
-      let leaseIp = '';
-      const startOffset = Math.min(100, Math.max(1, broadcastInt - networkInt - 1));
-      for (const offset of [...Array(4096)]
-        .map((_, i) => startOffset + i)
-        .concat([...Array(Math.max(0, startOffset - 1))].map((_, i) => i + 1))) {
-        const candidateInt = networkInt + offset;
-        if (candidateInt >= broadcastInt) continue;
-        const candidate = [
-          (candidateInt >>> 24) & 255,
-          (candidateInt >>> 16) & 255,
-          (candidateInt >>> 8) & 255,
-          candidateInt & 255,
-        ].join('.');
-        if (!occupied.has(candidate) && !reserved.has(candidate)) {
-          leaseIp = candidate;
-          break;
-        }
-      }
-      if (!leaseIp)
+      if (!lease.ok)
         return out(
           'DHCP başarısız: simülatörün kontrol ettiği kullanılabilir adres aralığında boş IP bulunamadı.',
           'outerr',
         );
+      const leaseIp = lease.ip;
       d.ip = leaseIp;
       d.mask = leaseMask;
       d.gateway = leaseGateway;

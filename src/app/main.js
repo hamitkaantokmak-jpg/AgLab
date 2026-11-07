@@ -8631,121 +8631,34 @@ labLoadExperiment();
     return !!findPath(a, b);
   }
   function orderedPathNodes(srcId, path) {
-    const nodes = [get(srcId)];
-    let cur = srcId;
-    for (const l of path) {
-      const next = l.a === cur ? l.b : l.a;
-      nodes.push(get(next));
-      cur = next;
-    }
-    return nodes;
+    return AgLabEngineTopology.orderedPathNodes(engineTopo, srcId, path);
   }
   function aclPathDecision(path, srcId, dstId, srcIp, dstIp, protocol, port) {
-    const nodes = orderedPathNodes(srcId, path);
-    for (let i = 0; i < nodes.length; i++) {
-      const r = nodes[i];
-      if (r?.type !== 'Router') continue;
-      const inPort = i > 0 ? linkPort(path[i - 1], r.id) : null;
-      const outPort = i < path.length ? linkPort(path[i], r.id) : null;
-      for (const [iface, direction] of [
-        [inPort, 'in'],
-        [outPort, 'out'],
-      ]) {
-        if (!iface) continue;
-        const intf = r.interfaces?.[iface];
-        const aclId = direction === 'in' ? intf?.aclIn : intf?.aclOut;
-        if (!aclId) continue;
-        const decision = aclEvaluate(r, aclId, srcIp, dstIp, protocol, port);
-        if (decision.action !== 'permit')
-          return {
-            ok: false,
-            why:
-              'ACL ' +
-              aclId +
-              ' ' +
-              direction +
-              ' yönünde ' +
-              r.name +
-              ' ' +
-              iface +
-              ' arayüzünde ' +
-              protocol.toUpperCase() +
-              (port ? ' / ' + port : '') +
-              ' trafiğini engelliyor' +
-              (decision.rule
-                ? ' (eşleşen ' + decision.rule.action + ' kuralı).'
-                : '; eşleşen izin kuralı yok, varsayılan deny.'),
-          };
-      }
-    }
-    return { ok: true };
+    return AgLabEngineAcl.aclPathDecision(
+      engineTopo,
+      path,
+      srcId,
+      dstId,
+      srcIp,
+      dstIp,
+      protocol,
+      port,
+    );
   }
+  // Denetim motorda saf; çeviri kaydı burada açıkça yazılır.
   function natPathCheck(path, srcId, dstId, srcIp, dstIp, protocol) {
-    const nodes = orderedPathNodes(srcId, path);
-    for (let i = 0; i < nodes.length; i++) {
-      const r = nodes[i];
-      if (r?.type !== 'Router' || r.enabled === false) continue;
-      const inPort = i > 0 ? linkPort(path[i - 1], r.id) : null;
-      const outPort = i < path.length ? linkPort(path[i], r.id) : null;
-      const ingress = inPort ? r.interfaces?.[inPort] : null,
-        egress = outPort ? r.interfaces?.[outPort] : null;
-      if (ingress?.natRole === 'inside' && egress?.natRole === 'outside') {
-        const n = r.natOverload;
-        if (!n)
-          return {
-            ok: false,
-            why:
-              r.name + ' üzerinde inside → outside akışı var ancak NAT overload yapılandırılmamış.',
-          };
-        if (ingress.enabled === false)
-          return { ok: false, why: r.name + ' NAT inside arayüzü ' + inPort + ' kapalı.' };
-        if (egress.enabled === false)
-          return { ok: false, why: r.name + ' NAT outside arayüzü ' + outPort + ' kapalı.' };
-        if (n.outsideInterface !== outPort)
-          return {
-            ok: false,
-            why:
-              'NAT overload yanlış outside arayüzünü (' +
-              n.outsideInterface +
-              ') referanslıyor; bu akış ' +
-              outPort +
-              ' arayüzünden çıkıyor.',
-          };
-        const configuredOutside = r.interfaces?.[n.outsideInterface];
-        if (
-          !configuredOutside ||
-          configuredOutside.natRole !== 'outside' ||
-          !configuredOutside.ip ||
-          configuredOutside.enabled === false
-        )
-          return {
-            ok: false,
-            why:
-              'NAT outside arayüzü ' +
-              n.outsideInterface +
-              ' outside olarak işaretli, etkin ve IP adresli olmalı.',
-          };
-        const acl = aclEvaluate(r, n.aclId, srcIp, dstIp, protocol, protocol === 'tcp' ? 80 : null);
-        if (acl.action !== 'permit')
-          return {
-            ok: false,
-            why: 'NAT ACL ' + n.aclId + ' iç kaynak ' + srcIp + ' adresine izin vermiyor.',
-          };
-        const outsideIp = configuredOutside.ip;
-        r.natTranslations = Array.isArray(r.natTranslations) ? r.natTranslations : [];
-        const key = [srcIp, dstIp, protocol].join('|');
-        if (!r.natTranslations.some((x) => x.key === key))
-          r.natTranslations.push({
-            key,
-            protocol,
-            insideLocal: srcIp,
-            insideGlobal: outsideIp,
-            outsideLocal: dstIp,
-          });
-        return { ok: true, translated: true, router: r.name };
-      }
-    }
-    return { ok: true, translated: false };
+    const result = AgLabEngineNat.natPathCheck(
+      engineTopo,
+      path,
+      srcId,
+      dstId,
+      srcIp,
+      dstIp,
+      protocol,
+    );
+    if (!result.translated) return result;
+    AgLabEngineNat.recordNatTranslation(result.natRouter, result.entry);
+    return { ok: true, translated: true, router: result.router };
   }
   function directNextHopNeighborExists(router, route) {
     if (!router || router.type !== 'Router' || !route?.nextHop || !route?.iface) return false;
@@ -10223,23 +10136,14 @@ labLoadExperiment();
             'DHCP Discover gönderildi; DHCP sunucusuna fiziksel yol bulunamadı.',
             'outerr',
           );
-        const nodes = orderedPathNodes(d.id, pathToServer.path);
-        let relay = pathToServer.relay || null;
-        for (let i = 0; !relay && i < nodes.length; i++) {
-          const r = nodes[i];
-          if (r?.type !== 'Router') continue;
-          const inPort = i > 0 ? linkPort(pathToServer.path[i - 1], r.id) : null;
-          const ingress = inPort ? r.interfaces?.[inPort] : null;
-          if (
-            ingress?.helperAddress === pathToServer.server.ip &&
-            ingress.ip &&
-            ingress.enabled !== false &&
-            r.enabled !== false
-          ) {
-            relay = { router: r, iface: ingress };
-            break;
-          }
-        }
+        const relay =
+          pathToServer.relay ||
+          AgLabEngineDhcp.findRelayOnPath(
+            engineTopo,
+            d.id,
+            pathToServer.path,
+            pathToServer.server.ip,
+          );
         if (!relay)
           return out(
             'DHCP Discover gönderildi; farklı ağdaki sunucuya ulaşacak ip helper-address yapılandırması bulunamadı.',
@@ -10253,44 +10157,23 @@ labLoadExperiment();
         leaseMask = relay.iface.mask;
         leaseGateway = relay.iface.ip;
       }
-      const prefix = prefixLen(leaseMask),
-        networkInt = ipNum(leaseNetwork);
-      if (prefix < 0 || prefix >= 31 || networkInt === null)
+      const lease = AgLabEngineDhcp.allocateLease(engineTopo, d, {
+        network: leaseNetwork,
+        mask: leaseMask,
+        gateway: leaseGateway,
+        serverIp: srv.ip,
+      });
+      if (!lease.ok && lease.reason === 'invalid-subnet')
         return out(
           'DHCP başarısız: sunucu veya relay geçerli bir IPv4 alt ağı sağlamadı.',
           'outerr',
         );
-      const broadcastInt = networkInt + Math.pow(2, 32 - prefix) - 1;
-      const occupied = new Set(
-        devices
-          .filter((x) => x !== d)
-          .flatMap((x) => [x.ip, ...Object.values(x.interfaces || {}).map((i) => i.ip)])
-          .filter(Boolean),
-      );
-      const reserved = new Set([leaseGateway, srv.ip].filter(Boolean));
-      let leaseIp = '';
-      const startOffset = Math.min(100, Math.max(1, broadcastInt - networkInt - 1));
-      for (const offset of [...Array(4096)]
-        .map((_, i) => startOffset + i)
-        .concat([...Array(Math.max(0, startOffset - 1))].map((_, i) => i + 1))) {
-        const candidateInt = networkInt + offset;
-        if (candidateInt >= broadcastInt) continue;
-        const candidate = [
-          (candidateInt >>> 24) & 255,
-          (candidateInt >>> 16) & 255,
-          (candidateInt >>> 8) & 255,
-          candidateInt & 255,
-        ].join('.');
-        if (!occupied.has(candidate) && !reserved.has(candidate)) {
-          leaseIp = candidate;
-          break;
-        }
-      }
-      if (!leaseIp)
+      if (!lease.ok)
         return out(
           'DHCP başarısız: simülatörün kontrol ettiği kullanılabilir adres aralığında boş IP bulunamadı.',
           'outerr',
         );
+      const leaseIp = lease.ip;
       d.ip = leaseIp;
       d.mask = leaseMask;
       d.gateway = leaseGateway;

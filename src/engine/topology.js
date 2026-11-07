@@ -35,6 +35,17 @@ const AgLabEngineTopology = (() => {
   function linkPort(l, id) {
     return l.a === id ? l.portA : l.portB;
   }
-  return { getDevice, portState, linkUp, freePort, linkPort };
+  // Kaynaktan başlayarak bir bağlantı yolunun geçtiği cihazlar (kaynak dahil, sırayla).
+  function orderedPathNodes(topo, srcId, path) {
+    const nodes = [getDevice(topo, srcId)];
+    let cur = srcId;
+    for (const l of path) {
+      const next = l.a === cur ? l.b : l.a;
+      nodes.push(getDevice(topo, next));
+      cur = next;
+    }
+    return nodes;
+  }
+  return { getDevice, portState, linkUp, freePort, linkPort, orderedPathNodes };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngineTopology;
