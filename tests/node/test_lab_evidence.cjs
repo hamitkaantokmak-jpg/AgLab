@@ -1,0 +1,11 @@
+'use strict';
+const assert=require('node:assert/strict'),{parse}=require('../../simulator/lab-evidence.js');
+const report={kind:'routing',engine:'FRRouting',ok:true,cleanup:true,evidence:{},steps:[{name:'OSPF route withdrawal',ok:true,evidence:{route:{}}}]};
+const r=parse(JSON.stringify(report));assert.equal(r.authenticated,false);assert.equal(r.events[0].kind,'lab-check');assert.equal(r.events[0].device,null);assert.equal(r.scope,'separate-lab');
+for(const value of [{...report,execute:'shell'}, {...report,steps:[{name:'fake',ok:true,script:'x'}]}, {...report,engine:'other'}])assert.throws(()=>parse(JSON.stringify(value)));
+assert.throws(()=>parse('x'.repeat(2000001)));
+console.log('PASS bounded data-only evidence; separate scope and no authenticity/packet claim');
+const security={...report,kind:'security',engine:'Linux kernel nftables'};
+const actual=parse(JSON.stringify(security));assert.equal(actual.engine,'Linux kernel nftables');assert.equal(actual.authenticated,false);
+assert.throws(()=>parse(JSON.stringify({...security,kind:'routing'})));
+assert.throws(()=>parse(JSON.stringify({...security,engine:'FRRouting'})));

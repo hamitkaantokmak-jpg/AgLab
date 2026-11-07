@@ -29,14 +29,15 @@ def verify_release_packages(student_path, teacher_path):
             audit=read_json(archive,'academy/adaptation-audit.json')
             assert len(audit)==40 and {row['id'] for row in audit}==ids, 'Incomplete adaptation audit'
         student_names=set(student.namelist());teacher_names=set(teacher.namelist())
-        adapter_files={'simulator/engine-adapter-prototype.cjs','simulator/packet-events.js','simulator/ethernet-forwarding.js','simulator/test_engine_adapter_prototype.cjs','simulator/test_engine_adapter_parity.cjs'}
+        adapter_files={'simulator/engine-adapter-prototype.cjs','simulator/packet-events.js','simulator/ethernet-forwarding.js','tests/node/test_engine_adapter_prototype.cjs','tests/node/test_engine_adapter_parity.cjs'}
         assert adapter_files<=student_names, 'Missing adapter test dependencies: '+str(adapter_files-student_names)
-        borck_files={'simulator/borck-engine.generated.js','simulator/borck-adapter.ts','simulator/borck-ui.js','simulator/test_borck_engine.cjs','simulator/benchmark_borck_engine.cjs','third_party/borck-netsim/LICENSE','third_party/borck-netsim/provenance.json'}
+        borck_files={'simulator/borck-engine.generated.js','simulator/borck-adapter.ts','simulator/borck-ui.js','tests/node/test_borck_engine.cjs','tests/node/benchmark_borck_engine.cjs','third_party/borck-netsim/LICENSE','third_party/borck-netsim/provenance.json'}
         assert borck_files<=student_names, 'Missing real third-party engine dependencies/license'
         assert {'docs/UYUMLULUK_MATRISI.md','docs/GELISMIS_MOTOR_ENTEGRASYON.md','real-lab/advanced_smoke.py'}<=student_names, 'Missing advanced motor documentation/runner'
         assert {'real-lab/routed_topology.py','real-lab/routed_smoke.py','real-lab/test_routed_topology.py','real-lab/test_routed_smoke.py','real-lab/examples/routed-2-routers.aglab.json','real-lab/examples/routed-3-routers.aglab.json'}<=student_names, 'Missing routed lab converter/examples/tests'
         assert {'real-lab/security_smoke.py','real-lab/socket_peer.py','real-lab/test_security_smoke.py','real-lab/examples/security-topology.json'}<=student_names, 'Missing native security lab dependencies'
-        assert {'test_aglab_unified_rc.py','test_aglab_unified_performance.py','unified-rc-performance.json'}<=student_names, 'Missing unified RC evidence/tests'
+        assert {'tests/test_aglab_unified_rc.py','tests/test_aglab_unified_performance.py','unified-rc-performance.json'}<=student_names, 'Missing unified RC evidence/tests'
+        assert 'tests/aglab_test_support.py' in student_names, 'Missing shared test fixture'
         provenance=read_json(student,'third_party/borck-netsim/provenance.json')
         for name,sha in provenance['sha256'].items():
             assert hashlib.sha256(student.read('third_party/borck-netsim/'+name)).hexdigest()==sha, 'Vendored source mismatch: '+name

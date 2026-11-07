@@ -9,7 +9,7 @@ Two kinds of placeholders are expanded:
 
 * ``@@include <path>@@`` in ``src/index.html`` and in the files it includes:
   replaced verbatim by the content of ``<path>`` (relative to the repo root).
-* A line ``//@@module <TITLE>@@`` inside JavaScript sources: replaced by a
+* A line ``//@@module <TITLE>@@`` (optionally indented) inside JavaScript sources: replaced by a
   ``// BEGIN <TITLE> GENERATED`` ... ``// END <TITLE> GENERATED`` block whose
   body comes from ``MODULES``. The markers are kept in the output because
   regression tests and release verification look for them.
@@ -32,7 +32,8 @@ OUTPUT = ROOT / "AgLab_Final_PKT_Import.html"
 DIGEST = ROOT / "html-build.sha256"
 
 INCLUDE = re.compile(r"@@include ([\w./-]+)@@")
-MODULE = re.compile(r"^//@@module ([A-Z ]+)@@\n", re.M)
+# Formatters indent the placeholder inside the main IIFE; the indentation is dropped.
+MODULE = re.compile(r"^[ \t]*//@@module ([A-Z ]+)@@\n", re.M)
 
 # Title -> source files concatenated (in order) into the generated block.
 MODULES: dict[str, list[str]] = {

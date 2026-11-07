@@ -28,15 +28,15 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           npm run build:engine
           git diff --exit-code -- simulator/borck-engine.generated.js
-          node simulator/test_borck_engine.cjs
+          node tests/node/test_borck_engine.cjs
       - name: Akademi puanlama sözleşmesini doğrula
-        run: node academy/test_grading_verdict.cjs
+        run: node tests/node/test_grading_verdict.cjs
       - name: VLAN yalıtım sağlık kapısını doğrula
-        run: node academy/test_vlan_health.cjs
+        run: node tests/node/test_vlan_health.cjs
       - name: Routing değerlendirme kurallarını doğrula
-        run: node academy/test_routing_grading.cjs
+        run: node tests/node/test_routing_grading.cjs
       - name: Otomatik MAC adreslerini doğrula
-        run: node simulator/test_mac_address.cjs
+        run: node tests/node/test_mac_address.cjs
       - name: Simülatör ve Akademi HTML derlemesini doğrula
         run: |
           python tools/build_html.py --check
@@ -53,7 +53,7 @@ jobs:
           python -m pip install playwright
           python -m playwright install --with-deps chromium
       - name: Ortak motor senaryoları ve erişilebilirliği doğrula
-        run: python test_aglab_network_features.py
+        run: python tests/test_aglab_network_features.py
       - name: Testleri çalıştır ve başarılıysa ZIP üret
         run: python run_pipeline.py
       - name: Test raporlarını sakla
