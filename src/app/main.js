@@ -6877,6 +6877,8 @@ labLoadExperiment();
   } = AgLabEngineIpv4;
   const { portState, linkPort } = AgLabEngineTopology;
   const { activeRouterInterfaces, staticRoutes, routeKey } = AgLabEngineRouting;
+  const { stpPriorityForVlan } = AgLabEngineStp;
+  const { aclEvaluate } = AgLabEngineAcl;
   const $p = (id) => document.getElementById(id);
   const svg = $p('ptCanvas');
   if (!svg) return;
@@ -8143,116 +8145,14 @@ labLoadExperiment();
     );
   }
 
-  function stpPriorityForVlan(d, vlan) {
-    return Number(d?.stpPriorities?.[Number(vlan)] ?? d?.stpPriority ?? 32768);
-  }
-  function stpVlanSwitches(vlan) {
-    return devices.filter(
-      (d) =>
-        d.type === 'Switch' &&
-        d.enabled !== false &&
-        (d.vlans || [1]).map(Number).includes(Number(vlan)),
-    );
-  }
   function stpRootForVlan(vlan, candidateIds = null) {
-    const ids = candidateIds ? new Set(candidateIds) : null;
-    const sw = stpVlanSwitches(vlan).filter((d) => !ids || ids.has(d.id));
-    return (
-      sw.sort(
-        (a, b) =>
-          stpPriorityForVlan(a, vlan) - stpPriorityForVlan(b, vlan) ||
-          String(a.id).localeCompare(String(b.id), undefined, { numeric: true }),
-      )[0] || null
-    );
-  }
-  function stpLinkEligible(l, vlan) {
-    const a = get(l.a),
-      b = get(l.b),
-      pa = portState(a, l.portA),
-      pb = portState(b, l.portB);
-    if (!linkUp(l) || a?.type !== 'Switch' || b?.type !== 'Switch' || !pa || !pb) return false;
-    if (
-      !(a.vlans || [1]).map(Number).includes(Number(vlan)) ||
-      !(b.vlans || [1]).map(Number).includes(Number(vlan))
-    )
-      return false;
-    const carries = (p) =>
-      p.mode === 'trunk'
-        ? (p.allowed || []).map(Number).includes(Number(vlan))
-        : p.mode === 'access' && Number(p.vlan) === Number(vlan);
-    return carries(pa) && carries(pb);
-  }
-  function stpComponentIds(vlan, startId) {
-    const seen = new Set(),
-      queue = [startId];
-    while (queue.length) {
-      const id = queue.shift();
-      if (seen.has(id)) continue;
-      seen.add(id);
-      for (const l of links.filter((x) => (x.a === id || x.b === id) && stpLinkEligible(x, vlan))) {
-        const next = l.a === id ? l.b : l.a;
-        if (!seen.has(next)) queue.push(next);
-      }
-    }
-    return seen;
+    return AgLabEngineStp.stpRootForVlan(engineTopo, vlan, candidateIds);
   }
   function stpTreeInfo(vlan, anchorId = null) {
-    const all = stpVlanSwitches(vlan);
-    if (!all.length)
-      return { root: null, selected: new Set(), parentLink: new Map(), parent: new Map() };
-    const anchor =
-      anchorId && all.some((d) => d.id === anchorId) ? anchorId : stpRootForVlan(vlan)?.id;
-    if (!anchor)
-      return { root: null, selected: new Set(), parentLink: new Map(), parent: new Map() };
-    const component = stpComponentIds(vlan, anchor),
-      root = stpRootForVlan(vlan, component);
-    if (!root) return { root: null, selected: new Set(), parentLink: new Map(), parent: new Map() };
-    const selected = new Set(),
-      seen = new Set([root.id]),
-      queue = [root.id],
-      parentLink = new Map(),
-      parent = new Map();
-    while (queue.length) {
-      const id = queue.shift();
-      const candidates = links
-        .filter((l) => (l.a === id || l.b === id) && stpLinkEligible(l, vlan))
-        .sort((x, y) =>
-          String(x.a + '|' + x.b + '|' + x.portA + '|' + x.portB).localeCompare(
-            String(y.a + '|' + y.b + '|' + y.portA + '|' + y.portB),
-          ),
-        );
-      for (const l of candidates) {
-        const next = l.a === id ? l.b : l.a;
-        if (component.has(next) && !seen.has(next)) {
-          seen.add(next);
-          queue.push(next);
-          selected.add(l);
-          parentLink.set(next, l);
-          parent.set(next, id);
-        }
-      }
-    }
-    return { root, selected, parentLink, parent, component };
-  }
-  function stpForwardingTree(vlan) {
-    const selected = new Set(),
-      visited = new Set();
-    for (const sw of stpVlanSwitches(vlan)) {
-      if (visited.has(sw.id)) continue;
-      const info = stpTreeInfo(vlan, sw.id);
-      for (const l of info.selected) selected.add(l);
-      for (const id of info.component || []) visited.add(id);
-    }
-    return selected;
+    return AgLabEngineStp.stpTreeInfo(engineTopo, vlan, anchorId);
   }
   function stpIsBlocked(l, vlan = 10, trees = null) {
-    const a = get(l.a),
-      b = get(l.b);
-    if (a?.type !== 'Switch' || b?.type !== 'Switch') return false;
-    const id = Number(vlan) || 10;
-    if (!trees) return !stpForwardingTree(id).has(l);
-    if (!trees.has(id)) trees.set(id, stpForwardingTree(id));
-    return !trees.get(id).has(l);
+    return AgLabEngineStp.stpIsBlocked(engineTopo, l, vlan, trees);
   }
   function endpointVlan(sourceId, fallback = null) {
     const src = get(sourceId);
@@ -8739,28 +8639,6 @@ labLoadExperiment();
       cur = next;
     }
     return nodes;
-  }
-  function aclRuleMatches(rule, srcIp, dstIp, protocol, port) {
-    if (rule.protocol !== 'ip' && rule.protocol !== protocol) return false;
-    if (rule.srcType === 'host' && rule.src !== srcIp) return false;
-    if (rule.srcType === 'network' && !inNetwork(srcIp, rule.src, maskFromWildcard(rule.wildcard)))
-      return false;
-    if (rule.dstType === 'host' && rule.dst !== dstIp) return false;
-    if (
-      rule.dstType === 'network' &&
-      !inNetwork(dstIp, rule.dst, maskFromWildcard(rule.dstWildcard))
-    )
-      return false;
-    if (rule.port !== undefined && rule.port !== null && Number(rule.port) !== Number(port))
-      return false;
-    return true;
-  }
-  function aclEvaluate(router, aclId, srcIp, dstIp, protocol, port) {
-    const rules = (router.acls || []).filter((r) => String(r.id) === String(aclId));
-    for (const rule of rules) {
-      if (aclRuleMatches(rule, srcIp, dstIp, protocol, port)) return { action: rule.action, rule };
-    }
-    return { action: 'deny', rule: null };
   }
   function aclPathDecision(path, srcId, dstId, srcIp, dstIp, protocol, port) {
     const nodes = orderedPathNodes(srcId, path);
