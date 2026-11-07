@@ -57,7 +57,12 @@ FRR gerçek Linux yönlendirme yazılımıdır ve tarayıcıda çalışamaz. Bu 
    `/usr/bin/chromium` yolları yerine `tests/aglab_test_support.py`; test listesi
    `run_pipeline.py` içinde keşifle toplanıyor. CSS ve `academy/student-data.js`
    bilinçli olarak biçimlenmedi.
-3. **Motor API'si:** `main.js` içindeki topoloji modeli, L2/ARP/IP/routing/ICMP
+3. **Motor API'si** *(sürüyor)*: ilk dilimler hazır — `src/engine/ipv4.js`,
+   `topology.js`, `routing.js` (LPM, AD, özyinelemeli next-hop), `stp.js`, `acl.js`;
+   Node'da `tests/node/test_engine_*.cjs` ile tarayıcısız test ediliyor. Kalanlar:
+   L2 iletim/MAC tablosu, ARP, ICMP/ping/traceroute yolu, NAT, DHCP, ardından
+   simülatör durumunun (devices/links) motora taşınması.
+   Hedef: `main.js` içindeki topoloji modeli, L2/ARP/IP/routing/ICMP
    mantığı DOM'dan ayrılıp `src/engine/` altına saf modüller olarak çıkarılır;
    Node'da tarayıcısız test edilebilir hale gelir. CLI bu API'yi çağırır.
 4. **borck-netsim'in emilmesi:** mevcut parite testleri genişletilir; üstün
