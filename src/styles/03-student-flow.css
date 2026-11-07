@@ -1,0 +1,34 @@
+
+#learningHub{display:none!important}
+#studentFlow{margin:4px 0 26px;padding:22px;border:1px solid var(--line,#33465c);border-radius:16px;background:var(--panel,#122338);color:var(--text,#e9f3fa)}
+#studentFlow *{box-sizing:border-box} #studentFlow h2{margin:0 0 8px;font-size:clamp(23px,3vw,34px)}
+#studentFlow .sf-sub{color:var(--muted,#a9bed0);line-height:1.7;margin:0 0 15px}
+#studentFlow .sf-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:13px 0 22px}
+#studentFlow .sf-metric{border:1px solid #47637b;border-radius:12px;padding:12px;background:#142b41}
+#studentFlow .sf-metric strong{display:block;font-size:25px;color:#7ae7ca} #studentFlow .sf-metric span{font-size:12px;color:#bfd0df}
+#studentFlow .sf-tools{display:flex;gap:9px;flex-wrap:wrap;margin:16px 0}
+#studentFlow button,#studentFlow select,#studentFlow input{min-height:44px}
+#studentFlow .sf-tools select,#studentFlow .sf-tools input{border-radius:9px;border:1px solid #55728c;background:#102639;color:#fff;padding:10px}
+#studentFlow .sf-tools input{flex:1 1 220px;min-width:140px}
+#studentFlow button.sf-action{border:1px solid #6382a0;background:#173954;color:#fff;border-radius:10px;padding:10px 14px;cursor:pointer;text-align:left}
+#studentFlow button.sf-action:hover,#studentFlow button.sf-action:focus-visible{background:#22547a;outline:2px solid #8bdce9;outline-offset:2px}
+#studentFlow .sf-primary{background:#1f725f!important;border-color:#60ccb1!important}
+#studentFlow .sf-layout{display:grid;grid-template-columns:minmax(200px,270px) minmax(0,1fr);gap:18px}
+#studentFlow .sf-list{max-height:580px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+#studentFlow .sf-list button{width:100%;border:1px solid #3c5e79;border-radius:9px;padding:12px;background:#152c42;color:#eaf6ff;text-align:left;cursor:pointer}
+#studentFlow .sf-list button[aria-current="true"]{border:2px solid #71e0bf;background:#215044}
+#studentFlow .sf-list small{display:block;color:#bed1e0;font-size:12px;margin-top:4px}
+#studentFlow .sf-sheet{border:1px solid #46627a;border-radius:12px;background:#10263b;padding:19px;line-height:1.75;min-width:0}
+#studentFlow .sf-sheet h3{font-size:24px;margin:0 0 10px}#studentFlow .sf-sheet h4{font-size:18px;margin:20px 0 6px;color:#8fdde4}
+#studentFlow .sf-sheet p{margin:8px 0 12px}#studentFlow .sf-sheet pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:13px;border-radius:9px;background:#061828;color:#ccf6e5}
+#studentFlow .sf-steps{display:flex;flex-wrap:wrap;gap:6px;margin:17px 0}
+#studentFlow .sf-steps button{font-size:13px}#studentFlow .sf-steps button[aria-current="step"]{outline:2px solid #75e6be}
+#studentFlow .sf-callout{padding:14px;border:1px solid #48766b;border-left:4px solid #6ee1af;border-radius:8px;background:#183b42;margin:13px 0}
+#studentFlow .sf-choice{display:block;width:100%;margin:7px 0;text-align:left;white-space:normal}
+#studentFlow .sf-result{padding:10px;border-radius:8px;margin:11px 0;background:#284960}
+#studentFlow .sf-history{font-size:13px;color:#c5d6e3;margin:15px 0}
+#studentFlow .sf-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:17px}
+#studentFlow details{margin-top:20px;padding:12px;border:1px solid #4c6378;border-radius:10px}#studentFlow details summary{cursor:pointer}
+#studentFlow .sf-due{color:#ffe5aa}#studentFlow [hidden]{display:none!important}
+@media(max-width:760px){#studentFlow{padding:13px}#studentFlow .sf-layout{grid-template-columns:minmax(0,1fr)}#studentFlow .sf-list{max-height:220px}#studentFlow .sf-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}#studentFlow .sf-metric{padding:8px}#studentFlow .sf-metric strong{font-size:20px}}
+@media(prefers-reduced-motion:reduce){#studentFlow *{scroll-behavior:auto!important;transition:none!important}}

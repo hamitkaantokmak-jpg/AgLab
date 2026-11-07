@@ -1,2 +1,4 @@
 # Preserve archived lab sources byte-for-byte for SHA256 provenance.
 academy/source/AGL-*.json -text
+# Build inputs must stay byte-exact so the generated HTML digest is reproducible on every OS.
+src/** -text

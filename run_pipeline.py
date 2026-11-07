@@ -53,12 +53,14 @@ ARTIFACTS.extend(['docs/LAB_MOTOR_HARITASI.md','docs/ORTAK_GERCEK_LAB.md','tools
 ARTIFACTS.extend(['simulator/engine-manager.js','simulator/engine-manager-ui.js','simulator/lab-evidence.js','simulator/lab-evidence-ui.js','docs/GELISMIS_MOTOR_ENTEGRASYON.md','docs/UYUMLULUK_MATRISI.md'])
 ARTIFACTS.extend(['simulator/borck-adapter.ts','simulator/borck-engine.generated.js','simulator/borck-ui.js','simulator/borck-fixtures.cjs','simulator/borck-production-reference.cjs','tools/build_borck_engine.cjs','package.json','package-lock.json','docs/HAZIR_MOTOR_ENTEGRASYON.md'])
 ARTIFACTS.extend(p.relative_to(ROOT).as_posix() for p in sorted((ROOT/'third_party/borck-netsim').rglob('*')) if p.is_file())
+# HTML source tree and its single builder (the HTML itself is a build output).
+ARTIFACTS.extend(['tools/build_html.py','build_academy.py'])
+ARTIFACTS.extend(p.relative_to(ROOT).as_posix() for p in sorted((ROOT/'src').rglob('*')) if p.is_file())
 def run():
  p=argparse.ArgumentParser();p.add_argument('--out',default='dist');p.add_argument('--skip-browser',action='store_true');p.add_argument('--timeout',type=int,default=100);a=p.parse_args()
  out=(ROOT/a.out).resolve();out.mkdir(parents=True,exist_ok=True)
- # Offline HTML is a generated artifact. Refresh it from reviewed modules before staging.
- for build in ['build_simulator.py','build_academy.py']:
-  subprocess.run([sys.executable,str(ROOT/build)],cwd=ROOT,check=True)
+ # Offline HTML is a generated artifact. Refresh it from src/ + modules before staging.
+ subprocess.run([sys.executable,str(ROOT/'tools/build_html.py')],cwd=ROOT,check=True)
  browser=None
  if not browser:
   try:

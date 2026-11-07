@@ -12,6 +12,10 @@
 6. Pull request açıklamasında değişen PKT senaryolarını, testleri ve desteklenmeyen davranışları belirt.
 7. Varsayılan `main` dalını doğrudan değiştirmek yerine ayrı dal ve PR kullan; test hatasında birleştirme yapma.
 
+## Kaynak kuralı
+- `AgLab_Final_PKT_Import.html` derleme çıktısıdır; doğrudan düzenleme. Değişikliği `src/`, `simulator/` veya `academy/` altında yap, sonra `python tools/build_html.py` çalıştırıp HTML ve `html-build.sha256` dosyasını birlikte commit et.
+- Derleyiciye metin değiştirme (string replace) yaması ekleme; kaynağın kendisini düzelt.
+
 ## Kapsam ve kabul kriterleri
 - Cihaz, arayüz, kablo, IP/mask, varsayılan ağ geçidi ve statik rotaları koru.
 - VLAN, trunk, STP, alt arayüz ve ağ bağlantısı semantiğinde kanıtlanmış olanı uygula.

@@ -1,0 +1,21 @@
+
+/* v13: focused learning reader. All pre-existing lesson and simulator logic unchanged. */
+#studentFlow.ux13-focused .sf-layout{grid-template-columns:minmax(0,1fr)}
+#studentFlow.ux13-focused .sf-list,#studentFlow.ux13-focused .sf-tools{display:none!important}
+#studentFlow.ux13-focused .sf-metrics{display:none!important}
+#studentFlow .ux13-controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin:8px 0 16px}
+#studentFlow .ux13-controls button{min-height:44px;padding:9px 16px;border:1px solid #5c8192;border-radius:10px;background:#17384a;color:#edf8ff;cursor:pointer;font:inherit}
+#studentFlow .ux13-controls button[aria-expanded=true]{background:#216154;border-color:#72e2c0}
+#studentFlow .ux13-stage{font-size:14px;color:#bce6e4;padding:7px 11px;border-radius:8px;background:#143548}
+#studentFlow .ux13-progress-details{border:1px solid #46627a;border-radius:10px;background:#10263b;margin:0 0 15px;padding:9px 14px}
+#studentFlow .ux13-progress-details summary{cursor:pointer;font-weight:650}
+#studentFlow .ux13-progress-details .sf-metrics{margin:12px 0 0}
+#studentFlow .sf-sheet{max-width:100%;overflow-wrap:anywhere}
+#studentFlow .sf-sheet .sf-steps{gap:8px;align-items:stretch}
+#studentFlow .sf-sheet .sf-steps button{flex:1 1 135px;min-height:44px}
+#studentFlow .sf-sheet .sf-steps button[aria-current=step]{background:#215548;border-color:#77e3c4}
+#studentFlow .sf-sheet .sf-toolbar{padding-top:15px;border-top:1px solid #39556b}
+#studentFlow .sf-list{max-height:380px}
+#studentFlow .ux13-tip{color:#c0d5df;font-size:13px;margin:-4px 0 12px}
+@media(max-width:650px){#studentFlow .sf-layout{grid-template-columns:minmax(0,1fr)}#studentFlow .sf-list{max-height:270px}#studentFlow .ux13-controls button{flex:1 1 145px}#studentFlow .sf-sheet .sf-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}#studentFlow .sf-sheet .sf-steps button{min-width:0;white-space:normal;font-size:12px}}
+@media(prefers-reduced-motion:reduce){#studentFlow *{scroll-behavior:auto!important}}
