@@ -123,7 +123,24 @@ class SimEmbeddedTests(unittest.TestCase):
 
     def test_lab_fails_before_and_passes_after_solution(self):
         result = self.page.evaluate(RUN_LAB)
-        self.assertEqual(result["api"], ["LabQuery", "createLab", "createSession", "runScript"])
+        # L0 motor API'si + L1 köprüsü (toLabber/toAglab/createRuntime ve yardımcıları).
+        self.assertEqual(
+            result["api"],
+            [
+                "BridgeError",
+                "LabQuery",
+                "MODEL_L2",
+                "MODEL_L3",
+                "canonPort",
+                "createLab",
+                "createRuntime",
+                "createSession",
+                "needsEncapFor",
+                "runScript",
+                "toAglab",
+                "toLabber",
+            ],
+        )
         self.assertFalse(result["before"], "farklı VLAN'daki PC başta erişememeli")
         self.assertEqual(result["errors"], [], "referans çözüm CLI hatası üretmemeli")
         self.assertTrue(result["after"], "çözümden sonra aynı VLAN'da ping başarılı olmalı")

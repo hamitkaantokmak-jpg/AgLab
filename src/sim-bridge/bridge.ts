@@ -1,0 +1,505 @@
+// AğLab topoloji JSON'u ⇄ Labber LabDef + SwitchConfig/PcConfig köprüsü (L1).
+//
+// Eşleme tablosu: docs/YENIDEN_YAPILANMA.md → "L2. Veri modeli köprüsü".
+// İlke: desteklenen alan çevrilir; arayüz/meta alanları opak geçer; Labber'da karşılığı
+// olmayan her alan `unsupported`, geçersiz/eşlenemeyen her öğe `rejected` olarak
+// raporlanır ve bu durumda motor kararı 'legacy' olur. Hiçbir şey sessizce düşürülmez.
+//
+// L1'de bu modül ürün tarafından çağrılmaz; yalnızca testler ve motor seçim tablosu
+// aracı kullanır.
+
+import AgLabMacAddress from '../../simulator/mac-address.js'
+import { defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED_VLANS } from '../sim/config'
+import { LabRuntime } from '../sim/runtime'
+import type { LabDef, LinkDef, PcConfig, PcDef, SwitchConfig, SwitchDef } from '../sim/types'
+import { canonIf, clone, ipToInt, isIp, maskToPrefix, ports as expandPorts, prefixToMask } from '../sim/util'
+import type { AglabDevice, AglabInterface, AglabLink, AglabTopology } from './aglab'
+
+export interface UnsupportedItem {
+  device: string
+  field: string
+  reason: string
+}
+export interface RejectedItem {
+  device: string
+  item: string
+  reason: string
+}
+export interface BridgeReport {
+  unsupported: UnsupportedItem[]
+  rejected: RejectedItem[]
+  engineDecision: 'labber' | 'legacy'
+  reasons: string[]
+  /** cihaz → (Labber kanonik port adı → AğLab'daki özgün ad) */
+  portNames: Record<string, Record<string, string>>
+}
+export interface BridgeResult {
+  def: LabDef
+  running: Record<string, SwitchConfig>
+  pcs: Record<string, PcConfig>
+  report: BridgeReport
+}
+
+export const MODEL_L2 = 'WS-C2960-24TT-L'
+export const MODEL_L3 = 'WS-C3650-24PS'
+const TEMPLATES: Record<string, string[]> = {
+  [MODEL_L2]: ['Fa0/1-24', 'Gi0/1-2'],
+  [MODEL_L3]: ['Gi1/0/1-24', 'Gi1/1/1-4'],
+}
+
+// Opak (arayüz/meta) alanlar: Labber'a gitmez, toAglab'da özgün değeriyle kalır.
+const TOP_OPAQUE = new Set(['app', 'version', 'nextId', 'selected', 'importReport', 'sourceArchive'])
+const DEVICE_OPAQUE = new Set(['id', 'name', 'type', 'x', 'y', 'w', 'h', 'mode', 'config', 'selected'])
+const PC_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'ip', 'mask', 'gateway', 'mac', 'vlan'])
+const SWITCH_FIELDS = new Set([
+  'enabled', 'ports', 'interfaces', 'gateway', 'vlans', 'vlanNames', 'stpPriority', 'stpPriorities', 'ip', 'mask',
+])
+const PHYS_FIELDS = new Set(['mode', 'vlan', 'allowed', 'nativeVlan', 'enabled'])
+const SVI_FIELDS = new Set(['ip', 'mask', 'enabled', 'vlan'])
+
+const FEATURE_REASON: Record<string, string> = {
+  staticRoutes: 'Statik rota (router) Labber köprüsünde henüz yok (L4)',
+  route: 'Varsayılan rota (router) Labber köprüsünde henüz yok (L4)',
+  acls: 'ACL Labber\'da yok (L5)',
+  natOverload: 'NAT Labber\'da yok (L5)',
+  natTranslations: 'NAT çeviri tablosu Labber\'da yok (L5)',
+  ospf: 'AğLab OSPF modeli köprüde eşlenmiyor (L4)',
+  bgp: 'BGP Labber\'da yok (L5)',
+  services: 'Sunucu servisleri (DHCP/DNS/HTTP) Labber\'da yok (L5)',
+  startupConfig: 'Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)',
+  portSecurity: 'Port security Labber\'da yok (L5)',
+  errdisabled: 'Port security err-disable durumu Labber\'da yok (L5)',
+  encapsulation: 'Alt arayüz / dot1q Labber\'da yok (L5)',
+  parent: 'Alt arayüz Labber\'da yok (L5)',
+  aclIn: 'ACL Labber\'da yok (L5)',
+  aclOut: 'ACL Labber\'da yok (L5)',
+  natRole: 'NAT Labber\'da yok (L5)',
+  helperAddress: 'DHCP relay Labber\'da yok (L5)',
+  dhcpLease: 'DHCP istemci kirası Labber\'da yok (L5)',
+}
+
+const sortNum = (a: number, b: number) => a - b
+
+/** Labber'ın 3560 ailesi gibi trunk için önce encapsulation isteyen modelleri. */
+export function needsEncapFor(model: string): boolean {
+  return /3560/.test(model)
+}
+
+/** 'fa0/1', 'g0/1', 'FastEthernet0/1' → 'FastEthernet0/1'. Eşlenemezse null. */
+export function canonPort(name: string): string | null {
+  const m = /^([A-Za-z-]+)\s*(\d+(?:\/\d+)*)$/.exec(name)
+  if (!m) return null
+  const full = canonIf(m[1]!, m[2]!)
+  if (!full) return null
+  if (/^(Port-channel|Vlan|Loopback)/.test(full)) return null
+  return full
+}
+
+function macToInt(mac: string): bigint {
+  return BigInt('0x' + mac.replace(/[:.]/g, ''))
+}
+function intToDotted(v: bigint): string {
+  const hex = v.toString(16).padStart(12, '0')
+  return `${hex.slice(0, 4)}.${hex.slice(4, 8)}.${hex.slice(8, 12)}`
+}
+
+/** VLAN kimliği 1-4094 aralığında tam sayı mı. */
+function vlanId(v: unknown): number | null {
+  const n = Number(v)
+  return Number.isInteger(n) && n >= 1 && n <= 4094 ? n : null
+}
+
+export function toLabber(input: AglabTopology): BridgeResult {
+  const report: BridgeReport = { unsupported: [], rejected: [], engineDecision: 'labber', reasons: [], portNames: {} }
+  const unsupported = (device: string, field: string, reason: string) =>
+    report.unsupported.push({ device, field, reason })
+  const reject = (device: string, item: string, reason: string) => report.rejected.push({ device, item, reason })
+
+  for (const key of Object.keys(input))
+    if (!TOP_OPAQUE.has(key) && key !== 'devices' && key !== 'links')
+      unsupported('*', key, 'Tanınmayan üst düzey alan')
+
+  const devices = Array.isArray(input.devices) ? input.devices : []
+  const links = Array.isArray(input.links) ? input.links : []
+
+  // MAC: mevcut AgLabMacAddress çözücüsü (açık uç MAC'leri korunur).
+  let resolveMac: ((d: AglabDevice) => string) | null = null
+  try {
+    const resolver = AgLabMacAddress.createResolver()
+    resolver(devices[0] ?? {}, devices)
+    resolveMac = (d) => resolver(d, devices)
+  } catch (error) {
+    reject('*', 'mac', 'MAC adresi doğrulaması başarısız: ' + String((error as Error).message ?? error))
+  }
+
+  const def: LabDef = {
+    id: 'aglab-bridge', title: '', summary: '', level: 'Başlangıç', tags: [], brief: [],
+    devices: [], links: [], objectives: [], solution: {}, view: { w: 1000, h: 700 },
+  }
+  const running: Record<string, SwitchConfig> = {}
+  const pcs: Record<string, PcConfig> = {}
+  const canonByDevice: Record<string, Record<string, string>> = {}
+  const usedMacs = new Map<string, string>()
+  const ids = new Set<string>()
+
+  const claimMac = (dev: string, mac: string) => {
+    const other = usedMacs.get(mac)
+    if (other !== undefined) reject(dev, 'mac', `MAC ${mac} ${other} ile çakışıyor`)
+    else usedMacs.set(mac, dev)
+  }
+
+  for (const d of devices) {
+    const id = String(d.id)
+    if (ids.has(id)) {
+      reject(id, 'id', 'Yinelenen cihaz kimliği')
+      continue
+    }
+    ids.add(id)
+    const fields = d.type === 'PC' ? PC_FIELDS : d.type === 'Switch' ? SWITCH_FIELDS : null
+    if (!fields) {
+      unsupported(id, 'type', `${d.type} cihaz tipi Labber köprüsünde yok` + (d.type === 'Router' ? ' (L4)' : ' (L5)'))
+      continue
+    }
+    for (const key of Object.keys(d))
+      if (!DEVICE_OPAQUE.has(key) && !fields.has(key))
+        unsupported(id, key, FEATURE_REASON[key] ?? 'Labber\'da karşılığı olmayan alan')
+    if (d.enabled === false) unsupported(id, 'enabled', 'Kapalı cihaz (güç) Labber\'da modellenmiyor (L2)')
+
+    if (d.type === 'PC') {
+      const ports = d.ports ?? ['eth0']
+      if (ports.length !== 1 || ports[0] !== 'eth0') reject(id, 'ports', 'PC yalnızca tek eth0 portuyla modellenir')
+      for (const [name, iface] of Object.entries(d.interfaces ?? {})) {
+        if (name !== 'eth0') {
+          reject(id, name, 'PC arayüzü yalnızca eth0 olabilir')
+          continue
+        }
+        for (const key of Object.keys(iface))
+          if (key !== 'enabled') unsupported(id, `interfaces.eth0.${key}`, 'Labber\'da karşılığı olmayan PC arayüz alanı')
+        if (iface.enabled === false) unsupported(id, 'interfaces.eth0.enabled', 'Kapalı PC NIC\'i Labber\'da modellenmiyor (L2)')
+      }
+      const ip = d.ip ?? ''
+      const prefix = d.mask ? maskToPrefix(d.mask) : null
+      if (ip && !isIp(ip)) reject(id, 'ip', 'Geçersiz IPv4 adresi: ' + ip)
+      if (ip && prefix === null) reject(id, 'mask', 'Geçersiz alt ağ maskesi: ' + d.mask)
+      if (d.gateway && !isIp(d.gateway)) reject(id, 'gateway', 'Geçersiz ağ geçidi: ' + d.gateway)
+      pcs[id] = {
+        ip: ip && isIp(ip) && prefix !== null ? ip : null,
+        prefix: prefix ?? 24,
+        gw: d.gateway && isIp(d.gateway) ? d.gateway : null,
+      }
+      const mac = resolveMac ? intToDotted(macToInt(resolveMac(d))) : '0000.0000.0000'
+      claimMac(id, mac)
+      const pc: PcDef = { id, kind: 'pc', mac, x: Number(d.x ?? 0), y: Number(d.y ?? 0) }
+      def.devices.push(pc)
+      canonByDevice[id] = { eth0: 'eth0' }
+      report.portNames[id] = { eth0: 'eth0' }
+      continue
+    }
+
+    // ---- Switch ----
+    if (d.ip || d.mask) unsupported(id, 'ip', 'Cihaz düzeyi switch IP adresi; yönetim adresi SVI üzerinden verilir')
+    const ifaces = d.interfaces ?? {}
+    const svis = Object.entries(ifaces).filter(([n]) => /^vlan\d+$/i.test(n))
+    const l3 = svis.some(([, i]) => !!i.ip)
+    const pktModel = typeof d.config?.packetTracerModel === 'string' ? (d.config.packetTracerModel as string) : ''
+    const model = pktModel || (l3 ? MODEL_L3 : MODEL_L2)
+    const sourcePorts = d.ports ?? (TEMPLATES[model] ? expandPorts(...TEMPLATES[model]!).map((p) => p) : [])
+    const portMap: Record<string, string> = {}
+    const canonPorts: string[] = []
+    for (const p of sourcePorts) {
+      const c = canonPort(p)
+      if (!c) {
+        reject(id, p, 'Eşlenemeyen port adı')
+        continue
+      }
+      if (portMap[c] !== undefined) {
+        reject(id, p, `Port ${c} iki kez tanımlı (${portMap[c]})`)
+        continue
+      }
+      portMap[c] = p
+      canonPorts.push(c)
+    }
+    if (!d.ports) {
+      // Şablon portları kanonik adla gelir; AğLab'da kullanılan yazımı (ör. fa0/1) koru.
+      const used = [
+        ...Object.keys(d.interfaces ?? {}),
+        ...links.flatMap((l) => (String(l.a) === id ? [String(l.portA)] : String(l.b) === id ? [String(l.portB)] : [])),
+      ]
+      for (const name of used) {
+        const c = canonPort(name)
+        if (c && portMap[c] === c) portMap[c] = name
+      }
+    }
+    canonByDevice[id] = Object.fromEntries(Object.entries(portMap).map(([c, o]) => [o, c]))
+    report.portNames[id] = portMap
+    const sw: SwitchDef = {
+      id, kind: 'switch', model, mac: '0000.0000.0000', ports: canonPorts, x: Number(d.x ?? 0), y: Number(d.y ?? 0),
+      ...(l3 ? { l3: true } : {}),
+      ...(needsEncapFor(model) ? { needsEncap: true } : {}),
+    }
+    if (resolveMac) {
+      // Labber SVI/routed port MAC'lerini tabandan türetir (taban+0x40, taban+port+1);
+      // switch tabanları arasında 0x100 boşluk bırakılır.
+      const v = macToInt(resolveMac(d))
+      sw.mac = intToDotted((0x02n << 40n) | ((v & 0xffffffffn) << 8n))
+    }
+    claimMac(id, sw.mac)
+    def.devices.push(sw)
+
+    const cfg = defaultSwitchConfig(sw)
+    cfg.hostname = d.name || id
+    // VLAN veritabanı
+    for (const v of d.vlans ?? [1]) {
+      const n = vlanId(v)
+      if (n === null) {
+        reject(id, `vlans.${v}`, 'Geçersiz VLAN kimliği')
+        continue
+      }
+      cfg.vlans[String(n)] = d.vlanNames?.[String(n)] ?? cfg.vlans[String(n)] ?? defaultVlanName(n)
+    }
+    for (const k of Object.keys(d.vlanNames ?? {}))
+      if (!(d.vlans ?? [1]).map(Number).includes(Number(k))) reject(id, `vlanNames.${k}`, 'Veritabanında olmayan VLAN için ad')
+    // Ağ geçidi
+    if (d.gateway) {
+      if (isIp(d.gateway)) cfg.defaultGateway = d.gateway
+      else reject(id, 'gateway', 'Geçersiz ağ geçidi: ' + d.gateway)
+    }
+    // STP önceliği: AğLab değeri sys-id-ext İÇERMEZ (ör. 4096); Labber stpPriority de
+    // içermez, `show spanning-tree` ve LabQuery.bridgePriority VLAN kimliğini ekler.
+    const prio = (v: unknown, where: string): number | null => {
+      const n = Number(v)
+      if (!Number.isInteger(n) || n < 0 || n > 61440 || n % 4096 !== 0) {
+        reject(id, where, 'STP önceliği 0-61440 arasında 4096\'nın katı olmalı: ' + String(v))
+        return null
+      }
+      return n
+    }
+    if (d.stpPriority !== undefined) {
+      const g = prio(d.stpPriority, 'stpPriority')
+      if (g !== null) for (const v of Object.keys(cfg.vlans)) if (!RESERVED_VLANS.includes(Number(v)) || v === '1') cfg.stpPriority[v] = g
+    }
+    for (const [v, p] of Object.entries(d.stpPriorities ?? {})) {
+      const n = vlanId(v)
+      const value = prio(p, `stpPriorities.${v}`)
+      if (n === null) reject(id, `stpPriorities.${v}`, 'Geçersiz VLAN kimliği')
+      else if (value !== null) cfg.stpPriority[String(n)] = value
+    }
+    // Arayüzler
+    for (const [name, iface] of Object.entries(ifaces)) {
+      if (/^vlan\d+$/i.test(name)) {
+        const v = vlanId(name.slice(4))
+        if (v === null) {
+          reject(id, name, 'Geçersiz SVI adı')
+          continue
+        }
+        for (const key of Object.keys(iface))
+          if (!SVI_FIELDS.has(key)) unsupported(id, `interfaces.${name}.${key}`, FEATURE_REASON[key] ?? 'Labber\'da karşılığı olmayan SVI alanı')
+        const svi = cfg.svis[String(v)] ?? defaultSvi(v)
+        svi.shutdown = iface.enabled === false
+        if (iface.ip) {
+          const pre = iface.mask ? maskToPrefix(iface.mask) : null
+          if (!isIp(iface.ip) || pre === null) reject(id, name, 'Geçersiz SVI IPv4 adresi/maskesi')
+          else svi.ip = { addr: iface.ip, mask: iface.mask! }
+        }
+        cfg.svis[String(v)] = svi
+        continue
+      }
+      const c = canonPort(name)
+      if (!c || portMap[c] === undefined) {
+        reject(id, name, c ? 'Arayüz cihazın port listesinde yok' : 'Eşlenemeyen arayüz adı')
+        continue
+      }
+      for (const key of Object.keys(iface))
+        if (!PHYS_FIELDS.has(key))
+          unsupported(id, `interfaces.${name}.${key}`, FEATURE_REASON[key] ?? (key === 'ip' || key === 'mask' ? 'Switch fiziksel portunda IP (routed port) köprüde henüz yok (L4)' : 'Labber\'da karşılığı olmayan arayüz alanı'))
+      const phys = cfg.ifaces[c] ?? defaultPhys()
+      const mode = iface.mode ?? 'access'
+      if (mode !== 'access' && mode !== 'trunk') {
+        reject(id, `${name}.mode`, 'Bilinmeyen port modu: ' + mode)
+        continue
+      }
+      phys.mode = mode
+      phys.shutdown = iface.enabled === false
+      const access = vlanId(iface.vlan ?? 1)
+      if (access === null) reject(id, `${name}.vlan`, 'Geçersiz access VLAN')
+      else phys.accessVlan = access
+      const native = vlanId(iface.nativeVlan ?? 1)
+      if (native === null) reject(id, `${name}.nativeVlan`, 'Geçersiz native VLAN')
+      else phys.nativeVlan = native
+      // AğLab: `allowed` yoksa trunk HİÇBİR VLAN'ı taşımaz; Labber'da null "tümü" demektir.
+      const allowed = (iface.allowed ?? []).map(vlanId)
+      if (allowed.some((x) => x === null)) reject(id, `${name}.allowed`, 'Geçersiz izinli VLAN listesi')
+      else phys.allowed = [...new Set(allowed as number[])].sort(sortNum)
+      if (mode === 'trunk' && sw.needsEncap) phys.encapDot1q = true
+      cfg.ifaces[c] = phys
+    }
+    // AğLab'da arayüz kaydı olmayan port: access, VLAN 1 (Labber varsayılanı dynamic-auto).
+    for (const c of canonPorts)
+      if (!Object.keys(ifaces).some((n) => canonPort(n) === c)) {
+        const phys = cfg.ifaces[c] ?? defaultPhys()
+        phys.mode = 'access'
+        phys.allowed = []
+        cfg.ifaces[c] = phys
+      }
+    running[id] = cfg
+  }
+
+  // Bağlantılar
+  const usedPort = new Map<string, string>()
+  links.forEach((l: AglabLink, index) => {
+    const tag = `links[${index}]`
+    for (const key of Object.keys(l))
+      if (!['a', 'portA', 'b', 'portB', 'up'].includes(key)) unsupported(tag, key, 'Labber\'da karşılığı olmayan bağlantı alanı')
+    if (l.up === false) unsupported(tag, 'up', 'Kopuk/çıkarılmış kablo (up:false) Labber\'da modellenmiyor (L2)')
+    const end = (dev: string, port: string): [string, string] | null => {
+      if (!ids.has(dev)) {
+        reject(tag, `${dev}:${port}`, 'Bağlantı bilinmeyen cihaza gidiyor')
+        return null
+      }
+      const map = canonByDevice[dev]
+      if (!map) return null // desteklenmeyen cihaz tipi (zaten raporlandı)
+      const c = map[port] ?? (port === 'eth0' ? undefined : (() => {
+        const k = canonPort(port)
+        return k && Object.values(map).includes(k) ? k : undefined
+      })())
+      if (!c) {
+        reject(tag, `${dev}:${port}`, 'Bağlantı portu cihazda yok ya da eşlenemedi')
+        return null
+      }
+      const key = `${dev}|${c}`
+      if (usedPort.has(key)) {
+        reject(tag, `${dev}:${port}`, 'Port birden çok bağlantıda kullanılıyor')
+        return null
+      }
+      usedPort.set(key, tag)
+      return [dev, c]
+    }
+    const a = end(String(l.a), String(l.portA))
+    const b = end(String(l.b), String(l.portB))
+    if (a && b) def.links.push({ a, b } as LinkDef)
+  })
+
+  const reasons = new Set<string>()
+  for (const u of report.unsupported) reasons.add(u.reason)
+  for (const r of report.rejected) reasons.add('Reddedildi: ' + r.reason)
+  report.reasons = [...reasons].sort()
+  report.engineDecision = report.unsupported.length || report.rejected.length ? 'legacy' : 'labber'
+  return { def, running, pcs, report }
+}
+
+/** Köprü sonucundan bir LabRuntime kurar (yapılandırma köprüden gelir, IOS betiği çalışmaz). */
+export function createRuntime(result: BridgeResult): LabRuntime {
+  return new LabRuntime(result.def, (rt) => {
+    for (const [id, cfg] of Object.entries(result.running)) rt.running[id] = clone(cfg)
+    for (const [id, pc] of Object.entries(result.pcs)) rt.pcs[id] = clone(pc)
+  })
+}
+
+export class BridgeError extends Error {}
+
+/**
+ * Labber çalışma durumunu AğLab JSON'una geri yazar. Özgün JSON'un kopyası üzerinde
+ * çalışır: opak ve desteklenmeyen alanlar özgün değerleriyle kalır; desteklenen alanlar
+ * Labber durumundan yazılır. Özgünde olmayıp varsayılana eşit alanlar eklenmez.
+ * AğLab modelinde ifade edilemeyen bir Labber durumu açık bir BridgeError ile durur.
+ */
+export function toAglab(rt: { running: Record<string, SwitchConfig>; pcs: Record<string, PcConfig> }, original: AglabTopology): AglabTopology {
+  const out = clone(original) as AglabTopology
+  const portNames = toLabber(original).report.portNames
+  for (const d of out.devices) {
+    const id = String(d.id)
+    if (d.type === 'PC' && rt.pcs[id]) {
+      const pc = rt.pcs[id]!
+      const ip = pc.ip ?? ''
+      if (d.ip !== undefined || ip) d.ip = ip
+      if (pc.ip !== null && (d.mask !== undefined || pc.ip)) d.mask = prefixToMask(pc.prefix)
+      const gw = pc.gw ?? ''
+      if (d.gateway !== undefined || gw) d.gateway = gw
+      continue
+    }
+    if (d.type !== 'Switch' || !rt.running[id]) continue
+    const cfg = rt.running[id]!
+    const fail = (what: string) => {
+      throw new BridgeError(`${id}: ${what} AğLab modelinde ifade edilemiyor`)
+    }
+    if (cfg.hostname !== (d.name || id)) d.name = cfg.hostname
+    if (cfg.pos && Object.keys(cfg.pos).length) fail('Port-channel')
+    if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail('Loopback')
+    if (cfg.ospf) fail('OSPF')
+    if (cfg.routes.length) fail('statik rota')
+    if (cfg.ipRouting) fail('ip routing')
+    if (cfg.stpMode !== 'pvst') fail('spanning-tree mode ' + cfg.stpMode)
+    if (cfg.bpduguardDefault) fail('spanning-tree portfast bpduguard default')
+    if (cfg.errRecoveryBpdu || cfg.errRecoveryInterval !== undefined) fail('errdisable recovery')
+    const gw = cfg.defaultGateway ?? ''
+    if (d.gateway !== undefined || gw) d.gateway = gw
+    // VLAN'lar
+    const hadOne = (original.devices.find((x) => String(x.id) === id)?.vlans ?? [1]).map(Number).includes(1)
+    const vlans = Object.keys(cfg.vlans).map(Number).filter((v) => !RESERVED_VLANS.slice(1).includes(v) && (v !== 1 || hadOne)).sort(sortNum)
+    if (d.vlans !== undefined || vlans.join() !== '1') d.vlans = vlans
+    const names: Record<string, string> = {}
+    for (const v of vlans) {
+      const n = cfg.vlans[String(v)]!
+      const keep = d.vlanNames !== undefined && Object.prototype.hasOwnProperty.call(d.vlanNames, String(v))
+      if (keep || (n !== defaultVlanName(v) && !(v === 1 && n === 'default'))) names[String(v)] = n
+    }
+    if (d.vlanNames !== undefined || Object.keys(names).length) d.vlanNames = names
+    // STP
+    const prios: Record<string, number> = {}
+    for (const [v, p] of Object.entries(cfg.stpPriority)) {
+      const explicit = d.stpPriorities !== undefined && Object.prototype.hasOwnProperty.call(d.stpPriorities, v)
+      if (explicit || d.stpPriority === undefined || p !== d.stpPriority) prios[v] = p
+    }
+    if (d.stpPriorities !== undefined || Object.keys(prios).length) d.stpPriorities = prios
+    // Arayüzler
+    const back = portNames[id] ?? {}
+    d.interfaces = d.interfaces ?? {}
+    for (const [canon, phys] of Object.entries(cfg.ifaces)) {
+      const name = back[canon]
+      if (!name) continue
+      if (phys.mode !== 'access' && phys.mode !== 'trunk') fail(`${canon} modu ${phys.mode}`)
+      if (phys.channel) fail(`${canon} channel-group`)
+      if (phys.routed) fail(`${canon} routed port`)
+      if (phys.allowed === null) fail(`${canon} "allowed vlan all"`)
+      if (phys.portfast) fail(`${canon} portfast`)
+      if (phys.nonegotiate) fail(`${canon} nonegotiate`)
+      if (phys.description) fail(`${canon} description`)
+      if (phys.bpduguard !== undefined) fail(`${canon} bpduguard`)
+      if (phys.l3 || phys.ip) fail(`${canon} L3 ayarı`)
+      const prev = d.interfaces[name]
+      const def = defaultPhys()
+      const iface: AglabInterface = prev ? { ...prev } : {}
+      const put = (key: keyof AglabInterface, value: unknown, dflt: unknown) => {
+        if (prev && key in prev) iface[key] = value
+        else if (JSON.stringify(value) !== JSON.stringify(dflt)) iface[key] = value
+      }
+      put('mode', phys.mode, 'access')
+      put('vlan', phys.accessVlan, def.accessVlan)
+      put('allowed', phys.allowed, [])
+      put('nativeVlan', phys.nativeVlan, def.nativeVlan)
+      put('enabled', !phys.shutdown, true)
+      if (prev || Object.keys(iface).length) d.interfaces[name] = iface
+    }
+    for (const [v, svi] of Object.entries(cfg.svis)) {
+      const name = 'vlan' + v
+      if (svi.description) fail(`Vlan${v} description`)
+      if (svi.l3) fail(`Vlan${v} L3/OSPF ayarı`)
+      const prev = d.interfaces[name]
+      if (!prev && !svi.ip && JSON.stringify(svi) === JSON.stringify(defaultSvi(Number(v)))) continue
+      const iface: AglabInterface = prev ? { ...prev } : { vlan: Number(v) }
+      if (svi.ip) {
+        iface.ip = svi.ip.addr
+        iface.mask = svi.ip.mask
+      } else {
+        if (prev?.ip !== undefined) iface.ip = ''
+        if (prev?.mask !== undefined) iface.mask = ''
+      }
+      if (prev?.enabled !== undefined || svi.shutdown) iface.enabled = !svi.shutdown
+      d.interfaces[name] = iface
+    }
+  }
+  return out
+}
+
+/** IPv4 → tam sayı (yardımcı; testlerde kullanılır). */
+export { ipToInt }

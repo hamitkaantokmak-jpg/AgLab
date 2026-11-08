@@ -2,9 +2,15 @@
 """Derive structural eligibility from the actual 40 immutable student labs.
 
 Eligibility is not an execution claim. No teacher solutions are consumed.
+
+Labber köprüsü sütunu ve senaryo tablosu (L1): her Akademi labının başlangıç
+topolojisi ve 22 ortak Sorun Çöz senaryosunun yüklenmiş başlangıç topolojisi, derlenmiş
+HTML'deki köprüye (`AgLabSim.toLabber`) verilir; motor kararı ve gerekçeleri yazılır.
+Senaryoların bir kısmının topolojisi kodla kurulduğu için tarayıcı (Playwright) gerekir.
+CI, tests/test_lab_engine_map.py ile tablonun bu kararlarla güncel olduğunu doğrular.
 """
 
-import hashlib, json, pathlib, sys
+import hashlib, json, os, pathlib, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "real-lab"))
@@ -12,14 +18,44 @@ from shared_topology import convert
 from routed_topology import convert as convert_routed
 
 
-def render():
+def bridge_decisions(browser):
+    """Köprü kararları: {'academy': {lab_id: report}, 'scenarios': [(id, title, report)]}."""
+    page = browser.new_page()
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto((ROOT / "AgLab_Final_PKT_Import.html").as_uri())
+    page.click('[data-area="lab"]')
+    decide = "(t) => { const r = AgLabSim.toLabber(t).report; return { decision: r.engineDecision, reasons: r.reasons }; }"
+    academy = {}
+    for p in sorted((ROOT / "academy/student").glob("AGL-*.json")):
+        lab = json.loads(p.read_text(encoding="utf-8"))
+        academy[lab["id"]] = page.evaluate(decide, lab["initial_topology"])
+    scenarios = []
+    for rec in page.evaluate("aglabSharedEngine.recipes()"):
+        page.evaluate("(id)=>aglabSharedEngine.load(id)", rec["id"])
+        snap = page.evaluate("academyEngine.snapshot()")
+        scenarios.append((rec["id"], rec["title"], page.evaluate(decide, snap)))
+    page.close()
+    if errors:
+        raise RuntimeError("Sayfa hatası: " + "; ".join(errors))
+    return {"academy": academy, "scenarios": scenarios}
+
+
+def _decision_cell(report):
+    if report["decision"] == "labber":
+        return "**Labber**"
+    return "Eski motor: " + "; ".join(r.replace("|", "/") for r in report["reasons"])
+
+
+def render(browser):
+    decisions = bridge_decisions(browser)
     lines = [
         "# Akademi laboratuvar–motor haritası",
         "",
         "Bu tablo gerçek öğrenci JSON içeriklerinden üretilir. Yapısal adaylık, aktarım veya başarılı native test anlamına gelmez. AğLab JS mevcut görev/grading motorudur. MIT yalnız access LAN karşılaştırmasıdır. Linux bridge dönüştürücüsü sınırlı PC/switch ormanlarını kabul eder. FRR dönüştürücüsü sınırlı PC/router ve VLAN1 access-köprü şemasını ayrı doğrular; şema kabulü native test başarısı değildir.",
         "",
-        "| Lab | Gerçek konu | Cihaz/bağ | AğLab JS | MIT NetSim | Linux bridge | FRR | Öğrenci JSON SHA256 |",
-        "|---|---|---|---|---|---|---|---|",
+        "| Lab | Gerçek konu | Cihaz/bağ | AğLab JS | Labber köprüsü (L1) | MIT NetSim | Linux bridge | FRR | Öğrenci JSON SHA256 |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for p in sorted((ROOT / "academy/student").glob("AGL-*.json")):
         raw = p.read_bytes()
@@ -60,8 +96,55 @@ def render():
             if lab["id"] in ("AGL-034", "AGL-035"):
                 frr = "Başlangıç/çözüm native CI geçti (a1d6382; kanıt aşağıda)"
         lines.append(
-            f"| {lab['id']} | {lab['title'].replace('|','/')} | {len(ds)}/{len(t['links'])} | Mevcut | {mit} | {linux} | {frr} | `{hashlib.sha256(raw).hexdigest()}` |"
+            f"| {lab['id']} | {lab['title'].replace('|','/')} | {len(ds)}/{len(t['links'])} | Mevcut | {_decision_cell(decisions['academy'][lab['id']])} | {mit} | {linux} | {frr} | `{hashlib.sha256(raw).hexdigest()}` |"
         )
+    scen = decisions["scenarios"]
+    lines.extend(
+        [
+            "",
+            "## Ortak motor senaryoları (Sorun Çöz)",
+            "",
+            "Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.",
+            "",
+            "| Senaryo | Başlık | Labber köprüsü (L1) |",
+            "|---|---|---|",
+        ]
+    )
+    for sid, title, report in scen:
+        lines.append(f"| `{sid}` | {title.replace('|', '/')} | {_decision_cell(report)} |")
+    everything = list(decisions["academy"].values()) + [r for _, _, r in scen]
+    reasons = {}
+    for r in everything:
+        for reason in r["reasons"]:
+            reasons[reason] = reasons.get(reason, 0) + 1
+    count = lambda rows: (
+        sum(r["decision"] == "labber" for r in rows),
+        sum(r["decision"] != "labber" for r in rows),
+    )
+    a_lab, a_leg = count(list(decisions["academy"].values()))
+    s_lab, s_leg = count([r for _, _, r in scen])
+    lines.extend(
+        [
+            "",
+            "## Labber köprüsü özeti (L1)",
+            "",
+            "Karar yalnızca köprünün yapısal sonucudur: `labber`, içeriğin bütün alanlarının",
+            "Labber'a eşlendiği anlamına gelir; içeriğin yeni motorda çalıştırıldığı anlamına",
+            "gelmez (geçiş L2 aşamasında). Eski motor kararı, aşağıdaki gerekçelerden en az",
+            "birine dayanır.",
+            "",
+            "| Grup | Labber | Eski motor | Toplam |",
+            "|---|---|---|---|",
+            f"| Akademi labları | {a_lab} | {a_leg} | {a_lab + a_leg} |",
+            f"| Ortak senaryolar | {s_lab} | {s_leg} | {s_lab + s_leg} |",
+            f"| Toplam | {a_lab + s_lab} | {a_leg + s_leg} | {a_lab + a_leg + s_lab + s_leg} |",
+            "",
+            "| Eski motor gerekçesi | İçerik sayısı |",
+            "|---|---|",
+        ]
+    )
+    for reason, n in sorted(reasons.items(), key=lambda x: (-x[1], x[0])):
+        lines.append(f"| {reason.replace('|', '/')} | {n} |")
     lines.extend(
         [
             "",
@@ -77,4 +160,13 @@ def render():
 
 
 if __name__ == "__main__":
-    (ROOT / "docs/LAB_MOTOR_HARITASI.md").write_text(render(), encoding="utf-8")
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        kwargs = {"headless": True}
+        if os.environ.get("AGLAB_CHROMIUM"):
+            kwargs["executable_path"] = os.environ["AGLAB_CHROMIUM"]
+        browser = pw.chromium.launch(**kwargs)
+        text = render(browser)
+        browser.close()
+    (ROOT / "docs/LAB_MOTOR_HARITASI.md").write_text(text, encoding="utf-8")
