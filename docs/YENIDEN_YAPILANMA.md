@@ -3,10 +3,12 @@
 > **Durum (2026-11-08):**
 >
 > - 1. adım (#43) ve 2. adım (#44) birleşti.
-> - 3. adımın L2'den bağımsız dilimleri (#45, taslak) **askıda**.
+> - 3. adımın L2'den bağımsız dilimleri (#45) davranış değiştirmeyen haliyle
+>   birleşir; `src/engine` oracle olarak kalır. L2/MAC/ARP çıkarımı iptal.
 > - **Karar:** Labber (`faarik-network/labber`) simülatörünün `sim/` motoru AğLab'ın
 >   tek ağ motoru olacak.
-> - Bu belge o geçişin planıdır. Plan onaylanmadan uygulamaya geçilmez.
+> - Bu plan kullanıcı tarafından onaylandı (#47). Her aşama ayrı PR'dır ve bir
+>   sonraki aşamaya kullanıcı onayı olmadan geçilmez.
 
 ## Neden
 
@@ -60,12 +62,22 @@ Korunacaklar (değişmez):
    - Bunlar artık ürün motoru olmayacak; Labber'a özellik taşırken **şartname ve
      oracle** olacaklar (bkz. L2.3).
    - L2/MAC/ARP ve ping yolu çıkarımı iptal; bu alanı Labber karşılıyor.
-   - Önerim: #45 bu haliyle (davranış değiştirmeyen, testli) birleştirilsin ki
-     oracle main'de dursun. Karar kullanıcıda.
+   - #45 bu haliyle (davranış değiştirmeyen, testli) birleştirilir; oracle main'de
+     durur.
 4. **Labber'ı tek motor olarak entegre et:** *(eski "borck-netsim'i emme" adımının
    yerini alır).* Aşağıdaki alt planın L0–L7 aşamaları; her aşama ayrı PR.
-5. **FRR fark testleri:** kapsam aynı, karşılaştırılan taraf artık Labber motoru.
-6. **Belge sadeleştirme:** tek mimari belgesi ve tek uyumluluk matrisi. Matris
+5. **Arayüz yenilemesi:** motor geçişi (4. adımın L7 aşaması) **bitmeden başlamaz**.
+   Kapsam:
+   - Üç ekran: **Öğren**, **Sorun Çöz**, **Serbest Lab**.
+   - Sağ tık menüleri: cihaz, kablo ve tuval için ayrı bağlam menüleri.
+   - Sekmeli CLI: her cihaz için ayrı sekme.
+   - CLI'de `Tab` ile tamamlama ve `?` ile yardım (Labber `cli/parser.ts` trie'si
+     ve `cli/help.ts` üzerinden).
+   - Ping animasyonu: Simulation Mode olay adaptörü (L4 L3 aşaması) üzerinden.
+   - Mevcut Playwright UI testleri bu adımda yeni ekranlara taşınır; silinmez veya
+     gevşetilmez.
+6. **FRR fark testleri:** kapsam aynı, karşılaştırılan taraf artık Labber motoru.
+7. **Belge sadeleştirme:** tek mimari belgesi ve tek uyumluluk matrisi. Matris
    Labber + köprü kapsamını gösterir.
 
 ---
@@ -101,7 +113,10 @@ Korunacaklar (değişmez):
    - `third_party/` altına **değil**; AğLab'ın kendi kaynağı olarak.
    - Köken notu README'de "Motor kaynağı ve köken" başlığı altında yazılır: proje
      adı, kaynak depo, alınan commit (`74a0925`), tarih, "kendi kaynağımız" ifadesi.
-   - `labs/`, `app/`, `nuxt.config.ts` ve `pdfs/` **alınmaz** (bkz. L6).
+   - `labs/` (13 lab) içeriği kullanıcıya ait ve dağıtım hakkı kullanıcıda. Bu
+     içerik L2 aşamasında ayrı bir içerik grubu olarak alınır (bkz. L4).
+   - `app/` ve `nuxt.config.ts` alınmaz; AğLab'ın kendi arayüzü kullanılır.
+   - `pdfs/` ve PDF'lerden alıntı **hiçbir zaman** alınmaz (bkz. L6).
 2. **Derleyici:** sabit sürümlü **esbuild**.
    - Depoda `esbuild 0.25.12` zaten kilitli (`package-lock.json`).
    - `tsc` IIFE paketleme yapmadığı için yalnızca tür denetimi için kullanılır.
@@ -239,6 +254,17 @@ oracle'a uyulur. Karar PR'da belirtilir.
 | 9 | BGP | Asgari (AS uyumu senaryosu) | Yok (ROADMAP PDF 6) | `network-protocols.js` `bgp-as` | AğLab modeli zaten sığ |
 | — | Paket animasyonu için L2 çerçeve olayları | Var (ARP/Ethernet olayları, `packet-events.js`) | `deliver()` yalnızca L3 atlamaları veriyor | `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_packet_events` | Simulation Mode için gerekli (bkz. L4) |
 
+**Konu #3 dersinden çıkan Labber eksikleri** (aynı kalıpla eklenir; sıra L2
+aşamasının gereksinimine göre):
+
+| Sıra | Eksik | Kapsam | Kabul testi |
+|---|---|---|---|
+| 10 | `show mac address-table address <mac>` | `cli/ios.ts` deseni, `show.ts` çıktısı, `help.ts` | MAC tablosunda olan/olmayan adres; IOS biçiminde çıktı |
+| 11 | PC'de `show arp` | `cli/vpcs.ts` | Ping öncesi boş, ping sonrası dolu; başka alt ağdaki hedef için ağ geçidinin MAC'i |
+| 12 | Aynı IP'yi kullanan iki cihaz | Türetme adımı: çakışan adreslerin tespiti; `%IP-4-DUPADDR` syslog'u (`runtime.ts` `diffLogs`); ping'in hangi cihazın yanıtladığını belirtmesi | Çakışma varken syslog üretilir ve yanıtlayan cihaz belirlidir (deterministik); çakışma kalkınca syslog kesilir |
+| 13 | Topoloji düzenlemede kablonun başka porta taşınması | Köprü + runtime: bağlantı uç noktası değişince yeniden türetme; eski portun MAC/ARP girişlerinin temizlenmesi | Taşımadan önce/sonra ping ve MAC tablosu; eski porttaki giriş kalmaz |
+| 14 | `LabQuery` eklemeleri: `macPort`, `macVlan`, `macTable`, `ipUnique`, `ping().replier` | `query.ts`; L5'teki `query.*` beyaz listesine eklenir | Her sorgu için başarılı ve başarısız durum |
+
 Labber'ın AğLab'dan **güçlü** olduğu alanlar olduğu gibi alınır: DTP, EtherChannel
 (LACP/PAgP), PVST+/Rapid-PVST, PortFast, BPDU Guard, err-disable kurtarma, OSPF
 (DR/BDR, çok alan, stub, ECMP, maliyet), syslog, IOS biçiminde `show` çıktıları.
@@ -274,23 +300,21 @@ gösterilmez. Geçiş boyunca:
 |---|---|---|
 | L0 | `src/sim/` + `src/sim-bridge/` iskeleti, derleme, gömme, CI tekrar üretim kontrolü, tür denetimi, Labber motor testleri. Ürün davranışı değişmez. | HTML'de `AgLabSim` var ama kullanılmıyor; mevcut tüm testler aynı. Boyut/performans ölçümü raporlanır. |
 | L1 | Köprü (yapısal yol, iki yön). Desteklenmeyen özellik raporu. | Gidiş-dönüş özellik testleri; `src/engine` oracle'ı ile L2/STP/routing paritesi; L4 motor seçim tablosu ilk kez üretilir. |
-| L2 | Sıra 1 (bağlantı/güç). **Akademi M1–M3 (AGL-001…030)** ve L2 senaryoları (`access-vlan`, `trunk-allowed`, `native-vlan`, `stp-loop`) Labber'a geçer. | Her içerik için: başlangıçta hedefler başarısız, öğretmen/referans çözümü hepsini geçirir, CLI hatası yok (Labber `labs.test.ts` deseni). |
+| L2 | Sıra 1 (bağlantı/güç) ve 10–14 (MAC/ARP sorguları, yinelenen IP, kablo taşıma, LabQuery eklemeleri). **Akademi M1–M3 (AGL-001…030)** ve L2 senaryoları (`access-vlan`, `trunk-allowed`, `native-vlan`, `stp-loop` ve #46'nın beş VLAN/trunk senaryosu: `vlan-wrong-access`, `vlan-uplink-not-trunk`, `vlan-allowed-overwritten`, `vlan-missing-on-switch`, `vlan-two-faults`) Labber'a geçer. **Labber'ın 13 labı** ayrı bir içerik grubu olarak alınır (kendi kimlikleri, kendi objective'leri; Akademi kaynak SHA256 kayıtlarına karışmaz). | Her içerik için: başlangıçta hedefler başarısız, öğretmen/referans çözümü hepsini geçirir, CLI hatası yok (Labber `labs.test.ts` deseni). |
 | L3 | Cihaz CLI'si `IosSession`/`VpcsSession`'a bağlanır (Labber'da çalışan içerik için). Simulation Mode için olay adaptörü: Labber `deliver()` atlamaları + `l2Domain` yolu → `packet-events` biçimi. | `test_aglab_device_cli`, `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_packet_events` Labber içeriğiyle geçer. |
 | L4 | Sıra 2–3 (Router, AD, özyineleme). **Akademi M4 (AGL-031…040)** ve routing senaryoları (`return-route`, `forward-route`, `default-route`, `wrong-prefix`, `unresolved-next-hop`, `lpm-next-hop`, `floating-static`, `ospf-area`). | `test_aglab_v11…v17`, `test_aglab_next_hop`, `test_aglab_traceroute`, `test_aglab_icmp_*`, `test_aglab_routed_frames`; `tests/node/test_engine_routing.cjs` oracle paritesi. |
 | L5 | Sıra 4–8 (alt arayüz, DHCP/Server, ACL, NAT, port security) ve bunlara bağlı senaryolar (`subif-missing`, `relay-trunk`, `nat-pat`, `port-security`). PKT IOS metin yolu (hoşgörülü mod). | PKT testleri (`test_aglab_import`, `test_aglab_pkt_*`, `test_aglab_svi_import`), `test_aglab_network_features`; oracle birim testleri Labber'a karşı. |
 | L6 | **Sorun Çöz'ün 25 eski metin senaryosu** (`gateway`, `dns`, `duplicate`, `mask`, `dhcp`, `link`, …, `routechoice`) ve `labRun()` deneyleri. Bunlar topoloji motoru kullanmıyor, kendi oyuncak modelleri var. Her biri ya gerçek bir topoloji senaryosuna dönüştürülür, ya da açıkça "kavramsal alıştırma (motor yok)" olarak etiketlenir. | Her senaryo için başlangıçta başarısız / çözümle başarılı testi. Etiketlenenler UI'da motorlu gibi görünmez. |
 | L7 | Kalıcılık v24 (running + startup), eski kayıtların taşınması. Eski çekirdek motorun, borck-netsim'in ve engine-manager'ın kaldırılması. `src/engine` yalnız test oracle'ı olarak kalır veya kaldırılır. | Tüm içerik Labber'da (BGP hariç tutulduysa matriste belirtilir); `test_aglab_persistence`, `test_aglab_student_journey`, `test_aglab_unified_rc`; ZIP ve `verify_packages.py` yeşil. |
 
-**Not:** Kullanıcının verdiği "22 Sorun Çöz senaryosu" sayısı kodda birebir bir
-listeye karşılık gelmiyor. Bugünkü envanter:
+**Senaryo envanteri:**
 
-- 25 eski metin senaryosu (`main.js` `scenarios`).
-- 17 ortak motor senaryosu (`simulator/network-scenarios.json`). Bunların 13'ü
-  Lab ekranındaki seçicide, 4'ü (`subif-missing`, `ospf-area`, `bgp-as`,
-  `port-security`) yalnızca Sorun Çöz köprüsünden açılıyor.
+- **22 ortak motor senaryosu** (`simulator/network-scenarios.json`): önceki 17
+  senaryoya #46 ile beş VLAN/trunk senaryosu eklendi. Bu beşi L2 aşamasına girer.
+- **25 eski metin senaryosu** (`main.js` `scenarios`): L6 aşamasında ele alınır.
+- **13 Labber labı:** L2 aşamasında ayrı içerik grubu.
 
-Plan bu envantere bağlıdır. Sayım L1'de üretilen motor seçim tablosunda
-kesinleştirilir.
+Kesin sayım L1'de üretilen motor seçim tablosunda tutulur ve CI'da doğrulanır.
 
 **Python testleri (`tests/test_*.py`, 43 dosya; 39'u Playwright kullanıyor):**
 
@@ -353,8 +377,9 @@ kesinleştirilir.
 - **Lisans ve köken:**
   - Arşivde `LICENSE` yok. Labber kodu kullanıcının kararıyla AğLab'ın kendi
     kaynağı olarak alınır; README'deki köken notu bunu kaydeder.
-  - Labber `labs/` içeriği kurs PDF'lerinden yola çıkılarak yazılmış (ENCOR
-    başlıkları). Dağıtım hakkı netleşene kadar **AğLab'a alınmaz**.
+  - Labber `labs/` içeriği kullanıcıya ait; dağıtım hakkı kullanıcıda (karar,
+    #47). L2'de alınırken lab metinleri PDF'lerden alıntı içermemeli; alıntı
+    görülen metin alınmaz, yeniden yazılır.
   - `pdfs/` ve dağıtılamayan materyal hiçbir aşamada alınmaz; CI'da `pdfs/` ve
     `*.pdf` için bir engel kontrolü eklenir.
 - **Araç zinciri:**
@@ -387,6 +412,8 @@ kesinleştirilir.
 - **Simulation Mode:** Labber L3 atlama veriyor. Çerçeve düzeyi animasyon için L2
   yolunun ayrıca hesaplanması gerekiyor (L4 L3 aşaması). Sağlanamazsa animasyon
   yalnızca L3 atlamalarını gösterir ve bu UI'da belirtilir.
-- **#45:** `src/engine` modülleri ürüne gömülü ama yeni motorla birlikte ürün
-  motoru olmaktan çıkar. Oracle olarak tutulmaları önerilir; kaldırılmaları L7'de
-  değerlendirilir.
+- **#45:** `src/engine` modülleri main'de oracle olarak durur. Yeni motorla birlikte
+  ürün motoru olmaktan çıkar; ürüne gömülmeleri L7'de kaldırılır, testlerde
+  oracle olarak kalırlar.
+- **Arayüz yenilemesi (5. adım):** motor geçişi bitmeden başlamaz; aksi halde UI
+  testleri iki motor ve iki arayüz arasında aynı anda kayar.
