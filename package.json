@@ -4,10 +4,16 @@
   "scripts": {
     "build:engine": "node tools/build_borck_engine.cjs",
     "format": "prettier --write \"src/app/**/*.js\" \"src/engine/**/*.js\" \"simulator/**/*.{js,cjs}\" \"academy/*.js\" \"tests/node/**/*.cjs\" \"tools/*.cjs\"",
-    "format:check": "prettier --check \"src/app/**/*.js\" \"src/engine/**/*.js\" \"simulator/**/*.{js,cjs}\" \"academy/*.js\" \"tests/node/**/*.cjs\" \"tools/*.cjs\""
+    "format:check": "prettier --check \"src/app/**/*.js\" \"src/engine/**/*.js\" \"simulator/**/*.{js,cjs}\" \"academy/*.js\" \"tests/node/**/*.cjs\" \"tools/*.cjs\"",
+    "build:sim": "node tools/build_sim.cjs",
+    "test:sim": "vitest run --root tests/sim",
+    "typecheck:sim": "tsc -p tsconfig.sim.json --noEmit"
   },
   "devDependencies": {
     "esbuild": "0.25.12",
-    "prettier": "3.9.10"
+    "prettier": "3.9.10",
+    "typescript": "7.0.2",
+    "vite": "7.2.7",
+    "vitest": "5.1.0"
   }
 }

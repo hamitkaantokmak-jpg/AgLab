@@ -1,4 +1,6 @@
 'use strict';
+// Labber ağ motoru (src/sim → src/sim.generated.js). L0: gömülü ama hiçbir ürün kodu çağırmaz.
+//@@module SIM@@
 const BASE = {
   ip: '192.168.1.20',
   mask: '255.255.255.0',
