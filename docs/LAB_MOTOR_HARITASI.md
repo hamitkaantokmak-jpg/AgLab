@@ -78,8 +78,9 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 
 Karar köprünün yapısal sonucudur: `labber`, içeriğin bütün alanlarının Labber'a
 eşlendiği anlamına gelir. Ürün kararı içerik yüklenirken aynı köprüden alır ve
-ekranda gösterir. Ortak senaryolarda `labber` kararı başarı ölçütünün Labber'da
-değerlendirildiği anlamına gelir (L2-D1); Akademi labları için geçiş L2-D2'dedir.
+ekranda gösterir. `labber` kararındaki ortak senaryonun başarı ölçütü (L2-D1) ve
+Akademi labının ölçütleri (L2-D2: `probe.icmp` → LabQuery.ping, `state.equals` →
+toAglab görünümü) Labber'da değerlendirilir.
 Cihaz CLI'si ve Simulation Mode L3'e kadar eski motorda kalır. Eski motor kararı,
 aşağıdaki gerekçelerden en az birine dayanır.
 

@@ -88,3 +88,11 @@ ifade edemediği bir duruma gelirse (ör. topolojiye router eklenirse) sonuç es
 motordan alınmaz; "Değerlendirme hatası" gösterilir. Labber ile CLI'nin (L3'e kadar
 eski motor) ping sonucu farklıysa "Motor uyuşmazlığı" gösterilir ve sonuç kabul
 edilmez (`tests/test_aglab_engine_choice.py`).
+
+**Akademi (L2-D2).** Labber kararındaki labda (AGL-001…030) ölçütlerin
+`required_capabilities` alanı motorun yetenekleriyle eşleştirilir. Labber yetenekleri:
+`state_adapter` (`toAglab` görünümü), `icmp_probe` (`LabQuery.ping`) ve `answer_input`.
+Kaynak arayüz seçimli probe (`icmp_source_interface`) Labber köprüsünde yok (L4).
+Eksik yetenek isteyen ölçüt `on_unavailable` (`not_evaluated`) olur ve geçti sayılmaz.
+Labber ping'i deterministik olduğundan beş denemelik `icmp-5-v1` politikasında tek
+sonuç beş denemeyi temsil eder. Kaynak JSON'lar ve SHA256 kayıtları değişmedi.
