@@ -6,7 +6,7 @@ import { l3Ifs, type Hop } from './net'
 import { candidateRid, computeState } from './ospf'
 import { LabQuery } from './query'
 import { buildTopo, pk, type Topo } from './topology'
-import type { LabDef, ObjectiveResult, PcConfig, SwitchConfig } from './types'
+import { noHardwareFaults, type Hardware, type LabDef, type ObjectiveResult, type PcConfig, type SwitchConfig } from './types'
 import { clone, shortIf } from './util'
 
 export interface LogLine {
@@ -31,6 +31,8 @@ export interface SavedState {
   seen: string[]
   arp: string[]
   errdis?: string[]
+  /** cut cables ('dev|port', both ends), powered-off devices, PCs with a disabled NIC */
+  hw?: { cut: string[]; off: string[]; nicDown: string[] }
 }
 
 export class LabRuntime {
@@ -44,6 +46,8 @@ export class LabRuntime {
   arp = new Set<string>()
   /** err-disabled ports ('dev|port'); sticky until shutdown or errdisable recovery */
   errdis = new Set<string>()
+  /** cut cables, powered-off devices, disabled PC NICs (see Hardware) */
+  hw: Hardware = noHardwareFaults()
   private seq = 0
   private t0 = Date.now()
   private listeners = new Set<() => void>()
@@ -64,7 +68,14 @@ export class LabRuntime {
     }
     for (const pc of this.topo.pcs) this.pcs[pc.id] = clone(this.def.initialPcs?.[pc.id] ?? { ip: null, prefix: 24, gw: null })
     this.errdis.clear()
-    this.derived = computeState(this.topo, this.running, this.pcs, this.errdis)
+    this.hw = noHardwareFaults()
+    for (const l of this.def.links)
+      if (l.up === false) for (const [dev, port] of [l.a, l.b]) this.hw.cut.add(pk(dev, port))
+    for (const dv of this.def.devices) {
+      if (dv.off) this.hw.off.add(dv.id)
+      if (dv.kind === 'pc' && dv.nicDown) this.hw.nicDown.add(dv.id)
+    }
+    this.derived = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw)
     this.applyInitial(this)
     this.derived = this.recompute()
     for (const sw of this.topo.switches) this.startup[sw.id] = clone(this.running[sw.id]!)
@@ -94,6 +105,7 @@ export class LabRuntime {
   }
 
   log(dev: string, msg: string) {
+    if (this.hw.off.has(dev)) return // a powered-off device prints nothing
     this.logs.push({ dev, text: `${this.timestamp()}: ${msg}`, seq: ++this.seq })
     if (this.logs.length > 400) this.logs.splice(0, this.logs.length - 400)
   }
@@ -108,7 +120,7 @@ export class LabRuntime {
 
   /** Derive, then settle err-disable (BPDU guard) and OSPF router-id selection. */
   private recompute(): Derived {
-    let d = computeState(this.topo, this.running, this.pcs, this.errdis)
+    let d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw)
     for (let i = 0; i < 4; i++) {
       let changed = false
       // a shut port leaves err-disabled state (shutdown / no shutdown recovers it)
@@ -145,9 +157,63 @@ export class LabRuntime {
         }
       }
       if (!changed) break
-      d = computeState(this.topo, this.running, this.pcs, this.errdis)
+      d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw)
     }
     return d
+  }
+
+  /** Plug in (up) or unplug / cut (down) the cable on this port. False when no cable is there. */
+  setLink(dev: string, port: string, up: boolean): boolean {
+    const peer = this.topo.peer[pk(dev, port)]
+    if (!peer) return false
+    for (const k of [pk(dev, port), pk(peer.dev, peer.port)]) {
+      if (up) this.hw.cut.delete(k)
+      else this.hw.cut.add(k)
+    }
+    this.commit()
+    return true
+  }
+
+  /** Cable on this port is plugged in and intact (says nothing about the far device). */
+  cableIntact(dev: string, port: string): boolean {
+    return !!this.topo.peer[pk(dev, port)] && !this.hw.cut.has(pk(dev, port))
+  }
+
+  /**
+   * Power a device off or on. Powering a switch on is a reload: the running config
+   * comes back from startup-config (factory defaults when nothing was saved) and
+   * err-disabled ports recover.
+   */
+  setPower(dev: string, on: boolean) {
+    const def = this.topo.devices[dev]
+    if (!def || on === !this.hw.off.has(dev)) return
+    if (!on) {
+      this.hw.off.add(dev)
+    } else {
+      this.hw.off.delete(dev)
+      if (def.kind === 'switch') {
+        const saved = this.startup[dev]
+        this.running[dev] = saved ? clone(saved) : Object.assign(defaultSwitchConfig(def), { hostname: dev })
+        // like `reload`: OSPF picks its router ID again
+        const o = this.running[dev]!.ospf
+        if (o) o.activeRid = null
+        for (const k of [...this.errdis]) if (k.startsWith(dev + '|')) this.errdis.delete(k)
+        for (const k of [...this.arp]) if (k.startsWith(dev + '>')) this.arp.delete(k)
+      }
+    }
+    this.commit()
+  }
+
+  powered(dev: string): boolean {
+    return !!this.topo.devices[dev] && !this.hw.off.has(dev)
+  }
+
+  /** Enable or disable a PC's network card. */
+  setNic(pc: string, up: boolean) {
+    if (this.topo.devices[pc]?.kind !== 'pc') return
+    if (up) this.hw.nicDown.delete(pc)
+    else this.hw.nicDown.add(pc)
+    this.commit()
   }
 
   /** Hosts that sent or answered traffic become visible in MAC tables. */
@@ -188,6 +254,7 @@ export class LabRuntime {
       seen: [...this.seen],
       arp: [...this.arp],
       errdis: [...this.errdis],
+      hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
     }
   }
 
@@ -204,6 +271,7 @@ export class LabRuntime {
     this.seen = new Set(s.seen)
     this.arp = new Set(s.arp)
     this.errdis = new Set(s.errdis ?? [])
+    if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) }
     this.derived = this.recompute()
     this.emit()
     return true

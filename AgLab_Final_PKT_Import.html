@@ -740,6 +740,9 @@ var AgLabSim = (() => {
     };
   }
 
+  // src/sim/types.ts
+  var noHardwareFaults = () => ({ cut: /* @__PURE__ */ new Set(), off: /* @__PURE__ */ new Set(), nicDown: /* @__PURE__ */ new Set() });
+
   // src/sim/util.ts
   var IF_TYPES = [
     { full: "FastEthernet", short: "Fa", speed: 100 },
@@ -909,8 +912,9 @@ var AgLabSim = (() => {
     return c.allowed === null || c.allowed.includes(v);
   }
   var isRoutedPort = (cfgs, dev, port) => !!cfgs[dev]?.ifaces[port]?.routed;
-  function derive(topo, cfgs, pcs, errdis = /* @__PURE__ */ new Set()) {
+  function derive(topo, cfgs, pcs, errdis = /* @__PURE__ */ new Set(), hw = noHardwareFaults()) {
     const phys = {};
+    const endPowered = (dev, port) => !hw.off.has(dev) && !hw.cut.has(pk(dev, port)) && !(topo.devices[dev]?.kind === "pc" && hw.nicDown.has(dev));
     const adminDown = (dev, port) => {
       const c = cfgs[dev]?.ifaces[port];
       if (!c) return false;
@@ -928,8 +932,9 @@ var AgLabSim = (() => {
         const peerIsPc = !!peer && topo.devices[peer.dev]?.kind === "pc";
         const down = adminDown(sw.id, port);
         const err = errdis.has(key);
-        const peerUp = !!peer && (peerIsPc || !adminDown(peer.dev, peer.port) && !errdis.has(pk(peer.dev, peer.port)));
-        phys[key] = { dev: sw.id, port, peer, peerIsPc, adminDown: down, errDisabled: err, up: !down && !err && peerUp };
+        const peerUp = !!peer && endPowered(peer.dev, peer.port) && (peerIsPc || !adminDown(peer.dev, peer.port) && !errdis.has(pk(peer.dev, peer.port)));
+        const up = !down && !err && endPowered(sw.id, port) && peerUp;
+        phys[key] = { dev: sw.id, port, peer, peerIsPc, adminDown: down, errDisabled: err, up };
       }
     }
     const chanOf = (dev, port) => isRoutedPort(cfgs, dev, port) ? null : cfgs[dev]?.ifaces[port]?.channel ?? null;
@@ -1094,6 +1099,7 @@ var AgLabSim = (() => {
       svis: {},
       nativeMismatch: [],
       errdis,
+      hw,
       ospf: {}
     };
     const allVlans = /* @__PURE__ */ new Set();
@@ -1106,7 +1112,7 @@ var AgLabSim = (() => {
       for (const [vs, svi] of Object.entries(cfg.svis)) {
         const v = Number(vs);
         const hasFwd = (d.lports[sw.id] ?? []).some((lp) => portForwards(d, sw.id, lp, v));
-        const up = !svi.shutdown && vlanExists(cfg, v) && hasFwd;
+        const up = !svi.shutdown && vlanExists(cfg, v) && hasFwd && !hw.off.has(sw.id);
         out.push({
           dev: sw.id,
           vlan: v,
@@ -1174,7 +1180,7 @@ var AgLabSim = (() => {
     const edges = {};
     for (const sw of d.topo.switches) {
       const cfg = d.cfgs[sw.id];
-      if (!vlanExists(cfg, v)) continue;
+      if (!vlanExists(cfg, v) || d.hw.off.has(sw.id)) continue;
       const prio = (cfg.stpPriority[String(v)] ?? 32768) + v;
       const mac = sw.mac;
       const b = { prio, mac, rootPrio: prio, rootMac: mac, rootCost: 0, rootPort: null, isRoot: true, ports: {} };
@@ -1274,6 +1280,7 @@ var AgLabSim = (() => {
     const out = [];
     for (const [key, ps] of Object.entries(d.phys)) {
       if (ps.adminDown || !ps.peer || ps.peerIsPc) continue;
+      if (d.hw.cut.has(key) || d.hw.off.has(ps.dev) || d.hw.off.has(ps.peer.dev)) continue;
       if (!bpduGuardOn(d.cfgs[ps.dev], ps.port)) continue;
       const peer = d.phys[pk(ps.peer.dev, ps.peer.port)];
       if (!peer || peer.adminDown || isRoutedPort(d.cfgs, ps.peer.dev, ps.peer.port)) continue;
@@ -1349,6 +1356,7 @@ var AgLabSim = (() => {
   }
   function l3Ifs(d, dev) {
     const def = d.topo.devices[dev];
+    if (d.hw.off.has(dev)) return [];
     if (def.kind === "pc") {
       const c = d.pcs[dev];
       if (!c?.ip) return [];
@@ -1489,6 +1497,7 @@ var AgLabSim = (() => {
     return lookup(d, dev, dst)?.out.ip ?? null;
   }
   function ping(d, from, dst) {
+    if (d.hw.off.has(from)) return { ok: false, reason: "off" };
     if (!isValidIp(dst)) return { ok: false, reason: "noroute" };
     const fwd = deliver(d, from, dst);
     const firstHopArp = fwd.hops[0] ? { dev: from, ip: fwd.hops[0].ip } : void 0;
@@ -3635,8 +3644,8 @@ var AgLabSim = (() => {
   };
 
   // src/sim/ospf.ts
-  function computeState(topo, cfgs, pcs, errdis) {
-    const d = derive(topo, cfgs, pcs, errdis);
+  function computeState(topo, cfgs, pcs, errdis, hw) {
+    const d = derive(topo, cfgs, pcs, errdis, hw);
     d.ospf = computeOspf(d);
     return d;
   }
@@ -3651,7 +3660,7 @@ var AgLabSim = (() => {
   function ospfRunning(d, dev) {
     const def = d.topo.devices[dev];
     const c = d.cfgs[dev];
-    return def?.kind === "switch" && !!def.l3 && !!c?.ipRouting && !!c.ospf;
+    return def?.kind === "switch" && !!def.l3 && !!c?.ipRouting && !!c.ospf && !d.hw.off.has(dev);
   }
   function configuredL3(cfg, sw) {
     const out = [];
@@ -4115,6 +4124,21 @@ var AgLabSim = (() => {
     bridgePriority(dev, vlan) {
       return this.d.stp[vlan]?.[dev]?.prio ?? null;
     }
+    /** Device is powered on. */
+    powered(dev) {
+      return !!this.d.topo.devices[dev] && !this.d.hw.off.has(dev);
+    }
+    /**
+     * The link on this port is up: cable intact, both ends powered, neither end shut,
+     * err-disabled or (PC) NIC-disabled. For a PC the port is its eth0.
+     */
+    linkUp(dev, port = "eth0") {
+      if (this.d.topo.devices[dev]?.kind === "pc") {
+        const at = this.d.topo.pcAttach[dev];
+        return !!at && !!this.d.phys[pk(at.dev, at.port)]?.up;
+      }
+      return !!this.phys(dev, port)?.up;
+    }
     sviUp(dev, vlan) {
       return !!this.d.svis[dev]?.find((s) => s.vlan === vlan && s.up);
     }
@@ -4135,6 +4159,8 @@ var AgLabSim = (() => {
       __publicField(this, "arp", /* @__PURE__ */ new Set());
       /** err-disabled ports ('dev|port'); sticky until shutdown or errdisable recovery */
       __publicField(this, "errdis", /* @__PURE__ */ new Set());
+      /** cut cables, powered-off devices, disabled PC NICs (see Hardware) */
+      __publicField(this, "hw", noHardwareFaults());
       __publicField(this, "seq", 0);
       __publicField(this, "t0", Date.now());
       __publicField(this, "listeners", /* @__PURE__ */ new Set());
@@ -4149,7 +4175,14 @@ var AgLabSim = (() => {
       }
       for (const pc of this.topo.pcs) this.pcs[pc.id] = clone(this.def.initialPcs?.[pc.id] ?? { ip: null, prefix: 24, gw: null });
       this.errdis.clear();
-      this.derived = computeState(this.topo, this.running, this.pcs, this.errdis);
+      this.hw = noHardwareFaults();
+      for (const l of this.def.links)
+        if (l.up === false) for (const [dev, port] of [l.a, l.b]) this.hw.cut.add(pk(dev, port));
+      for (const dv of this.def.devices) {
+        if (dv.off) this.hw.off.add(dv.id);
+        if (dv.kind === "pc" && dv.nicDown) this.hw.nicDown.add(dv.id);
+      }
+      this.derived = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw);
       this.applyInitial(this);
       this.derived = this.recompute();
       for (const sw of this.topo.switches) this.startup[sw.id] = clone(this.running[sw.id]);
@@ -4175,6 +4208,7 @@ var AgLabSim = (() => {
       return `*Mar  1 ${two(h)}:${two(m)}:${two(s)}.${String(f).padStart(3, "0")}`;
     }
     log(dev, msg) {
+      if (this.hw.off.has(dev)) return;
       this.logs.push({ dev, text: `${this.timestamp()}: ${msg}`, seq: ++this.seq });
       if (this.logs.length > 400) this.logs.splice(0, this.logs.length - 400);
     }
@@ -4187,7 +4221,7 @@ var AgLabSim = (() => {
     }
     /** Derive, then settle err-disable (BPDU guard) and OSPF router-id selection. */
     recompute() {
-      let d = computeState(this.topo, this.running, this.pcs, this.errdis);
+      let d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw);
       for (let i = 0; i < 4; i++) {
         let changed = false;
         for (const k of [...this.errdis]) {
@@ -4222,9 +4256,57 @@ var AgLabSim = (() => {
           }
         }
         if (!changed) break;
-        d = computeState(this.topo, this.running, this.pcs, this.errdis);
+        d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw);
       }
       return d;
+    }
+    /** Plug in (up) or unplug / cut (down) the cable on this port. False when no cable is there. */
+    setLink(dev, port, up) {
+      const peer = this.topo.peer[pk(dev, port)];
+      if (!peer) return false;
+      for (const k of [pk(dev, port), pk(peer.dev, peer.port)]) {
+        if (up) this.hw.cut.delete(k);
+        else this.hw.cut.add(k);
+      }
+      this.commit();
+      return true;
+    }
+    /** Cable on this port is plugged in and intact (says nothing about the far device). */
+    cableIntact(dev, port) {
+      return !!this.topo.peer[pk(dev, port)] && !this.hw.cut.has(pk(dev, port));
+    }
+    /**
+     * Power a device off or on. Powering a switch on is a reload: the running config
+     * comes back from startup-config (factory defaults when nothing was saved) and
+     * err-disabled ports recover.
+     */
+    setPower(dev, on) {
+      const def = this.topo.devices[dev];
+      if (!def || on === !this.hw.off.has(dev)) return;
+      if (!on) {
+        this.hw.off.add(dev);
+      } else {
+        this.hw.off.delete(dev);
+        if (def.kind === "switch") {
+          const saved = this.startup[dev];
+          this.running[dev] = saved ? clone(saved) : Object.assign(defaultSwitchConfig(def), { hostname: dev });
+          const o = this.running[dev].ospf;
+          if (o) o.activeRid = null;
+          for (const k of [...this.errdis]) if (k.startsWith(dev + "|")) this.errdis.delete(k);
+          for (const k of [...this.arp]) if (k.startsWith(dev + ">")) this.arp.delete(k);
+        }
+      }
+      this.commit();
+    }
+    powered(dev) {
+      return !!this.topo.devices[dev] && !this.hw.off.has(dev);
+    }
+    /** Enable or disable a PC's network card. */
+    setNic(pc, up) {
+      if (this.topo.devices[pc]?.kind !== "pc") return;
+      if (up) this.hw.nicDown.delete(pc);
+      else this.hw.nicDown.add(pc);
+      this.commit();
     }
     /** Hosts that sent or answered traffic become visible in MAC tables. */
     markSeen(hops, from) {
@@ -4260,7 +4342,8 @@ var AgLabSim = (() => {
         pcs: clone(this.pcs),
         seen: [...this.seen],
         arp: [...this.arp],
-        errdis: [...this.errdis]
+        errdis: [...this.errdis],
+        hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] }
       };
     }
     load(s) {
@@ -4275,6 +4358,7 @@ var AgLabSim = (() => {
       this.seen = new Set(s.seen);
       this.arp = new Set(s.arp);
       this.errdis = new Set(s.errdis ?? []);
+      if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) };
       this.derived = this.recompute();
       this.emit();
       return true;
@@ -4374,10 +4458,15 @@ var AgLabSim = (() => {
       }
     });
   }
+  function assertPowered(rt, dev) {
+    if (!rt.powered(dev)) throw new Error(`${dev} is powered off`);
+  }
   function createSession(rt, dev) {
+    assertPowered(rt, dev);
     return rt.topo.devices[dev].kind === "pc" ? new VpcsSession(rt, dev) : new IosSession(rt, dev);
   }
   function runScript(rt, dev, script, session) {
+    assertPowered(rt, dev);
     const s = session ?? new IosSession(rt, dev);
     if (s.mode === "user") s.mode = "priv";
     const out = [];
@@ -4511,7 +4600,7 @@ var AgLabSim = (() => {
       for (const key of Object.keys(d))
         if (!DEVICE_OPAQUE.has(key) && !fields.has(key))
           unsupported(id, key, FEATURE_REASON[key] ?? "Labber'da karşılığı olmayan alan");
-      if (d.enabled === false) unsupported(id, "enabled", "Kapalı cihaz (güç) Labber'da modellenmiyor (L2)");
+      const off = d.enabled === false;
       if (d.type === "PC") {
         const ports2 = d.ports ?? ["eth0"];
         if (ports2.length !== 1 || ports2[0] !== "eth0") reject(id, "ports", "PC yalnızca tek eth0 portuyla modellenir");
@@ -4522,7 +4611,6 @@ var AgLabSim = (() => {
           }
           for (const key of Object.keys(iface))
             if (key !== "enabled") unsupported(id, `interfaces.eth0.${key}`, "Labber'da karşılığı olmayan PC arayüz alanı");
-          if (iface.enabled === false) unsupported(id, "interfaces.eth0.enabled", "Kapalı PC NIC'i Labber'da modellenmiyor (L2)");
         }
         const ip = d.ip ?? "";
         const prefix = d.mask ? maskToPrefix(d.mask) : null;
@@ -4536,7 +4624,15 @@ var AgLabSim = (() => {
         };
         const mac = resolveMac ? intToDotted(macToInt(resolveMac(d))) : "0000.0000.0000";
         claimMac(id, mac);
-        const pc = { id, kind: "pc", mac, x: Number(d.x ?? 0), y: Number(d.y ?? 0) };
+        const pc = {
+          id,
+          kind: "pc",
+          mac,
+          x: Number(d.x ?? 0),
+          y: Number(d.y ?? 0),
+          ...off ? { off: true } : {},
+          ...d.interfaces?.["eth0"]?.enabled === false ? { nicDown: true } : {}
+        };
         def.devices.push(pc);
         canonByDevice[id] = { eth0: "eth0" };
         report.portNames[id] = { eth0: "eth0" };
@@ -4585,7 +4681,8 @@ var AgLabSim = (() => {
         x: Number(d.x ?? 0),
         y: Number(d.y ?? 0),
         ...l3 ? { l3: true } : {},
-        ...needsEncapFor(model) ? { needsEncap: true } : {}
+        ...needsEncapFor(model) ? { needsEncap: true } : {},
+        ...off ? { off: true } : {}
       };
       if (resolveMac) {
         const v = macToInt(resolveMac(d));
@@ -4690,7 +4787,6 @@ var AgLabSim = (() => {
       const tag = `links[${index}]`;
       for (const key of Object.keys(l))
         if (!["a", "portA", "b", "portB", "up"].includes(key)) unsupported(tag, key, "Labber'da karşılığı olmayan bağlantı alanı");
-      if (l.up === false) unsupported(tag, "up", "Kopuk/çıkarılmış kablo (up:false) Labber'da modellenmiyor (L2)");
       const end = (dev, port) => {
         if (!ids.has(dev)) {
           reject(tag, `${dev}:${port}`, "Bağlantı bilinmeyen cihaza gidiyor");
@@ -4716,7 +4812,7 @@ var AgLabSim = (() => {
       };
       const a = end(String(l.a), String(l.portA));
       const b = end(String(l.b), String(l.portB));
-      if (a && b) def.links.push({ a, b });
+      if (a && b) def.links.push(l.up === false ? { a, b, up: false } : { a, b });
     });
     const reasons = /* @__PURE__ */ new Set();
     for (const u of report.unsupported) reasons.add(u.reason);
@@ -4736,8 +4832,29 @@ var AgLabSim = (() => {
   function toAglab(rt, original) {
     const out = clone(original);
     const portNames = toLabber(original).report.portNames;
+    const canonOf = (dev, port) => Object.entries(portNames[dev] ?? {}).find(([, o]) => o === port)?.[0];
+    if (rt.hw)
+      for (const l of out.links ?? []) {
+        const ca = canonOf(String(l.a), String(l.portA));
+        const cb = canonOf(String(l.b), String(l.portB));
+        if (!ca || !cb) continue;
+        const cut = rt.hw.cut.has(`${l.a}|${ca}`) || rt.hw.cut.has(`${l.b}|${cb}`);
+        if (l.up !== void 0 || cut) l.up = !cut;
+      }
     for (const d of out.devices) {
       const id = String(d.id);
+      if (rt.hw && (d.type === "PC" || d.type === "Switch") && portNames[id]) {
+        const on = !rt.hw.off.has(id);
+        if (d.enabled !== void 0 || !on) d.enabled = on;
+        if (d.type === "PC") {
+          const nic = !rt.hw.nicDown.has(id);
+          const eth0 = d.interfaces?.["eth0"];
+          if (eth0?.enabled !== void 0 || !nic) {
+            d.interfaces = d.interfaces ?? {};
+            d.interfaces["eth0"] = { ...eth0 ?? {}, enabled: nic };
+          }
+        }
+      }
       if (d.type === "PC" && rt.pcs[id]) {
         const pc = rt.pcs[id];
         const ip = pc.ip ?? "";

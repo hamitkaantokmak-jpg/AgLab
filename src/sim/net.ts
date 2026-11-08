@@ -98,6 +98,8 @@ export function pcPort(d: Derived, pc: string): LPort | null {
 
 export function l3Ifs(d: Derived, dev: string): L3If[] {
   const def = d.topo.devices[dev]!
+  // a powered-off device has no addresses on the network
+  if (d.hw.off.has(dev)) return []
   if (def.kind === 'pc') {
     const c = d.pcs[dev]
     if (!c?.ip) return []
@@ -285,7 +287,8 @@ export function sourceIp(d: Derived, dev: string, dst: string): string | null {
 export interface PingResult {
   ok: boolean
   /** what the sender sees when it fails */
-  reason?: 'noip' | 'noroute' | 'timeout' | 'unreach'
+  /** 'off': the sender itself is powered off (no console, nothing is sent) */
+  reason?: 'noip' | 'noroute' | 'timeout' | 'unreach' | 'off'
   unreachFrom?: string
   ttl?: number
   firstHopArp?: { dev: string; ip: string }
@@ -293,6 +296,7 @@ export interface PingResult {
 }
 
 export function ping(d: Derived, from: string, dst: string): PingResult {
+  if (d.hw.off.has(from)) return { ok: false, reason: 'off' }
   if (!isValidIp(dst)) return { ok: false, reason: 'noroute' }
   const fwd = deliver(d, from, dst)
   const firstHopArp = fwd.hops[0] ? { dev: from, ip: fwd.hops[0].ip } : undefined

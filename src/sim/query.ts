@@ -153,6 +153,23 @@ export class LabQuery {
     return this.d.stp[vlan]?.[dev]?.prio ?? null
   }
 
+  /** Device is powered on. */
+  powered(dev: string): boolean {
+    return !!this.d.topo.devices[dev] && !this.d.hw.off.has(dev)
+  }
+
+  /**
+   * The link on this port is up: cable intact, both ends powered, neither end shut,
+   * err-disabled or (PC) NIC-disabled. For a PC the port is its eth0.
+   */
+  linkUp(dev: string, port = 'eth0'): boolean {
+    if (this.d.topo.devices[dev]?.kind === 'pc') {
+      const at = this.d.topo.pcAttach[dev]
+      return !!at && !!this.d.phys[pk(at.dev, at.port)]?.up
+    }
+    return !!this.phys(dev, port)?.up
+  }
+
   sviUp(dev: string, vlan: number): boolean {
     return !!this.d.svis[dev]?.find((s) => s.vlan === vlan && s.up)
   }

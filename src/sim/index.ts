@@ -21,12 +21,19 @@ export function createLab(def: LabDef): LabRuntime {
   })
 }
 
+/** A powered-off device has no console. */
+function assertPowered(rt: LabRuntime, dev: string) {
+  if (!rt.powered(dev)) throw new Error(`${dev} is powered off`)
+}
+
 export function createSession(rt: LabRuntime, dev: string): Session {
+  assertPowered(rt, dev)
   return rt.topo.devices[dev]!.kind === 'pc' ? new VpcsSession(rt, dev) : new IosSession(rt, dev)
 }
 
 /** Feed IOS commands (starting from privileged mode) into a switch. Returns the transcript. */
 export function runScript(rt: LabRuntime, dev: string, script: string, session?: IosSession): string[] {
+  assertPowered(rt, dev)
   const s = session ?? new IosSession(rt, dev)
   if (s.mode === 'user') s.mode = 'priv'
   const out: string[] = []
