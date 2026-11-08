@@ -12,6 +12,7 @@
       'dhcp': ['dhcp'],
       'vlan': ['vlan'],
       'physical': ['physical'],
+      'ethernet': ['ethernet'],
       'stp': ['stp'],
       'etherchannel': ['etherchannel'],
       'ospf': ['ospf'],
@@ -98,10 +99,10 @@
   }
   function updateOverview() {
     const a = Object.values(state.lessons);
-    $('sfVisited').textContent = a.filter((x) => x.visited).length + '/33';
+    $('sfVisited').textContent = a.filter((x) => x.visited).length + '/' + courses.length;
     $('sfMastered').textContent = a.filter((x) => x.best >= 70).length;
     $('sfProgress').textContent =
-      Math.round((100 * a.filter((x) => x.best >= 70).length) / 33) + '%';
+      Math.round((100 * a.filter((x) => x.best >= 70).length) / courses.length) + '%';
     if (!storageOk) $('sfStorage').textContent = 'Yerel kayıt kullanılamıyor; JSON yedeği indir.';
   }
   function list() {
@@ -473,7 +474,7 @@
     e.target.value = '';
   };
   $('sfReset').onclick = () => {
-    if (!confirm('33 konunun birleşik ilerleme kaydı silinsin mi?')) return;
+    if (!confirm('Tüm konuların birleşik ilerleme kaydı silinsin mi?')) return;
     state = { version: VERSION, lessons: {}, events: [] };
     save();
     list();
