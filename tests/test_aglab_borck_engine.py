@@ -28,7 +28,9 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         f = Path(tmp) / "network.json"
         f.write_text(json.dumps(t), encoding="utf-8")
         page.locator("#ptImportFile").set_input_files(str(f))
-        page.wait_for_timeout(60)
+        # İçe aktarma asenkron (await file.text()); işleyici bitince alanı boşaltır.
+        # Sabit bekleme CI yükünde yetmiyordu (ping topoloji yüklenmeden gidiyordu).
+        page.wait_for_function("document.querySelector('#ptImportFile').value === ''")
 
     def cmd(device, text):
         before = page.locator("#ptTerminal > div").count()
