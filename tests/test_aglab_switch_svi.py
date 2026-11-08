@@ -7,7 +7,7 @@ import tempfile
 import threading
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from aglab_test_support import ROOT
+from aglab_test_support import ROOT, import_topology
 
 module = (ROOT / "simulator/switch-management.js").read_text()
 assert (
@@ -400,8 +400,7 @@ try:
         context.close()
         context, page = open_page()
         ping("d1", "192.168.10.1", True)
-        page.locator("#ptImportFile").set_input_files(str(exported))
-        page.wait_for_timeout(100)
+        import_topology(page, exported)
         ping("d1", "192.168.20.2", True)
         for kind in ("vlan-mismatch", "startup-ports", "bad-gateway"):
             invalid = json.loads(exported.read_text())

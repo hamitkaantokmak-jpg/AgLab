@@ -1,6 +1,6 @@
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, import_topology
 
 B = ROOT
 with sync_playwright() as p:
@@ -9,8 +9,7 @@ with sync_playwright() as p:
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.set_content((B / "AgLab_Final_PKT_Import.html").read_text(), wait_until="domcontentloaded")
-    page.locator("#ptImportFile").set_input_files(str(B / "static-routing-two-routers.aglab.json"))
-    page.wait_for_timeout(120)
+    import_topology(page, B / "static-routing-two-routers.aglab.json")
 
     def command(device, cmd):
         page.evaluate(
@@ -43,8 +42,7 @@ with sync_playwright() as p:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(broken, f)
         broken_path = f.name
-    page.locator("#ptImportFile").set_input_files(broken_path)
-    page.wait_for_timeout(150)
+    import_topology(page, broken_path)
     out = command(r["id"], "show ip interface brief")
     assert "g0/0            192.168.1.1     down     down" in out, out[-900:]
     assert not errors, errors

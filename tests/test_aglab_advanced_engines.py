@@ -3,7 +3,7 @@
 import json, os, tempfile, sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, import_topology
 
 with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     b = launch_chromium(pw)
@@ -111,8 +111,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     page.reload()
     page.click('[data-area="lab"]')
     page.click("#ux14Free")
-    page.locator("#ptImportFile").set_input_files(str(exported))
-    page.wait_for_timeout(80)
+    import_topology(page, exported)
     assert page.evaluate('([s,t])=>aglabEngines.run("aglab-js",s,t)', [pcs[0]["id"], pcs[1]["id"]])[
         "ok"
     ]
@@ -141,8 +140,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         if d["type"] == "PC":
             d["gateway"] = ""
     assert len(convert(operator)["nodes"]) == 4
-    page.locator("#ptImportFile").set_input_files(str(operator_file))
-    page.wait_for_timeout(80)
+    import_topology(page, operator_file)
     assert baseline == page.evaluate("JSON.stringify(aglabEngines.capture())")
     report = {
         "kind": "routing",

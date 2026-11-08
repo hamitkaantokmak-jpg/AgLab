@@ -3,7 +3,7 @@
 import json, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, import_topology
 
 module = (ROOT / "simulator/mac-learning.js").read_text()
 assert (
@@ -82,8 +82,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
 
     def load(data):
         path.write_text(json.dumps(data))
-        page.locator("#ptImportFile").set_input_files(str(path))
-        page.wait_for_timeout(60)
+        import_topology(page, path)
 
     def cmd(device, text):
         before = page.locator("#ptTerminal > div").count()
