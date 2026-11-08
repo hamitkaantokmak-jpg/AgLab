@@ -9,6 +9,7 @@ Python 3.11+, Chromium ve `pip install playwright` gerekir. `python run_pipeline
 ## Test düzeni
 
 - `tests/test_*.py` – Python/Playwright regresyonları; `tests/node/*.cjs` – Node testleri ve kıyaslamalar; `real-lab/test_*.py` – Gerçek Lab testleri.
+- `tests/sim/*.test.ts` – Labber motor testleri (TypeScript, vitest). Pipeline'da tek grup olarak `tests/sim` adıyla koşar (`npm run test:sim`); önce `npm ci --ignore-scripts` gerekir, vitest yoksa grup **FAIL** olur (atlanmaz).
 - `run_pipeline.py` bu dizinleri **keşfeder** (`collect_checks`); yeni bir test için yalnızca dosyayı uygun dizine `test_` önekiyle eklemek yeterlidir. Test listesi elle tutulmaz.
 - Testler ortak `tests/aglab_test_support.py` yardımcısını kullanır (`ROOT`, `HTML`, `artifact_dir()`, `work_dir()`, `decoded_source_xml()`, `launch_chromium()`). Sabit `/mnt/data` veya `/usr/bin/chromium` yolu yoktur; tek bir test doğrudan çalıştırılabilir: `python tests/test_aglab_import.py`, `node tests/node/test_packet_events.cjs`.
 - `AGLAB_CHROMIUM` belirli bir Chromium ikilisini seçer; boşsa Playwright'ın Chromium'u kullanılır. `AGLAB_TEST_ARTIFACT_DIR` kanıt dosyalarının dizinidir (varsayılan `dist/`).

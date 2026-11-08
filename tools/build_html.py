@@ -38,6 +38,7 @@ MODULE = re.compile(r"^[ \t]*//@@module ([A-Z ]+)@@\n", re.M)
 
 # Title -> source files concatenated (in order) into the generated block.
 MODULES: dict[str, list[str]] = {
+    "SIM": ["src/sim.generated.js"],
     "ENGINE": [
         "src/engine/ipv4.js",
         "src/engine/topology.js",

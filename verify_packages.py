@@ -3,6 +3,7 @@
 import hashlib, json, os, re, sys, zipfile
 
 EMBEDDED_SOURCES = {
+    "SIM": "src/sim.generated.js",
     "SIMULATION PLAYBACK": "simulator/simulation-playback.js",
     "SIMULATION UI": "simulator/simulation-ui.js",
     "ETHERNET FORWARDING": "simulator/ethernet-forwarding.js",

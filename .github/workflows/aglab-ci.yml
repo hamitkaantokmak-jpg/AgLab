@@ -35,6 +35,26 @@ jobs:
           npm run build:engine
           git diff --exit-code -- simulator/borck-engine.generated.js
           node tests/node/test_borck_engine.cjs
+      - name: Dağıtılamayan materyal engeli (PDF)
+        run: |
+          # pdfs/ klasörü ve PDF dosyaları depoya hiçbir zaman girmez (Labber kaynak notu).
+          if git ls-files | grep -Ei '(^|/)pdfs/|\.pdf$'; then
+            echo "::error::PDF veya pdfs/ içeriği depoda; kaldırın." && exit 1
+          fi
+      - name: Labber motorunu derle, tekrar üretimi ve türleri doğrula
+        run: |
+          npm run build:sim
+          git diff --exit-code -- src/sim.generated.js
+          # TypeScript 7 hata olsa da 0 ile çıkabilir: çıktıda "error TS" aranır.
+          set +e
+          out="$(npx tsc -p tsconfig.sim.json --noEmit 2>&1)"
+          code=$?
+          set -e
+          echo "$out"
+          if [ $code -ne 0 ] || echo "$out" | grep -q "error TS"; then
+            echo "::error::src/sim tür denetimi başarısız" && exit 1
+          fi
+          npm run test:sim
       - name: Akademi puanlama sözleşmesini doğrula
         run: node tests/node/test_grading_verdict.cjs
       - name: VLAN yalıtım sağlık kapısını doğrula

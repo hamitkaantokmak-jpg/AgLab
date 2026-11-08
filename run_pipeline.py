@@ -131,6 +131,8 @@ ARTIFACTS = [
     "tools/build_html.py",
     "tools/build_lab_engine_map.py",
     "tools/build_borck_engine.cjs",
+    "tools/build_sim.cjs",
+    "tsconfig.sim.json",
     "package.json",
     "package-lock.json",
     "tests/aglab_test_support.py",
@@ -151,6 +153,7 @@ EVIDENCE = [
     "advanced-student-journey.json",
     "unified-rc-performance.json",
     "simulation-mode-results.json",
+    "sim-performance.json",
 ]
 
 
@@ -159,7 +162,7 @@ class Check:
     """Manifestteki tek bir kontrol."""
 
     path: str
-    runner: str  # "python" | "node"
+    runner: str  # "python" | "node" | "vitest"
     cwd: str = "."
     browser: bool = False
 
@@ -175,6 +178,9 @@ def collect_checks(root: pathlib.Path = ROOT) -> list[Check]:
         checks.append(Check(p.relative_to(root).as_posix(), "python", browser=_uses_browser(p)))
     for p in sorted((root / "tests/node").glob("*.cjs")):
         checks.append(Check(p.relative_to(root).as_posix(), "node"))
+    # Labber motor testleri (TypeScript, vitest): tek grup olarak tests/sim/.
+    if (root / "tests/sim").is_dir():
+        checks.append(Check("tests/sim", "vitest"))
     real_lab = sorted(p.relative_to(root).as_posix() for p in (root / "real-lab").glob("test_*.py"))
     for rel in real_lab + REAL_LAB_EXTRA:
         checks.append(
@@ -202,7 +208,16 @@ def find_browser() -> str | None:
 
 
 def run_check(check: Check, env: dict, timeout: int, node: str | None) -> dict:
-    if check.runner == "node":
+    if check.runner == "vitest":
+        vitest = ROOT / "node_modules" / "vitest" / "vitest.mjs"
+        if not node or not vitest.is_file():
+            return {
+                "name": check.path,
+                "status": "FAIL",
+                "error": "vitest bulunamadı; önce çalıştırın: npm ci --ignore-scripts",
+            }
+        command = [node, str(vitest), "run", "--root", check.path]
+    elif check.runner == "node":
         if not node:
             return {"name": check.path, "status": "FAIL", "error": "Node.js bulunamadı."}
         command = [node, "--expose-gc", str(ROOT / check.path)]
@@ -233,7 +248,18 @@ def run_check(check: Check, env: dict, timeout: int, node: str | None) -> dict:
 
 def release_members(checks: list[Check]) -> list[str]:
     """ZIP'e girecek depo dosyaları (tekrarsız, sıralı)."""
-    return list(dict.fromkeys(ARTIFACTS + [c.path for c in checks] + REAL_LAB_FILES))
+    files: list[str] = []
+    for c in checks:
+        target = ROOT / c.path
+        if target.is_dir():
+            files += [
+                p.relative_to(ROOT).as_posix()
+                for p in sorted(target.rglob("*"))
+                if p.is_file() and "node_modules" not in p.parts
+            ]
+        else:
+            files.append(c.path)
+    return list(dict.fromkeys(ARTIFACTS + files + REAL_LAB_FILES))
 
 
 def run() -> int:
