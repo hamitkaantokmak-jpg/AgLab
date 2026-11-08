@@ -146,6 +146,12 @@ window.aglabSharedEngine = {
   validateScenarios: validateSharedScenarios,
   commandBlock: sharedEngineCommandBlock,
   probe: () => ping(sharedScenario.sourceId, sharedScenario.target),
+  // Ad ile iki cihaz arası erişim; başarılı ve başarısız iletim testleri için.
+  reach: (source, target) => {
+    const src = devices.find((d) => d.name === source),
+      dst = devices.find((d) => d.name === target);
+    return !!(src && dst && ping(src.id, dst.ip).ok);
+  },
   routes: (id) => clone(dynamicRoutes(get(id) || devices.find((d) => d.name === id))),
   peers: (kind) =>
     protocolPeers(kind).map((e) => ({ a: e.a.name, b: e.b.name, ok: e.ok, reason: e.reason })),
