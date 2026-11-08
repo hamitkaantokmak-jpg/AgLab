@@ -38,6 +38,15 @@ MODULE = re.compile(r"^[ \t]*//@@module ([A-Z ]+)@@\n", re.M)
 
 # Title -> source files concatenated (in order) into the generated block.
 MODULES: dict[str, list[str]] = {
+    "ENGINE": [
+        "src/engine/ipv4.js",
+        "src/engine/topology.js",
+        "src/engine/routing.js",
+        "src/engine/stp.js",
+        "src/engine/acl.js",
+        "src/engine/nat.js",
+        "src/engine/dhcp.js",
+    ],
     "MAC ADDRESS": ["simulator/mac-address.js"],
     "SWITCH MANAGEMENT": ["simulator/switch-management.js"],
     "MAC LEARNING": ["simulator/mac-learning.js"],

@@ -6854,6 +6854,31 @@ labLoadExperiment();
 
 // AğLab interactive topology and IOS-like educational CLI
 (() => {
+  //@@module ENGINE@@
+  // Saf, DOM'suz motor API'si (src/engine). Simülatör durumu (devices/links) bu IIFE'de
+  // kalır ve motora parametre olarak verilir.
+  const engineTopo = {
+    get devices() {
+      return devices;
+    },
+    get links() {
+      return links;
+    },
+  };
+  const {
+    validIP,
+    ipNum,
+    prefixLen,
+    subnet,
+    inNetwork,
+    routePrefixText,
+    maskFromPrefix,
+    maskFromWildcard,
+  } = AgLabEngineIpv4;
+  const { portState, linkPort } = AgLabEngineTopology;
+  const { activeRouterInterfaces, staticRoutes, routeKey } = AgLabEngineRouting;
+  const { stpPriorityForVlan } = AgLabEngineStp;
+  const { aclEvaluate } = AgLabEngineAcl;
   const $p = (id) => document.getElementById(id);
   const svg = $p('ptCanvas');
   if (!svg) return;
@@ -7548,39 +7573,16 @@ labLoadExperiment();
     );
   }
   function get(id) {
-    return devices.find((d) => d.id === id);
+    return AgLabEngineTopology.getDevice(engineTopo, id);
   }
   function label(d) {
     return d ? d.name : '?';
   }
-  function portState(d, p) {
-    if (!d) return null;
-    return d.interfaces?.[p] || null;
-  }
   function linkUp(l) {
-    let a = get(l.a),
-      b = get(l.b),
-      pa = portState(a, l.portA),
-      pb = portState(b, l.portB);
-    return !!(
-      l.up &&
-      a &&
-      b &&
-      a.enabled &&
-      b.enabled &&
-      (!pa || (pa.enabled !== false && !pa.errdisabled)) &&
-      (!pb || (pb.enabled !== false && !pb.errdisabled))
-    );
+    return AgLabEngineTopology.linkUp(engineTopo, l);
   }
   function freePort(d) {
-    if (!d) return null;
-    const used = new Set(
-      links.flatMap((l) => (l.a === d.id ? [l.portA] : l.b === d.id ? [l.portB] : [])),
-    );
-    return (d.ports || []).find((p) => !used.has(p) && portState(d, p)?.enabled !== false) || null;
-  }
-  function linkPort(l, id) {
-    return l.a === id ? l.portA : l.portB;
+    return AgLabEngineTopology.freePort(engineTopo, d);
   }
   function render() {
     svg.innerHTML = '';
@@ -7905,157 +7907,11 @@ labLoadExperiment();
     el.appendChild(div);
     el.scrollTop = el.scrollHeight;
   }
-  function validIP(s) {
-    return /^\d{1,3}(\.\d{1,3}){3}$/.test(s) && s.split('.').every((n) => +n >= 0 && +n <= 255);
-  }
-  function subnet(ip, mask) {
-    if (!validIP(ip) || prefixLen(mask) < 0) return '';
-    return ip
-      .split('.')
-      .map((n, i) => +n & +mask.split('.')[i])
-      .join('.');
-  }
-  function ipNum(ip) {
-    if (!validIP(ip)) return null;
-    return ip.split('.').reduce((a, n) => a * 256 + Number(n), 0);
-  }
-  function prefixLen(mask) {
-    if (!validIP(mask)) return -1;
-    const bits = mask
-      .split('.')
-      .map((n) => Number(n).toString(2).padStart(8, '0'))
-      .join('');
-    if (!/^1*0*$/.test(bits)) return -1;
-    return (bits.match(/1/g) || []).length;
-  }
-  function inNetwork(ip, network, mask) {
-    const a = ipNum(ip),
-      n = ipNum(network),
-      m = ipNum(mask);
-    return prefixLen(mask) >= 0 && a !== null && n !== null && m !== null && (a & m) === (n & m);
-  }
-  function activeRouterInterfaces(r) {
-    return Object.entries(r?.interfaces || {}).filter(
-      ([name, i]) =>
-        i.ip &&
-        validIP(i.ip) &&
-        prefixLen(i.mask) >= 0 &&
-        i.enabled !== false &&
-        r.enabled !== false &&
-        (!i.parent ||
-          (r.interfaces?.[i.parent]?.enabled !== false &&
-            r.interfaces?.[i.parent]?.enabled !== undefined)) &&
-        (!name.includes('.') || (i.encapsulation === 'dot1q' && Number(i.vlan) > 0)),
-    );
-  }
   function connectedRoutes(r) {
-    return activeRouterInterfaces(r)
-      .filter(([name, i]) => {
-        const physical = i.parent || (name.includes('.') ? name.split('.')[0] : name);
-        return links.some(
-          (l) =>
-            ((l.a === r.id && l.portA === physical) || (l.b === r.id && l.portB === physical)) &&
-            linkUp(l),
-        );
-      })
-      .map(([name, i]) => ({
-        network: subnet(i.ip, i.mask),
-        mask: i.mask,
-        prefix: prefixLen(i.mask),
-        via: null,
-        iface: name,
-        type: 'connected',
-      }))
-      .filter((x) => x.prefix >= 0);
+    return AgLabEngineRouting.connectedRoutes(engineTopo, r);
   }
-  function staticRoutes(r) {
-    const rows = Array.isArray(r?.staticRoutes) ? r.staticRoutes.slice() : [];
-    if (r?.route && !rows.some((x) => x.network === '0.0.0.0' && x.mask === '0.0.0.0'))
-      rows.push({ network: '0.0.0.0', mask: '0.0.0.0', nextHop: r.route, distance: 1 });
-    return rows
-      .filter(
-        (x) =>
-          validIP(x.network) &&
-          validIP(x.mask) &&
-          validIP(x.nextHop) &&
-          prefixLen(x.mask) >= 0 &&
-          Number.isInteger(Number(x.distance ?? 1)) &&
-          Number(x.distance ?? 1) >= 1 &&
-          Number(x.distance ?? 1) <= 255,
-      )
-      .map((x) => ({
-        ...x,
-        distance: Number(x.distance ?? 1),
-        prefix: prefixLen(x.mask),
-        type: 'static',
-      }));
-  }
-  function routeKey(x) {
-    return [x.type, x.network, x.mask, x.nextHop || '', x.distance ?? 1].join('|');
-  }
-  function routeLookup(r, destIp, seen = new Set()) {
-    if (!validIP(destIp)) return { ok: false, why: 'Geçersiz hedef IPv4 adresi: ' + destIp };
-    const connected = connectedRoutes(r),
-      statics = staticRoutes(r);
-    const matches = [...connected, ...statics, ...dynamicRoutes(r)]
-      .filter((x) => inNetwork(destIp, x.network, x.mask) && !seen.has(routeKey(x)))
-      .sort(
-        (a, b) =>
-          b.prefix - a.prefix ||
-          (a.type === 'connected' && b.type !== 'connected'
-            ? -1
-            : b.type === 'connected' && a.type !== 'connected'
-              ? 1
-              : 0) ||
-          (a.distance ?? 1) - (b.distance ?? 1) ||
-          (a.metric ?? 0) - (b.metric ?? 0),
-      );
-    if (!matches.length)
-      return {
-        ok: false,
-        why: r.name + ' üzerinde ' + destIp + ' için eşleşen ve kullanılabilir rota yok.',
-      };
-    let lastError = '';
-    for (const route of matches) {
-      if (route.type === 'connected')
-        return { ok: true, route: { ...route, resolvedVia: 'connected' } };
-      const key = routeKey(route),
-        nextSeen = new Set(seen);
-      nextSeen.add(key);
-      const direct = connected.find((c) => inNetwork(route.nextHop, c.network, c.mask));
-      if (direct) {
-        return {
-          ok: true,
-          route: { ...route, iface: direct.iface, resolvedVia: 'direct', recursiveHops: 0 },
-        };
-      }
-      const recursive = routeLookup(r, route.nextHop, nextSeen);
-      if (recursive.ok && recursive.route.iface) {
-        return {
-          ok: true,
-          route: {
-            ...route,
-            iface: recursive.route.iface,
-            resolvedVia: 'recursive',
-            recursiveHops: 1 + (recursive.route.recursiveHops || 0),
-            resolutionRoute: recursive.route.network + routePrefixText(recursive.route.mask),
-            resolution: recursive.route,
-          },
-        };
-      }
-      lastError =
-        'Statik rota ' +
-        route.network +
-        routePrefixText(route.mask) +
-        ' via ' +
-        route.nextHop +
-        ' çözümlenemedi: ' +
-        recursive.why;
-    }
-    return {
-      ok: false,
-      why: lastError || r.name + ' üzerinde ' + destIp + ' için kullanılabilir rota yok.',
-    };
+  function routeLookup(r, destIp, seen) {
+    return AgLabEngineRouting.routeLookup(engineTopo, r, destIp, { seen, dynamicRoutes });
   }
   function auditTopology() {
     const findings = [];
@@ -8289,125 +8145,14 @@ labLoadExperiment();
     );
   }
 
-  function routePrefixText(mask) {
-    const n = prefixLen(mask);
-    return n < 0 ? '?' : '/' + n;
-  }
-  function maskFromPrefix(prefix) {
-    if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) return '';
-    const m = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
-    return [24, 16, 8, 0].map((shift) => (m >>> shift) & 255).join('.');
-  }
-  function stpPriorityForVlan(d, vlan) {
-    return Number(d?.stpPriorities?.[Number(vlan)] ?? d?.stpPriority ?? 32768);
-  }
-  function stpVlanSwitches(vlan) {
-    return devices.filter(
-      (d) =>
-        d.type === 'Switch' &&
-        d.enabled !== false &&
-        (d.vlans || [1]).map(Number).includes(Number(vlan)),
-    );
-  }
   function stpRootForVlan(vlan, candidateIds = null) {
-    const ids = candidateIds ? new Set(candidateIds) : null;
-    const sw = stpVlanSwitches(vlan).filter((d) => !ids || ids.has(d.id));
-    return (
-      sw.sort(
-        (a, b) =>
-          stpPriorityForVlan(a, vlan) - stpPriorityForVlan(b, vlan) ||
-          String(a.id).localeCompare(String(b.id), undefined, { numeric: true }),
-      )[0] || null
-    );
-  }
-  function stpLinkEligible(l, vlan) {
-    const a = get(l.a),
-      b = get(l.b),
-      pa = portState(a, l.portA),
-      pb = portState(b, l.portB);
-    if (!linkUp(l) || a?.type !== 'Switch' || b?.type !== 'Switch' || !pa || !pb) return false;
-    if (
-      !(a.vlans || [1]).map(Number).includes(Number(vlan)) ||
-      !(b.vlans || [1]).map(Number).includes(Number(vlan))
-    )
-      return false;
-    const carries = (p) =>
-      p.mode === 'trunk'
-        ? (p.allowed || []).map(Number).includes(Number(vlan))
-        : p.mode === 'access' && Number(p.vlan) === Number(vlan);
-    return carries(pa) && carries(pb);
-  }
-  function stpComponentIds(vlan, startId) {
-    const seen = new Set(),
-      queue = [startId];
-    while (queue.length) {
-      const id = queue.shift();
-      if (seen.has(id)) continue;
-      seen.add(id);
-      for (const l of links.filter((x) => (x.a === id || x.b === id) && stpLinkEligible(x, vlan))) {
-        const next = l.a === id ? l.b : l.a;
-        if (!seen.has(next)) queue.push(next);
-      }
-    }
-    return seen;
+    return AgLabEngineStp.stpRootForVlan(engineTopo, vlan, candidateIds);
   }
   function stpTreeInfo(vlan, anchorId = null) {
-    const all = stpVlanSwitches(vlan);
-    if (!all.length)
-      return { root: null, selected: new Set(), parentLink: new Map(), parent: new Map() };
-    const anchor =
-      anchorId && all.some((d) => d.id === anchorId) ? anchorId : stpRootForVlan(vlan)?.id;
-    if (!anchor)
-      return { root: null, selected: new Set(), parentLink: new Map(), parent: new Map() };
-    const component = stpComponentIds(vlan, anchor),
-      root = stpRootForVlan(vlan, component);
-    if (!root) return { root: null, selected: new Set(), parentLink: new Map(), parent: new Map() };
-    const selected = new Set(),
-      seen = new Set([root.id]),
-      queue = [root.id],
-      parentLink = new Map(),
-      parent = new Map();
-    while (queue.length) {
-      const id = queue.shift();
-      const candidates = links
-        .filter((l) => (l.a === id || l.b === id) && stpLinkEligible(l, vlan))
-        .sort((x, y) =>
-          String(x.a + '|' + x.b + '|' + x.portA + '|' + x.portB).localeCompare(
-            String(y.a + '|' + y.b + '|' + y.portA + '|' + y.portB),
-          ),
-        );
-      for (const l of candidates) {
-        const next = l.a === id ? l.b : l.a;
-        if (component.has(next) && !seen.has(next)) {
-          seen.add(next);
-          queue.push(next);
-          selected.add(l);
-          parentLink.set(next, l);
-          parent.set(next, id);
-        }
-      }
-    }
-    return { root, selected, parentLink, parent, component };
-  }
-  function stpForwardingTree(vlan) {
-    const selected = new Set(),
-      visited = new Set();
-    for (const sw of stpVlanSwitches(vlan)) {
-      if (visited.has(sw.id)) continue;
-      const info = stpTreeInfo(vlan, sw.id);
-      for (const l of info.selected) selected.add(l);
-      for (const id of info.component || []) visited.add(id);
-    }
-    return selected;
+    return AgLabEngineStp.stpTreeInfo(engineTopo, vlan, anchorId);
   }
   function stpIsBlocked(l, vlan = 10, trees = null) {
-    const a = get(l.a),
-      b = get(l.b);
-    if (a?.type !== 'Switch' || b?.type !== 'Switch') return false;
-    const id = Number(vlan) || 10;
-    if (!trees) return !stpForwardingTree(id).has(l);
-    if (!trees.has(id)) trees.set(id, stpForwardingTree(id));
-    return !trees.get(id).has(l);
+    return AgLabEngineStp.stpIsBlocked(engineTopo, l, vlan, trees);
   }
   function endpointVlan(sourceId, fallback = null) {
     const src = get(sourceId);
@@ -8886,150 +8631,34 @@ labLoadExperiment();
     return !!findPath(a, b);
   }
   function orderedPathNodes(srcId, path) {
-    const nodes = [get(srcId)];
-    let cur = srcId;
-    for (const l of path) {
-      const next = l.a === cur ? l.b : l.a;
-      nodes.push(get(next));
-      cur = next;
-    }
-    return nodes;
-  }
-  function aclRuleMatches(rule, srcIp, dstIp, protocol, port) {
-    if (rule.protocol !== 'ip' && rule.protocol !== protocol) return false;
-    if (rule.srcType === 'host' && rule.src !== srcIp) return false;
-    if (rule.srcType === 'network' && !inNetwork(srcIp, rule.src, maskFromWildcard(rule.wildcard)))
-      return false;
-    if (rule.dstType === 'host' && rule.dst !== dstIp) return false;
-    if (
-      rule.dstType === 'network' &&
-      !inNetwork(dstIp, rule.dst, maskFromWildcard(rule.dstWildcard))
-    )
-      return false;
-    if (rule.port !== undefined && rule.port !== null && Number(rule.port) !== Number(port))
-      return false;
-    return true;
-  }
-  function maskFromWildcard(w) {
-    if (!validIP(w)) return '0.0.0.0';
-    return w
-      .split('.')
-      .map((n) => 255 - Number(n))
-      .join('.');
-  }
-  function aclEvaluate(router, aclId, srcIp, dstIp, protocol, port) {
-    const rules = (router.acls || []).filter((r) => String(r.id) === String(aclId));
-    for (const rule of rules) {
-      if (aclRuleMatches(rule, srcIp, dstIp, protocol, port)) return { action: rule.action, rule };
-    }
-    return { action: 'deny', rule: null };
+    return AgLabEngineTopology.orderedPathNodes(engineTopo, srcId, path);
   }
   function aclPathDecision(path, srcId, dstId, srcIp, dstIp, protocol, port) {
-    const nodes = orderedPathNodes(srcId, path);
-    for (let i = 0; i < nodes.length; i++) {
-      const r = nodes[i];
-      if (r?.type !== 'Router') continue;
-      const inPort = i > 0 ? linkPort(path[i - 1], r.id) : null;
-      const outPort = i < path.length ? linkPort(path[i], r.id) : null;
-      for (const [iface, direction] of [
-        [inPort, 'in'],
-        [outPort, 'out'],
-      ]) {
-        if (!iface) continue;
-        const intf = r.interfaces?.[iface];
-        const aclId = direction === 'in' ? intf?.aclIn : intf?.aclOut;
-        if (!aclId) continue;
-        const decision = aclEvaluate(r, aclId, srcIp, dstIp, protocol, port);
-        if (decision.action !== 'permit')
-          return {
-            ok: false,
-            why:
-              'ACL ' +
-              aclId +
-              ' ' +
-              direction +
-              ' yönünde ' +
-              r.name +
-              ' ' +
-              iface +
-              ' arayüzünde ' +
-              protocol.toUpperCase() +
-              (port ? ' / ' + port : '') +
-              ' trafiğini engelliyor' +
-              (decision.rule
-                ? ' (eşleşen ' + decision.rule.action + ' kuralı).'
-                : '; eşleşen izin kuralı yok, varsayılan deny.'),
-          };
-      }
-    }
-    return { ok: true };
+    return AgLabEngineAcl.aclPathDecision(
+      engineTopo,
+      path,
+      srcId,
+      dstId,
+      srcIp,
+      dstIp,
+      protocol,
+      port,
+    );
   }
+  // Denetim motorda saf; çeviri kaydı burada açıkça yazılır.
   function natPathCheck(path, srcId, dstId, srcIp, dstIp, protocol) {
-    const nodes = orderedPathNodes(srcId, path);
-    for (let i = 0; i < nodes.length; i++) {
-      const r = nodes[i];
-      if (r?.type !== 'Router' || r.enabled === false) continue;
-      const inPort = i > 0 ? linkPort(path[i - 1], r.id) : null;
-      const outPort = i < path.length ? linkPort(path[i], r.id) : null;
-      const ingress = inPort ? r.interfaces?.[inPort] : null,
-        egress = outPort ? r.interfaces?.[outPort] : null;
-      if (ingress?.natRole === 'inside' && egress?.natRole === 'outside') {
-        const n = r.natOverload;
-        if (!n)
-          return {
-            ok: false,
-            why:
-              r.name + ' üzerinde inside → outside akışı var ancak NAT overload yapılandırılmamış.',
-          };
-        if (ingress.enabled === false)
-          return { ok: false, why: r.name + ' NAT inside arayüzü ' + inPort + ' kapalı.' };
-        if (egress.enabled === false)
-          return { ok: false, why: r.name + ' NAT outside arayüzü ' + outPort + ' kapalı.' };
-        if (n.outsideInterface !== outPort)
-          return {
-            ok: false,
-            why:
-              'NAT overload yanlış outside arayüzünü (' +
-              n.outsideInterface +
-              ') referanslıyor; bu akış ' +
-              outPort +
-              ' arayüzünden çıkıyor.',
-          };
-        const configuredOutside = r.interfaces?.[n.outsideInterface];
-        if (
-          !configuredOutside ||
-          configuredOutside.natRole !== 'outside' ||
-          !configuredOutside.ip ||
-          configuredOutside.enabled === false
-        )
-          return {
-            ok: false,
-            why:
-              'NAT outside arayüzü ' +
-              n.outsideInterface +
-              ' outside olarak işaretli, etkin ve IP adresli olmalı.',
-          };
-        const acl = aclEvaluate(r, n.aclId, srcIp, dstIp, protocol, protocol === 'tcp' ? 80 : null);
-        if (acl.action !== 'permit')
-          return {
-            ok: false,
-            why: 'NAT ACL ' + n.aclId + ' iç kaynak ' + srcIp + ' adresine izin vermiyor.',
-          };
-        const outsideIp = configuredOutside.ip;
-        r.natTranslations = Array.isArray(r.natTranslations) ? r.natTranslations : [];
-        const key = [srcIp, dstIp, protocol].join('|');
-        if (!r.natTranslations.some((x) => x.key === key))
-          r.natTranslations.push({
-            key,
-            protocol,
-            insideLocal: srcIp,
-            insideGlobal: outsideIp,
-            outsideLocal: dstIp,
-          });
-        return { ok: true, translated: true, router: r.name };
-      }
-    }
-    return { ok: true, translated: false };
+    const result = AgLabEngineNat.natPathCheck(
+      engineTopo,
+      path,
+      srcId,
+      dstId,
+      srcIp,
+      dstIp,
+      protocol,
+    );
+    if (!result.translated) return result;
+    AgLabEngineNat.recordNatTranslation(result.natRouter, result.entry);
+    return { ok: true, translated: true, router: result.router };
   }
   function directNextHopNeighborExists(router, route) {
     if (!router || router.type !== 'Router' || !route?.nextHop || !route?.iface) return false;
@@ -10507,23 +10136,14 @@ labLoadExperiment();
             'DHCP Discover gönderildi; DHCP sunucusuna fiziksel yol bulunamadı.',
             'outerr',
           );
-        const nodes = orderedPathNodes(d.id, pathToServer.path);
-        let relay = pathToServer.relay || null;
-        for (let i = 0; !relay && i < nodes.length; i++) {
-          const r = nodes[i];
-          if (r?.type !== 'Router') continue;
-          const inPort = i > 0 ? linkPort(pathToServer.path[i - 1], r.id) : null;
-          const ingress = inPort ? r.interfaces?.[inPort] : null;
-          if (
-            ingress?.helperAddress === pathToServer.server.ip &&
-            ingress.ip &&
-            ingress.enabled !== false &&
-            r.enabled !== false
-          ) {
-            relay = { router: r, iface: ingress };
-            break;
-          }
-        }
+        const relay =
+          pathToServer.relay ||
+          AgLabEngineDhcp.findRelayOnPath(
+            engineTopo,
+            d.id,
+            pathToServer.path,
+            pathToServer.server.ip,
+          );
         if (!relay)
           return out(
             'DHCP Discover gönderildi; farklı ağdaki sunucuya ulaşacak ip helper-address yapılandırması bulunamadı.',
@@ -10537,44 +10157,23 @@ labLoadExperiment();
         leaseMask = relay.iface.mask;
         leaseGateway = relay.iface.ip;
       }
-      const prefix = prefixLen(leaseMask),
-        networkInt = ipNum(leaseNetwork);
-      if (prefix < 0 || prefix >= 31 || networkInt === null)
+      const lease = AgLabEngineDhcp.allocateLease(engineTopo, d, {
+        network: leaseNetwork,
+        mask: leaseMask,
+        gateway: leaseGateway,
+        serverIp: srv.ip,
+      });
+      if (!lease.ok && lease.reason === 'invalid-subnet')
         return out(
           'DHCP başarısız: sunucu veya relay geçerli bir IPv4 alt ağı sağlamadı.',
           'outerr',
         );
-      const broadcastInt = networkInt + Math.pow(2, 32 - prefix) - 1;
-      const occupied = new Set(
-        devices
-          .filter((x) => x !== d)
-          .flatMap((x) => [x.ip, ...Object.values(x.interfaces || {}).map((i) => i.ip)])
-          .filter(Boolean),
-      );
-      const reserved = new Set([leaseGateway, srv.ip].filter(Boolean));
-      let leaseIp = '';
-      const startOffset = Math.min(100, Math.max(1, broadcastInt - networkInt - 1));
-      for (const offset of [...Array(4096)]
-        .map((_, i) => startOffset + i)
-        .concat([...Array(Math.max(0, startOffset - 1))].map((_, i) => i + 1))) {
-        const candidateInt = networkInt + offset;
-        if (candidateInt >= broadcastInt) continue;
-        const candidate = [
-          (candidateInt >>> 24) & 255,
-          (candidateInt >>> 16) & 255,
-          (candidateInt >>> 8) & 255,
-          candidateInt & 255,
-        ].join('.');
-        if (!occupied.has(candidate) && !reserved.has(candidate)) {
-          leaseIp = candidate;
-          break;
-        }
-      }
-      if (!leaseIp)
+      if (!lease.ok)
         return out(
           'DHCP başarısız: simülatörün kontrol ettiği kullanılabilir adres aralığında boş IP bulunamadı.',
           'outerr',
         );
+      const leaseIp = lease.ip;
       d.ip = leaseIp;
       d.mask = leaseMask;
       d.gateway = leaseGateway;
