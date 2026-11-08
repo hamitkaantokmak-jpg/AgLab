@@ -259,11 +259,11 @@ aşamasının gereksinimine göre):
 
 | Sıra | Eksik | Kapsam | Kabul testi |
 |---|---|---|---|
-| 10 | `show mac address-table address <mac>` | `cli/ios.ts` deseni, `show.ts` çıktısı, `help.ts` | MAC tablosunda olan/olmayan adres; IOS biçiminde çıktı |
-| 11 | PC'de `show arp` | `cli/vpcs.ts` | Ping öncesi boş, ping sonrası dolu; başka alt ağdaki hedef için ağ geçidinin MAC'i |
-| 12 | Aynı IP'yi kullanan iki cihaz | Türetme adımı: çakışan adreslerin tespiti; `%IP-4-DUPADDR` syslog'u (`runtime.ts` `diffLogs`); ping'in hangi cihazın yanıtladığını belirtmesi | Çakışma varken syslog üretilir ve yanıtlayan cihaz belirlidir (deterministik); çakışma kalkınca syslog kesilir |
-| 13 | Topoloji düzenlemede kablonun başka porta taşınması | Köprü + runtime: bağlantı uç noktası değişince yeniden türetme; eski portun MAC/ARP girişlerinin temizlenmesi | Taşımadan önce/sonra ping ve MAC tablosu; eski porttaki giriş kalmaz |
-| 14 | `LabQuery` eklemeleri: `macPort`, `macVlan`, `macTable`, `ipUnique`, `ping().replier` | `query.ts`; L5'teki `query.*` beyaz listesine eklenir | Her sorgu için başarılı ve başarısız durum |
+| 10 | `show mac address-table address <mac>` — **tamamlandı (L2-C)** | `cli/ios.ts` deseni, `show.ts` çıktısı, `help.ts` | MAC tablosunda olan/olmayan adres; IOS biçiminde çıktı |
+| 11 | PC'de `show arp` — **tamamlandı (L2-C)** | `cli/vpcs.ts` | Ping öncesi boş, ping sonrası dolu; başka alt ağdaki hedef için ağ geçidinin MAC'i |
+| 12 | Aynı IP'yi kullanan iki cihaz — **tamamlandı (L2-C)** | Türetme adımı: çakışan adreslerin tespiti; `%IP-4-DUPADDR` syslog'u (`runtime.ts` `diffLogs`); ping'in hangi cihazın yanıtladığını belirtmesi | Çakışma varken syslog üretilir ve yanıtlayan cihaz belirlidir (deterministik); çakışma kalkınca syslog kesilir |
+| 13 | Topoloji düzenlemede kablonun başka porta taşınması — **tamamlandı (L2-C)** | Köprü + runtime: bağlantı uç noktası değişince yeniden türetme; eski portun MAC/ARP girişlerinin temizlenmesi | Taşımadan önce/sonra ping ve MAC tablosu; eski porttaki giriş kalmaz |
+| 14 | `LabQuery` eklemeleri: `macPort`, `macVlan`, `macTable`, `ipUnique`, `ping().replier` — **tamamlandı (L2-C)** | `query.ts`; L5'teki `query.*` beyaz listesine eklenir | Her sorgu için başarılı ve başarısız durum |
 
 Labber'ın AğLab'dan **güçlü** olduğu alanlar olduğu gibi alınır: DTP, EtherChannel
 (LACP/PAgP), PVST+/Rapid-PVST, PortFast, BPDU Guard, err-disable kurtarma, OSPF

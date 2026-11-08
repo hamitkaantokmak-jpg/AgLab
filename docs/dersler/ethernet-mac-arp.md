@@ -220,10 +220,10 @@ Kaynak: Layer8 Bölüm 1.2.5 (ARP) ve Bölüm 2 (Ethernet ve Switching). Bölüm
 - [x] `show mac address-table` gerçek IOS biçiminde, CPU/STATIC satırlarıyla
 - [x] `show ip arp` gerçek biçimde, kendi adresi için Age `-`
 - [x] `clear mac address-table dynamic` (komut listesinde var)
-- [ ] `show mac address-table address <mac>`: Labber'da `Invalid input` (lab adım 7, S4)
-- [ ] PC'de `show arp` (VPCS'teki gibi): Labber'da yok (lab adım 2, S3)
-- [ ] `show ip arp`'ta yanıtsız hedef için `Incomplete` satırı: doğrulanacak
-- [ ] Aynı IP'yi kullanan iki cihazın modellenmesi ve `%IP-4-DUPADDR` syslog'u (S3)
-- [ ] Kablonun başka porta taşınması: Labber topolojisi sabit, AğLab'ın düzenleyicisi destekliyor (lab adım 6, S4)
-- [ ] Yeni `LabQuery` yardımcıları: `macPort`, `macVlan`, `macTable`, `ipUnique`, `ping().replier`
+- [x] `show mac address-table address <mac>` (lab adım 7, S4) — L2-C
+- [x] PC'de `show arp` (VPCS'teki gibi; lab adım 2, S3) — L2-C
+- [x] `show ip arp`'ta yanıtsız hedef için `Incomplete` satırı — L2-C
+- [x] Aynı IP'yi kullanan iki cihazın modellenmesi ve `%IP-4-DUPADDR` syslog'u (S3) — L2-C; yanıtlayan: yayın alanında lab tanım sırasındaki ilk cihaz
+- [x] Kablonun başka porta taşınması (lab adım 6, S4) — L2-C `LabRuntime.moveCable`; ürün arayüzüne bağlanması L2-D
+- [x] Yeni `LabQuery` yardımcıları: `macPort`, `macVlan`, `macTable`, `ipUnique`, `ping().replier` (+ `duplicates`) — L2-C
 - [ ] L2 döngüsü ve MAC flap: modellenmiyor; derste okuma olarak kalır

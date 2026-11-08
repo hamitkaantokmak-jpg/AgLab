@@ -1,10 +1,10 @@
 // IOS-like CLI session for one switch.
 
 import { defaultSvi, defaultSwitchConfig, defaultVlanName, pickL2, RESERVED_VLANS } from '../config'
-import { deliver, l3Ifs, ping } from '../net'
+import { arpMac, deliver, l3Ifs, ping } from '../net'
 import type { LabRuntime } from '../runtime'
 import type { ChannelMode, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, SwitchConfig, SwitchDef } from '../types'
-import { canonIf, clone, ifNum, ipToInt, maskToPrefix, networkOf, parseVlanList, prefixMaskInt, shortIf } from '../util'
+import { canonIf, clone, ifNum, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
 
@@ -55,6 +55,7 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show spanning-tree vlan <1-4094:VLAN Switch Spanning Trees>', run: (x, a) => show.showSpanningTree(x.rt, x.dev, Number(a[3])) },
     { p: 'show etherchannel summary', run: (x) => show.showEtherchannelSummary(x.rt, x.dev) },
     { p: 'show mac address-table', run: (x) => show.showMac(x.rt, x.dev) },
+    { p: 'show mac address-table address <H.H.H:48 bit mac address>', run: (x, a) => show.showMac(x.rt, x.dev, normalizeMac(a[4]!)!) },
     { p: 'show cdp neighbors', run: (x) => show.showCdp(x.rt, x.dev) },
     { p: 'show history', run: (x) => x.history.slice(-20).map((h) => '  ' + h) },
   ]
@@ -114,6 +115,7 @@ const privPatterns: P[] = [
     p: 'clear arp-cache',
     run: (x) => {
       for (const k of [...x.rt.arp]) if (k.startsWith(x.dev + '>')) x.rt.arp.delete(k)
+      for (const k of [...x.rt.arpIncomplete]) if (k.startsWith(x.dev + '>')) x.rt.arpIncomplete.delete(k)
     },
   },
   ...showPatterns(true),
@@ -983,6 +985,7 @@ export class IosSession {
     this.mode = 'user'
     this.ifs = []
     for (const k of [...this.rt.arp]) if (k.startsWith(this.dev + '>')) this.rt.arp.delete(k)
+    for (const k of [...this.rt.arpIncomplete]) if (k.startsWith(this.dev + '>')) this.rt.arpIncomplete.delete(k)
     return [
       '',
       'System Bootstrap, Version 15.2(7)E, RELEASE SOFTWARE (simulated)',
@@ -1007,10 +1010,15 @@ export class IosSession {
       const key = `${this.dev}>${r.firstHopArp?.ip ?? ip}`
       const cold = !this.rt.arp.has(key)
       this.rt.arp.add(key)
+      this.rt.arpIncomplete.delete(key)
       marks = cold ? '.!!!!' : '!!!!!'
       ok = cold ? 4 : 5
     } else {
-      if (r.firstHopArp) this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`)
+      if (r.firstHopArp) {
+        this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`)
+        this.rt.arpIncomplete.delete(`${this.dev}>${r.firstHopArp.ip}`)
+      }
+      if (r.arpIncomplete) this.rt.arpIncomplete.add(`${this.dev}>${r.arpIncomplete.ip}`)
       marks = r.reason === 'unreach' ? 'U.U.U' : '.....'
     }
     this.rt.emit()
@@ -1075,9 +1083,19 @@ export class IosSession {
     for (const k of this.rt.arp) {
       if (!k.startsWith(this.dev + '>')) continue
       const ip = k.split('>')[1]!
+      // the address that answers ARP now (duplicate address: the ARP winner)
+      const now = arpMac(d, this.dev, ip)
+      if (now) {
+        out.push(`Internet  ${ip.padEnd(17)}0          ${now.mac}  ARPA   ${now.via}`)
+        continue
+      }
       const owner = d.topo.lab.devices.flatMap((x) => l3Ifs(d, x.id)).find((x) => x.ip === ip)
       const via = l3Ifs(d, this.dev).find((i) => owner && i.node && networkOf(i.ip, i.prefix) === networkOf(ip, i.prefix))
       if (owner && via) out.push(`Internet  ${ip.padEnd(17)}0          ${owner.mac}  ARPA   ${via.name}`)
+    }
+    for (const k of this.rt.arpIncomplete) {
+      if (!k.startsWith(this.dev + '>') || this.rt.arp.has(k)) continue
+      out.push(`Internet  ${k.split('>')[1]!.padEnd(17)}0          Incomplete      ARPA`)
     }
     return out
   }
