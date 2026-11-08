@@ -7,6 +7,7 @@ from aglab_test_support import (
     TESTS_DIR,
     artifact_dir,
     decoded_source_xml,
+    import_topology,
     launch_chromium,
     work_dir,
 )
@@ -105,8 +106,7 @@ with sync_playwright() as p:
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.set_content(html.read_text(), wait_until="domcontentloaded")
-    page.locator("#ptImportFile").set_input_files(str(jsonpath))
-    page.wait_for_timeout(250)
+    import_topology(page, jsonpath)
     terminal = page.locator("#ptTerminal").inner_text()
     assert "8 cihaz, 7 bağlantı" in terminal, terminal
     assert "KAYNAK KARŞILAŞTIRMASI: 1 cihaz içe aktarılamadı." in terminal, terminal

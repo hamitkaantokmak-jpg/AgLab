@@ -3,7 +3,7 @@
 import base64, json, tempfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, import_topology
 from convert_pkt_to_aglab import convert
 from playwright.sync_api import sync_playwright
 
@@ -87,15 +87,13 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         ]:
             obj = topology(vlan, native, tagged, allowed, enabled)
             path.write_text(json.dumps(obj))
-            page.locator("#ptImportFile").set_input_files(str(path))
-            page.wait_for_timeout(50)
+            import_topology(page, path)
             ping("d3", "192.168.50.1", expected)
             ping("d2", "192.168.50.2", expected)
             count += 1
     # Actual CLI change must recover and then fail again; no topology regeneration.
     path.write_text(json.dumps(topology(10, 1)))
-    page.locator("#ptImportFile").set_input_files(str(path))
-    page.wait_for_timeout(50)
+    import_topology(page, path)
     for native, expected in [(10, True), (1, False), (10, True)]:
         for text in [
             "enable",

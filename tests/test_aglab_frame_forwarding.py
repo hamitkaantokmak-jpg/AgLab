@@ -3,7 +3,7 @@
 import json, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, import_topology
 
 module = (ROOT / "simulator/ethernet-forwarding.js").read_text()
 assert (
@@ -86,8 +86,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     page.goto((ROOT / "AgLab_Final_PKT_Import.html").as_uri())
     path = Path(tmp) / "frames.json"
     path.write_text(json.dumps(obj))
-    page.locator("#ptImportFile").set_input_files(str(path))
-    page.wait_for_timeout(60)
+    import_topology(page, path)
 
     def cmd(device, text):
         before = page.locator("#ptTerminal > div").count()
@@ -231,8 +230,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     mixed = json.loads(json.dumps(obj))
     mixed["devices"][1]["interfaces"]["gi0/1"]["mode"] = "access"
     path.write_text(json.dumps(mixed))
-    page.locator("#ptImportFile").set_input_files(str(path))
-    page.wait_for_timeout(60)
+    import_topology(page, path)
     cmd("d3", "test ethernet broadcast")
     events = cmd("d3", "show ethernet events")
     assert "receive d4" not in events, events
@@ -251,8 +249,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     obj["links"] += [link("d1", "gi0/2", "d7", "gi0/1"), link("d2", "gi0/2", "d7", "gi0/2")]
     obj["nextId"] = 8
     path.write_text(json.dumps(obj))
-    page.locator("#ptImportFile").set_input_files(str(path))
-    page.wait_for_timeout(60)
+    import_topology(page, path)
     assert "Henüz" in cmd("d3", "show ethernet events")
     cmd("d3", "test ethernet broadcast")
     events = cmd("d3", "show ethernet events")
@@ -294,8 +291,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     obj["links"] += [link("d7", "fa0/1", "d8", "g0/0"), link("d8", "g0/1", "d9", "eth0")]
     obj["nextId"] = 10
     path.write_text(json.dumps(obj))
-    page.locator("#ptImportFile").set_input_files(str(path))
-    page.wait_for_timeout(60)
+    import_topology(page, path)
     cmd("d3", "test ethernet broadcast")
     events = cmd("d3", "show ethernet events")
     assert "receive d8" in events and "receive d9" not in events, events

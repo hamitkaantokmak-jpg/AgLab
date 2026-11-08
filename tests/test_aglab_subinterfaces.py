@@ -1,7 +1,7 @@
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 import json, tempfile
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, import_topology
 
 B = ROOT
 topo = json.loads((B / "static-routing-two-routers.aglab.json").read_text())
@@ -23,8 +23,7 @@ with sync_playwright() as p:
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.set_content((B / "AgLab_Final_PKT_Import.html").read_text(), wait_until="domcontentloaded")
-    page.locator("#ptImportFile").set_input_files(path)
-    page.wait_for_timeout(250)
+    import_topology(page, path)
 
     def cmd(x):
         page.evaluate(

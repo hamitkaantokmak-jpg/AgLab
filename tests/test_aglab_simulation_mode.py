@@ -3,7 +3,7 @@
 import ast, copy, json, math, os, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from aglab_test_support import ROOT, TESTS_DIR, launch_chromium
+from aglab_test_support import ROOT, TESTS_DIR, launch_chromium, import_topology
 
 OUT = Path(os.environ.get("AGLAB_TEST_ARTIFACT_DIR", ROOT / "dist"))
 OUT.mkdir(exist_ok=True, parents=True)
@@ -434,8 +434,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     assert page.evaluate('localStorage.getItem("aglab-academy-progress-v1")') == persisted
     assert page.evaluate("academyEngine.snapshot()") == snapshot
     assert not state()["active"] and not state()["total"]
-    page.locator("#ptImportFile").set_input_files(str(savedfile))
-    page.wait_for_timeout(80)
+    import_topology(page, savedfile)
     assert page.evaluate("academyEngine.snapshot()") == snapshot
     report["academy"] = grades
     report["scenarios"].append(

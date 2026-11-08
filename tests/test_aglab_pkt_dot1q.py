@@ -5,7 +5,7 @@ import json
 import tempfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, import_topology
 from convert_pkt_to_aglab import convert
 from playwright.sync_api import sync_playwright
 
@@ -113,8 +113,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     page.set_content((B / "AgLab_Final_PKT_Import.html").read_text(), wait_until="domcontentloaded")
     path = Path(tmp) / "dot1q.json"
     path.write_text(json.dumps(topology))
-    page.locator("#ptImportFile").set_input_files(str(path))
-    page.wait_for_timeout(150)
+    import_topology(page, path)
 
     def command(device_id, text):
         page.evaluate(
@@ -175,8 +174,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     assert saved_router["interfaces"]["g0/0.5000"]["vlan"] == 30
     assert saved_router["interfaces"]["g0/0.5000"]["parent"] == "g0/0"
     assert "g0/0.5000" not in saved_router["ports"]
-    page.locator("#ptImportFile").set_input_files(str(exported))
-    page.wait_for_timeout(150)
+    import_topology(page, exported)
     ping(True)  # invalid commands did not replace the imported VLAN 20 binding
     for text in ["enable", "configure terminal", "interface g0/0.200", "shutdown", "end"]:
         command("d1", text)
@@ -201,8 +199,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     ping(False)
     # Physical parents imported outside the default g0/0 inventory work in CLI too.
     path.write_text(json.dumps(parent_topology))
-    page.locator("#ptImportFile").set_input_files(str(path))
-    page.wait_for_timeout(150)
+    import_topology(page, path)
     for text in [
         "enable",
         "configure terminal",

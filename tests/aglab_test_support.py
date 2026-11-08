@@ -70,3 +70,20 @@ def launch_chromium(playwright, **kwargs):
     if executable:
         kwargs.setdefault("executable_path", executable)
     return playwright.chromium.launch(**kwargs)
+
+
+# ``src/app/main.js`` içindeki ``#ptImportFile`` işleyicisi asenkrondur
+# (``await file.text()``) ve başarıda da hatada da sonunda ``value = ''`` yapar.
+# ``set_input_files`` alanı eşzamanlı olarak doldurduğu için boş değer, içe
+# aktarmanın bittiğinin kesin işaretidir; sabit bekleme CI yükünde yetmez.
+IMPORT_DONE = "document.querySelector('#ptImportFile').value === ''"
+
+
+def import_topology(page, path) -> None:
+    """Topoloji dosyasını içe aktarır ve işleyicinin bitmesini bekler.
+
+    Yalnızca tamamlanmayı bekler; içe aktarmanın başarılı olduğunu çağıran test
+    ayrıca doğrulamalıdır (hata durumunda da alan boşaltılır).
+    """
+    page.locator("#ptImportFile").set_input_files(str(path))
+    page.wait_for_function(IMPORT_DONE)

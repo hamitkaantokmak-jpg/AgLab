@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, import_topology
 from convert_pkt_to_aglab import convert
 from playwright.sync_api import sync_playwright
 
@@ -91,8 +91,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     page.set_content((B / "AgLab_Final_PKT_Import.html").read_text(), wait_until="domcontentloaded")
     path = Path(tmp) / "default-trunk.json"
     path.write_text(json.dumps(obj))
-    page.locator("#ptImportFile").set_input_files(str(path))
-    page.wait_for_timeout(150)
+    import_topology(page, path)
 
     def command(device, text):
         before = page.locator("#ptTerminal").inner_text()

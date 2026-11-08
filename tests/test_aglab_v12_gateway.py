@@ -1,7 +1,7 @@
 import json, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, import_topology
 
 B = ROOT
 original = json.loads((B / "static-routing-two-routers.aglab.json").read_text())
@@ -18,8 +18,7 @@ with sync_playwright() as p:
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
             json.dump(t, f)
             path = f.name
-        page.locator("#ptImportFile").set_input_files(path)
-        page.wait_for_timeout(130)
+        import_topology(page, path)
         page.evaluate(
             """()=>{document.querySelector('#ptCliDevice').value='d3';document.querySelector('#ptCliInput').value='ping 192.168.2.2';document.querySelector('#ptCliForm').requestSubmit()}"""
         )
