@@ -574,11 +574,16 @@ html[data-theme="light"] input,html[data-theme="light"] select,html[data-theme="
 // ÜRETİLMİŞ DOSYA — elle düzenlemeyin. Kaynak: src/sim (Labber), src/sim-bridge.
 // Yeniden üretmek için: npm run build:sim
 var AgLabSim = (() => {
+  var __create = Object.create;
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
   var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __commonJS = (cb, mod) => function __require() {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  };
   var __export = (target, all) => {
     for (var name in all)
       __defProp(target, name, { get: all[name], enumerable: true });
@@ -591,16 +596,85 @@ var AgLabSim = (() => {
     }
     return to;
   };
+  var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+    // If the importer is in node compatibility mode or this is not an ESM
+    // file that has been converted to a CommonJS file using a Babel-
+    // compatible transform (i.e. "__esModule" has not been set), then set
+    // "default" to the CommonJS "module.exports" for node compatibility.
+    isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+    mod
+  ));
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+
+  // simulator/mac-address.js
+  var require_mac_address = __commonJS({
+    "simulator/mac-address.js"(exports, module) {
+      var AgLabMacAddress2 = (() => {
+        function validate(devices) {
+          const seen = /* @__PURE__ */ new Set();
+          for (const d of devices) {
+            if (d.mac === void 0) continue;
+            if (!["PC", "Server"].includes(d.type) || typeof d.mac !== "string" || !/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(d.mac) || d.mac === "00:00:00:00:00:00" || parseInt(d.mac.slice(0, 2), 16) & 1 || seen.has(d.mac))
+              throw new Error("Geçersiz veya yinelenen fiziksel endpoint MAC adresi: " + d.id);
+            seen.add(d.mac);
+          }
+        }
+        function createResolver() {
+          let topology = null, count = -1, addresses = /* @__PURE__ */ new Map();
+          return (device, devices) => {
+            if (topology !== devices || count !== devices.length) {
+              validate(devices);
+              topology = devices;
+              count = devices.length;
+              addresses = /* @__PURE__ */ new Map();
+              const occupied = new Set(devices.filter((d) => d.mac !== void 0).map((d) => d.mac));
+              const explicitMacs = new Map(
+                devices.filter((d) => d.mac !== void 0).map((d) => [String(d.id), d.mac])
+              );
+              for (const id of devices.map((d) => String(d.id)).sort()) {
+                const explicit = explicitMacs.get(id);
+                if (explicit !== void 0) {
+                  addresses.set(id, explicit);
+                  continue;
+                }
+                const match = /^d([1-9]\d*)$/.exec(id), legacy = match && Number(match[1]) <= 16777215;
+                let n = legacy ? Number(match[1]) : 2166136261;
+                if (!legacy)
+                  for (let i = 0; i < id.length; i++) n = Math.imul(n ^ id.charCodeAt(i), 16777619) >>> 0;
+                const address = () => legacy ? "02:00:00:" + [n >>> 16 & 255, n >>> 8 & 255, n & 255].map((v) => v.toString(16).padStart(2, "0")).join(":") : "02:01:" + [n >>> 24 & 255, n >>> 16 & 255, n >>> 8 & 255, n & 255].map((v) => v.toString(16).padStart(2, "0")).join(":");
+                while (occupied.has(address())) n = n + 1 >>> 0;
+                const mac = address();
+                occupied.add(mac);
+                addresses.set(id, mac);
+              }
+            }
+            const result = addresses.get(String(device.id));
+            if (!result) throw new Error("MAC için cihaz topolojide bulunamadı.");
+            return result;
+          };
+        }
+        return { createResolver, resolve: createResolver(), validate };
+      })();
+      if (typeof module !== "undefined" && module.exports) module.exports = AgLabMacAddress2;
+    }
+  });
 
   // src/sim-bridge/index.ts
   var index_exports = {};
   __export(index_exports, {
+    BridgeError: () => BridgeError,
     LabQuery: () => LabQuery,
+    MODEL_L2: () => MODEL_L2,
+    MODEL_L3: () => MODEL_L3,
+    canonPort: () => canonPort,
     createLab: () => createLab,
+    createRuntime: () => createRuntime,
     createSession: () => createSession,
-    runScript: () => runScript
+    needsEncapFor: () => needsEncapFor,
+    runScript: () => runScript,
+    toAglab: () => toAglab,
+    toLabber: () => toLabber
   });
 
   // src/sim/config.ts
@@ -690,6 +764,18 @@ var AgLabSim = (() => {
   function ifNum(name) {
     const t = ifType(name);
     return t ? name.slice(t.full.length) : name;
+  }
+  function ports(...specs) {
+    const out = [];
+    for (const spec of specs) {
+      const m = /^([A-Za-z-]+)(\d+\/)(\d+)(?:-(\d+))?$/.exec(spec);
+      if (!m) throw new Error("bad port spec " + spec);
+      const full = canonIf(m[1], "");
+      const from = Number(m[3]);
+      const to = m[4] ? Number(m[4]) : from;
+      for (let i = from; i <= to; i++) out.push(full + m[2] + i);
+    }
+    return out;
   }
   function ipToInt(ip) {
     const p = ip.split(".");
@@ -4298,6 +4384,446 @@ var AgLabSim = (() => {
     for (const line of script.split("\n")) {
       out.push(s.prompt() + line);
       out.push(...s.exec(line));
+    }
+    return out;
+  }
+
+  // src/sim-bridge/bridge.ts
+  var import_mac_address = __toESM(require_mac_address());
+  var MODEL_L2 = "WS-C2960-24TT-L";
+  var MODEL_L3 = "WS-C3650-24PS";
+  var TEMPLATES = {
+    [MODEL_L2]: ["Fa0/1-24", "Gi0/1-2"],
+    [MODEL_L3]: ["Gi1/0/1-24", "Gi1/1/1-4"]
+  };
+  var TOP_OPAQUE = /* @__PURE__ */ new Set(["app", "version", "nextId", "selected", "importReport", "sourceArchive"]);
+  var DEVICE_OPAQUE = /* @__PURE__ */ new Set(["id", "name", "type", "x", "y", "w", "h", "mode", "config", "selected"]);
+  var PC_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "ip", "mask", "gateway", "mac", "vlan"]);
+  var SWITCH_FIELDS = /* @__PURE__ */ new Set([
+    "enabled",
+    "ports",
+    "interfaces",
+    "gateway",
+    "vlans",
+    "vlanNames",
+    "stpPriority",
+    "stpPriorities",
+    "ip",
+    "mask"
+  ]);
+  var PHYS_FIELDS = /* @__PURE__ */ new Set(["mode", "vlan", "allowed", "nativeVlan", "enabled"]);
+  var SVI_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "vlan"]);
+  var FEATURE_REASON = {
+    staticRoutes: "Statik rota (router) Labber köprüsünde henüz yok (L4)",
+    route: "Varsayılan rota (router) Labber köprüsünde henüz yok (L4)",
+    acls: "ACL Labber'da yok (L5)",
+    natOverload: "NAT Labber'da yok (L5)",
+    natTranslations: "NAT çeviri tablosu Labber'da yok (L5)",
+    ospf: "AğLab OSPF modeli köprüde eşlenmiyor (L4)",
+    bgp: "BGP Labber'da yok (L5)",
+    services: "Sunucu servisleri (DHCP/DNS/HTTP) Labber'da yok (L5)",
+    startupConfig: "Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)",
+    portSecurity: "Port security Labber'da yok (L5)",
+    errdisabled: "Port security err-disable durumu Labber'da yok (L5)",
+    encapsulation: "Alt arayüz / dot1q Labber'da yok (L5)",
+    parent: "Alt arayüz Labber'da yok (L5)",
+    aclIn: "ACL Labber'da yok (L5)",
+    aclOut: "ACL Labber'da yok (L5)",
+    natRole: "NAT Labber'da yok (L5)",
+    helperAddress: "DHCP relay Labber'da yok (L5)",
+    dhcpLease: "DHCP istemci kirası Labber'da yok (L5)"
+  };
+  var sortNum = (a, b) => a - b;
+  function needsEncapFor(model) {
+    return /3560/.test(model);
+  }
+  function canonPort(name) {
+    const m = /^([A-Za-z-]+)\s*(\d+(?:\/\d+)*)$/.exec(name);
+    if (!m) return null;
+    const full = canonIf(m[1], m[2]);
+    if (!full) return null;
+    if (/^(Port-channel|Vlan|Loopback)/.test(full)) return null;
+    return full;
+  }
+  function macToInt(mac) {
+    return BigInt("0x" + mac.replace(/[:.]/g, ""));
+  }
+  function intToDotted(v) {
+    const hex = v.toString(16).padStart(12, "0");
+    return `${hex.slice(0, 4)}.${hex.slice(4, 8)}.${hex.slice(8, 12)}`;
+  }
+  function vlanId(v) {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 1 && n <= 4094 ? n : null;
+  }
+  function toLabber(input) {
+    const report = { unsupported: [], rejected: [], engineDecision: "labber", reasons: [], portNames: {} };
+    const unsupported = (device, field, reason) => report.unsupported.push({ device, field, reason });
+    const reject = (device, item, reason) => report.rejected.push({ device, item, reason });
+    for (const key of Object.keys(input))
+      if (!TOP_OPAQUE.has(key) && key !== "devices" && key !== "links")
+        unsupported("*", key, "Tanınmayan üst düzey alan");
+    const devices = Array.isArray(input.devices) ? input.devices : [];
+    const links = Array.isArray(input.links) ? input.links : [];
+    let resolveMac = null;
+    try {
+      const resolver = import_mac_address.default.createResolver();
+      resolver(devices[0] ?? {}, devices);
+      resolveMac = (d) => resolver(d, devices);
+    } catch (error) {
+      reject("*", "mac", "MAC adresi doğrulaması başarısız: " + String(error.message ?? error));
+    }
+    const def = {
+      id: "aglab-bridge",
+      title: "",
+      summary: "",
+      level: "Başlangıç",
+      tags: [],
+      brief: [],
+      devices: [],
+      links: [],
+      objectives: [],
+      solution: {},
+      view: { w: 1e3, h: 700 }
+    };
+    const running = {};
+    const pcs = {};
+    const canonByDevice = {};
+    const usedMacs = /* @__PURE__ */ new Map();
+    const ids = /* @__PURE__ */ new Set();
+    const claimMac = (dev, mac) => {
+      const other = usedMacs.get(mac);
+      if (other !== void 0) reject(dev, "mac", `MAC ${mac} ${other} ile çakışıyor`);
+      else usedMacs.set(mac, dev);
+    };
+    for (const d of devices) {
+      const id = String(d.id);
+      if (ids.has(id)) {
+        reject(id, "id", "Yinelenen cihaz kimliği");
+        continue;
+      }
+      ids.add(id);
+      const fields = d.type === "PC" ? PC_FIELDS : d.type === "Switch" ? SWITCH_FIELDS : null;
+      if (!fields) {
+        unsupported(id, "type", `${d.type} cihaz tipi Labber köprüsünde yok` + (d.type === "Router" ? " (L4)" : " (L5)"));
+        continue;
+      }
+      for (const key of Object.keys(d))
+        if (!DEVICE_OPAQUE.has(key) && !fields.has(key))
+          unsupported(id, key, FEATURE_REASON[key] ?? "Labber'da karşılığı olmayan alan");
+      if (d.enabled === false) unsupported(id, "enabled", "Kapalı cihaz (güç) Labber'da modellenmiyor (L2)");
+      if (d.type === "PC") {
+        const ports2 = d.ports ?? ["eth0"];
+        if (ports2.length !== 1 || ports2[0] !== "eth0") reject(id, "ports", "PC yalnızca tek eth0 portuyla modellenir");
+        for (const [name, iface] of Object.entries(d.interfaces ?? {})) {
+          if (name !== "eth0") {
+            reject(id, name, "PC arayüzü yalnızca eth0 olabilir");
+            continue;
+          }
+          for (const key of Object.keys(iface))
+            if (key !== "enabled") unsupported(id, `interfaces.eth0.${key}`, "Labber'da karşılığı olmayan PC arayüz alanı");
+          if (iface.enabled === false) unsupported(id, "interfaces.eth0.enabled", "Kapalı PC NIC'i Labber'da modellenmiyor (L2)");
+        }
+        const ip = d.ip ?? "";
+        const prefix = d.mask ? maskToPrefix(d.mask) : null;
+        if (ip && !isIp(ip)) reject(id, "ip", "Geçersiz IPv4 adresi: " + ip);
+        if (ip && prefix === null) reject(id, "mask", "Geçersiz alt ağ maskesi: " + d.mask);
+        if (d.gateway && !isIp(d.gateway)) reject(id, "gateway", "Geçersiz ağ geçidi: " + d.gateway);
+        pcs[id] = {
+          ip: ip && isIp(ip) && prefix !== null ? ip : null,
+          prefix: prefix ?? 24,
+          gw: d.gateway && isIp(d.gateway) ? d.gateway : null
+        };
+        const mac = resolveMac ? intToDotted(macToInt(resolveMac(d))) : "0000.0000.0000";
+        claimMac(id, mac);
+        const pc = { id, kind: "pc", mac, x: Number(d.x ?? 0), y: Number(d.y ?? 0) };
+        def.devices.push(pc);
+        canonByDevice[id] = { eth0: "eth0" };
+        report.portNames[id] = { eth0: "eth0" };
+        continue;
+      }
+      if (d.ip || d.mask) unsupported(id, "ip", "Cihaz düzeyi switch IP adresi; yönetim adresi SVI üzerinden verilir");
+      const ifaces = d.interfaces ?? {};
+      const svis = Object.entries(ifaces).filter(([n]) => /^vlan\d+$/i.test(n));
+      const l3 = svis.some(([, i]) => !!i.ip);
+      const pktModel = typeof d.config?.packetTracerModel === "string" ? d.config.packetTracerModel : "";
+      const model = pktModel || (l3 ? MODEL_L3 : MODEL_L2);
+      const sourcePorts = d.ports ?? (TEMPLATES[model] ? ports(...TEMPLATES[model]).map((p) => p) : []);
+      const portMap = {};
+      const canonPorts = [];
+      for (const p of sourcePorts) {
+        const c = canonPort(p);
+        if (!c) {
+          reject(id, p, "Eşlenemeyen port adı");
+          continue;
+        }
+        if (portMap[c] !== void 0) {
+          reject(id, p, `Port ${c} iki kez tanımlı (${portMap[c]})`);
+          continue;
+        }
+        portMap[c] = p;
+        canonPorts.push(c);
+      }
+      if (!d.ports) {
+        const used = [
+          ...Object.keys(d.interfaces ?? {}),
+          ...links.flatMap((l) => String(l.a) === id ? [String(l.portA)] : String(l.b) === id ? [String(l.portB)] : [])
+        ];
+        for (const name of used) {
+          const c = canonPort(name);
+          if (c && portMap[c] === c) portMap[c] = name;
+        }
+      }
+      canonByDevice[id] = Object.fromEntries(Object.entries(portMap).map(([c, o]) => [o, c]));
+      report.portNames[id] = portMap;
+      const sw = {
+        id,
+        kind: "switch",
+        model,
+        mac: "0000.0000.0000",
+        ports: canonPorts,
+        x: Number(d.x ?? 0),
+        y: Number(d.y ?? 0),
+        ...l3 ? { l3: true } : {},
+        ...needsEncapFor(model) ? { needsEncap: true } : {}
+      };
+      if (resolveMac) {
+        const v = macToInt(resolveMac(d));
+        sw.mac = intToDotted(0x02n << 40n | (v & 0xffffffffn) << 8n);
+      }
+      claimMac(id, sw.mac);
+      def.devices.push(sw);
+      const cfg = defaultSwitchConfig(sw);
+      cfg.hostname = d.name || id;
+      for (const v of d.vlans ?? [1]) {
+        const n = vlanId(v);
+        if (n === null) {
+          reject(id, `vlans.${v}`, "Geçersiz VLAN kimliği");
+          continue;
+        }
+        cfg.vlans[String(n)] = d.vlanNames?.[String(n)] ?? cfg.vlans[String(n)] ?? defaultVlanName(n);
+      }
+      for (const k of Object.keys(d.vlanNames ?? {}))
+        if (!(d.vlans ?? [1]).map(Number).includes(Number(k))) reject(id, `vlanNames.${k}`, "Veritabanında olmayan VLAN için ad");
+      if (d.gateway) {
+        if (isIp(d.gateway)) cfg.defaultGateway = d.gateway;
+        else reject(id, "gateway", "Geçersiz ağ geçidi: " + d.gateway);
+      }
+      const prio = (v, where) => {
+        const n = Number(v);
+        if (!Number.isInteger(n) || n < 0 || n > 61440 || n % 4096 !== 0) {
+          reject(id, where, "STP önceliği 0-61440 arasında 4096'nın katı olmalı: " + String(v));
+          return null;
+        }
+        return n;
+      };
+      if (d.stpPriority !== void 0) {
+        const g = prio(d.stpPriority, "stpPriority");
+        if (g !== null) {
+          for (const v of Object.keys(cfg.vlans)) if (!RESERVED_VLANS.includes(Number(v)) || v === "1") cfg.stpPriority[v] = g;
+        }
+      }
+      for (const [v, p] of Object.entries(d.stpPriorities ?? {})) {
+        const n = vlanId(v);
+        const value = prio(p, `stpPriorities.${v}`);
+        if (n === null) reject(id, `stpPriorities.${v}`, "Geçersiz VLAN kimliği");
+        else if (value !== null) cfg.stpPriority[String(n)] = value;
+      }
+      for (const [name, iface] of Object.entries(ifaces)) {
+        if (/^vlan\d+$/i.test(name)) {
+          const v = vlanId(name.slice(4));
+          if (v === null) {
+            reject(id, name, "Geçersiz SVI adı");
+            continue;
+          }
+          for (const key of Object.keys(iface))
+            if (!SVI_FIELDS.has(key)) unsupported(id, `interfaces.${name}.${key}`, FEATURE_REASON[key] ?? "Labber'da karşılığı olmayan SVI alanı");
+          const svi = cfg.svis[String(v)] ?? defaultSvi(v);
+          svi.shutdown = iface.enabled === false;
+          if (iface.ip) {
+            const pre = iface.mask ? maskToPrefix(iface.mask) : null;
+            if (!isIp(iface.ip) || pre === null) reject(id, name, "Geçersiz SVI IPv4 adresi/maskesi");
+            else svi.ip = { addr: iface.ip, mask: iface.mask };
+          }
+          cfg.svis[String(v)] = svi;
+          continue;
+        }
+        const c = canonPort(name);
+        if (!c || portMap[c] === void 0) {
+          reject(id, name, c ? "Arayüz cihazın port listesinde yok" : "Eşlenemeyen arayüz adı");
+          continue;
+        }
+        for (const key of Object.keys(iface))
+          if (!PHYS_FIELDS.has(key))
+            unsupported(id, `interfaces.${name}.${key}`, FEATURE_REASON[key] ?? (key === "ip" || key === "mask" ? "Switch fiziksel portunda IP (routed port) köprüde henüz yok (L4)" : "Labber'da karşılığı olmayan arayüz alanı"));
+        const phys = cfg.ifaces[c] ?? defaultPhys();
+        const mode = iface.mode ?? "access";
+        if (mode !== "access" && mode !== "trunk") {
+          reject(id, `${name}.mode`, "Bilinmeyen port modu: " + mode);
+          continue;
+        }
+        phys.mode = mode;
+        phys.shutdown = iface.enabled === false;
+        const access = vlanId(iface.vlan ?? 1);
+        if (access === null) reject(id, `${name}.vlan`, "Geçersiz access VLAN");
+        else phys.accessVlan = access;
+        const native = vlanId(iface.nativeVlan ?? 1);
+        if (native === null) reject(id, `${name}.nativeVlan`, "Geçersiz native VLAN");
+        else phys.nativeVlan = native;
+        const allowed = (iface.allowed ?? []).map(vlanId);
+        if (allowed.some((x) => x === null)) reject(id, `${name}.allowed`, "Geçersiz izinli VLAN listesi");
+        else phys.allowed = [...new Set(allowed)].sort(sortNum);
+        if (mode === "trunk" && sw.needsEncap) phys.encapDot1q = true;
+        cfg.ifaces[c] = phys;
+      }
+      for (const c of canonPorts)
+        if (!Object.keys(ifaces).some((n) => canonPort(n) === c)) {
+          const phys = cfg.ifaces[c] ?? defaultPhys();
+          phys.mode = "access";
+          phys.allowed = [];
+          cfg.ifaces[c] = phys;
+        }
+      running[id] = cfg;
+    }
+    const usedPort = /* @__PURE__ */ new Map();
+    links.forEach((l, index) => {
+      const tag = `links[${index}]`;
+      for (const key of Object.keys(l))
+        if (!["a", "portA", "b", "portB", "up"].includes(key)) unsupported(tag, key, "Labber'da karşılığı olmayan bağlantı alanı");
+      if (l.up === false) unsupported(tag, "up", "Kopuk/çıkarılmış kablo (up:false) Labber'da modellenmiyor (L2)");
+      const end = (dev, port) => {
+        if (!ids.has(dev)) {
+          reject(tag, `${dev}:${port}`, "Bağlantı bilinmeyen cihaza gidiyor");
+          return null;
+        }
+        const map = canonByDevice[dev];
+        if (!map) return null;
+        const c = map[port] ?? (port === "eth0" ? void 0 : (() => {
+          const k = canonPort(port);
+          return k && Object.values(map).includes(k) ? k : void 0;
+        })());
+        if (!c) {
+          reject(tag, `${dev}:${port}`, "Bağlantı portu cihazda yok ya da eşlenemedi");
+          return null;
+        }
+        const key = `${dev}|${c}`;
+        if (usedPort.has(key)) {
+          reject(tag, `${dev}:${port}`, "Port birden çok bağlantıda kullanılıyor");
+          return null;
+        }
+        usedPort.set(key, tag);
+        return [dev, c];
+      };
+      const a = end(String(l.a), String(l.portA));
+      const b = end(String(l.b), String(l.portB));
+      if (a && b) def.links.push({ a, b });
+    });
+    const reasons = /* @__PURE__ */ new Set();
+    for (const u of report.unsupported) reasons.add(u.reason);
+    for (const r of report.rejected) reasons.add("Reddedildi: " + r.reason);
+    report.reasons = [...reasons].sort();
+    report.engineDecision = report.unsupported.length || report.rejected.length ? "legacy" : "labber";
+    return { def, running, pcs, report };
+  }
+  function createRuntime(result) {
+    return new LabRuntime(result.def, (rt) => {
+      for (const [id, cfg] of Object.entries(result.running)) rt.running[id] = clone(cfg);
+      for (const [id, pc] of Object.entries(result.pcs)) rt.pcs[id] = clone(pc);
+    });
+  }
+  var BridgeError = class extends Error {
+  };
+  function toAglab(rt, original) {
+    const out = clone(original);
+    const portNames = toLabber(original).report.portNames;
+    for (const d of out.devices) {
+      const id = String(d.id);
+      if (d.type === "PC" && rt.pcs[id]) {
+        const pc = rt.pcs[id];
+        const ip = pc.ip ?? "";
+        if (d.ip !== void 0 || ip) d.ip = ip;
+        if (pc.ip !== null && (d.mask !== void 0 || pc.ip)) d.mask = prefixToMask(pc.prefix);
+        const gw2 = pc.gw ?? "";
+        if (d.gateway !== void 0 || gw2) d.gateway = gw2;
+        continue;
+      }
+      if (d.type !== "Switch" || !rt.running[id]) continue;
+      const cfg = rt.running[id];
+      const fail = (what) => {
+        throw new BridgeError(`${id}: ${what} AğLab modelinde ifade edilemiyor`);
+      };
+      if (cfg.hostname !== (d.name || id)) d.name = cfg.hostname;
+      if (cfg.pos && Object.keys(cfg.pos).length) fail("Port-channel");
+      if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail("Loopback");
+      if (cfg.ospf) fail("OSPF");
+      if (cfg.routes.length) fail("statik rota");
+      if (cfg.ipRouting) fail("ip routing");
+      if (cfg.stpMode !== "pvst") fail("spanning-tree mode " + cfg.stpMode);
+      if (cfg.bpduguardDefault) fail("spanning-tree portfast bpduguard default");
+      if (cfg.errRecoveryBpdu || cfg.errRecoveryInterval !== void 0) fail("errdisable recovery");
+      const gw = cfg.defaultGateway ?? "";
+      if (d.gateway !== void 0 || gw) d.gateway = gw;
+      const hadOne = (original.devices.find((x) => String(x.id) === id)?.vlans ?? [1]).map(Number).includes(1);
+      const vlans = Object.keys(cfg.vlans).map(Number).filter((v) => !RESERVED_VLANS.slice(1).includes(v) && (v !== 1 || hadOne)).sort(sortNum);
+      if (d.vlans !== void 0 || vlans.join() !== "1") d.vlans = vlans;
+      const names = {};
+      for (const v of vlans) {
+        const n = cfg.vlans[String(v)];
+        const keep = d.vlanNames !== void 0 && Object.prototype.hasOwnProperty.call(d.vlanNames, String(v));
+        if (keep || n !== defaultVlanName(v) && !(v === 1 && n === "default")) names[String(v)] = n;
+      }
+      if (d.vlanNames !== void 0 || Object.keys(names).length) d.vlanNames = names;
+      const prios = {};
+      for (const [v, p] of Object.entries(cfg.stpPriority)) {
+        const explicit = d.stpPriorities !== void 0 && Object.prototype.hasOwnProperty.call(d.stpPriorities, v);
+        if (explicit || d.stpPriority === void 0 || p !== d.stpPriority) prios[v] = p;
+      }
+      if (d.stpPriorities !== void 0 || Object.keys(prios).length) d.stpPriorities = prios;
+      const back = portNames[id] ?? {};
+      d.interfaces = d.interfaces ?? {};
+      for (const [canon, phys] of Object.entries(cfg.ifaces)) {
+        const name = back[canon];
+        if (!name) continue;
+        if (phys.mode !== "access" && phys.mode !== "trunk") fail(`${canon} modu ${phys.mode}`);
+        if (phys.channel) fail(`${canon} channel-group`);
+        if (phys.routed) fail(`${canon} routed port`);
+        if (phys.allowed === null) fail(`${canon} "allowed vlan all"`);
+        if (phys.portfast) fail(`${canon} portfast`);
+        if (phys.nonegotiate) fail(`${canon} nonegotiate`);
+        if (phys.description) fail(`${canon} description`);
+        if (phys.bpduguard !== void 0) fail(`${canon} bpduguard`);
+        if (phys.l3 || phys.ip) fail(`${canon} L3 ayarı`);
+        const prev = d.interfaces[name];
+        const def = defaultPhys();
+        const iface = prev ? { ...prev } : {};
+        const put = (key, value, dflt) => {
+          if (prev && key in prev) iface[key] = value;
+          else if (JSON.stringify(value) !== JSON.stringify(dflt)) iface[key] = value;
+        };
+        put("mode", phys.mode, "access");
+        put("vlan", phys.accessVlan, def.accessVlan);
+        put("allowed", phys.allowed, []);
+        put("nativeVlan", phys.nativeVlan, def.nativeVlan);
+        put("enabled", !phys.shutdown, true);
+        if (prev || Object.keys(iface).length) d.interfaces[name] = iface;
+      }
+      for (const [v, svi] of Object.entries(cfg.svis)) {
+        const name = "vlan" + v;
+        if (svi.description) fail(`Vlan${v} description`);
+        if (svi.l3) fail(`Vlan${v} L3/OSPF ayarı`);
+        const prev = d.interfaces[name];
+        if (!prev && !svi.ip && JSON.stringify(svi) === JSON.stringify(defaultSvi(Number(v)))) continue;
+        const iface = prev ? { ...prev } : { vlan: Number(v) };
+        if (svi.ip) {
+          iface.ip = svi.ip.addr;
+          iface.mask = svi.ip.mask;
+        } else {
+          if (prev?.ip !== void 0) iface.ip = "";
+          if (prev?.mask !== void 0) iface.mask = "";
+        }
+        if (prev?.enabled !== void 0 || svi.shutdown) iface.enabled = !svi.shutdown;
+        d.interfaces[name] = iface;
+      }
     }
     return out;
   }

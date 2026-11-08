@@ -154,6 +154,8 @@ EVIDENCE = [
     "unified-rc-performance.json",
     "simulation-mode-results.json",
     "sim-performance.json",
+    "sim-parity-node.json",
+    "sim-parity-browser.json",
 ]
 
 
