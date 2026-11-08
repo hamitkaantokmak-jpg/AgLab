@@ -4,7 +4,7 @@
 Eligibility is not an execution claim. No teacher solutions are consumed.
 
 Labber köprüsü sütunu ve senaryo tablosu (L1): her Akademi labının başlangıç
-topolojisi ve 22 ortak Sorun Çöz senaryosunun yüklenmiş başlangıç topolojisi, derlenmiş
+topolojisi ve tüm ortak Sorun Çöz senaryolarının yüklenmiş başlangıç topolojisi, derlenmiş
 HTML'deki köprüye (`AgLabSim.toLabber`) verilir; motor kararı ve gerekçeleri yazılır.
 Senaryoların bir kısmının topolojisi kodla kurulduğu için tarayıcı (Playwright) gerekir.
 CI, tests/test_lab_engine_map.py ile tablonun bu kararlarla güncel olduğunu doğrular.
