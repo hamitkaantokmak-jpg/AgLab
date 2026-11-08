@@ -125,14 +125,45 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         Uygulama animasyonu yalnız tuval görünürken başlatır (IntersectionObserver).
         Sayfada `scroll-behavior: smooth` olduğu için önceki tıklamaların kaydırması
         sürerken tuval görüş dışında kalabiliyordu; animasyon hiç başlamıyordu.
+        Simülasyon denetimleri (İleri/Oynat/Duraklat) de görünür alana alınır: görünmüyorsa
+        Playwright tıklaması onları yumuşak kaydırmayla getirir ve tuvali görüş dışına
+        taşıyabilir. Denetimler üstteki yapışkan başlığın altında kalmasın diye görüş alanının
+        200 px aşağısına yerleşir (başlık altında kalan düğmeyi Playwright ortalamak için
+        kaydırıyordu). Denetim satırı ve tuval birlikte görünür olmalı; değilse test düşer.
         """
-        page.evaluate(
-            "document.getElementById('ptCanvas').scrollIntoView({block:'center',behavior:'instant'})"
-        )
+        page.evaluate("""()=>{const f=document.getElementById('simulationForward'),
+                c=document.getElementById('ptCanvas');
+                if(!f||!f.getClientRects().length){c.scrollIntoView({block:'center',behavior:'instant'});return}
+                const top=Math.min(f.getBoundingClientRect().top,c.getBoundingClientRect().top);
+                window.scrollTo({top:scrollY+top-200,behavior:'instant'})}""")
         page.wait_for_function(
             """()=>new Promise(r=>{const y=scrollY;requestAnimationFrame(()=>requestAnimationFrame(()=>{
-                const c=document.getElementById('ptCanvas').getBoundingClientRect();
-                r(scrollY===y&&c.bottom>0&&c.top<innerHeight)}))})"""
+                const c=document.getElementById('ptCanvas').getBoundingClientRect(),
+                  f=document.getElementById('simulationForward'),
+                  b=f&&f.getClientRects().length?f.getBoundingClientRect():null;
+                r(scrollY===y&&c.bottom>0&&c.top<innerHeight&&(!b||(b.top>=0&&b.bottom<=innerHeight)))}))})"""
+        )
+
+    def press(selector):
+        """Donmuş saat penceresinde düğmeye klavyeyle bas (odak kaydırmasız + Enter).
+        Yük altında Playwright tıklaması isabet denetiminde bir kez başarısız olunca düğmeyi
+        `block:'end'` ile yumuşak kaydırarak yeniden deniyordu; tuval görüş dışına çıkıyor ve
+        uygulama (doğru olarak) animasyonu atlıyordu. Klavye etkinleştirmesi gerçek bir kullanıcı
+        yoludur ve sayfayı kaydırmaz."""
+        page.evaluate("(s)=>document.querySelector(s).focus({preventScroll:true})", selector)
+        assert page.evaluate(
+            "(s)=>document.activeElement===document.querySelector(s)&&!document.activeElement.disabled",
+            selector,
+        ), (selector, layout())
+        page.keyboard.press("Enter")
+
+    def layout():
+        """Tanı için: tuval ve İleri düğmesinin görüş alanındaki yeri, kaydırma, odak."""
+        return page.evaluate(
+            """()=>{const r=(id)=>{const e=document.getElementById(id);if(!e)return null;
+            const b=e.getBoundingClientRect();return [Math.round(b.top),Math.round(b.bottom)]};
+            return {canvas:r('ptCanvas'),forward:r('simulationForward'),scrollY,innerHeight,
+            active:document.activeElement?.id||document.activeElement?.tagName}}"""
         )
 
     def freeze():
@@ -230,14 +261,14 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         """()=>{window.replayGuideChanges=0;new MutationObserver(()=>replayGuideChanges++).observe(document.getElementById('firstGuideSteps'),{childList:true});}"""
     )
     freeze()
-    page.click("#simulationForward")
+    press("#simulationForward")
     assert state()["cursor"] == 0
-    page.click("#simulationForward")
+    press("#simulationForward")
     assert state()["cursor"] == 1 and state()["event"]["kind"] == "wire"
     print("PASS manual forward", state()["progress"], flush=True)
     page.clock.run_for(300)  # 1x hızda kablo animasyonu 650 ms sürer
     assert 0.12 < state()["progress"] < 0.95, state()
-    page.click("#simulationPause")
+    press("#simulationPause")
     paused = state()
     assert not paused["playing"] and not paused["rafPending"]
 
@@ -257,7 +288,17 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     aligned()
     position = geometry()
     page.clock.run_for(170)  # duraklatılmışken animasyon saati ilerlese de paket yerinde kalır
-    assert state()["cursor"] == paused["cursor"] and geometry() == position
+    # Paket tuval koordinatında ve ilerlemede birebir yerinde kalır. Ekran koordinatı
+    # karşılaştırılmaz: Duraklat tıklamasının yumuşak kaydırması sürüyorsa sayfa kayar ama
+    # paket kaymaz; ekran hizası aligned() ile bu anda yeniden denetlenir.
+    moved = geometry()
+    assert state()["cursor"] == paused["cursor"] and state()["progress"] == paused["progress"]
+    assert (moved["x"], moved["y"], moved["expected"]) == (
+        position["x"],
+        position["y"],
+        position["expected"],
+    ), (moved, position)
+    aligned()
     initial_guide_updates = page.evaluate("replayGuideChanges")
     assert initial_guide_updates <= 4, (
         "Animation must not rebuild the unrelated guide every frame",
@@ -272,13 +313,17 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     ), "Replay must not change network state"
     # Select an actual paused packet in empty wire space, while device hit areas
     # remain protected. At 0.5x the midpoint leaves a generous interaction window.
+    # Saat serbest bırakılır: denetimlere tıklama sayfayı kaydırabilir; tuval yeniden
+    # yerleşmeden İleri'ye basılırsa uygulama tuvali görünmez sayıp animasyonu atlar.
+    thaw()
     page.select_option("#simulationSpeed", "0.5")
     page.click("#simulationReset")
-    page.click("#simulationForward")
-    page.click("#simulationForward")
+    freeze()
+    press("#simulationForward")
+    press("#simulationForward")
     page.clock.run_for(700)  # 0.5x hızda 1300 ms; orta nokta
-    assert 0.45 < state()["progress"] < 0.62, state()
-    page.click("#simulationPause")
+    assert 0.45 < state()["progress"] < 0.62, (state()["progress"], layout())
+    press("#simulationPause")
     thaw()
     expect(page.locator("#simulationPacketHit")).to_have_attribute("aria-disabled", "false")
     page.locator("#simulationPacketHit").press("Space")
@@ -306,11 +351,11 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     assert state()["active"]
     page.select_option("#simulationSpeed", "4")
     freeze()
-    page.click("#simulationPlay")
+    press("#simulationPlay")
     old = state()["cursor"]
     page.clock.run_for(250)  # 4x hızda kablo olayı 162 ms
     assert state()["cursor"] > old, state()
-    page.click("#simulationPause")
+    press("#simulationPause")
     thaw()
     assert not state()["playing"]
     print("PASS move/zoom/CLI/play", flush=True)
@@ -449,8 +494,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             page.click("#simulationMode")
         page.click("#simulationCapture")
         freeze()
-        page.click("#simulationForward")
-        page.click("#simulationPause")
+        press("#simulationForward")
+        press("#simulationPause")
         thaw()
         assert page.evaluate('localStorage.getItem("aglab-academy-progress-v1")') == saved
         page.click("#academyCheck")
@@ -520,13 +565,13 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         """()=>{window.removedSimulationNodes=0;new MutationObserver(rs=>rs.forEach(r=>r.removedNodes.forEach(n=>{if(n.matches?.('.pt-node'))removedSimulationNodes++}))).observe(document.getElementById('ptCanvas'),{childList:true});}"""
     )
     freeze()
-    page.click("#simulationPlay")
+    press("#simulationPlay")
     for _ in range(40):
         if state()["cursor"] >= 4:
             break
         page.clock.run_for(100)
     assert state()["cursor"] >= 4, state()
-    page.click("#simulationPause")
+    press("#simulationPause")
     thaw()
     redraws = page.evaluate("removedSimulationNodes")
     layers = page.locator("#simulationOverlay").count()
@@ -584,12 +629,12 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     page.select_option("#simulationSpeed", "0.5")
     page.click("#simulationReset")
     freeze()
-    page.click("#simulationPlay")
+    press("#simulationPlay")
     page.clock.run_for(100)
     assert state()["cursor"] == 0, "Reduced-motion autoplay must not rush through one event per RAF"
     page.clock.run_for(500)  # 0.5x hızda olay başına 440 ms bekleme
     assert state()["cursor"] > 0, state()
-    page.click("#simulationPause")
+    press("#simulationPause")
     thaw()
     assert not state()["playing"]
     assert not errors, errors
