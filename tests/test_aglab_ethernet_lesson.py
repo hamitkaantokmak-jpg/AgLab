@@ -65,7 +65,9 @@ class EthernetLessonUiTests(unittest.TestCase):
 
     def test_lesson_renders_from_list(self):
         # Odak modunda (ux13-focused) liste gizli olabilir; düğmenin kendi işleyicisini çağır.
-        self.page.locator("#sfList button", has_text="Ethernet, MAC ve ARP").evaluate("b => b.click()")
+        self.page.locator("#sfList button", has_text="Ethernet, MAC ve ARP").evaluate(
+            "b => b.click()"
+        )
         sheet = self.page.locator("#sfSheet")
         self.assertIn("Switch MAC öğrenir", sheet.text_content())
         sheet.locator("button", has_text="Ayrıntılı öğren").evaluate("b => b.click()")
