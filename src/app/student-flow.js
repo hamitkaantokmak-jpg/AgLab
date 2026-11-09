@@ -6,6 +6,7 @@
       'ip': ['ipv4', 'subnet'],
       'routing': ['routing'],
       'commands': ['diagnostics'],
+      'devicemgmt': ['devicemgmt'],
       'nat': ['natpat'],
       'vpn': ['vpnipsec'],
       'dns': ['dns'],
