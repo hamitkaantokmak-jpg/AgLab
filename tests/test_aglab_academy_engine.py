@@ -20,13 +20,38 @@ from playwright.sync_api import sync_playwright
 
 from aglab_test_support import HTML, ROOT, launch_chromium
 
-M1_M3 = [f"AGL-{n:03d}" for n in range(1, 31)]
+# Lab listesi ve modüller sabit yazılmaz: öğrenci JSON'larından türetilir.
+STUDENT_FILES = sorted((ROOT / "academy/student").glob("AGL-*.json"))
+M1_M3 = [
+    p.stem
+    for p in STUDENT_FILES
+    if json.loads(p.read_text(encoding="utf-8"))["module_id"] in ("M1", "M2", "M3")
+]
+
+# Öğretmen çözümü: hedef topolojinin CLI dışı kısmı (PC adresleri, kablo, güç) + switch'lerde
+# başlangıç yapılandırması üzerine öğretmen reference_commands'ı Labber IOS'unda.
+APPLY_TEACHER_CLI = """([init, target, cmds]) => {
+  const sw = new Map(init.devices.filter((d) => d.type === 'Switch').map((d) => [d.id, d]));
+  const hybrid = { ...target, devices: target.devices.map((d) =>
+    sw.has(d.id) ? JSON.parse(JSON.stringify(sw.get(d.id))) : d) };
+  const r = AgLabSim.toLabber(hybrid);
+  if (r.report.engineDecision !== 'labber') return { reasons: r.report.reasons };
+  const rt = AgLabSim.createRuntime(r);
+  const errors = [];
+  for (const [dev, list] of Object.entries(cmds)) {
+    const out = AgLabSim.runScript(rt, dev, list.join('\\n'));
+    errors.push(...out.filter((l) => /^% (Invalid|Incomplete|Ambiguous)/.test(l)).map((l) => dev + ': ' + l));
+  }
+  return { errors, topology: AgLabSim.toAglab(rt, hybrid) };
+}"""
 
 
 def map_decisions():
     text = (ROOT / "docs/LAB_MOTOR_HARITASI.md").read_text(encoding="utf-8")
     rows = re.findall(r"^\| (AGL-\d{3}) \|(?:[^|]*\|){3} ([^|]+) \|", text, re.M)
-    return {lid: "labber" if cell.strip() == "**Labber**" else "legacy" for lid, cell in rows}
+    return {
+        lid: "labber" if cell.strip().startswith("**Labber**") else "legacy" for lid, cell in rows
+    }
 
 
 def lab_json(lid):
@@ -73,7 +98,7 @@ class AcademyEngineTests(unittest.TestCase):
 
     def test_decision_matches_map_and_badge(self):
         decisions = map_decisions()
-        self.assertEqual(len(decisions), 40)
+        self.assertEqual(set(decisions), {p.stem for p in STUDENT_FILES})
         self.assertEqual([k for k, v in decisions.items() if v == "labber"], M1_M3)
         for lid, engine in decisions.items():
             self.page.select_option("#academySelect", lid)
@@ -100,6 +125,77 @@ class AcademyEngineTests(unittest.TestCase):
             self.assertEqual(done["engine"], "labber", lid)
             self.assertEqual((done["earned_points"], done["coverage"]), (100, 1), (lid, done))
             self.assertTrue(all(c["status"] == "passed" for c in done["criteria"]), done)
+
+    def test_teacher_cli_commands_solve_every_labber_lab_without_cli_errors(self):
+        """Labber labs.test.ts deseni: başlangıçta başarısız; öğretmen komutları Labber IOS'unda
+        hatasız koşar ve sonuç bütün ölçütleri geçirir."""
+        for lid in M1_M3:
+            student, teacher = lab_json(lid)
+            self.start(lid)
+            self.assertLess(self.page.evaluate("academy.check()")["earned_points"], 100, lid)
+            solved = self.page.evaluate(
+                APPLY_TEACHER_CLI,
+                [
+                    student["initial_topology"],
+                    teacher["target_topology"],
+                    teacher["teacher_solution"]["reference_commands"],
+                ],
+            )
+            self.assertNotIn("reasons", solved, (lid, solved))
+            self.assertEqual(solved["errors"], [], lid)
+            self.page.evaluate("t=>academyEngine.load(t)", solved["topology"])
+            self.answer(teacher)
+            done = self.page.evaluate("academy.check()")
+            self.assertEqual((done["engine"], done["earned_points"]), ("labber", 100), (lid, done))
+
+    def test_engine_disagreement_is_error_not_accepted(self):
+        _, teacher = lab_json("AGL-025")
+        self.start("AGL-025")
+        self.page.evaluate("t=>academyEngine.load(t)", teacher["target_topology"])
+        # Labber ping sonucunu ters çeviren saptırma (paket dışa aktarımları salt okunur).
+        self.page.evaluate("""() => {
+              const orig = AgLabSim.createRuntime;
+              window.AgLabSim = { ...AgLabSim, createRuntime: (r) => {
+                const rt = orig(r);
+                const query = rt.query.bind(rt);
+                rt.query = () => {
+                  const q = query();
+                  const ping = q.ping.bind(q);
+                  q.ping = (a, b) => { const p = ping(a, b); return { ...p, ok: !p.ok }; };
+                  return q;
+                };
+                return rt;
+              } };
+            }""")
+        result = self.page.evaluate("academy.check()")
+        probes = [c for c in result["criteria"] if c["kind"] == "probe.icmp"]
+        self.assertTrue(probes)
+        for c in probes:
+            self.assertEqual(c["status"], "error", c)
+            self.assertIn("Motor uyuşmazlığı", c["detail"])
+        self.assertNotEqual(result["earned_points"], 100)
+
+    def test_state_disagreement_is_error_not_accepted(self):
+        _, teacher = lab_json("AGL-025")
+        self.start("AGL-025")
+        self.page.evaluate("t=>academyEngine.load(t)", teacher["target_topology"])
+        # Labber görünümünü bozan saptırma: bütün arayüz kayıtları ve kablolar boşaltılır.
+        self.page.evaluate("""() => {
+              const orig = AgLabSim.toAglab;
+              window.AgLabSim = { ...AgLabSim, toAglab: (rt, t) => {
+                const o = orig(rt, t);
+                o.links = [];
+                for (const d of o.devices) { d.interfaces = {}; d.vlans = [1]; }
+                return o;
+              } };
+            }""")
+        result = self.page.evaluate("academy.check()")
+        states = [c for c in result["criteria"] if c["kind"] == "state.equals"]
+        self.assertTrue(states)
+        self.assertTrue(
+            all(c["status"] == "error" and "Motor uyuşmazlığı" in c["detail"] for c in states),
+            states,
+        )
 
     def test_probe_comes_from_labber_success_and_failure(self):
         # AGL-025: trunk izinli listesi eksik; PC2 → PC4 başta başarısız, PC1 → PC3 başarılı

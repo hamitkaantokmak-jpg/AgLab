@@ -11,6 +11,7 @@
   gösterilir ve sonuç kabul edilmez.
 """
 
+import json
 import re
 import unittest
 
@@ -36,7 +37,9 @@ def map_decisions():
     text = (ROOT / "docs/LAB_MOTOR_HARITASI.md").read_text(encoding="utf-8")
     section = text.split("## Ortak motor senaryoları")[1].split("\n## ")[0]
     rows = re.findall(r"^\| `([^`]+)` \| [^|]+ \| (.+) \|$", section, re.M)
-    return {sid: "labber" if cell.strip() == "**Labber**" else "legacy" for sid, cell in rows}
+    return {
+        sid: "labber" if cell.strip().startswith("**Labber**") else "legacy" for sid, cell in rows
+    }
 
 
 class EngineChoiceTests(unittest.TestCase):
@@ -87,7 +90,11 @@ class EngineChoiceTests(unittest.TestCase):
 
     def test_decision_matches_engine_map_and_badge_is_shown(self):
         expected = map_decisions()
-        self.assertEqual(len(expected), 22)
+        # Senaryo sayısı sabit yazılmaz: tarif dosyasından türetilir.
+        recipes = json.loads(
+            (ROOT / "simulator/network-scenarios.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(set(expected), {r["id"] for r in recipes})
         self.assertEqual({k for k, v in expected.items() if v == "labber"}, LABBER_SCENARIOS)
         for sid, engine in expected.items():
             decision = self.load(sid)

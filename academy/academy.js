@@ -950,8 +950,22 @@ function acProbe(source, destination, spec = {}, engine = 'legacy') {
       why: 'Hedef cihazda geçerli IPv4 adresi yapılandırılmamış.',
     }));
   if (engine === 'labber') {
-    // Labber deterministik: tek ping beş denemenin hepsini temsil eder.
+    // Labber deterministik: tek ping beş denemenin hepsini temsil eder. CLI L3'e kadar eski
+    // motorda olduğundan iki motor aynı sonucu vermeli; vermezse sonuç kabul edilmez.
     const r = aglabEngineChoice.labberPing(source, ip);
+    const legacy = ping(source, ip);
+    if (legacy.ok !== r.ok)
+      throw new Error(
+        'Motor uyuşmazlığı: Labber ping ' +
+          (r.ok ? 'başarılı' : 'başarısız') +
+          ', eski motor ' +
+          (legacy.ok ? 'başarılı' : 'başarısız') +
+          ' (' +
+          source +
+          ' → ' +
+          ip +
+          '). Sonuç kabul edilmedi; bu bir motor hatasıdır, lütfen bildir.',
+      );
     return Array.from({ length: 5 }, () => ({ ok: r.ok, why: r.why }));
   }
   let binding = null;
@@ -970,6 +984,25 @@ function acProbe(source, destination, spec = {}, engine = 'legacy') {
       : r;
   });
 }
+// state.equals karşılaştırması: bağlantılar uç/durum kümesi, rotalar ve VLAN listeleri sırasız,
+// arayüz durumu normalize, adresler sayısal biçimde.
+function acStateMatches(target, actual, expected) {
+  let a = actual,
+    e = expected;
+  if (target === 'links') {
+    a = acLinks(actual);
+    e = acLinks(e);
+  } else if (/\.staticRoutes$/.test(target)) {
+    a = AgLabRoutingGrading.sameRoutes(a, e) ? e : null;
+  } else if (/^devices\.[^.]+\.interfaces\.[^.]+$/.test(target)) {
+    a = AgLabRoutingGrading.interfaceState(a);
+    e = AgLabRoutingGrading.interfaceState(e);
+  } else if (/\.(vlans|allowed)$/.test(target)) {
+    a = AgLabVlanHealth.sameVlanSet(a, e) ? e : null;
+  } else if (/\.(ip|mask|gateway)$/.test(target) && typeof a === 'string' && validIP(a))
+    a = a.split('.').map(Number).join('.');
+  return JSON.stringify(acCanonical(a)) === JSON.stringify(acCanonical(e));
+}
 function academyEvaluate(criteria, answers, health = null, engine = null) {
   const used = engine || (academyActive ? academyEngineFor(academyActive).engine : 'legacy');
   const caps = ACADEMY_CAPABILITIES[used];
@@ -979,10 +1012,13 @@ function academyEvaluate(criteria, answers, health = null, engine = null) {
     if (used !== 'labber') return acState(target);
     if (!view) view = aglabEngineChoice.labberView();
     const parts = target.split('.');
-    if (parts[0] === 'links') return view.links;
-    if (parts[0] !== 'devices') throw new Error('Desteklenmeyen durum yolu');
-    let val = view.devices.find((d) => d.id === parts[1]);
-    for (const p of parts.slice(2)) val = val?.[p];
+    let val;
+    if (parts[0] === 'links') val = view.links;
+    else if (parts[0] !== 'devices') throw new Error('Desteklenmeyen durum yolu');
+    else {
+      val = view.devices.find((d) => d.id === parts[1]);
+      for (const p of parts.slice(2)) val = val?.[p];
+    }
     return val;
   };
   const rows = criteria.map((c) => {
@@ -1005,23 +1041,16 @@ function academyEvaluate(criteria, answers, health = null, engine = null) {
       };
     try {
       if (c.kind === 'state.equals') {
-        const actual = stateOf(c.target);
-        let a = actual,
-          e = c.expected;
-        if (c.target === 'links') {
-          validateTopologyData({ app: 'AgLab', devices, links });
-          a = acLinks(actual);
-          e = acLinks(e);
-        } else if (/\.staticRoutes$/.test(c.target)) {
-          a = AgLabRoutingGrading.sameRoutes(a, e) ? e : null;
-        } else if (/^devices\.[^.]+\.interfaces\.[^.]+$/.test(c.target)) {
-          a = AgLabRoutingGrading.interfaceState(a);
-          e = AgLabRoutingGrading.interfaceState(e);
-        } else if (/\.(vlans|allowed)$/.test(c.target)) {
-          a = AgLabVlanHealth.sameVlanSet(a, e) ? e : null;
-        } else if (/\.(ip|mask|gateway)$/.test(c.target) && typeof a === 'string' && validIP(a))
-          a = a.split('.').map(Number).join('.');
-        const ok = JSON.stringify(acCanonical(a)) === JSON.stringify(acCanonical(e));
+        if (c.target === 'links') validateTopologyData({ app: 'AgLab', devices, links });
+        const ok = acStateMatches(c.target, stateOf(c.target), c.expected);
+        // Labber görünümünde ölçüt sonucu canlı AğLab durumundakiyle aynı olmalı
+        // (küme alanları sırasız, adresler normalize karşılaştırılır).
+        if (used === 'labber' && ok !== acStateMatches(c.target, acState(c.target), c.expected))
+          throw new Error(
+            'Motor uyuşmazlığı: ' +
+              c.target +
+              ' Labber görünümünde farklı sonuç veriyor. Sonuç kabul edilmedi; bu bir motor hatasıdır, lütfen bildir.',
+          );
         status = ok ? 'passed' : 'failed';
         detail = ok
           ? 'Ölçüt sağlandı.'

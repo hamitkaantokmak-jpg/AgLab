@@ -975,7 +975,9 @@
       }
     ],
     "verify": {
-      "kind": "stp-root"
+      "kind": "stp-root",
+      "vlan": 10,
+      "root": "SW-03"
     }
   },
   {
