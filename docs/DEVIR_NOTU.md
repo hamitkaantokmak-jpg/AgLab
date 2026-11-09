@@ -16,8 +16,8 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L2-D2 Akademi M1–M3 Labber'da | #57 | birleşti |
 | L3-a terminal → IosSession/VpcsSession, tek kalıcı LabRuntime | #59 | birleşti |
 | F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | #60 | birleşti |
-| E Labber'ın 13 labı (kaynak #61) | dal `claude/e-labber-labs` | PR açık (birleşmeyi bekliyor) |
-| L3-b Simulation Mode olay adaptörü | dal `claude/l3b-simulation-adapter` (E'nin üstünde) | PR açık (birleşmeyi bekliyor) |
+| E Labber'ın 13 labı (kaynak #61) | #62 | açık (birleşmeyi bekliyor) |
+| L3-b Simulation Mode olay adaptörü | #63 (taban #62) | açık (birleşmeyi bekliyor) |
 
 **L3 tamam, sıradaki: L4 (Router, AD, özyinelemeli statik rota).** Plan:
 `YENIDEN_YAPILANMA.md` L3 tablosu sıra 2–3 ve L4 "Aşamalar" satırı L4 (Akademi M4,
