@@ -14,7 +14,7 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L2-C MAC/ARP (L3 tablosu 10–14) | #54 | birleşti |
 | L2-D1 ortak senaryolar Labber'da | #55 | birleşti |
 | L2-D2 Akademi M1–M3 Labber'da | #57 | birleşti |
-| L3-a terminal → IosSession/VpcsSession, tek kalıcı LabRuntime | dal `claude/l3a-labber-terminal` | PR açık (birleşmeyi bekliyor) |
+| L3-a terminal → IosSession/VpcsSession, tek kalıcı LabRuntime | #59 | açık (birleşmeyi bekliyor) |
 | F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | dal `claude/f-ders-senaryolari` (L3-a'nın üstünde) | PR açık (birleşmeyi bekliyor) |
 | E Labber'ın 13 labı | — | **engelli**: kaynak (`labs/*.ts`) bu depoda yok, oturuma Labber deposu eklenemedi (aşağıda) |
 | L3-b Simulation Mode olay adaptörü | — | başlanmadı; tasarım aşağıda (E'nin içeriğine bağlı değil, F'nin üstüne yapılabilir) |
