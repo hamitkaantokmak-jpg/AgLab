@@ -10890,6 +10890,16 @@ labLoadExperiment();
     if (sharedScenario.engine?.engine === 'labber') {
       try {
         result = aglabEngineChoice.labberPing(src, target);
+        // Sorgu hedefli senaryo: ping yetmez, bütün hedefler (ve gerekiyorsa güç
+        // döngüsünden sonra da) sağlanmalı.
+        const row = sharedScenarioRecipe(sharedScenario.key);
+        if (result.ok && row?.verify.kind === 'query') {
+          const goal = sharedQueryGoal(row);
+          if (!goal.ok) {
+            sharedStatus('Ping başarılı ama senaryo hedefi tamamlanmadı: ' + goal.why, false);
+            return;
+          }
+        }
       } catch (error) {
         sharedStatus('Değerlendirme hatası: ' + error.message, false);
         return;

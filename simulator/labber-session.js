@@ -221,6 +221,42 @@ const aglabLabber = (() => {
     changed();
     return ok;
   }
+  /**
+   * Öğrencinin çalışma zamanının bağımsız kopyası (running, startup, PC'ler, öğrenilmiş
+   * MAC/ARP, donanım durumu). Değerlendirme kopyada trafik üretir ve güç döngüsü dener;
+   * öğrencinin durumu değişmez.
+   */
+  function cloneRuntime() {
+    const rt = runtime(),
+      copy = AgLabSim.createLab(rt.def);
+    if (!copy.load(rt.save())) throw new Error('Labber çalışma zamanı kopyalanamadı.');
+    return copy;
+  }
+  /**
+   * Senaryo başlangıcının kaydedilmemiş değişiklikleri: komutlar kullanıcı modundan
+   * çalışır, startup-config'e yazılmaz. IOS hatası senaryo hatasıdır.
+   */
+  function applyPending(blocks) {
+    for (const block of blocks) {
+      const d = devices.find((x) => x.name === block.device || x.id === block.device);
+      if (!d) throw new Error('Bekleyen değişiklik: cihaz bulunamadı: ' + block.device);
+      const s = session(d.id);
+      if (!s) throw new Error('Bekleyen değişiklik: cihaz kapalı: ' + block.device);
+      resetMode(d.id);
+      for (const line of block.commands) {
+        const bad = s.exec(line).filter((t) => lineKind(t) === 'outerr');
+        if (bad.length) throw new Error('Bekleyen değişiklik ' + line + ': ' + bad.join(' '));
+      }
+      resetMode(d.id);
+    }
+    newLogsAll();
+    writeBack();
+  }
+  /** Senaryo başlangıcında üretilen syslog konsolda gösterilmez. */
+  function newLogsAll() {
+    const last = state.rt.logs.at(-1)?.seq || 0;
+    for (const dev of Object.keys(state.logSeq)) state.logSeq[dev] = last;
+  }
   /** Geçici içerik değişimleri (senaryo doğrulaması) için oturumun kendisi. */
   function capture() {
     return state;
@@ -245,6 +281,8 @@ const aglabLabber = (() => {
     moveCable,
     capture,
     restore,
+    cloneRuntime,
+    applyPending,
     broken: () => state?.broken || null,
   };
 })();

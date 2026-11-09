@@ -1,8 +1,8 @@
 // Konu #11 (Cihaz yönetimi ve yedekleme): arıza senaryoları Labber'da.
 //
-// Uygulamadaki terminal L3-a aşamasına kadar eski motorda ve orada `reload` yok; bu
-// senaryolar o zamana kadar burada, motorun kendisinde doğrulanır. Ders belgesindeki
-// S1–S5 ile birebir aynıdır. Her senaryoda: başlangıçta hedef başarısız, çözümden sonra
+// Motorun kendisinde doğrulama. Aynı S1–S5 PR F'den beri Sorun Çöz'de de var
+// (simulator/network-scenarios.json `mgmt-*`; terminal L3-a ile Labber'da,
+// tests/test_aglab_lesson_scenarios.py). Ders belgesindeki S1–S5 ile birebir aynıdır. Her senaryoda: başlangıçta hedef başarısız, çözümden sonra
 // başarılı ve kaydedilmiş, switch kapatılıp açıldıktan sonra da başarılı. Kaydedilmeyen
 // çözüm güç döngüsünde düşer; bu da ayrıca denenir.
 import { describe, expect, it } from 'vitest'

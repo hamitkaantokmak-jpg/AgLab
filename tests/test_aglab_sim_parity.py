@@ -5,8 +5,10 @@ Her içerik iki durumda denenir:
 * Ortak senaryolar: yüklenmiş başlangıç ve tarif çözüm komutlarından sonraki durum.
 
 Köprü kararı 'labber' olan her durumda, IP'li PC'lerin bütün sıralı çiftleri için eski
-motorun `reach` sonucu ile Labber `LabQuery.ping().ok` karşılaştırılır. Fark sıfır
-olmalıdır; farklar sessizce eşitlenmez, test düşer. Karşılaştırmada hem başarılı hem
+motorun `reach` sonucu ile Labber `LabQuery.ping().ok` karşılaştırılır. Farklar sessizce
+eşitlenmez: yalnız aşağıda tek tek listelenen, uyumluluk matrisinde kararı yazılı farklar
+kabul edilir ve bunlar da birebir ortaya çıkmak zorundadır (liste dışı fark ya da artık
+oluşmayan bir liste satırı testi düşürür). Karşılaştırmada hem başarılı hem
 başarısız ping bulunmalıdır. Sonuç sim-parity-browser.json olarak kaydedilir.
 """
 
@@ -33,6 +35,19 @@ COMPARE = """(t) => {
   }
   return out;
 }"""
+
+
+# docs/UYUMLULUK_MATRISI.md "Labber motoru ile eski motor arasındaki bilinen farklar":
+# eski motor dönüş yolunu kaynağın kendi maskesi/ARP sonucu ile kurmuyor; Labber kuruyor.
+# Karar: Labber (Cisco/gerçek davranış). Bu senaryolar zaten Labber'da değerlendirilir.
+KNOWN_DIFFS = {
+    # asimetrik maske: PC-C /25 yanıtı .11/.12'ye geri gönderemez (ağ geçidi yok)
+    ("eth-wrong-mask", "başlangıç", "PC-A", "PC-C"),
+    ("eth-wrong-mask", "başlangıç", "PC-B", "PC-C"),
+    # IP çakışması: .12'nin ARP'sini LAPTOP kazanır; PC-B'ye yanıt dönmez
+    ("eth-duplicate-ip", "başlangıç", "PC-B", "PC-A"),
+    ("eth-duplicate-ip", "başlangıç", "PC-B", "PC-C"),
+}
 
 
 def collect(page):
@@ -97,7 +112,12 @@ class SimPingParityTests(unittest.TestCase):
         self.assertEqual(len(results), 2 * (40 + len(scenarios)))
         self.assertGreater(summary["ping_ok"], 50, "başarılı ping de karşılaştırılmalı")
         self.assertGreater(summary["ping_fail"], 50, "başarısız ping de karşılaştırılmalı")
-        self.assertEqual(diffs, [], "eski motor ile Labber arasında ping farkı")
+        self.assertTrue(all(d["legacy"] and not d["labber"] for d in diffs), diffs)
+        self.assertEqual(
+            {(d["content"], d["state"], d["from"], d["to"]) for d in diffs},
+            KNOWN_DIFFS,
+            "eski motor ile Labber arasında beklenmeyen (ya da artık oluşmayan) ping farkı",
+        )
 
 
 if __name__ == "__main__":

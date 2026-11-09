@@ -25,15 +25,21 @@ function loadNetworkScenario(key) {
   if (!row?.topology) return false;
   academyClearSession();
   importTopology(clone(row.topology));
-  const source = devices.find((d) => d.name === 'PC-01'),
-    target = devices.find((d) => d.name === 'PC-02');
-  sharedScenario = { active: true, key, sourceId: source.id, target: target.ip };
+  // Hedef ping'i: tarifte verilmişse verify.source/target, yoksa PC-01 → PC-02.
+  const source = devices.find((d) => d.name === (row.verify.source || 'PC-01')),
+    target = row.verify.target || devices.find((d) => d.name === 'PC-02').ip;
+  sharedScenario = { active: true, key, sourceId: source.id, target };
   const panel = $p('sharedScenarioInstructions');
   panel.replaceChildren();
   for (const text of [
     row.symptom,
     'Kök neden: ' + row.cause,
     'Model: Cisco benzeri sınırlı eğitim komutları; gerçek IOS/OSPF/BGP paketleri veya zamanlayıcıları çalıştırılmaz.',
+    ...(row.verify.survivesReload
+      ? [
+          'Doğrulama: hedef, switch kapatılıp açıldıktan sonra da sağlanmalı; kaydedilmemiş çözüm geçmez.',
+        ]
+      : []),
   ]) {
     const p = document.createElement('p');
     p.textContent = text;
@@ -68,10 +74,104 @@ function sharedScenarioDecideEngine() {
   aglabEngineChoice.renderBadge($p('sharedScenarioEngine'), sharedScenario.engine);
   // L3-a: Labber kararındaki senaryo boyunca tek kalıcı çalışma zamanı (terminal + hedef).
   aglabLabber.stop();
+  const row = sharedScenarioRecipe(sharedScenario.key);
   if (sharedScenario.engine.engine === 'labber') {
     aglabLabber.start();
+    // Başlangıçta kaydedilmemiş değişiklik (ör. biri port ayarını değiştirdi, kaydetmedi).
+    if (row?.pending) {
+      aglabLabber.applyPending(row.pending);
+      render();
+      updateInspector();
+    }
     updatePrompt();
+  } else if (row?.pending)
+    throw new Error(
+      row.id + ': kaydedilmemiş başlangıç değişikliği yalnız Labber motorunda kurulabilir.',
+    );
+}
+// Labber `query` hedefleri: izinli LabQuery fonksiyonları (docs/YENIDEN_YAPILANMA.md L5.3).
+const SHARED_QUERY_FNS = new Set([
+  'ping',
+  'macPort',
+  'macVlan',
+  'ipUnique',
+  'saved',
+  'sviUp',
+  'vlanExists',
+  'pcVlan',
+  'trunkCarries',
+  'isTrunk',
+  'errDisabled',
+  'stpRoot',
+  'powered',
+  'linkUp',
+]);
+/**
+ * Bir hedef satırı: { fn, args, field?, expected, label? }. Bağımsız değişkenlerde cihaz
+ * adları kimliğe, `$MAC:<ad>` o cihazın MAC'ine çevrilir; sonuçtaki kimlik ada çevrilir.
+ * PC kaynaklı `ping` kopyada gerçek trafik gibi çalışır (switch'ler MAC öğrenir), böylece
+ * sonraki macPort/macVlan hedefleri o trafiği görür.
+ */
+function sharedQueryCheck(rt, check) {
+  if (!SHARED_QUERY_FNS.has(check.fn)) throw new Error('İzin verilmeyen sorgu: ' + check.fn);
+  const idOf = (x) => (typeof x === 'string' ? devices.find((d) => d.name === x)?.id || x : x);
+  const args = check.args.map((a) =>
+    typeof a === 'string' && a.startsWith('$MAC:')
+      ? rt.topo.devices[idOf(a.slice(5))]?.mac
+      : idOf(a),
+  );
+  if (check.fn === 'ping' && rt.topo.devices[args[0]]?.kind === 'pc' && rt.powered(args[0]))
+    AgLabSim.createSession(rt, args[0]).exec('ping ' + args[1]);
+  let value = rt.query()[check.fn](...args);
+  if (check.field) value = value?.[check.field];
+  if (typeof value === 'string' && get(value)) value = get(value).name;
+  if (value === undefined) value = null;
+  const ok = JSON.stringify(value) === JSON.stringify(check.expected);
+  return {
+    ok,
+    why: ok
+      ? ''
+      : (check.label || check.fn + '(' + check.args.join(', ') + ')') +
+        ': beklenen ' +
+        JSON.stringify(check.expected) +
+        ', şu an ' +
+        JSON.stringify(value) +
+        '.',
+  };
+}
+/** Labber `query` hedefi: { ok, why }. survivesReload: kopyada güç döngüsünden sonra da. */
+function sharedQueryGoal(row) {
+  const v = row.verify,
+    run = (rt) => {
+      for (const c of v.checks) {
+        const r = sharedQueryCheck(rt, c);
+        if (!r.ok) return r;
+      }
+      return { ok: true, why: '' };
+    };
+  const now = run(aglabLabber.cloneRuntime());
+  if (!now.ok) return now;
+  if (v.survivesReload) {
+    const rt = aglabLabber.cloneRuntime();
+    for (const sw of rt.topo.switches) {
+      rt.setPower(sw.id, false);
+      rt.setPower(sw.id, true);
+    }
+    const after = run(rt);
+    if (!after.ok)
+      return {
+        ok: false,
+        why:
+          'Hedef şu an sağlanıyor ama switch kapatılıp açılınca kayboluyor: çözüm kaydedilmemiş (copy running-config startup-config). ' +
+          after.why,
+      };
   }
+  return {
+    ok: true,
+    why:
+      'Bütün hedefler sağlandı' +
+      (v.survivesReload ? ' ve switch kapatılıp açıldıktan sonra da korunuyor.' : '.'),
+  };
 }
 function sharedRecipeGoal(row) {
   if (sharedScenario.engine?.engine === 'labber') {
@@ -80,8 +180,11 @@ function sharedRecipeGoal(row) {
     if (row.verify.kind === 'stp-root')
       return aglabEngineChoice.labberStpRoot(row.verify.vlan) === row.verify.root && reached();
     if (row.verify.kind === 'ping') return reached();
+    if (row.verify.kind === 'query') return sharedQueryGoal(row).ok;
     throw new Error('Labber bu doğrulama türünü desteklemiyor: ' + row.verify.kind);
   }
+  if (row.verify.kind === 'query')
+    throw new Error('Sorgu hedefleri yalnız Labber motorunda değerlendirilir: ' + row.id);
   if (row.verify.kind === 'dhcp') return !!get(sharedScenario.sourceId)?.dhcpLease;
   if (row.verify.kind === 'stp-root')
     return (
@@ -131,16 +234,18 @@ function validateSharedScenarios() {
           solved,
           ok: !initial && solved,
           detail:
-            row.verify.kind === 'stp-root'
-              ? 'Başlangıçta hedef root değil; CLI sonrası ' +
-                row.verify.root +
-                ' VLAN ' +
-                row.verify.vlan +
-                ' root ve ping başarılı.'
-              : 'Başlangıç ' +
-                (initial ? 'başarılı' : 'başarısız') +
-                ' / çözüm sonrası ' +
-                (solved ? 'başarılı' : 'başarısız'),
+            row.verify.kind === 'query'
+              ? sharedQueryGoal(row).why
+              : row.verify.kind === 'stp-root'
+                ? 'Başlangıçta hedef root değil; CLI sonrası ' +
+                  row.verify.root +
+                  ' VLAN ' +
+                  row.verify.vlan +
+                  ' root ve ping başarılı.'
+                : 'Başlangıç ' +
+                  (initial ? 'başarılı' : 'başarısız') +
+                  ' / çözüm sonrası ' +
+                  (solved ? 'başarılı' : 'başarısız'),
         });
       } catch (error) {
         results.push({ id: row.id, ok: false, detail: String(error.message || error) });

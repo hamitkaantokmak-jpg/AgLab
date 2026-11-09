@@ -3540,5 +3540,2559 @@
     "verify": {
       "kind": "ping"
     }
+  },
+  {
+    "id": "mgmt-unsaved-lost",
+    "title": "Cihaz yönetimi · Gece kesintiden sonra switch'e ulaşılamıyor",
+    "symptom": "Dün SW1'e yönetim adresi (Vlan99, 192.168.99.2) verildi ve ADMIN'den ping çalışıyordu. Gece elektrik kesildi; sabah ADMIN switch'e ulaşamıyor. Kullanıcılar çalışıyor.",
+    "cause": "Yönetim ayarı yalnız running-config'teydi, kaydedilmemişti; kesintiden sonra switch startup-config ile açıldı (kaydedilmemiş yönetim ayarı kesintide kaybolur).",
+    "hints": [
+      "Kaydetmeyi unutmak: kesinti ya da yeniden başlatmadan sonra ayarlar eski haline döner.",
+      "Kanıt: show startup-config'te beklenen satırlar yok (interface Vlan99, ip address).",
+      "Düzeltme: ayarı yeniden yap, write memory (copy running-config startup-config)."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "x": 330,
+          "y": 140,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "gi0/1"
+          ],
+          "vlans": [
+            1,
+            10,
+            99
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 99,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          }
+        },
+        {
+          "id": "d2",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 150,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d3",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 330,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d4",
+          "name": "ADMIN",
+          "type": "PC",
+          "x": 510,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.99.10",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 99
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface vlan 99",
+          "ip address 192.168.99.2 255.255.255.0",
+          "no shutdown",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "ADMIN",
+      "target": "192.168.99.2",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "ADMIN",
+            "192.168.99.2"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "ADMIN → SW1 yönetim adresi (192.168.99.2)"
+        },
+        {
+          "fn": "saved",
+          "args": [
+            "SW1"
+          ],
+          "expected": true,
+          "label": "SW1 running-config ile startup-config aynı (kaydedilmemiş değişiklik yok)"
+        }
+      ],
+      "survivesReload": true
+    }
+  },
+  {
+    "id": "mgmt-reload-revert",
+    "title": "Cihaz yönetimi · Kaydedilmemiş hatalı değişikliği geri al",
+    "symptom": "Az önce birisi switch'te bir port ayarını değiştirdi ve muhasebedeki PC-02 ağdan düştü. Kimse tam olarak ne yapıldığını hatırlamıyor. Değişiklik kaydedilmemiş; sabaha kadar her şey çalışıyordu.",
+    "cause": "SW1 fa0/2 kaydedilmeden VLAN 20'ye alındı. Değişiklik yalnız running-config'te; reload'da 'Save?' sorusuna 'no' cevabı son kaydedilen, çalışan hale döner.",
+    "hints": [
+      "Kaydedilmemiş değişiklik yalnız running-config'te.",
+      "reload kaydedilmemiş değişiklik varken önce 'System configuration has been modified. Save? [yes/no]' diye sorar, ardından onay ister.",
+      "reload'da hatalı değişiklikle 'Save? yes' demek hatayı kalıcı yapar; 'no' cevabıyla reload son kaydedilen hale döner."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "x": 330,
+          "y": 140,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "gi0/1"
+          ],
+          "vlans": [
+            1,
+            10,
+            99
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 99,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "vlan99": {
+              "vlan": 99,
+              "ip": "192.168.99.2",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          }
+        },
+        {
+          "id": "d2",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 150,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d3",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 330,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d4",
+          "name": "ADMIN",
+          "type": "PC",
+          "x": 510,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.99.10",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 99
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        }
+      ]
+    },
+    "pending": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "vlan 20",
+          "interface fa0/2",
+          "switchport access vlan 20",
+          "end"
+        ]
+      }
+    ],
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "reload",
+          "no",
+          ""
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.10.12",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        },
+        {
+          "fn": "saved",
+          "args": [
+            "SW1"
+          ],
+          "expected": true,
+          "label": "SW1 running-config ile startup-config aynı (kaydedilmemiş değişiklik yok)"
+        }
+      ],
+      "survivesReload": true
+    }
+  },
+  {
+    "id": "mgmt-saved-fault",
+    "title": "Cihaz yönetimi · Yeniden başlatma hatayı düzeltmiyor",
+    "symptom": "PC-02 ağa ulaşamıyor. Switch yeniden başlatıldı ama sorun sürüyor.",
+    "cause": "SW1 fa0/2 kapatılmış ve bu hal kaydedilmiş (startup-config'te de shutdown var); kaydedilmiş hata yeniden başlatmayla düzelmez, düzeltip kaydetmek gerekir.",
+    "hints": [
+      "Kanıt: running ile startup aynı, ikisinde de hatalı satır var (show startup-config).",
+      "show interfaces status ile fa0/2'nin durumuna bak.",
+      "Düzeltme: hatalı satırı düzelt, write memory."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "x": 330,
+          "y": 140,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "gi0/1"
+          ],
+          "vlans": [
+            1,
+            10,
+            99
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": false
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 99,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "vlan99": {
+              "vlan": 99,
+              "ip": "192.168.99.2",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          }
+        },
+        {
+          "id": "d2",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 150,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d3",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 330,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d4",
+          "name": "ADMIN",
+          "type": "PC",
+          "x": 510,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.99.10",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 99
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface fa0/2",
+          "no shutdown",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.10.12",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        },
+        {
+          "fn": "saved",
+          "args": [
+            "SW1"
+          ],
+          "expected": true,
+          "label": "SW1 running-config ile startup-config aynı (kaydedilmemiş değişiklik yok)"
+        }
+      ],
+      "survivesReload": true
+    }
+  },
+  {
+    "id": "mgmt-svi-down",
+    "title": "Cihaz yönetimi · Kullanıcılar çalışıyor, switch yönetilemiyor",
+    "symptom": "PC-01 ile PC-02 sorunsuz haberleşiyor ama ADMIN SW1'in yönetim adresine (192.168.99.2) ping atamıyor.",
+    "cause": "Yönetim SVI'si (Vlan99) administratively down.",
+    "hints": [
+      "Yönetim SVI'si kapalı: kullanıcılar çalışır ama switch'e ping yok.",
+      "Kanıt: show ip interface brief'te Vlan99 administratively down.",
+      "Düzeltme: no shutdown; ardından kaydet."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "x": 330,
+          "y": 140,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "gi0/1"
+          ],
+          "vlans": [
+            1,
+            10,
+            99
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 99,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "vlan99": {
+              "vlan": 99,
+              "ip": "192.168.99.2",
+              "mask": "255.255.255.0",
+              "enabled": false
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          }
+        },
+        {
+          "id": "d2",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 150,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d3",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 330,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d4",
+          "name": "ADMIN",
+          "type": "PC",
+          "x": 510,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.99.10",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 99
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface vlan 99",
+          "no shutdown",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "ADMIN",
+      "target": "192.168.99.2",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "ADMIN",
+            "192.168.99.2"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "ADMIN → SW1 yönetim adresi (192.168.99.2)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        },
+        {
+          "fn": "saved",
+          "args": [
+            "SW1"
+          ],
+          "expected": true,
+          "label": "SW1 running-config ile startup-config aynı (kaydedilmemiş değişiklik yok)"
+        }
+      ],
+      "survivesReload": true
+    }
+  },
+  {
+    "id": "mgmt-wrong-vlan",
+    "title": "Cihaz yönetimi · Yönetim adresi yanlış VLAN arayüzünde",
+    "symptom": "SW1'in yönetim adresi 192.168.99.2 olarak ayarlanmış ve arayüz up görünüyor, ama VLAN 99'daki ADMIN switch'e ulaşamıyor.",
+    "cause": "Adres doğru ama yanlış VLAN arayüzünde (Vlan1); yönetici VLAN 99'da. Adres Vlan99'a taşınınca ulaşılır.",
+    "hints": [
+      "Yönetim adresi yanlış VLAN'da olabilir.",
+      "Kanıt: show ip interface brief: adres Vlan1'de, yönetici VLAN 99'da.",
+      "Düzeltme: adresi doğru SVI'ya taşı (Vlan1'den kaldır, Vlan99'a ver), kaydet."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "x": 330,
+          "y": 140,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "gi0/1"
+          ],
+          "vlans": [
+            1,
+            10,
+            99
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 99,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "vlan1": {
+              "vlan": 1,
+              "ip": "192.168.99.2",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          }
+        },
+        {
+          "id": "d2",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 150,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d3",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 330,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d4",
+          "name": "ADMIN",
+          "type": "PC",
+          "x": 510,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.99.10",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 99
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface vlan 1",
+          "no ip address",
+          "shutdown",
+          "interface vlan 99",
+          "ip address 192.168.99.2 255.255.255.0",
+          "no shutdown",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "ADMIN",
+      "target": "192.168.99.2",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "ADMIN",
+            "192.168.99.2"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "ADMIN → SW1 yönetim adresi (192.168.99.2)"
+        },
+        {
+          "fn": "saved",
+          "args": [
+            "SW1"
+          ],
+          "expected": true,
+          "label": "SW1 running-config ile startup-config aynı (kaydedilmemiş değişiklik yok)"
+        }
+      ],
+      "survivesReload": true
+    }
+  },
+  {
+    "id": "eth-printer-port",
+    "title": "Ethernet/ARP · Yeni yazıcı kimseye görünmüyor",
+    "symptom": "Yazıcı kuruldu, IP ayarlandı, ama hiçbir PC ona ping atamıyor.",
+    "cause": "PRN (192.168.10.50) SW1 Fa0/4'e bağlı; Fa0/4 shutdown (E3: port kapalı).",
+    "hints": [
+      "Switch yazıcıyı tanıyor mu?",
+      "MAC tablosunda yazıcının MAC'ini ara.",
+      "Yoksa portun durumuna bak: show interfaces status."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "x": 380,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "fa0/4",
+            "fa0/5",
+            "fa0/6",
+            "fa0/7",
+            "fa0/8",
+            "gi0/1"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/4": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": false
+            },
+            "fa0/5": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/6": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/7": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/8": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          }
+        },
+        {
+          "id": "d2",
+          "name": "PC-A",
+          "type": "PC",
+          "x": 120,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d3",
+          "name": "PC-B",
+          "type": "PC",
+          "x": 260,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d4",
+          "name": "PC-C",
+          "type": "PC",
+          "x": 400,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.13",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d5",
+          "name": "PRN",
+          "type": "PC",
+          "x": 540,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.50",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/4",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface fa0/4",
+          "no shutdown",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-A",
+      "target": "192.168.10.50",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-A",
+            "192.168.10.50"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-A → PRN"
+        },
+        {
+          "fn": "macPort",
+          "args": [
+            "SW1",
+            "$MAC:PRN"
+          ],
+          "expected": "FastEthernet0/4",
+          "label": "SW1 yazıcının MAC'ini Fa0/4'te öğrendi"
+        }
+      ]
+    }
+  },
+  {
+    "id": "eth-wrong-mask",
+    "title": "Ethernet/ARP · PC-C kendi ağındakilere ulaşamıyor",
+    "symptom": "PC-C'nin IP'si \"doğru ağda\" görünüyor ama PC-A'ya ve PC-B'ye ping gitmiyor; onlar da PC-C'ye ulaşamıyor.",
+    "cause": "PC-C 192.168.10.130 /25 ile yapılandırılmış; diğerleri /24. Gateway tanımlı değil (E2: yanlış maske).",
+    "hints": [
+      "IP'ye bakmak yetmez, maske de aynı mı?",
+      "/25 ile 192.168.10.130, .11'i aynı ağda sayar mı?",
+      "PC-C'de show ip."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "x": 380,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "fa0/4",
+            "fa0/5",
+            "fa0/6",
+            "fa0/7",
+            "fa0/8",
+            "gi0/1"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/4": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/5": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/6": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/7": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/8": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          }
+        },
+        {
+          "id": "d2",
+          "name": "PC-A",
+          "type": "PC",
+          "x": 120,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d3",
+          "name": "PC-B",
+          "type": "PC",
+          "x": 260,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d4",
+          "name": "PC-C",
+          "type": "PC",
+          "x": 400,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.130",
+          "mask": "255.255.255.128",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "PC-C",
+        "commands": [
+          "ip 192.168.10.130/24"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-C",
+      "target": "192.168.10.11",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-C",
+            "192.168.10.11"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-C → PC-A"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-A",
+            "192.168.10.130"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-A → PC-C"
+        }
+      ]
+    }
+  },
+  {
+    "id": "eth-duplicate-ip",
+    "title": "Ethernet/ARP · Muhasebe PC'sine bazen ulaşılıyor, bazen ulaşılamıyor",
+    "symptom": "PC-A, PC-B'deki paylaşıma bazen ulaşıyor bazen ulaşamıyor. Sorun yeni bir dizüstü gelince başladı.",
+    "cause": "Yeni bir dizüstü (LAPTOP, Fa0/6) yanlışlıkla 192.168.10.12 ile yapılandırılmış; bu adres PC-B'nin (E1: IP çakışması).",
+    "hints": [
+      "\"Aralıklı\" sorunlarda aynı adresi kullanan iki cihazı düşün.",
+      "PC-A'nın ARP önbelleğinde .12'nin MAC'i PC-B'nin MAC'i mi?",
+      "MAC tablosunda o MAC hangi portta?"
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "x": 380,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "fa0/4",
+            "fa0/5",
+            "fa0/6",
+            "fa0/7",
+            "fa0/8",
+            "gi0/1"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/4": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/5": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/6": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/7": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/8": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          }
+        },
+        {
+          "id": "d9",
+          "name": "LAPTOP",
+          "type": "PC",
+          "x": 700,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d2",
+          "name": "PC-A",
+          "type": "PC",
+          "x": 120,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d3",
+          "name": "PC-B",
+          "type": "PC",
+          "x": 260,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d4",
+          "name": "PC-C",
+          "type": "PC",
+          "x": 400,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.13",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        }
+      ],
+      "links": [
+        {
+          "a": "d9",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/6",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "LAPTOP",
+        "commands": [
+          "ip 192.168.10.14/24"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-A",
+      "target": "192.168.10.12",
+      "checks": [
+        {
+          "fn": "ipUnique",
+          "args": [
+            "192.168.10.12"
+          ],
+          "expected": true,
+          "label": "192.168.10.12 tek cihazda"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-A",
+            "192.168.10.12"
+          ],
+          "field": "replier",
+          "expected": "PC-B",
+          "label": "PC-A → 192.168.10.12 yanıtını PC-B veriyor"
+        }
+      ]
+    }
+  },
+  {
+    "id": "eth-moved-cable-vlan",
+    "title": "Ethernet/ARP · Masası değişen çalışan ağa giremiyor",
+    "symptom": "PC-B yeni masasına geçti, IP ayarları aynı, ama artık hiçbir yere ulaşamıyor.",
+    "cause": "PC-B'nin kablosu Fa0/7'ye taşınmış; Fa0/7 misafir ağı için VLAN 20'de (E4: port yanlış VLAN'da).",
+    "hints": [
+      "Değişen tek şey port.",
+      "MAC tablosunda PC-B'nin MAC'i hangi VLAN satırında?",
+      "show mac address-table address <PC-B MAC>."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "x": 380,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "fa0/4",
+            "fa0/5",
+            "fa0/6",
+            "fa0/7",
+            "fa0/8",
+            "gi0/1"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/4": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/5": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/6": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/7": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/8": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          }
+        },
+        {
+          "id": "d2",
+          "name": "PC-A",
+          "type": "PC",
+          "x": 120,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d3",
+          "name": "PC-B",
+          "type": "PC",
+          "x": 260,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d4",
+          "name": "PC-C",
+          "type": "PC",
+          "x": 400,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.13",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/7",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface fa0/7",
+          "switchport access vlan 10",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-B",
+      "target": "192.168.10.11",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-B",
+            "192.168.10.11"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-B → PC-A"
+        },
+        {
+          "fn": "macVlan",
+          "args": [
+            "SW1",
+            "$MAC:PC-B"
+          ],
+          "expected": 10,
+          "label": "SW1 PC-B'nin MAC'ini VLAN 10'da öğrendi"
+        }
+      ]
+    }
+  },
+  {
+    "id": "eth-two-switch-vlan",
+    "title": "Ethernet/ARP · Yeni switch'e bağlananlar ofise ulaşamıyor",
+    "symptom": "PC-D ile PC-E birbirine ulaşıyor. İkisi de SW1'deki PC'lere ulaşamıyor.",
+    "cause": "SW2 eklenmiş, SW1 Fa0/8'e bağlı. SW2'nin tüm portları VLAN 10'da; SW1 Fa0/8 ise varsayılan VLAN 1'de bırakılmış (E4, iki switch).",
+    "hints": [
+      "Sorun yalnız iki switch arasında: ortak nokta bağlantı portu.",
+      "SW1'in MAC tablosunda PC-D'nin MAC'i hangi portta ve hangi VLAN'da?",
+      "SW1 Fa0/8'in VLAN'ını SW2'nin portlarıyla karşılaştır."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "x": 380,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "fa0/4",
+            "fa0/5",
+            "fa0/6",
+            "fa0/7",
+            "fa0/8",
+            "gi0/1"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/4": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/5": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/6": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/7": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/8": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          }
+        },
+        {
+          "id": "d2",
+          "name": "PC-A",
+          "type": "PC",
+          "x": 120,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d3",
+          "name": "PC-B",
+          "type": "PC",
+          "x": 260,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d4",
+          "name": "PC-C",
+          "type": "PC",
+          "x": 400,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.13",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d6",
+          "name": "SW2",
+          "type": "Switch",
+          "x": 700,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "enabled": true,
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "fa0/3"
+          ],
+          "vlans": [
+            1,
+            10
+          ],
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          }
+        },
+        {
+          "id": "d7",
+          "name": "PC-D",
+          "type": "PC",
+          "x": 620,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.21",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        },
+        {
+          "id": "d8",
+          "name": "PC-E",
+          "type": "PC",
+          "x": 780,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "enabled": true,
+          "ip": "192.168.10.22",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d6",
+          "portA": "fa0/8",
+          "portB": "fa0/3",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d6",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d8",
+          "b": "d6",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface fa0/8",
+          "switchport access vlan 10",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-D",
+      "target": "192.168.10.11",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-D",
+            "192.168.10.11"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-D → PC-A"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-E",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-E → PC-B"
+        },
+        {
+          "fn": "macVlan",
+          "args": [
+            "SW1",
+            "$MAC:PC-D"
+          ],
+          "expected": 10,
+          "label": "SW1 PC-D'nin MAC'ini VLAN 10'da öğrendi"
+        },
+        {
+          "fn": "macPort",
+          "args": [
+            "SW1",
+            "$MAC:PC-D"
+          ],
+          "expected": "FastEthernet0/8",
+          "label": "SW1 PC-D'nin MAC'ini Fa0/8'de öğrendi"
+        }
+      ]
+    }
   }
 ]
