@@ -17,6 +17,7 @@
   },
   "include": [
     "src/sim/**/*.ts",
-    "src/sim-bridge/**/*.ts"
+    "src/sim-bridge/**/*.ts",
+    "src/labs/**/*.ts"
   ]
 }

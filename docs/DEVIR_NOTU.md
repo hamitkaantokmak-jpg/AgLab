@@ -16,11 +16,11 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L2-D2 Akademi M1–M3 Labber'da | #57 | birleşti |
 | L3-a terminal → IosSession/VpcsSession, tek kalıcı LabRuntime | #59 | açık (birleşmeyi bekliyor) |
 | F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | #60 (taban #59) | açık (birleşmeyi bekliyor) |
-| E Labber'ın 13 labı | — | **engelli**: kaynak (`labs/*.ts`) bu depoda yok, oturuma Labber deposu eklenemedi (aşağıda) |
+| E Labber'ın 13 labı | — | **kaynak depoda**: `src/labs/*.ts` (Labber deposundan değiştirilmeden alındı), testi `tests/sim/labs.test.ts`; sıradaki adım arayüz grubu |
 | L3-b Simulation Mode olay adaptörü | — | başlanmadı; tasarım aşağıda (E'nin içeriğine bağlı değil, F'nin üstüne yapılabilir) |
 
-**Sıradaki adım:** L3-b (F dalının üstüne). E, kullanıcı Labber `labs/` kaynağını
-sağlayınca (depo erişimi ya da arşiv yüklemesi) yapılır; lab metinleri uydurulmaz.
+**Sıradaki adım:** L3-b (F dalının üstüne). E'nin kaynağı artık depoda
+(`src/labs/`, testi `tests/sim/labs.test.ts`); lab metinleri değiştirilmeden kullanılır.
 
 ## Bugünkü mimari (kısaca)
 
