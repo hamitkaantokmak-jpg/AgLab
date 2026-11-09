@@ -484,9 +484,12 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             connect("PC2", "SW1")
             page.select_option("#academyAnswer-router_required", "false")
         else:
-            assert "0 percent" in cmd("PC1", ["ping 192.168.1.20"])
+            # L3-a: AGL-001/005 Labber kararında; PC terminali VPCS'dir. VPCS özet satırı
+            # ("Success rate …") yazmaz: başarısız denemede "icmp_seq=N timeout", başarılıda
+            # beş "84 bytes from" satırı.
+            assert "icmp_seq=1 timeout" in cmd("PC1", ["ping 192.168.1.20"])
             cmd("SW1", ["enable", "conf t", "interface fa0/2", "no shutdown", "end"])
-        assert "100 percent" in cmd("PC1", ["ping 192.168.1.20"])
+        assert cmd("PC1", ["ping 192.168.1.20"]).count("84 bytes from 192.168.1.20") == 5
         page.click("#academyCheck")
         grade = page.locator("#academyResult h3").inner_text()
         saved = page.evaluate('localStorage.getItem("aglab-academy-progress-v1")')

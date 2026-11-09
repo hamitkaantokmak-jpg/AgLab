@@ -9050,8 +9050,24 @@ labLoadExperiment();
     // IOS gibi: `?` yardımından sonra yazılan satır girişte kalır.
     if (line.endsWith('?')) $p('ptCliInput').value = line.slice(0, -1);
     afterLabberChange();
-    if (d.type === 'PC' && p[0] === 'ping' && p[1])
-      recordSharedPing(d.id, p[1], { ok: !result.lines.some((r) => r.kind === 'outerr') });
+    if (d.type === 'PC' && p[0] === 'ping' && p[1]) {
+      const ok = !result.lines.some((r) => r.kind === 'outerr');
+      labberSimulationTrace(d.id, p[1], ok);
+      recordSharedPing(d.id, p[1], { ok });
+    }
+  }
+  // Simulation Mode L3-b'ye kadar eski motorun paket olaylarını oynatır. Labber'daki PC
+  // ping'inden sonra aynı topoloji görünümünde eski motor yalnız olay kaydı için çalışır;
+  // sonucu değerlendirmede kullanılmaz. İki sonuç farklıysa kayıt silinir ve yazılır.
+  function labberSimulationTrace(src, target, ok) {
+    if (!validIP(target)) return;
+    if (ping(src, target).ok !== ok) {
+      beginEthernetEvents();
+      say(
+        'Simulation Mode bu ping’i gösteremiyor: animasyon henüz eski motordan geliyor ve o motor farklı sonuç verdi. Terminal ve değerlendirme Labber sonucunu kullanır.',
+        'outinfo',
+      );
+    }
   }
   function afterLabberChange() {
     render();
