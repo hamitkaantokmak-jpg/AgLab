@@ -76,10 +76,12 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 
 ## Labber köprüsü özeti (L1)
 
-Karar yalnızca köprünün yapısal sonucudur: `labber`, içeriğin bütün alanlarının
-Labber'a eşlendiği anlamına gelir; içeriğin yeni motorda çalıştırıldığı anlamına
-gelmez (geçiş L2 aşamasında). Eski motor kararı, aşağıdaki gerekçelerden en az
-birine dayanır.
+Karar köprünün yapısal sonucudur: `labber`, içeriğin bütün alanlarının Labber'a
+eşlendiği anlamına gelir. Ürün kararı içerik yüklenirken aynı köprüden alır ve
+ekranda gösterir. Ortak senaryolarda `labber` kararı başarı ölçütünün Labber'da
+değerlendirildiği anlamına gelir (L2-D1); Akademi labları için geçiş L2-D2'dedir.
+Cihaz CLI'si ve Simulation Mode L3'e kadar eski motorda kalır. Eski motor kararı,
+aşağıdaki gerekçelerden en az birine dayanır.
 
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|

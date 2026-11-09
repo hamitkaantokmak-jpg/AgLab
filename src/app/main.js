@@ -10642,7 +10642,12 @@ labLoadExperiment();
       'outinfo',
     );
   }
+  // Senaryo yüklenince motor kararı içerikten verilir ve rozet gösterilir (engine-choice.js).
   function loadSharedScenario(key) {
+    loadSharedScenarioContent(key);
+    sharedScenarioDecideEngine();
+  }
+  function loadSharedScenarioContent(key) {
     if (loadNetworkScenario(key)) return;
     if (key === 'stp-loop') {
       loadSharedStpScenario();
@@ -10805,6 +10810,29 @@ labLoadExperiment();
       target !== sharedScenario.target
     )
       return;
+    // Labber'da açılan senaryoda sonuç Labber'dan gelir; CLI (eski motor) ile farklıysa
+    // ya da topoloji Labber'da ifade edilemiyorsa hata gösterilir, motor değiştirilmez.
+    if (sharedScenario.engine?.engine === 'labber') {
+      let labber;
+      try {
+        labber = aglabEngineChoice.labberPing(src, target);
+      } catch (error) {
+        sharedStatus('Değerlendirme hatası: ' + error.message, false);
+        return;
+      }
+      if (labber.ok !== result.ok) {
+        sharedStatus(
+          'Motor uyuşmazlığı: Labber ping ' +
+            (labber.ok ? 'başarılı' : 'başarısız') +
+            ', CLI (eski motor) ping ' +
+            (result.ok ? 'başarılı' : 'başarısız') +
+            '. Sonuç kabul edilmedi; bu bir motor hatasıdır, lütfen bildir.',
+          false,
+        );
+        return;
+      }
+      result = labber;
+    }
     const sourceDevice = get(src),
       targetDevice = devices.find(
         (d) => d.ip === target || Object.values(d.interfaces || {}).some((i) => i.ip === target),
@@ -10967,6 +10995,7 @@ labLoadExperiment();
   //@@module DEVICE CLI@@
   //@@module NETWORK PROTOCOLS@@
   //@@module PORT SECURITY@@
+  //@@module ENGINE CHOICE@@
   //@@module NETWORK SCENARIOS@@
   //@@module SIMULATION PLAYBACK@@
   //@@module BORCK ENGINE@@

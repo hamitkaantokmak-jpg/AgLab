@@ -437,6 +437,7 @@ html[data-theme="light"] input,html[data-theme="light"] select,html[data-theme="
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label for="sharedScenarioSelect" style="font-size:12px">Senaryo</label><select id="sharedScenarioSelect" style="max-width:260px"><option value="return-route">Dönüş rotası eksik</option><option value="forward-route">İleri rota eksik</option><option value="default-route">Varsayılan rota eksik</option><option value="wrong-prefix">Statik rota yanlış prefix</option><option value="unresolved-next-hop">Çözümlenemeyen recursive next-hop</option><option value="lpm-next-hop">LPM: daha spesifik rota yanlış next-hop</option><option value="floating-static">Administrative Distance: yedek statik rota</option><option value="access-vlan">VLAN: yanlış access VLAN</option><option value="trunk-allowed">Trunk: allowed VLAN eksik</option><option value="native-vlan">Trunk: native VLAN uyuşmazlığı</option><option value="nat-pat">NAT/PAT: overload yapılandırması eksik</option><option value="relay-trunk">DHCP relay: trunk VLAN eksik</option><option value="stp-loop">STP: yedek bağlantı döngüsü</option></select><button type="button" id="sharedScenarioLoad" class="primary">Senaryoyu yükle</button></div>
       </div>
       <div id="sharedScenarioInstructions" style="margin-top:10px;font-size:13px;line-height:1.55">Senaryo seçip yükle. Topoloji, arızalı yapılandırmayla oluşturulacak.</div>
+      <div id="sharedScenarioEngine" class="engine-badge" style="margin-top:8px;font-size:12px;font-weight:600">Motor: senaryo yüklenince belirlenir.</div>
       <div id="sharedScenarioStatus" role="status" aria-live="polite" style="margin-top:8px;padding:9px 11px;border-radius:8px;background:rgba(100,116,139,.15);font-size:13px">Henüz gerçek motorlu senaryo yüklenmedi.</div>
       <div id="troubleSharedBridge" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px"><span id="troubleSharedBridgeText" role="status" style="font-size:12px;color:var(--muted)">Sorun Çöz görevi Lab motorunda sürüyor.</span><button type="button" id="troubleReturn" class="primary">← Sorun Çöz'e dön</button></div>
       <div id="regressionAuditPanel" style="margin-top:10px;padding:12px;border:1px solid #3b5277;border-radius:10px;background:rgba(15,23,42,.45)">
@@ -16481,7 +16482,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
       'outinfo',
     );
   }
+  // Senaryo yüklenince motor kararı içerikten verilir ve rozet gösterilir (engine-choice.js).
   function loadSharedScenario(key) {
+    loadSharedScenarioContent(key);
+    sharedScenarioDecideEngine();
+  }
+  function loadSharedScenarioContent(key) {
     if (loadNetworkScenario(key)) return;
     if (key === 'stp-loop') {
       loadSharedStpScenario();
@@ -16644,6 +16650,29 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
       target !== sharedScenario.target
     )
       return;
+    // Labber'da açılan senaryoda sonuç Labber'dan gelir; CLI (eski motor) ile farklıysa
+    // ya da topoloji Labber'da ifade edilemiyorsa hata gösterilir, motor değiştirilmez.
+    if (sharedScenario.engine?.engine === 'labber') {
+      let labber;
+      try {
+        labber = aglabEngineChoice.labberPing(src, target);
+      } catch (error) {
+        sharedStatus('Değerlendirme hatası: ' + error.message, false);
+        return;
+      }
+      if (labber.ok !== result.ok) {
+        sharedStatus(
+          'Motor uyuşmazlığı: Labber ping ' +
+            (labber.ok ? 'başarılı' : 'başarısız') +
+            ', CLI (eski motor) ping ' +
+            (result.ok ? 'başarılı' : 'başarısız') +
+            '. Sonuç kabul edilmedi; bu bir motor hatasıdır, lütfen bildir.',
+          false,
+        );
+        return;
+      }
+      result = labber;
+    }
     const sourceDevice = get(src),
       targetDevice = devices.find(
         (d) => d.ip === target || Object.values(d.interfaces || {}).some((i) => i.ip === target),
@@ -19932,6 +19961,81 @@ function portSecurityCommand(d, p, out) {
 }
 
 // END PORT SECURITY GENERATED
+// BEGIN ENGINE CHOICE GENERATED
+// Motor seçimi (Labber entegrasyonu L2, docs/YENIDEN_YAPILANMA.md "L4. Geçiş sırası").
+//
+// Karar içerikten gelir: köprü (AgLabSim.toLabber) topolojinin bütün alanlarını Labber'a
+// eşleyebiliyorsa içerik Labber'da değerlendirilir; eşleyemiyorsa eski motorda açılır ve
+// ekranda gerekçesiyle "Eski motor" rozeti görünür. Karar içerik yüklenirken bir kez
+// verilir; çalışma sırasında motorlar arasında geçiş yapılmaz. Labber'da açılmış içerik
+// sonradan Labber'ın ifade edemediği bir duruma gelirse (ör. topolojiye router eklenirse)
+// sonuç eski motordan alınmaz: değerlendirme hata olarak gösterilir.
+//
+// L2 kapsamı: başarı/ölçüt değerlendirmesi (ping, STP kökü) Labber'dan gelir. Cihaz CLI'si
+// ve Simulation Mode L3 aşamasına kadar eski motorda kalır; iki motor aynı ping sonucunu
+// vermezse bu da gizlenmez, uyuşmazlık olarak gösterilir.
+const aglabEngineChoice = (() => {
+  const REASON_TR = {
+    noip: 'Kaynak cihazda geçerli IPv4 adresi yok.',
+    noroute: 'Kaynakta hedef için yol yok (aynı alt ağda değil ve ağ geçidi yok/erişilemez).',
+    timeout:
+      'Yanıt gelmedi: hedefe veya dönüşte kaynağa katman 2 yolu yok (kablo, VLAN, trunk, STP).',
+    unreach: 'Hedef ağa ulaşılamıyor.',
+    off: 'Kaynak cihaz kapalı.',
+  };
+  function snapshot() {
+    return { app: 'AgLab', version: 23, devices: clone(devices), links: clone(links) };
+  }
+  /** İçerik için motor kararı: { engine: 'labber' | 'legacy', reasons: [] }. */
+  function decide(topology) {
+    const report = AgLabSim.toLabber(topology).report;
+    return { engine: report.engineDecision, reasons: report.reasons.slice() };
+  }
+  function badgeText(decision) {
+    return decision.engine === 'labber'
+      ? 'Motor: Labber — değerlendirme Labber motorunda yapılır (cihaz CLI’si ve Simulation Mode henüz eski motorda).'
+      : 'Eski motor — nedeni: ' + decision.reasons.join('; ');
+  }
+  function renderBadge(el, decision) {
+    if (!el) return;
+    el.textContent = badgeText(decision);
+    el.dataset.engine = decision.engine;
+  }
+  /** Mevcut topolojiden Labber çalışma zamanı; ifade edilemiyorsa açık hata. */
+  function runtime() {
+    const r = AgLabSim.toLabber(snapshot());
+    if (r.report.engineDecision !== 'labber')
+      throw new Error(
+        'Bu içerik Labber motorunda açıldı ama topoloji artık Labber’ın desteklemediği öğeler içeriyor (' +
+          r.report.reasons.join('; ') +
+          '). Motor değiştirilmez; değerlendirme yapılamadı.',
+      );
+    return AgLabSim.createRuntime(r);
+  }
+  /** Labber ping: { ok, why, replier? }. Hata durumunda istisna atar. */
+  function labberPing(sourceId, ip) {
+    const r = runtime().query().ping(sourceId, ip);
+    const who = r.replier ? get(r.replier)?.name || r.replier : null;
+    const why = r.ok
+      ? 'Labber: yanıt ' + (who || ip) + ' cihazından geldi.'
+      : 'Labber: ' +
+        (REASON_TR[r.reason] || 'Ping başarısız.') +
+        (r.reason === 'unreach' && r.unreachFrom ? ' (' + r.unreachFrom + ' yanıt verdi)' : '');
+    return { ok: r.ok, why, replier: r.replier || null, reason: r.reason || null };
+  }
+  /** Labber STP kökü (cihaz adı) veya null. */
+  function labberStpRoot(vlan) {
+    const id = runtime().query().stpRoot(vlan);
+    return id ? get(id)?.name || id : null;
+  }
+  return { decide, badgeText, renderBadge, labberPing, labberStpRoot, snapshot, REASON_TR };
+})();
+window.aglabEngineChoice = {
+  decide: (t) => aglabEngineChoice.decide(t),
+  badgeText: (d) => aglabEngineChoice.badgeText(d),
+};
+
+// END ENGINE CHOICE GENERATED
 // BEGIN NETWORK SCENARIOS GENERATED
 const sharedNetworkScenarios=[
   {
@@ -22379,7 +22483,19 @@ function loadNetworkScenario(key) {
   saveTopology(true);
   return true;
 }
+function sharedScenarioDecideEngine() {
+  sharedScenario.engine = aglabEngineChoice.decide(aglabEngineChoice.snapshot());
+  aglabEngineChoice.renderBadge($p('sharedScenarioEngine'), sharedScenario.engine);
+}
 function sharedRecipeGoal(row) {
+  if (sharedScenario.engine?.engine === 'labber') {
+    const reached = () =>
+      aglabEngineChoice.labberPing(sharedScenario.sourceId, sharedScenario.target).ok;
+    if (row.verify.kind === 'stp-root')
+      return aglabEngineChoice.labberStpRoot(10) === 'SW-03' && reached();
+    if (row.verify.kind === 'ping') return reached();
+    throw new Error('Labber bu doğrulama türünü desteklemiyor: ' + row.verify.kind);
+  }
   if (row.verify.kind === 'dhcp') return !!get(sharedScenario.sourceId)?.dhcpLease;
   if (row.verify.kind === 'stp-root')
     return (
@@ -22423,6 +22539,7 @@ function validateSharedScenarios() {
         const solved = sharedRecipeGoal(row);
         results.push({
           id: row.id,
+          engine: sharedScenario.engine?.engine || null,
           initial,
           solved,
           ok: !initial && solved,
@@ -22463,6 +22580,10 @@ window.aglabSharedEngine = {
   validateScenarios: validateSharedScenarios,
   commandBlock: sharedEngineCommandBlock,
   probe: () => ping(sharedScenario.sourceId, sharedScenario.target),
+  // Yüklü senaryonun motor kararı ({engine, reasons}) ve senaryo hedefinin o motordaki sonucu.
+  engine: () => clone(sharedScenario.engine || null),
+  target: () => sharedScenario.target,
+  goal: () => sharedRecipeGoal(sharedScenarioRecipe(sharedScenario.key)),
   // Ad ile iki cihaz arası erişim; başarılı ve başarısız iletim testleri için.
   reach: (source, target) => {
     const src = devices.find((d) => d.name === source),
