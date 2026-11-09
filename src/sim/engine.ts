@@ -1,7 +1,7 @@
 // Derivation engine: turns switch configs into operational state.
 // Nothing here is scripted per lab; wrong config yields wrong behaviour on its own.
 
-import type { ChannelMode, L2IfConfig, PcConfig, SwitchConfig, SwitchDef } from './types'
+import { noHardwareFaults, type ChannelMode, type Hardware, type L2IfConfig, type PcConfig, type SwitchConfig, type SwitchDef } from './types'
 import type { OspfState } from './ospf'
 import { l2Signature } from './config'
 import { ifType, macAdd } from './util'
@@ -91,6 +91,13 @@ export interface NativeMismatch {
   peerNative: number
 }
 
+/** One IP used by several interfaces in the same broadcast domain (filled in ospf.ts computeState). */
+export interface DupIp {
+  ip: string
+  /** in lab device order; the first one answers ARP */
+  owners: { dev: string; kind: 'pc' | 'svi' | 'routed' | 'loop'; name: string; mac: string }[]
+}
+
 export interface Derived {
   topo: Topo
   cfgs: Record<string, SwitchConfig>
@@ -107,8 +114,12 @@ export interface Derived {
   nativeMismatch: NativeMismatch[]
   /** err-disabled physical ports ('dev|port') used for this derivation */
   errdis: Set<string>
+  /** cut cables, powered-off devices, disabled PC NICs used for this derivation */
+  hw: Hardware
   /** filled by computeState() in ospf.ts */
   ospf: Record<string, OspfState>
+  /** duplicate addresses; filled by computeState() in ospf.ts */
+  dups: DupIp[]
 }
 
 const protoOf = (m: ChannelMode): 'LACP' | 'PAgP' | '-' =>
@@ -149,8 +160,14 @@ export function derive(
   cfgs: Record<string, SwitchConfig>,
   pcs: Record<string, PcConfig>,
   errdis: Set<string> = new Set(),
+  hw: Hardware = noHardwareFaults(),
 ): Derived {
   const phys: Record<string, PhysState> = {}
+
+  // 0. hardware: a cable end carries signal only if the cable is intact, the device is
+  //    powered and (for a PC) its NIC is enabled
+  const endPowered = (dev: string, port: string): boolean =>
+    !hw.off.has(dev) && !hw.cut.has(pk(dev, port)) && !(topo.devices[dev]?.kind === 'pc' && hw.nicDown.has(dev))
 
   // 1. physical links (a shut port-channel takes its members down)
   const adminDown = (dev: string, port: string): boolean => {
@@ -170,8 +187,10 @@ export function derive(
       const peerIsPc = !!peer && topo.devices[peer.dev]?.kind === 'pc'
       const down = adminDown(sw.id, port)
       const err = errdis.has(key)
-      const peerUp = !!peer && (peerIsPc || (!adminDown(peer.dev, peer.port) && !errdis.has(pk(peer.dev, peer.port))))
-      phys[key] = { dev: sw.id, port, peer, peerIsPc, adminDown: down, errDisabled: err, up: !down && !err && peerUp }
+      const peerUp =
+        !!peer && endPowered(peer.dev, peer.port) && (peerIsPc || (!adminDown(peer.dev, peer.port) && !errdis.has(pk(peer.dev, peer.port))))
+      const up = !down && !err && endPowered(sw.id, port) && peerUp
+      phys[key] = { dev: sw.id, port, peer, peerIsPc, adminDown: down, errDisabled: err, up }
     }
   }
 
@@ -347,7 +366,9 @@ export function derive(
     svis: {},
     nativeMismatch: [],
     errdis,
+    hw,
     ospf: {},
+    dups: [],
   }
 
   // 5. STP per VLAN
@@ -363,7 +384,7 @@ export function derive(
     for (const [vs, svi] of Object.entries(cfg.svis)) {
       const v = Number(vs)
       const hasFwd = (d.lports[sw.id] ?? []).some((lp) => portForwards(d, sw.id, lp, v))
-      const up = !svi.shutdown && vlanExists(cfg, v) && hasFwd
+      const up = !svi.shutdown && vlanExists(cfg, v) && hasFwd && !hw.off.has(sw.id)
       out.push({
         dev: sw.id,
         vlan: v,
@@ -470,7 +491,7 @@ function computeStp(d: Derived, v: number): Record<string, StpBridge> {
   const edges: Record<string, Edge[]> = {}
   for (const sw of d.topo.switches) {
     const cfg = d.cfgs[sw.id]!
-    if (!vlanExists(cfg, v)) continue
+    if (!vlanExists(cfg, v) || d.hw.off.has(sw.id)) continue
     const prio = (cfg.stpPriority[String(v)] ?? 32768) + v
     const mac = sw.mac
     const b: StpBridge = { prio, mac, rootPrio: prio, rootMac: mac, rootCost: 0, rootPort: null, isRoot: true, ports: {} }
@@ -582,6 +603,8 @@ export function bpduViolations(d: Derived): string[] {
   const out: string[] = []
   for (const [key, ps] of Object.entries(d.phys)) {
     if (ps.adminDown || !ps.peer || ps.peerIsPc) continue
+    // no BPDUs over a cut cable or from / to a powered-off switch
+    if (d.hw.cut.has(key) || d.hw.off.has(ps.dev) || d.hw.off.has(ps.peer.dev)) continue
     if (!bpduGuardOn(d.cfgs[ps.dev]!, ps.port)) continue
     const peer = d.phys[pk(ps.peer.dev, ps.peer.port)]
     if (!peer || peer.adminDown || isRoutedPort(d.cfgs, ps.peer.dev, ps.peer.port)) continue

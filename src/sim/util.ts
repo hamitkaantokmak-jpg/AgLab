@@ -143,6 +143,21 @@ export function macAdd(mac: string, n: number): string {
   return `${v.slice(0, 4)}.${v.slice(4, 8)}.${v.slice(8, 12)}`
 }
 
+/**
+ * MAC in any common spelling (Cisco H.H.H with short groups, colon/dash separated,
+ * bare 12 hex digits) to canonical dotted lowercase; null when not a MAC.
+ */
+export function normalizeMac(s: string): string | null {
+  const t = s.trim().toLowerCase()
+  let hex: string
+  const dotted = /^([0-9a-f]{1,4})\.([0-9a-f]{1,4})\.([0-9a-f]{1,4})$/.exec(t)
+  if (dotted) hex = dotted.slice(1).map((g) => g.padStart(4, '0')).join('')
+  else if (/^[0-9a-f]{2}([:-][0-9a-f]{2}){5}$/.test(t)) hex = t.replace(/[:-]/g, '')
+  else if (/^[0-9a-f]{12}$/.test(t)) hex = t
+  else return null
+  return `${hex.slice(0, 4)}.${hex.slice(4, 8)}.${hex.slice(8, 12)}`
+}
+
 export function macToColon(mac: string): string {
   const hex = mac.replace(/\./g, '')
   return hex.match(/../g)!.join(':')

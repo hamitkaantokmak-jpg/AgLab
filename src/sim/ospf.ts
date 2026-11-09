@@ -2,9 +2,9 @@
 // Computed from config + derived L2/L3 state; nothing is scripted per lab.
 
 import { derive, type Derived } from './engine'
-import { ifBandwidth, l2Domain, l3Ifs, routeTable, type L3If, type RouteCode } from './net'
+import { duplicateIps, ifBandwidth, l2Domain, l3Ifs, routeTable, type L3If, type RouteCode } from './net'
 import type { Topo } from './topology'
-import type { L3Opts, OspfConfig, PcConfig, SwitchConfig, SwitchDef } from './types'
+import type { Hardware, L3Opts, OspfConfig, PcConfig, SwitchConfig, SwitchDef } from './types'
 import { ipToInt, maskToPrefix, networkOf, sameSubnet } from './util'
 
 export type OspfNetType = 'broadcast' | 'point-to-point' | 'loopback'
@@ -83,9 +83,16 @@ export interface OspfState {
 }
 
 /** Full derivation: L2/L3 state plus OSPF. */
-export function computeState(topo: Topo, cfgs: Record<string, SwitchConfig>, pcs: Record<string, PcConfig>, errdis?: Set<string>): Derived {
-  const d = derive(topo, cfgs, pcs, errdis)
+export function computeState(
+  topo: Topo,
+  cfgs: Record<string, SwitchConfig>,
+  pcs: Record<string, PcConfig>,
+  errdis?: Set<string>,
+  hw?: Hardware,
+): Derived {
+  const d = derive(topo, cfgs, pcs, errdis, hw)
   d.ospf = computeOspf(d)
+  d.dups = duplicateIps(d)
   return d
 }
 
@@ -103,7 +110,7 @@ export function candidateRid(d: Derived, dev: string): string | null {
 export function ospfRunning(d: Derived, dev: string): boolean {
   const def = d.topo.devices[dev]
   const c = d.cfgs[dev]
-  return def?.kind === 'switch' && !!def.l3 && !!c?.ipRouting && !!c.ospf
+  return def?.kind === 'switch' && !!def.l3 && !!c?.ipRouting && !!c.ospf && !d.hw.off.has(dev)
 }
 
 interface IfCfgRef {

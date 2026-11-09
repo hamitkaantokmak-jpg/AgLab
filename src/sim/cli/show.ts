@@ -611,15 +611,19 @@ export function showEtherchannelSummary(rt: LabRuntime, dev: string): string[] {
 
 // ---- mac table, cdp, version ----
 
-export function showMac(rt: LabRuntime, dev: string): string[] {
+/** `show mac address-table [address <mac>]`; `only` is a canonical dotted MAC. */
+export function showMac(rt: LabRuntime, dev: string, only?: string): string[] {
   const d = rt.derived
-  const sw = rt.topo.devices[dev] as SwitchDef
   const o = ['          Mac Address Table', '-------------------------------------------', '', 'Vlan    Mac Address       Type        Ports', '----    -----------       --------    -----']
-  o.push(' All    0100.0ccc.cccc    STATIC      CPU', ' All    0100.0ccc.cccd    STATIC      CPU', ' All    0180.c200.0000    STATIC      CPU')
-  const entries = macTable(d, dev, rt.seen)
-  for (const e of entries) o.push(padL(e.vlan, 4) + '    ' + pad(e.mac, 18) + pad('DYNAMIC', 12) + shortIf(e.port))
-  o.push(`Total Mac Addresses for this criterion: ${entries.length + 3}`)
-  void sw
+  const rows: { mac: string; line: string }[] = ['0100.0ccc.cccc', '0100.0ccc.cccd', '0180.c200.0000'].map((mac) => ({
+    mac,
+    line: ` All    ${mac}    STATIC      CPU`,
+  }))
+  for (const e of macTable(d, dev, rt.seen))
+    rows.push({ mac: e.mac, line: padL(e.vlan, 4) + '    ' + pad(e.mac, 18) + pad('DYNAMIC', 12) + shortIf(e.port) })
+  const shown = only ? rows.filter((r) => r.mac === only) : rows
+  o.push(...shown.map((r) => r.line))
+  o.push(`Total Mac Addresses for this criterion: ${shown.length}`)
   return o
 }
 

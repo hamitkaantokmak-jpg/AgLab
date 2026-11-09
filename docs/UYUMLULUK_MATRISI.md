@@ -62,3 +62,29 @@ başarılıdır. ACL/NAT için daha sonraki ayrı native kanıt üst tablodadır
 teslim raporunda ayrıca belirtilir.
 
 Kaynak ve test ayrıntısı: [Gelişmiş motor entegrasyonu](GELISMIS_MOTOR_ENTEGRASYON.md).
+
+## Labber motoru ile eski motor arasındaki bilinen farklar (L2 kararları)
+
+Labber'da açılan içerikte (motor kararı: köprü raporu, `docs/LAB_MOTOR_HARITASI.md`)
+değerlendirme Labber'dan gelir. Aşağıdaki farklar oracle (`src/engine`) paritesinde
+ölçüldü (`tests/sim/parity.test.ts`, `sim-parity-node.json`). **Gerçek içerikte
+(40 Akademi labı başlangıç/hedef, 22 ortak senaryo) hiçbiri görülmüyor**; yalnız
+sentetik topolojilerde ortaya çıkıyor. Tarayıcı ping paritesi (124 durum) 0 fark.
+
+| Fark | Eski motor | Labber | Karar |
+|---|---|---|---|
+| `vlan-carry-unconfigured-port`: arayüz kaydı olmayan switch portu | Trafik taşımaz | Cisco varsayılanı: access VLAN 1 | **Labber.** Gerçek switch davranışı. İçerikte her port kayıtlı olduğundan etki yok. |
+| `vlan-carry-trunk-access-mismatch`: bir uç trunk, diğer uç access | Access VLAN trunk'ın izinli listesindeyse taşır | Yalnız native VLAN geçer; etiketli çerçeve access ucunda düşer | **Labber.** 802.1Q davranışı. |
+| `vlan-carry-native-mismatch`: native VLAN uyuşmazlığı | STP uygunluk kuralı native'i yok sayar | Native VLAN trafiği geçmez, `%CDP-4-NATIVE_VLAN_MISMATCH` ve PVID_Inc | **Labber.** Eski motorun ping yolu (`linkCarriesVlan`) zaten Labber gibi davranıyor. |
+| `stp-blocked-link-choice`: aynı sayıda ama farklı bağlantı bloklanıyor | BFS sırasıyla | Gerçek STP (kök maliyeti, köprü/port kimliği) | **Labber.** STP sonucunu soran ölçüt (`stp-loop`) kök switch'i denetler; bloklanan port seçimine bağlı değil. |
+| `route-recursive-next-hop`: özyinelemeli statik next-hop | Destekler | Yalnız doğrudan bağlı next-hop | **Ertelendi (L4).** Router içeriği Labber'a geçmeden eklenecek; o zamana kadar bu içerik eski motorda. |
+| Statik rota AD (`ip route … <AD>`) | Destekler | Söz dizimi reddedilir | **Ertelendi (L4).** Aynı gerekçe. |
+| Eksik `links[].up` / `device.enabled` alanı | Oracle `linkUp` kapalı sayar; `engine-manager.js` ve borck açık sayar | Açık sayılır (yalnız açık `false` kapalı) | **Labber = ürün davranışı.** İçerikte alanlar her zaman yazılı (0 eksik). |
+| Kapalı switch'in açılması | Running-config korunur | IOS `reload`: startup-config yüklenir | **Labber.** Köprülenen içerikte startup = başlangıç yapılandırması; fark yalnız kaydedilmemiş CLI değişikliğinde. |
+| Yinelenen IP | Ayrı model yok | Yayın alanında ilk sahip ARP'yi yanıtlar; switch adresi çakışırsa `%IP-4-DUPADDR` | **Labber.** Belirli seçim testlenebilirlik için; gerçekte yarış. |
+
+**Çalışma sırasında motor değişmez.** Labber'da açılan içerik sonradan köprünün
+ifade edemediği bir duruma gelirse (ör. topolojiye router eklenirse) sonuç eski
+motordan alınmaz; "Değerlendirme hatası" gösterilir. Labber ile CLI'nin (L3'e kadar
+eski motor) ping sonucu farklıysa "Motor uyuşmazlığı" gösterilir ve sonuç kabul
+edilmez (`tests/test_aglab_engine_choice.py`).

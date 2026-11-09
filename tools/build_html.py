@@ -61,6 +61,7 @@ MODULES: dict[str, list[str]] = {
     "DEVICE CLI": ["simulator/device-cli.js"],
     "NETWORK PROTOCOLS": ["simulator/network-protocols.js"],
     "PORT SECURITY": ["simulator/port-security.js"],
+    "ENGINE CHOICE": ["simulator/engine-choice.js"],
     "NETWORK SCENARIOS": ["simulator/network-scenarios.js"],
     "SIMULATION PLAYBACK": ["simulator/simulation-playback.js"],
     "BORCK ENGINE": ["simulator/borck-engine.generated.js"],

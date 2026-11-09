@@ -133,6 +133,8 @@ export interface SwitchDef {
   l3?: boolean
   /** trunk needs `switchport trunk encapsulation dot1q` first (Catalyst 3560 style) */
   needsEncap?: boolean
+  /** powered off at lab start */
+  off?: boolean
   x: number
   y: number
 }
@@ -141,6 +143,10 @@ export interface PcDef {
   id: string
   kind: 'pc'
   mac: string
+  /** powered off at lab start */
+  off?: boolean
+  /** NIC disabled at lab start */
+  nicDown?: boolean
   x: number
   y: number
 }
@@ -150,7 +156,24 @@ export type DeviceDef = SwitchDef | PcDef
 export interface LinkDef {
   a: [string, string]
   b: [string, string]
+  /** false: cable unplugged / cut at lab start */
+  up?: boolean
 }
+
+/**
+ * Physical state outside the device configs: cut cables, powered-off devices and
+ * disabled PC NICs. Changed at runtime by the lab UI, never by CLI commands.
+ */
+export interface Hardware {
+  /** both ends ('dev|port') of every cut cable */
+  cut: Set<string>
+  /** powered-off devices */
+  off: Set<string>
+  /** PCs whose NIC is disabled */
+  nicDown: Set<string>
+}
+
+export const noHardwareFaults = (): Hardware => ({ cut: new Set(), off: new Set(), nicDown: new Set() })
 
 export interface ObjectiveResult {
   ok: boolean

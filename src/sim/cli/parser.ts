@@ -5,6 +5,7 @@
 //   <1-4094:desc>          integer range
 //   <vlist:desc>           VLAN list (10,20-30)
 //   <A.B.C.D:desc>         IPv4 address
+//   <H.H.H:desc>           MAC address (Cisco dotted, groups of 1-4 hex digits)
 //   <WORD:desc>            single word
 //   <LINE:desc>            rest of the line
 //   <if>                   interface type keyword + <ifnum>
@@ -21,6 +22,7 @@ export type Param =
   | { kind: 'range'; min: number; max: number; desc: string }
   | { kind: 'vlist'; desc: string }
   | { kind: 'ip'; desc: string }
+  | { kind: 'mac'; desc: string }
   | { kind: 'word'; desc: string }
   | { kind: 'line'; desc: string }
   | { kind: 'ifnum'; desc: string }
@@ -48,6 +50,7 @@ function parseParam(spec: string): Param {
   if (m) return { kind: 'range', min: Number(m[1]), max: Number(m[2]), desc }
   if (head === 'vlist') return { kind: 'vlist', desc }
   if (head === 'A.B.C.D') return { kind: 'ip', desc }
+  if (head === 'H.H.H') return { kind: 'mac', desc }
   if (head === 'WORD') return { kind: 'word', desc }
   if (head === 'LINE') return { kind: 'line', desc }
   if (head === 'ifnum') return { kind: 'ifnum', desc }
@@ -109,6 +112,8 @@ function paramOk(p: Param, t: string): boolean {
       return parseVlanList(t) !== null
     case 'ip':
       return isIp(t)
+    case 'mac':
+      return /^[0-9a-f]{1,4}\.[0-9a-f]{1,4}\.[0-9a-f]{1,4}$/i.test(t)
     case 'word':
     case 'line':
       return true
@@ -182,6 +187,8 @@ function paramLabel(p: Param): string {
       return 'WORD'
     case 'ip':
       return 'A.B.C.D'
+    case 'mac':
+      return 'H.H.H'
     case 'word':
       return 'WORD'
     case 'line':

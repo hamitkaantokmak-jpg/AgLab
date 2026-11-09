@@ -1,16 +1,48 @@
 // Read-only helpers for lab objectives. Objectives look at derived behaviour, never config text.
 
 import { egress, portForwards, vlanExists, type Derived, type LPort } from './engine'
-import { ping, pcNode, routeTable, type PingResult } from './net'
+import { macTable, ping, pcNode, routeTable, type MacEntry, type PingResult } from './net'
 import type { SwitchConfig } from './types'
 import { pk } from './topology'
-import { canonIf } from './util'
+import { canonIf, normalizeMac } from './util'
 
 export class LabQuery {
   constructor(
     public d: Derived,
     private startup: Record<string, SwitchConfig | null> = {},
+    /** MACs that sent or answered traffic; empty = nothing learned yet (see LabRuntime.query()) */
+    private learned: Set<string> = new Set(),
   ) {}
+
+  /** Dynamic MAC address table of a switch (learned addresses only). */
+  macTable(dev: string): MacEntry[] {
+    return macTable(this.d, dev, this.learned)
+  }
+
+  private macEntry(dev: string, mac: string): MacEntry | undefined {
+    const m = normalizeMac(mac)
+    return m ? this.macTable(dev).find((e) => e.mac === m) : undefined
+  }
+
+  /** Port (canonical name, or Port-channelN) the switch learned this MAC on, or null. */
+  macPort(dev: string, mac: string): string | null {
+    return this.macEntry(dev, mac)?.port ?? null
+  }
+
+  /** VLAN the switch learned this MAC in, or null. */
+  macVlan(dev: string, mac: string): number | null {
+    return this.macEntry(dev, mac)?.vlan ?? null
+  }
+
+  /** No two interfaces share this address inside one broadcast domain. */
+  ipUnique(ip: string): boolean {
+    return !this.d.dups.some((x) => x.ip === ip)
+  }
+
+  /** Devices that share this address in one broadcast domain (lab order; first answers ARP), else []. */
+  duplicates(ip: string): string[] {
+    return this.d.dups.find((x) => x.ip === ip)?.owners.map((o) => o.dev) ?? []
+  }
 
   /** Running config saved to NVRAM (startup matches running). */
   saved(dev: string): boolean {
@@ -151,6 +183,23 @@ export class LabQuery {
   /** Bridge priority including the VLAN id (sys-id-ext), or null if the VLAN is not on this switch. */
   bridgePriority(dev: string, vlan: number): number | null {
     return this.d.stp[vlan]?.[dev]?.prio ?? null
+  }
+
+  /** Device is powered on. */
+  powered(dev: string): boolean {
+    return !!this.d.topo.devices[dev] && !this.d.hw.off.has(dev)
+  }
+
+  /**
+   * The link on this port is up: cable intact, both ends powered, neither end shut,
+   * err-disabled or (PC) NIC-disabled. For a PC the port is its eth0.
+   */
+  linkUp(dev: string, port = 'eth0'): boolean {
+    if (this.d.topo.devices[dev]?.kind === 'pc') {
+      const at = this.d.topo.pcAttach[dev]
+      return !!at && !!this.d.phys[pk(at.dev, at.port)]?.up
+    }
+    return !!this.phys(dev, port)?.up
   }
 
   sviUp(dev: string, vlan: number): boolean {

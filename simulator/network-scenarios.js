@@ -62,7 +62,19 @@ function loadNetworkScenario(key) {
   saveTopology(true);
   return true;
 }
+function sharedScenarioDecideEngine() {
+  sharedScenario.engine = aglabEngineChoice.decide(aglabEngineChoice.snapshot());
+  aglabEngineChoice.renderBadge($p('sharedScenarioEngine'), sharedScenario.engine);
+}
 function sharedRecipeGoal(row) {
+  if (sharedScenario.engine?.engine === 'labber') {
+    const reached = () =>
+      aglabEngineChoice.labberPing(sharedScenario.sourceId, sharedScenario.target).ok;
+    if (row.verify.kind === 'stp-root')
+      return aglabEngineChoice.labberStpRoot(10) === 'SW-03' && reached();
+    if (row.verify.kind === 'ping') return reached();
+    throw new Error('Labber bu doğrulama türünü desteklemiyor: ' + row.verify.kind);
+  }
   if (row.verify.kind === 'dhcp') return !!get(sharedScenario.sourceId)?.dhcpLease;
   if (row.verify.kind === 'stp-root')
     return (
@@ -106,6 +118,7 @@ function validateSharedScenarios() {
         const solved = sharedRecipeGoal(row);
         results.push({
           id: row.id,
+          engine: sharedScenario.engine?.engine || null,
           initial,
           solved,
           ok: !initial && solved,
@@ -146,6 +159,10 @@ window.aglabSharedEngine = {
   validateScenarios: validateSharedScenarios,
   commandBlock: sharedEngineCommandBlock,
   probe: () => ping(sharedScenario.sourceId, sharedScenario.target),
+  // Yüklü senaryonun motor kararı ({engine, reasons}) ve senaryo hedefinin o motordaki sonucu.
+  engine: () => clone(sharedScenario.engine || null),
+  target: () => sharedScenario.target,
+  goal: () => sharedRecipeGoal(sharedScenarioRecipe(sharedScenario.key)),
   // Ad ile iki cihaz arası erişim; başarılı ve başarısız iletim testleri için.
   reach: (source, target) => {
     const src = devices.find((d) => d.name === source),
