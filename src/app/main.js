@@ -9057,28 +9057,26 @@ labLoadExperiment();
     afterLabberChange();
     if (d.type === 'PC' && p[0] === 'ping' && p[1]) {
       const ok = !result.lines.some((r) => r.kind === 'outerr');
-      labberSimulationTrace(d.id, p[1], ok);
+      labberSimulationTrace(d.id, p[1]);
       recordSharedPing(d.id, p[1], { ok });
     }
   }
-  // Simulation Mode L3-b'ye kadar eski motorun paket olaylarını oynatır. Labber'daki PC
-  // ping'inden sonra aynı topoloji görünümünde eski motor yalnız olay kaydı için çalışır;
-  // sonucu değerlendirmede kullanılmaz. İki sonuç farklıysa kayıt silinir ve yazılır.
-  function labberSimulationTrace(src, target, ok) {
+  // L3-b: Simulation Mode'un ping izi Labber olay adaptöründen gelir (AgLabSim.pingTrace):
+  // Labber'ın teslimat atlamaları ve l2Domain yolu. Eski motor çalıştırılmaz. Port adları
+  // AğLab bağlantılarıyla eşleşsin diye arayüz yazımına çevrilir.
+  function labberSimulationTrace(src, target) {
+    beginEthernetEvents();
     if (!validIP(target)) return;
-    if (aglabLabber.lab()) {
-      // Lab tanımı AğLab modelinde ifade edilemeyebilir; eski motor kaydı üretilmez.
-      beginEthernetEvents();
-      return;
+    let portName;
+    if (aglabLabber.lab()) portName = (dev, port) => (port === 'eth0' ? port : labShortPort(port));
+    else {
+      const names = AgLabSim.toLabber(aglabEngineChoice.snapshot()).report.portNames;
+      portName = (dev, port) => names[dev]?.[port] || port;
     }
-    if (ping(src, target).ok !== ok) {
-      beginEthernetEvents();
-      say(
-        'Simulation Mode bu ping’i gösteremiyor: animasyon henüz eski motordan geliyor ve o motor farklı sonuç verdi. Terminal ve değerlendirme Labber sonucunu kullanır.',
-        'outinfo',
-      );
-    }
+    ethernetLabberTrace = AgLabSim.pingTrace(aglabLabber.runtime(), src, target, portName);
+    finishEthernetTrace();
   }
+
   function afterLabberChange() {
     render();
     syncSelects();

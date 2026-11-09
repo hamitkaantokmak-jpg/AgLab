@@ -676,6 +676,7 @@ var AgLabSim = (() => {
     createRuntime: () => createRuntime,
     createSession: () => createSession,
     needsEncapFor: () => needsEncapFor,
+    pingTrace: () => pingTrace,
     runScript: () => runScript,
     toAglab: () => toAglab,
     toLabber: () => toLabber
@@ -3839,12 +3840,12 @@ var AgLabSim = (() => {
       }
       return s;
     };
-    const nk2 = (i) => `${i.l3.node.dev}|${i.l3.node.vlan}`;
+    const nk3 = (i) => `${i.l3.node.dev}|${i.l3.node.vlan}`;
     const peersOf = /* @__PURE__ */ new Map();
     const compat = /* @__PURE__ */ new Map();
     for (const a of talkers) {
       const dom = domOf(a);
-      const peers = talkers.filter((b) => b.dev !== a.dev && dom.has(nk2(b)));
+      const peers = talkers.filter((b) => b.dev !== a.dev && dom.has(nk3(b)));
       peersOf.set(a, peers);
       const ok = [];
       for (const b of peers) {
@@ -7075,6 +7076,131 @@ write memory`
       }
     }
     return out;
+  }
+
+  // src/sim-bridge/events.ts
+  var nk2 = (n) => `${n.dev}|${n.vlan}`;
+  var colon = (mac) => {
+    const h = mac.replace(/[^0-9a-f]/gi, "").toLowerCase();
+    return h.length === 12 ? h.match(/../g).join(":") : mac;
+  };
+  function l2Path(rt, a, b) {
+    const d = rt.derived;
+    if (!a.node || !b.node) return null;
+    const dom = l2Domain(d, a.node);
+    const chain = [];
+    let cur = dom.nodes.get(nk2(b.node));
+    if (!cur) return null;
+    while (cur.via) {
+      const prev = dom.nodes.get(cur.via.from);
+      if (!prev) return null;
+      chain.unshift({ from: prev.node.dev, out: cur.via.out, to: cur.node, in: cur.via.in });
+      cur = prev;
+    }
+    const steps = [];
+    for (const c of chain) {
+      const link = rt.def.links.find(
+        (l) => [
+          [l.a, l.b],
+          [l.b, l.a]
+        ].some(
+          ([x2, y2]) => x2[0] === c.from && y2[0] === c.to.dev && d.lportOfPhys[pk(x2[0], x2[1])]?.name === c.out && d.lportOfPhys[pk(y2[0], y2[1])]?.name === c.in && rt.cableIntact(x2[0], x2[1])
+        )
+      );
+      if (!link) return null;
+      const fwd = link.a[0] === c.from && d.lportOfPhys[pk(link.a[0], link.a[1])]?.name === c.out;
+      const [x, y] = fwd ? [link.a, link.b] : [link.b, link.a];
+      steps.push({ from: x[0], out: x[1], to: y[0], in: y[1], vlan: Math.max(c.to.vlan, 0) });
+    }
+    for (const [ifc, atStart] of [
+      [a, true],
+      [b, false]
+    ]) {
+      if (ifc.kind !== "pc") continue;
+      const at = rt.topo.pcAttach[ifc.dev];
+      if (!at || !rt.cableIntact(ifc.dev, "eth0")) return null;
+      const vlan = Math.max(ifc.node.vlan, 0);
+      if (atStart) steps.unshift({ from: ifc.dev, out: "eth0", to: at.dev, in: at.port, vlan });
+      else steps.push({ from: at.dev, out: at.port, to: ifc.dev, in: "eth0", vlan });
+    }
+    return steps;
+  }
+  function pingTrace(rt, from, dst, portName = (_dev, port) => port) {
+    const d = rt.derived;
+    const r = ping(d, from, dst);
+    const records = [];
+    let frameNo = 0;
+    let l2 = true;
+    const ifOf = (dev, ip) => l3Ifs(d, dev).find((i) => i.ip === ip) ?? null;
+    const walk2 = (kind, start, hops, srcIp, dstIp, baseTtl) => {
+      let ttl = baseTtl;
+      let sender = start;
+      for (const hop of hops) {
+        if (sender !== start) {
+          records.push({ raw: `ttl-forward ${sender} ${ttl} -> ${ttl - 1}` });
+          ttl--;
+        }
+        const target = ifOf(hop.dev, hop.ip);
+        const frameId = "lf" + ++frameNo;
+        const frame = {
+          protocol: "ICMP",
+          kind,
+          sourceMac: colon(hop.outIf.mac),
+          destinationMac: colon(target?.mac ?? ""),
+          vlan: Math.max(hop.outIf.node?.vlan ?? 0, 0),
+          etherType: "0x0800",
+          arp: null,
+          ipv4: { sourceIp: srcIp, destinationIp: dstIp, ttl, protocol: 1 },
+          icmp: { type: kind === "icmp-request" ? 8 : 0, code: 0 }
+        };
+        const ev = { frameId, frame };
+        records.push({ raw: `frame ${kind} src ${sender} dst ${frame.destinationMac} vlan ${frame.vlan}`, ...ev });
+        const steps = target ? l2Path(rt, hop.outIf, target) : null;
+        if (!steps) l2 = false;
+        let lastIn = "local";
+        for (const s of steps ?? []) {
+          if (rt.topo.devices[s.from]?.kind === "switch" && (s.from !== sender || lastIn !== "local"))
+            records.push({
+              raw: `unicast ${s.from} ingress ${lastIn === "local" ? "local" : portName(s.from, lastIn)} egress ${portName(s.from, s.out)} vlan ${s.vlan}`,
+              ...ev
+            });
+          lastIn = s.in;
+          records.push({
+            raw: `wire ${kind} ${s.from} -> ${s.to}`,
+            ...ev,
+            kind: "wire",
+            device: s.from,
+            edge: { a: s.from, portA: portName(s.from, s.out), b: s.to, portB: portName(s.to, s.in) }
+          });
+        }
+        records.push({ raw: `receive ${hop.dev} ${kind} vlan ${frame.vlan}`, ...ev, ...steps?.length ? { ingressPort: portName(hop.dev, steps[steps.length - 1].in) } : {} });
+        sender = hop.dev;
+      }
+      return sender;
+    };
+    const fwd = r.forward;
+    const src = sourceIp(d, from, dst);
+    if (!fwd || !src) {
+      records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "noroute"}` });
+      return { ok: false, l2: true, records };
+    }
+    const reached = walk2("icmp-request", from, fwd.hops, src, dst, 64);
+    if (fwd.kind !== "ok") {
+      records.push({ raw: `discard ${reached} ${fwd.kind === "unreach" ? "no-route" : "no-l2-path"}` });
+      records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? fwd.kind}` });
+      return { ok: false, l2, records };
+    }
+    const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from;
+    const back = deliver(d, replier, src);
+    const base2 = rt.topo.devices[replier]?.kind === "pc" ? 64 : 255;
+    const backTo = walk2("icmp-reply", replier, back.hops, dst, src, base2);
+    if (!r.ok || back.kind !== "ok" || backTo !== from) {
+      records.push({ raw: `discard ${backTo} no-return-path` });
+      records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "timeout"}` });
+      return { ok: false, l2, records };
+    }
+    records.push({ raw: `icmp-delivered ${from} from ${replier}` });
+    return { ok: true, l2, records };
   }
   return __toCommonJS(index_exports);
 })();
@@ -16841,28 +16967,26 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
     afterLabberChange();
     if (d.type === 'PC' && p[0] === 'ping' && p[1]) {
       const ok = !result.lines.some((r) => r.kind === 'outerr');
-      labberSimulationTrace(d.id, p[1], ok);
+      labberSimulationTrace(d.id, p[1]);
       recordSharedPing(d.id, p[1], { ok });
     }
   }
-  // Simulation Mode L3-b'ye kadar eski motorun paket olaylarını oynatır. Labber'daki PC
-  // ping'inden sonra aynı topoloji görünümünde eski motor yalnız olay kaydı için çalışır;
-  // sonucu değerlendirmede kullanılmaz. İki sonuç farklıysa kayıt silinir ve yazılır.
-  function labberSimulationTrace(src, target, ok) {
+  // L3-b: Simulation Mode'un ping izi Labber olay adaptöründen gelir (AgLabSim.pingTrace):
+  // Labber'ın teslimat atlamaları ve l2Domain yolu. Eski motor çalıştırılmaz. Port adları
+  // AğLab bağlantılarıyla eşleşsin diye arayüz yazımına çevrilir.
+  function labberSimulationTrace(src, target) {
+    beginEthernetEvents();
     if (!validIP(target)) return;
-    if (aglabLabber.lab()) {
-      // Lab tanımı AğLab modelinde ifade edilemeyebilir; eski motor kaydı üretilmez.
-      beginEthernetEvents();
-      return;
+    let portName;
+    if (aglabLabber.lab()) portName = (dev, port) => (port === 'eth0' ? port : labShortPort(port));
+    else {
+      const names = AgLabSim.toLabber(aglabEngineChoice.snapshot()).report.portNames;
+      portName = (dev, port) => names[dev]?.[port] || port;
     }
-    if (ping(src, target).ok !== ok) {
-      beginEthernetEvents();
-      say(
-        'Simulation Mode bu ping’i gösteremiyor: animasyon henüz eski motordan geliyor ve o motor farklı sonuç verdi. Terminal ve değerlendirme Labber sonucunu kullanır.',
-        'outinfo',
-      );
-    }
+    ethernetLabberTrace = AgLabSim.pingTrace(aglabLabber.runtime(), src, target, portName);
+    finishEthernetTrace();
   }
+
   function afterLabberChange() {
     render();
     syncSelects();
@@ -19474,7 +19598,9 @@ let ethernetTraceEvents = [],
   ethernetTraceOverflow = 0,
   ethernetTraceGeneration = 0,
   ethernetFrameNumber = 0,
-  ethernetTraceTopology = '';
+  ethernetTraceTopology = '',
+  // L3-b: Labber içeriğinde ping izi Labber olay adaptöründen gelir (labberSimulationTrace).
+  ethernetLabberTrace = null;
 function ethernetTopologyFingerprint() {
   // Narrow production-module harnesses supply adjacency/get without the UI's
   // complete topology arrays. Observation must not become a new engine dependency.
@@ -19482,6 +19608,7 @@ function ethernetTopologyFingerprint() {
   return JSON.stringify({ devices: devices.map(({ x, y, w, h, ...d }) => d), links });
 }
 function beginEthernetEvents() {
+  ethernetLabberTrace = null;
   ethernetEvents = [];
   ethernetEventOverflow = 0;
   ethernetTraceEvents = [];
@@ -19508,6 +19635,12 @@ function finishEthernetTrace() {
   ethernetTraceTopology = ethernetTopologyFingerprint();
 }
 function readEthernetTrace() {
+  if (ethernetLabberTrace)
+    return AgLabPacketEvents.fromLabber(ethernetLabberTrace, {
+      generation: ethernetTraceGeneration,
+      topologyKey: ethernetTraceTopology,
+      legacy: [],
+    });
   return AgLabPacketEvents.fromEvidence(ethernetTraceEvents, ethernetTraceOverflow, {
     generation: ethernetTraceGeneration,
     topologyKey: ethernetTraceTopology,
@@ -20749,6 +20882,41 @@ function tracerouteCommand(device, parts, out) {
     });
     return { ...metadata, origin: 'aglab-js', events, overflow, truncated: overflow > 0 };
   }
+  /**
+   * Labber olay adaptörü kayıtları (L3-b, src/sim-bridge/events.ts). Biçim eski motorun
+   * kanıt kayıtlarıyla aynıdır; köken 'labber' yazılır. l2 false ise kayıt yalnız L3
+   * atlamalarıdır. ARP çerçeveleri üretilmez; not alanı bunu arayüze taşır.
+   */
+  function fromLabber(trace, metadata = {}) {
+    if (!trace || !Array.isArray(trace.records) || typeof trace.l2 !== 'boolean')
+      throw Error('Invalid Labber trace');
+    const bounded = trace.records.slice(0, 512),
+      overflow = trace.records.length - bounded.length;
+    const events = bounded.map((record, index) => {
+      if (!record || typeof record.raw !== 'string') throw Error('Invalid trace record');
+      const base = normalize([record.raw]).events[0];
+      return {
+        ...base,
+        ...JSON.parse(JSON.stringify(record)),
+        eventId: (metadata.generation ?? 0) + ':l' + (index + 1),
+        index,
+        sequence: index + 1,
+        origin: 'labber',
+      };
+    });
+    const note = trace.l2
+      ? 'Labber: ICMP çerçeveleri kablo kablo gösterilir; ARP çerçeveleri gösterilmez.'
+      : 'Labber: katman 2 yolu çıkarılamadı; yalnız L3 atlamaları gösterilir (ARP gösterilmez).';
+    return {
+      ...metadata,
+      origin: 'labber',
+      l2: trace.l2,
+      note,
+      events,
+      overflow,
+      truncated: overflow > 0,
+    };
+  }
   function explain(event) {
     if (!event || typeof event !== 'object') throw Error('Invalid packet event');
     const d = event.detail;
@@ -20763,6 +20931,19 @@ function tracerouteCommand(device, parts, out) {
       case 'diagnostic':
         return 'Adaptör tanısı (paket yakalaması değil): ' + d.reason;
       case 'wire':
+        if (event.origin === 'labber')
+          return (
+            event.edge.a +
+            ' (' +
+            event.edge.portA +
+            ') → ' +
+            event.edge.b +
+            ' (' +
+            event.edge.portB +
+            '): Labber motorunun hesapladığı yol üzerindeki ' +
+            event.frame.kind +
+            ' çerçeve aktarımı. Alıcı işlemesi ayrı kayıttır.'
+          );
         return event.origin === 'aglab-js'
           ? event.edge.a +
               ' (' +
@@ -20920,7 +21101,7 @@ function tracerouteCommand(device, parts, out) {
       logTruncated: !!log.truncated,
     };
   }
-  const api = Object.freeze({ normalize, fromEvidence, explain, at, diagnose });
+  const api = Object.freeze({ normalize, fromEvidence, fromLabber, explain, at, diagnose });
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.AgLabPacketEvents = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
@@ -22417,6 +22598,8 @@ window.aglabLabberSession = {
   setPower: (dev, on) => aglabLabber.setPower(dev, on),
   setLink: (dev, port, up) => aglabLabber.setLink(dev, port, up),
   moveCable: (a, pa, b, pb) => aglabLabber.moveCable(a, pa, b, pb),
+  // L3-b: son ping'in Simulation Mode izi (Labber içeriğinde köken 'labber').
+  trace: () => readEthernetTrace(),
 };
 
 // END LABBER SESSION GENERATED
@@ -22431,8 +22614,8 @@ window.aglabLabberSession = {
 // sonuç eski motordan alınmaz: değerlendirme hata olarak gösterilir.
 //
 // L3-a: Labber kararındaki içerikte terminal ve değerlendirme aynı kalıcı LabRuntime'ı
-// kullanır (labber-session.js); iki motor karşılaştırması yoktur. Simulation Mode L3-b'ye
-// kadar eski motorda kalır.
+// kullanır (labber-session.js); iki motor karşılaştırması yoktur. L3-b: Simulation Mode'un
+// ping izi de Labber olay adaptöründen gelir (AgLabSim.pingTrace).
 const aglabEngineChoice = (() => {
   const REASON_TR = {
     noip: 'Kaynak cihazda geçerli IPv4 adresi yok.',
@@ -22452,7 +22635,7 @@ const aglabEngineChoice = (() => {
   }
   function badgeText(decision) {
     return decision.engine === 'labber'
-      ? 'Motor: Labber — terminal ve değerlendirme Labber motorunda (Simulation Mode henüz eski motorda).'
+      ? 'Motor: Labber — terminal, değerlendirme ve Simulation Mode Labber motorunda.'
       : 'Eski motor — nedeni: ' + decision.reasons.join('; ');
   }
   function renderBadge(el, decision) {
@@ -29057,7 +29240,7 @@ function labberLabRestore(value) {
   aglabLabber.startLab(def);
   $p('labberLabSelect').value = def.id;
   $p('labberLabEngine').textContent =
-    'Motor: Labber — lab tanımı doğrudan Labber’da kurulur (köprü kullanılmaz); terminal ve hedefler Labber motorunda. Simulation Mode bu labda henüz yok.';
+    'Motor: Labber — lab tanımı doğrudan Labber’da kurulur (köprü kullanılmaz); terminal, hedefler ve Simulation Mode Labber motorunda.';
   $p('labberLabEngine').dataset.engine = 'labber';
   panel.replaceChildren();
   const head = document.createElement('h4');
@@ -29161,7 +29344,7 @@ window.aglabLabberLabs = {
     function load(snapshot) {
       if (
         !snapshot ||
-        snapshot.origin !== 'aglab-js' ||
+        (snapshot.origin !== 'aglab-js' && snapshot.origin !== 'labber') ||
         !Array.isArray(snapshot.events) ||
         snapshot.events.length > 512
       )
@@ -29219,7 +29402,7 @@ window.aglabLabberLabs = {
   function matchWire(event, links) {
     if (
       event?.kind !== 'wire' ||
-      event.origin !== 'aglab-js' ||
+      (event.origin !== 'aglab-js' && event.origin !== 'labber') ||
       !event.edge ||
       !Array.isArray(links)
     )
@@ -31803,14 +31986,15 @@ if(typeof module==="object" && module.exports)module.exports=AgLabBorckEngine;
     status.textContent = stale
       ? 'Topoloji/yapılandırma değişti. Eski kayıt canlandırılmaz; CLI testini yeniden çalıştır ve kaydı al.'
       : s.total
-        ? 'AğLab JS · ' +
+        ? (captured.origin === 'labber' ? 'Labber · ' : 'AğLab JS · ') +
           (s.cursor < 0 ? 'Hazır' : 'Görüntülenen ' + (s.cursor + 1)) +
           ' / ' +
           s.total +
           ' olay' +
           (captured.overflow
             ? ' · Kayıt sınırı: ' + captured.overflow + ' ek olay gösterilemiyor.'
-            : '')
+            : '') +
+          (captured.note ? ' · ' + captured.note : '')
         : captured.events.length
           ? 'Bu filtreye uygun olay yok; filtreyi değiştir.'
           : 'Henüz motor olayı yok. Önce CLI ile test yap.';
@@ -31822,7 +32006,11 @@ if(typeof module==="object" && module.exports)module.exports=AgLabBorckEngine;
     if (e)
       document.dispatchEvent(
         new CustomEvent('aglab:packet-event-viewed', {
-          detail: { origin: 'aglab-js', raw: e.raw, trace: captured.legacy || [] },
+          detail: {
+            origin: captured.origin || 'aglab-js',
+            raw: e.raw,
+            trace: captured.legacy || [],
+          },
         }),
       );
   }

@@ -62,7 +62,7 @@ function labberLabRestore(value) {
   aglabLabber.startLab(def);
   $p('labberLabSelect').value = def.id;
   $p('labberLabEngine').textContent =
-    'Motor: Labber — lab tanımı doğrudan Labber’da kurulur (köprü kullanılmaz); terminal ve hedefler Labber motorunda. Simulation Mode bu labda henüz yok.';
+    'Motor: Labber — lab tanımı doğrudan Labber’da kurulur (köprü kullanılmaz); terminal, hedefler ve Simulation Mode Labber motorunda.';
   $p('labberLabEngine').dataset.engine = 'labber';
   panel.replaceChildren();
   const head = document.createElement('h4');

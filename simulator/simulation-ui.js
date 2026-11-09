@@ -460,14 +460,15 @@
     status.textContent = stale
       ? 'Topoloji/yapılandırma değişti. Eski kayıt canlandırılmaz; CLI testini yeniden çalıştır ve kaydı al.'
       : s.total
-        ? 'AğLab JS · ' +
+        ? (captured.origin === 'labber' ? 'Labber · ' : 'AğLab JS · ') +
           (s.cursor < 0 ? 'Hazır' : 'Görüntülenen ' + (s.cursor + 1)) +
           ' / ' +
           s.total +
           ' olay' +
           (captured.overflow
             ? ' · Kayıt sınırı: ' + captured.overflow + ' ek olay gösterilemiyor.'
-            : '')
+            : '') +
+          (captured.note ? ' · ' + captured.note : '')
         : captured.events.length
           ? 'Bu filtreye uygun olay yok; filtreyi değiştir.'
           : 'Henüz motor olayı yok. Önce CLI ile test yap.';
@@ -479,7 +480,11 @@
     if (e)
       document.dispatchEvent(
         new CustomEvent('aglab:packet-event-viewed', {
-          detail: { origin: 'aglab-js', raw: e.raw, trace: captured.legacy || [] },
+          detail: {
+            origin: captured.origin || 'aglab-js',
+            raw: e.raw,
+            trace: captured.legacy || [],
+          },
         }),
       );
   }

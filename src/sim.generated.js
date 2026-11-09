@@ -102,6 +102,7 @@ var AgLabSim = (() => {
     createRuntime: () => createRuntime,
     createSession: () => createSession,
     needsEncapFor: () => needsEncapFor,
+    pingTrace: () => pingTrace,
     runScript: () => runScript,
     toAglab: () => toAglab,
     toLabber: () => toLabber
@@ -3265,12 +3266,12 @@ var AgLabSim = (() => {
       }
       return s;
     };
-    const nk2 = (i) => `${i.l3.node.dev}|${i.l3.node.vlan}`;
+    const nk3 = (i) => `${i.l3.node.dev}|${i.l3.node.vlan}`;
     const peersOf = /* @__PURE__ */ new Map();
     const compat = /* @__PURE__ */ new Map();
     for (const a of talkers) {
       const dom = domOf(a);
-      const peers = talkers.filter((b) => b.dev !== a.dev && dom.has(nk2(b)));
+      const peers = talkers.filter((b) => b.dev !== a.dev && dom.has(nk3(b)));
       peersOf.set(a, peers);
       const ok = [];
       for (const b of peers) {
@@ -6501,6 +6502,131 @@ write memory`
       }
     }
     return out;
+  }
+
+  // src/sim-bridge/events.ts
+  var nk2 = (n) => `${n.dev}|${n.vlan}`;
+  var colon = (mac) => {
+    const h = mac.replace(/[^0-9a-f]/gi, "").toLowerCase();
+    return h.length === 12 ? h.match(/../g).join(":") : mac;
+  };
+  function l2Path(rt, a, b) {
+    const d = rt.derived;
+    if (!a.node || !b.node) return null;
+    const dom = l2Domain(d, a.node);
+    const chain = [];
+    let cur = dom.nodes.get(nk2(b.node));
+    if (!cur) return null;
+    while (cur.via) {
+      const prev = dom.nodes.get(cur.via.from);
+      if (!prev) return null;
+      chain.unshift({ from: prev.node.dev, out: cur.via.out, to: cur.node, in: cur.via.in });
+      cur = prev;
+    }
+    const steps = [];
+    for (const c of chain) {
+      const link = rt.def.links.find(
+        (l) => [
+          [l.a, l.b],
+          [l.b, l.a]
+        ].some(
+          ([x2, y2]) => x2[0] === c.from && y2[0] === c.to.dev && d.lportOfPhys[pk(x2[0], x2[1])]?.name === c.out && d.lportOfPhys[pk(y2[0], y2[1])]?.name === c.in && rt.cableIntact(x2[0], x2[1])
+        )
+      );
+      if (!link) return null;
+      const fwd = link.a[0] === c.from && d.lportOfPhys[pk(link.a[0], link.a[1])]?.name === c.out;
+      const [x, y] = fwd ? [link.a, link.b] : [link.b, link.a];
+      steps.push({ from: x[0], out: x[1], to: y[0], in: y[1], vlan: Math.max(c.to.vlan, 0) });
+    }
+    for (const [ifc, atStart] of [
+      [a, true],
+      [b, false]
+    ]) {
+      if (ifc.kind !== "pc") continue;
+      const at = rt.topo.pcAttach[ifc.dev];
+      if (!at || !rt.cableIntact(ifc.dev, "eth0")) return null;
+      const vlan = Math.max(ifc.node.vlan, 0);
+      if (atStart) steps.unshift({ from: ifc.dev, out: "eth0", to: at.dev, in: at.port, vlan });
+      else steps.push({ from: at.dev, out: at.port, to: ifc.dev, in: "eth0", vlan });
+    }
+    return steps;
+  }
+  function pingTrace(rt, from, dst, portName = (_dev, port) => port) {
+    const d = rt.derived;
+    const r = ping(d, from, dst);
+    const records = [];
+    let frameNo = 0;
+    let l2 = true;
+    const ifOf = (dev, ip) => l3Ifs(d, dev).find((i) => i.ip === ip) ?? null;
+    const walk2 = (kind, start, hops, srcIp, dstIp, baseTtl) => {
+      let ttl = baseTtl;
+      let sender = start;
+      for (const hop of hops) {
+        if (sender !== start) {
+          records.push({ raw: `ttl-forward ${sender} ${ttl} -> ${ttl - 1}` });
+          ttl--;
+        }
+        const target = ifOf(hop.dev, hop.ip);
+        const frameId = "lf" + ++frameNo;
+        const frame = {
+          protocol: "ICMP",
+          kind,
+          sourceMac: colon(hop.outIf.mac),
+          destinationMac: colon(target?.mac ?? ""),
+          vlan: Math.max(hop.outIf.node?.vlan ?? 0, 0),
+          etherType: "0x0800",
+          arp: null,
+          ipv4: { sourceIp: srcIp, destinationIp: dstIp, ttl, protocol: 1 },
+          icmp: { type: kind === "icmp-request" ? 8 : 0, code: 0 }
+        };
+        const ev = { frameId, frame };
+        records.push({ raw: `frame ${kind} src ${sender} dst ${frame.destinationMac} vlan ${frame.vlan}`, ...ev });
+        const steps = target ? l2Path(rt, hop.outIf, target) : null;
+        if (!steps) l2 = false;
+        let lastIn = "local";
+        for (const s of steps ?? []) {
+          if (rt.topo.devices[s.from]?.kind === "switch" && (s.from !== sender || lastIn !== "local"))
+            records.push({
+              raw: `unicast ${s.from} ingress ${lastIn === "local" ? "local" : portName(s.from, lastIn)} egress ${portName(s.from, s.out)} vlan ${s.vlan}`,
+              ...ev
+            });
+          lastIn = s.in;
+          records.push({
+            raw: `wire ${kind} ${s.from} -> ${s.to}`,
+            ...ev,
+            kind: "wire",
+            device: s.from,
+            edge: { a: s.from, portA: portName(s.from, s.out), b: s.to, portB: portName(s.to, s.in) }
+          });
+        }
+        records.push({ raw: `receive ${hop.dev} ${kind} vlan ${frame.vlan}`, ...ev, ...steps?.length ? { ingressPort: portName(hop.dev, steps[steps.length - 1].in) } : {} });
+        sender = hop.dev;
+      }
+      return sender;
+    };
+    const fwd = r.forward;
+    const src = sourceIp(d, from, dst);
+    if (!fwd || !src) {
+      records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "noroute"}` });
+      return { ok: false, l2: true, records };
+    }
+    const reached = walk2("icmp-request", from, fwd.hops, src, dst, 64);
+    if (fwd.kind !== "ok") {
+      records.push({ raw: `discard ${reached} ${fwd.kind === "unreach" ? "no-route" : "no-l2-path"}` });
+      records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? fwd.kind}` });
+      return { ok: false, l2, records };
+    }
+    const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from;
+    const back = deliver(d, replier, src);
+    const base2 = rt.topo.devices[replier]?.kind === "pc" ? 64 : 255;
+    const backTo = walk2("icmp-reply", replier, back.hops, dst, src, base2);
+    if (!r.ok || back.kind !== "ok" || backTo !== from) {
+      records.push({ raw: `discard ${backTo} no-return-path` });
+      records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "timeout"}` });
+      return { ok: false, l2, records };
+    }
+    records.push({ raw: `icmp-delivered ${from} from ${replier}` });
+    return { ok: true, l2, records };
   }
   return __toCommonJS(index_exports);
 })();

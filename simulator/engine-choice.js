@@ -8,8 +8,8 @@
 // sonuç eski motordan alınmaz: değerlendirme hata olarak gösterilir.
 //
 // L3-a: Labber kararındaki içerikte terminal ve değerlendirme aynı kalıcı LabRuntime'ı
-// kullanır (labber-session.js); iki motor karşılaştırması yoktur. Simulation Mode L3-b'ye
-// kadar eski motorda kalır.
+// kullanır (labber-session.js); iki motor karşılaştırması yoktur. L3-b: Simulation Mode'un
+// ping izi de Labber olay adaptöründen gelir (AgLabSim.pingTrace).
 const aglabEngineChoice = (() => {
   const REASON_TR = {
     noip: 'Kaynak cihazda geçerli IPv4 adresi yok.',
@@ -29,7 +29,7 @@ const aglabEngineChoice = (() => {
   }
   function badgeText(decision) {
     return decision.engine === 'labber'
-      ? 'Motor: Labber — terminal ve değerlendirme Labber motorunda (Simulation Mode henüz eski motorda).'
+      ? 'Motor: Labber — terminal, değerlendirme ve Simulation Mode Labber motorunda.'
       : 'Eski motor — nedeni: ' + decision.reasons.join('; ');
   }
   function renderBadge(el, decision) {

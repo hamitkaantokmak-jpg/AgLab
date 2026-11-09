@@ -1,4 +1,4 @@
-# Devir notu — Labber entegrasyonu (L3)
+# Devir notu — Labber entegrasyonu (L3 sonu → L4)
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
@@ -17,9 +17,11 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L3-a terminal → IosSession/VpcsSession, tek kalıcı LabRuntime | #59 | birleşti |
 | F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | #60 | birleşti |
 | E Labber'ın 13 labı (kaynak #61) | dal `claude/e-labber-labs` | PR açık (birleşmeyi bekliyor) |
-| L3-b Simulation Mode olay adaptörü | — | başlanmadı; tasarım aşağıda (E'nin içeriğine bağlı değil, F'nin üstüne yapılabilir) |
+| L3-b Simulation Mode olay adaptörü | dal `claude/l3b-simulation-adapter` (E'nin üstünde) | PR açık (birleşmeyi bekliyor) |
 
-**Sıradaki adım:** L3-b (E dalının üstüne).
+**L3 tamam, sıradaki: L4 (Router, AD, özyinelemeli statik rota).** Plan:
+`YENIDEN_YAPILANMA.md` L3 tablosu sıra 2–3 ve L4 "Aşamalar" satırı L4 (Akademi M4,
+routing senaryoları).
 
 ## Bugünkü mimari (kısaca)
 
@@ -145,32 +147,24 @@ Yalnız Labber kararındaki içerikte. Önerilen yol:
 olayları üretilemiyorsa animasyon yalnız L3 atlamalarını gösterir ve bu UI'da yazılır.
 Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_packet_events`.
 
-**Bugünkü ara çözüm (L3-a):** `main.js` `labberSimulationTrace`: Labber içeriğinde PC
-ping'inden sonra aynı AğLab görünümünde eski motor ping'i yalnız olay kaydı için çalışır;
-sonuç Labber'dan farklıysa kayıt silinir ve terminalde yazılır. L3-b bunu kaldırır.
-
-**Önerilen tasarım:**
-1. `src/sim-bridge/events.ts`: `pingTrace(rt, from, ip)` → `ethernetTraceEvents` ile aynı
-   kayıt biçimi (`{raw, eventId, frameId, frame, kind?, device?, edge?, ingressPort?}`;
-   `simulator/packet-events.js` `fromEvidence` bunu normalize eder).
-   - `net.ping(d, from, ip)` → `forward.hops` (her `Hop`: varılan cihaz/IP ve önceki
-     cihazın çıkış `L3If`'i; `L3If.node` = segment düğümü `{dev, vlan}`).
-   - Her atlama için L2 yolu: `l2Domain(d, outIf.node)` BFS'inde hedef `L3If.node`'dan
-     `via.from/out/in` zinciri geriye izlenir → switch'ler arası kenarlar; PC uçları
-     `topo.peer['PC|eth0']` ile eklenir. Kenarlar AğLab port adlarına
-     `report.portNames` ile çevrilir (animasyon `matchWire` AğLab `links` ile eşler).
-   - Çerçeveler: ARP isteği/yanıtı (`rt.arp` önbelleğinde yoksa), ICMP echo
-     istek/yanıt; `frame` alanları eski biçimle aynı (`sourceMac`, `destinationMac`,
-     `vlan`, `etherType`, `arp`, `ipv4.ttl` — router geçişinde TTL azalır).
-   - Dönüş: `back` teslimatı aynı şekilde.
-2. L2 yolu çıkarılamayan durumda yalnız L3 atlama olayları üretilir ve Simulation Mode
-   panelinde "yalnız L3 atlamaları" notu gösterilir.
-3. `labberSimulationTrace` → adaptör; eski motor çağrısı kalkar.
-4. Testlere Labber içerik vakası: `test_aglab_simulation_mode` (AGL-001/005 zaten
-   Labber), `test_aglab_frame_forwarding` (bir Labber senaryosu), `test_packet_events`
-   (adaptör çıktısı `fromEvidence` ile normalize olur).
-Not: `test_aglab_simulation_mode` donmuş saat pencerelerinde düğmelere klavyeyle basar
-(`press()`); yük altında fare tıklaması sayfayı kaydırıp tuvali görüş dışına taşıyordu.
+**Yapıldı (L3-b):**
+- `src/sim-bridge/events.ts` `pingTrace(rt, from, ip, portName)`: `net.ping`/`deliver`
+  atlamaları; her atlamanın L2 yolu `l2Domain` BFS ağacının `via.out/in` zincirinden,
+  mantıksal port (Port-channel dahil) → aynı iki cihaz arasındaki fiziksel kablo.
+  Kayıtlar: `frame`, `wire` (kenar + çerçeve), `unicast` ileri kararı, `receive`,
+  `ttl-forward`, `discard`, `icmp-delivered/undelivered`. ICMP istek ve yanıt; TTL router
+  geçişinde azalır. ARP çerçeveleri üretilmez.
+- L2 yolu çıkarılamazsa `l2: false`: kayıt yalnız L3 atlamaları; arayüz notu yazar.
+- `packet-events.js` `fromLabber` (köken `labber`, not alanı); `simulation-playback.js`
+  `load`/`matchWire` `labber` kökenini kabul eder; Simulation Mode durum satırı
+  "Labber · … · not".
+- `main.js` `labberSimulationTrace`: eski motor ping'i kaldırıldı; iz `ethernetLabberTrace`
+  (`readEthernetTrace` bunu döndürür). Port adları AğLab yazımına çevrilir (köprü
+  `portNames`; lab kipinde `labShortPort`). Labber labları (E) da Simulation Mode'u kullanır.
+- Testler: `tests/sim/events.test.ts` (13 labda iz = ping, başarılı ping'de L2 yolu lab
+  kabloları), `test_packet_events.cjs` (fromLabber), `test_aglab_frame_forwarding`
+  (Labber senaryosu: başarısız ve başarılı), `test_aglab_simulation_mode` (AGL-001/005
+  yakalaması `labber` kökenli, kablolar tuvalde eşleşir).
 
 ## Kurallar hatırlatması
 

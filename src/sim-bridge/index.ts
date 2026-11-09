@@ -13,4 +13,7 @@ export type { Session } from '../sim/index'
 export type * from '../sim/types'
 export { BridgeError, canonPort, createRuntime, needsEncapFor, toAglab, toLabber, MODEL_L2, MODEL_L3 } from './bridge'
 export type { BridgeReport, BridgeResult, RejectedItem, UnsupportedItem } from './bridge'
+// L3-b: Simulation Mode olay adaptörü (Labber ping → paket olayı kayıtları).
+export { pingTrace } from './events'
+export type { PingTrace, TraceRecord } from './events'
 export type { AglabDevice, AglabInterface, AglabLink, AglabTopology } from './aglab'

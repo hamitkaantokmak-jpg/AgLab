@@ -125,7 +125,8 @@ class SimEmbeddedTests(unittest.TestCase):
         before = self.accesses()
         result = self.page.evaluate(RUN_LAB)
         # L0 motor API'si + L1 köprüsü (toLabber/toAglab/createRuntime ve yardımcıları) +
-        # L3-a terminal oturum sınıfları (IosSession/VpcsSession).
+        # L3-a terminal oturum sınıfları (IosSession/VpcsSession) + L3-b olay adaptörü
+        # (pingTrace).
         self.assertEqual(
             result["api"],
             [
@@ -141,6 +142,7 @@ class SimEmbeddedTests(unittest.TestCase):
                 "createRuntime",
                 "createSession",
                 "needsEncapFor",
+                "pingTrace",
                 "runScript",
                 "toAglab",
                 "toLabber",

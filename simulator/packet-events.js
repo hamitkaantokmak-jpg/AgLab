@@ -93,6 +93,41 @@
     });
     return { ...metadata, origin: 'aglab-js', events, overflow, truncated: overflow > 0 };
   }
+  /**
+   * Labber olay adaptörü kayıtları (L3-b, src/sim-bridge/events.ts). Biçim eski motorun
+   * kanıt kayıtlarıyla aynıdır; köken 'labber' yazılır. l2 false ise kayıt yalnız L3
+   * atlamalarıdır. ARP çerçeveleri üretilmez; not alanı bunu arayüze taşır.
+   */
+  function fromLabber(trace, metadata = {}) {
+    if (!trace || !Array.isArray(trace.records) || typeof trace.l2 !== 'boolean')
+      throw Error('Invalid Labber trace');
+    const bounded = trace.records.slice(0, 512),
+      overflow = trace.records.length - bounded.length;
+    const events = bounded.map((record, index) => {
+      if (!record || typeof record.raw !== 'string') throw Error('Invalid trace record');
+      const base = normalize([record.raw]).events[0];
+      return {
+        ...base,
+        ...JSON.parse(JSON.stringify(record)),
+        eventId: (metadata.generation ?? 0) + ':l' + (index + 1),
+        index,
+        sequence: index + 1,
+        origin: 'labber',
+      };
+    });
+    const note = trace.l2
+      ? 'Labber: ICMP çerçeveleri kablo kablo gösterilir; ARP çerçeveleri gösterilmez.'
+      : 'Labber: katman 2 yolu çıkarılamadı; yalnız L3 atlamaları gösterilir (ARP gösterilmez).';
+    return {
+      ...metadata,
+      origin: 'labber',
+      l2: trace.l2,
+      note,
+      events,
+      overflow,
+      truncated: overflow > 0,
+    };
+  }
   function explain(event) {
     if (!event || typeof event !== 'object') throw Error('Invalid packet event');
     const d = event.detail;
@@ -107,6 +142,19 @@
       case 'diagnostic':
         return 'Adaptör tanısı (paket yakalaması değil): ' + d.reason;
       case 'wire':
+        if (event.origin === 'labber')
+          return (
+            event.edge.a +
+            ' (' +
+            event.edge.portA +
+            ') → ' +
+            event.edge.b +
+            ' (' +
+            event.edge.portB +
+            '): Labber motorunun hesapladığı yol üzerindeki ' +
+            event.frame.kind +
+            ' çerçeve aktarımı. Alıcı işlemesi ayrı kayıttır.'
+          );
         return event.origin === 'aglab-js'
           ? event.edge.a +
               ' (' +
@@ -264,7 +312,7 @@
       logTruncated: !!log.truncated,
     };
   }
-  const api = Object.freeze({ normalize, fromEvidence, explain, at, diagnose });
+  const api = Object.freeze({ normalize, fromEvidence, fromLabber, explain, at, diagnose });
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.AgLabPacketEvents = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

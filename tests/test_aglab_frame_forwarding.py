@@ -298,5 +298,45 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     for invalid in ["0100.5e00.0001", "0000.0000.0000", "invalid"]:
         assert "geçersiz" in cmd("d3", "test ethernet " + invalid).lower()
     print("PASS: router broadcast boundary and unsupported/malformed MAC rejection", flush=True)
+
+    # L3-b: Labber içeriğinde (Sorun Çöz senaryosu) çerçeve olayları Labber olay
+    # adaptöründen gelir: başarısız iletimde kablo aktarımı yok, ret ve "teslim edilmedi";
+    # başarılı iletimde istek ve yanıt AğLab bağlantılarıyla birebir eşleşen kablolarda.
+    def labber_trace(source, target):
+        page.evaluate(
+            "([s, t]) => { try { aglabSharedEngine.commandBlock(s, ['ping ' + t]) } catch (e) {} }",
+            [source, target],
+        )
+        return page.evaluate("""() => {
+              const ls = academyEngine.snapshot().links, ds = academyEngine.snapshot().devices;
+              const name = (id) => ds.find((d) => d.id === id).name;
+              const t = aglabLabberSession.trace();
+              return { origin: t.origin, l2: t.l2, kinds: t.events.map((e) => e.kind),
+                wires: t.events.filter((e) => e.kind === 'wire').map((e) => [
+                  e.frame.kind, name(e.edge.a), name(e.edge.b),
+                  AgLabSimulationPlayback.matchWire(e, ls), e.frame.ipv4.ttl]),
+                last: t.events.at(-1).raw };
+            }""")
+
+    page.evaluate("aglabSharedEngine.load('vlan-wrong-access')")
+    failed = labber_trace("PC-01", "192.168.10.12")
+    assert failed["origin"] == "labber" and failed["wires"] == [], failed
+    assert "discard" in failed["kinds"] and failed["last"].startswith("icmp-undelivered"), failed
+    page.evaluate(
+        "aglabSharedEngine.commandBlock('SW1', ['enable', 'configure terminal',"
+        " 'interface fa0/1', 'switchport access vlan 10', 'end'])"
+    )
+    ok = labber_trace("PC-01", "192.168.10.12")
+    assert ok["l2"] and ok["last"].startswith("icmp-delivered"), ok
+    assert [w[:3] for w in ok["wires"]] == [
+        ["icmp-request", "PC-01", "SW1"],
+        ["icmp-request", "SW1", "SW2"],
+        ["icmp-request", "SW2", "PC-02"],
+        ["icmp-reply", "PC-02", "SW2"],
+        ["icmp-reply", "SW2", "SW1"],
+        ["icmp-reply", "SW1", "PC-01"],
+    ], ok
+    assert all(w[3] >= 0 and w[4] == 64 for w in ok["wires"]), ok
+    print("PASS: Labber content frame events (failure and success)", flush=True)
     assert not errors, errors
     browser.close()

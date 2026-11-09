@@ -18,7 +18,7 @@
     function load(snapshot) {
       if (
         !snapshot ||
-        snapshot.origin !== 'aglab-js' ||
+        (snapshot.origin !== 'aglab-js' && snapshot.origin !== 'labber') ||
         !Array.isArray(snapshot.events) ||
         snapshot.events.length > 512
       )
@@ -76,7 +76,7 @@
   function matchWire(event, links) {
     if (
       event?.kind !== 'wire' ||
-      event.origin !== 'aglab-js' ||
+      (event.origin !== 'aglab-js' && event.origin !== 'labber') ||
       !event.edge ||
       !Array.isArray(links)
     )
