@@ -1,6 +1,6 @@
 // L2 reachability and L3 forwarding on top of the derived state.
 
-import { crossVlan, egress, ingress, peerOf, portForwards, type Derived, type LPort } from './engine'
+import { crossVlan, egress, ingress, peerOf, portForwards, type Derived, type DupIp, type LPort } from './engine'
 import { pk } from './topology'
 import type { SwitchDef } from './types'
 import { ifType, ipToInt, macAdd, maskToPrefix, prefixMaskInt, sameSubnet } from './util'
@@ -280,6 +280,47 @@ export function deliver(d: Derived, from: string, dst: string): Delivery {
   return { kind: 'timeout', hops }
 }
 
+/** Next hop the device would ARP for to reach dst (dst itself when on-link). */
+export function nextHop(d: Derived, dev: string, dst: string): string | null {
+  return lookup(d, dev, dst)?.nh ?? null
+}
+
+/**
+ * Addresses used more than once inside one broadcast domain. The same address in
+ * separate domains (other VLAN, other routed segment) is not a conflict.
+ */
+export function duplicateIps(d: Derived): DupIp[] {
+  const byIp = new Map<string, L3If[]>()
+  for (const i of allL3Ifs(d)) {
+    if (!i.node) continue
+    const g = byIp.get(i.ip)
+    if (g) g.push(i)
+    else byIp.set(i.ip, [i])
+  }
+  const out: DupIp[] = []
+  for (const [ip, group] of byIp) {
+    if (group.length < 2) continue
+    const left = [...group]
+    while (left.length > 1) {
+      const first = left.shift()!
+      const dom = domainOf(d, first.node!)
+      const same = left.filter((i) => dom.nodes.has(nk(i.node!)))
+      if (!same.length) continue
+      for (const i of same) left.splice(left.indexOf(i), 1)
+      out.push({ ip, owners: [first, ...same].map((i) => ({ dev: i.dev, kind: i.kind, name: i.name, mac: i.mac })) })
+    }
+  }
+  return out
+}
+
+/** MAC that dev's ARP entry for ip resolves to now (null when nothing answers). */
+export function arpMac(d: Derived, dev: string, ip: string): { mac: string; via: string } | null {
+  const via = l3Ifs(d, dev).find((i) => i.node && sameSubnet(i.ip, ip, i.prefix))
+  if (!via) return null
+  const owner = arpResolve(d, via, ip)
+  return owner ? { mac: owner.mac, via: via.name } : null
+}
+
 export function sourceIp(d: Derived, dev: string, dst: string): string | null {
   return lookup(d, dev, dst)?.out.ip ?? null
 }
@@ -291,7 +332,11 @@ export interface PingResult {
   reason?: 'noip' | 'noroute' | 'timeout' | 'unreach' | 'off'
   unreachFrom?: string
   ttl?: number
+  /** device that answered (ok only); with a duplicate address, the ARP winner */
+  replier?: string
   firstHopArp?: { dev: string; ip: string }
+  /** the sender's own ARP request for its first hop went unanswered */
+  arpIncomplete?: { dev: string; ip: string }
   forward?: Delivery
 }
 
@@ -308,13 +353,19 @@ export function ping(d: Derived, from: string, dst: string): PingResult {
       ? { ok: false, reason: 'unreach', unreachFrom: fwd.atIp, forward: fwd, firstHopArp }
       : { ok: false, reason: 'timeout', forward: fwd, firstHopArp }
   }
-  if (fwd.kind !== 'ok') return { ok: false, reason: 'timeout', forward: fwd, firstHopArp }
+  if (fwd.kind !== 'ok') {
+    const nh = fwd.hops.length ? null : nextHop(d, from, dst)
+    return { ok: false, reason: 'timeout', forward: fwd, firstHopArp, ...(nh ? { arpIncomplete: { dev: from, ip: nh } } : {}) }
+  }
   const src = sourceIp(d, from, dst)!
-  const owner = d.topo.lab.devices.find((x) => owns(d, x.id, dst))!.id
-  const back = deliver(d, owner, src)
-  if (back.kind !== 'ok') return { ok: false, reason: 'timeout', forward: fwd, firstHopArp }
-  const base = d.topo.devices[owner]!.kind === 'pc' ? 64 : 255
-  return { ok: true, ttl: base - back.routersCrossed, forward: fwd, firstHopArp }
+  // the device the request reached answers; the reply must come back to the sender
+  // (with a duplicate source address it goes to whoever wins ARP for that address)
+  const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from
+  const back = deliver(d, replier, src)
+  const backTo = back.hops[back.hops.length - 1]?.dev ?? replier
+  if (back.kind !== 'ok' || backTo !== from) return { ok: false, reason: 'timeout', forward: fwd, firstHopArp }
+  const base = d.topo.devices[replier]!.kind === 'pc' ? 64 : 255
+  return { ok: true, ttl: base - back.routersCrossed, replier, forward: fwd, firstHopArp }
 }
 
 function isValidIp(s: string) {

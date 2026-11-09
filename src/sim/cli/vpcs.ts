@@ -1,6 +1,6 @@
 // VPCS-style console for a lab PC.
 
-import { deliver, ping } from '../net'
+import { arpMac, deliver, ping } from '../net'
 import type { LabRuntime } from '../runtime'
 import type { PcDef } from '../types'
 import { ipToInt, isIp, macToColon, maskToPrefix, prefixToMask, sameSubnet } from '../util'
@@ -11,7 +11,7 @@ const HELP = [
   '  ip <address>/<len> [gateway]',
   '  ip <address> <mask> [gateway]',
   'clear ip                 Clear IP address, mask and gateway',
-  'show [ip]                Print the information of the VPC',
+  'show [arp|ip]            Print the information of the VPC',
   'ping <address>           Ping the network host',
   'trace <address>          Print the path packets take to network host',
   'help, ?                  Print help',
@@ -63,6 +63,7 @@ export class VpcsSession {
       return ['IPv4 address/mask, gateway, DNS, and DHCP cleared']
     }
     if (c === 'show' && (!args[0] || args[0] === 'ip')) return this.showIp()
+    if (c === 'show' && args[0] === 'arp') return this.showArp()
     if (c === 'ping' && args[0]) return this.ping(args[0])
     if ((c === 'trace' || c === 'tracert' || c === 'traceroute') && args[0]) return this.trace(args[0])
     return ['Bad command: "' + line + '". Use ? for help.']
@@ -116,6 +117,19 @@ export class VpcsSession {
     ]
   }
 
+  /** VPCS `show arp`: entries the PC resolved itself (120 s lifetime, shown fresh). */
+  private showArp(): string[] {
+    const d = this.rt.derived
+    const out: string[] = []
+    for (const k of this.rt.arp) {
+      if (!k.startsWith(this.dev + '>')) continue
+      const ip = k.split('>')[1]!
+      const now = arpMac(d, this.dev, ip)
+      if (now) out.push(`${macToColon(now.mac)}  ${ip} expires in 120 seconds `)
+    }
+    return ['', ...(out.length ? out : ['arp table is empty']), '']
+  }
+
   private ping(dst: string): string[] {
     if (ipToInt(dst) === null) return [`Cannot resolve ${dst}`]
     const c = this.rt.pcs[this.dev]!
@@ -124,6 +138,8 @@ export class VpcsSession {
     const d = this.rt.derived
     const r = ping(d, this.dev, dst)
     this.rt.markSeen(r.forward?.hops ?? [], this.dev)
+    // the first hop answered ARP (target on-link, else the gateway)
+    if (r.firstHopArp) this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`)
     this.rt.emit()
     const out: string[] = []
     for (let i = 1; i <= 5; i++) {

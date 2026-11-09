@@ -2,7 +2,7 @@
 
 import { defaultSwitchConfig } from './config'
 import { bpduViolations, type Derived } from './engine'
-import { l3Ifs, type Hop } from './net'
+import { l3Ifs, macTable, type Hop } from './net'
 import { candidateRid, computeState } from './ospf'
 import { LabQuery } from './query'
 import { buildTopo, pk, type Topo } from './topology'
@@ -30,6 +30,8 @@ export interface SavedState {
   pcs: Record<string, PcConfig>
   seen: string[]
   arp: string[]
+  /** 'dev>ip' ARP requests that went unanswered (IOS "Incomplete") */
+  arpIncomplete?: string[]
   errdis?: string[]
   /** cut cables ('dev|port', both ends), powered-off devices, PCs with a disabled NIC */
   hw?: { cut: string[]; off: string[]; nicDown: string[] }
@@ -44,6 +46,8 @@ export class LabRuntime {
   logs: LogLine[] = []
   seen = new Set<string>()
   arp = new Set<string>()
+  /** 'dev>ip' ARP requests that went unanswered (shown as Incomplete) */
+  arpIncomplete = new Set<string>()
   /** err-disabled ports ('dev|port'); sticky until shutdown or errdisable recovery */
   errdis = new Set<string>()
   /** cut cables, powered-off devices, disabled PC NICs (see Hardware) */
@@ -81,6 +85,7 @@ export class LabRuntime {
     for (const sw of this.topo.switches) this.startup[sw.id] = clone(this.running[sw.id]!)
     this.seen.clear()
     this.arp.clear()
+    this.arpIncomplete.clear()
     this.logs = []
     this.emit()
   }
@@ -166,12 +171,60 @@ export class LabRuntime {
   setLink(dev: string, port: string, up: boolean): boolean {
     const peer = this.topo.peer[pk(dev, port)]
     if (!peer) return false
+    if (!up) {
+      // link down flushes the dynamic MAC entries learned on that port
+      this.flushPortMacs(dev, port)
+      this.flushPortMacs(peer.dev, peer.port)
+    }
     for (const k of [pk(dev, port), pk(peer.dev, peer.port)]) {
       if (up) this.hw.cut.delete(k)
       else this.hw.cut.add(k)
     }
     this.commit()
     return true
+  }
+
+  /**
+   * Forget MACs a switch learned on this port. The learned set is lab-wide, so those
+   * addresses are relearned everywhere on their next frame (real switches age the
+   * entries on other switches out after 300 s).
+   */
+  private flushPortMacs(dev: string, port: string) {
+    if (this.topo.devices[dev]?.kind !== 'switch') return
+    const name = this.derived.lportOfPhys[pk(dev, port)]?.name ?? port
+    for (const e of macTable(this.derived, dev, this.seen)) if (e.port === name) this.seen.delete(e.mac)
+  }
+
+  /**
+   * Move the cable end plugged into fromDev/fromPort to toDev/toPort (a free port).
+   * The topology is rebuilt; MACs learned on the old port are flushed.
+   * False when there is no cable there or the target port is missing or taken.
+   */
+  moveCable(fromDev: string, fromPort: string, toDev: string, toPort: string): boolean {
+    const peer = this.topo.peer[pk(fromDev, fromPort)]
+    const target = this.topo.devices[toDev]
+    if (!peer || !target) return false
+    const exists = target.kind === 'pc' ? toPort === 'eth0' : target.ports.includes(toPort)
+    if (!exists || this.topo.peer[pk(toDev, toPort)] || (toDev === peer.dev && toPort === peer.port)) return false
+    if (target.kind === 'pc' && this.topo.devices[peer.dev]?.kind === 'pc') return false
+    this.flushPortMacs(fromDev, fromPort)
+    this.flushPortMacs(peer.dev, peer.port)
+    const at = (e: [string, string]) => e[0] === fromDev && e[1] === fromPort
+    const links = this.def.links.map((l) => {
+      if (at(l.a)) return { ...l, a: [toDev, toPort] as [string, string] }
+      if (at(l.b)) return { ...l, b: [toDev, toPort] as [string, string] }
+      return l
+    })
+    this.def = { ...this.def, links }
+    this.topo = buildTopo(this.def)
+    if (this.hw.cut.delete(pk(fromDev, fromPort))) this.hw.cut.add(pk(toDev, toPort))
+    this.commit()
+    return true
+  }
+
+  /** Read-only queries on the current state, including learned MAC addresses. */
+  query(): LabQuery {
+    return new LabQuery(this.derived, this.startup, this.seen)
   }
 
   /** Cable on this port is plugged in and intact (says nothing about the far device). */
@@ -199,6 +252,7 @@ export class LabRuntime {
         if (o) o.activeRid = null
         for (const k of [...this.errdis]) if (k.startsWith(dev + '|')) this.errdis.delete(k)
         for (const k of [...this.arp]) if (k.startsWith(dev + '>')) this.arp.delete(k)
+        for (const k of [...this.arpIncomplete]) if (k.startsWith(dev + '>')) this.arpIncomplete.delete(k)
       }
     }
     this.commit()
@@ -232,7 +286,7 @@ export class LabRuntime {
   }
 
   objectives(): ObjectiveStatus[] {
-    const q = new LabQuery(this.derived, this.startup)
+    const q = this.query()
     return this.def.objectives.map((o) => {
       let r: boolean | ObjectiveResult
       try {
@@ -253,6 +307,7 @@ export class LabRuntime {
       pcs: clone(this.pcs),
       seen: [...this.seen],
       arp: [...this.arp],
+      arpIncomplete: [...this.arpIncomplete],
       errdis: [...this.errdis],
       hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
     }
@@ -270,6 +325,7 @@ export class LabRuntime {
     this.pcs = clone(s.pcs)
     this.seen = new Set(s.seen)
     this.arp = new Set(s.arp)
+    this.arpIncomplete = new Set(s.arpIncomplete ?? [])
     this.errdis = new Set(s.errdis ?? [])
     if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) }
     this.derived = this.recompute()
@@ -343,6 +399,22 @@ export class LabRuntime {
         if (m.kind === 'rid') this.log(dev, `%OSPF-4-DUP_RTRID_NBR: OSPF detected duplicate router-id ${b.ospf[dev]!.rid} from ${m.peerIp} on interface ${m.ifname}`)
       }
     }
+    // duplicate addresses: a switch reports another device using its own address
+    const dupKeys = (x: Derived) =>
+      new Map(
+        x.dups.flatMap((g) =>
+          g.owners
+            .filter((o) => o.kind === 'svi' || o.kind === 'routed')
+            .map((o) => {
+              const other = g.owners.find((p) => p.dev !== o.dev)
+              return [`${g.ip}|${o.dev}|${o.name}|${other?.mac}`, { ip: g.ip, o, other }] as const
+            })
+            .filter(([, v]) => !!v.other),
+        ),
+      )
+    const oldDup = dupKeys(a)
+    for (const [k, v] of dupKeys(b))
+      if (!oldDup.has(k)) this.log(v.o.dev, `%IP-4-DUPADDR: Duplicate address ${v.ip} on ${v.o.name}, sourced by ${v.other!.mac}`)
     for (const [vs, bridges] of Object.entries(b.stp)) {
       for (const [dev, br] of Object.entries(bridges)) {
         for (const [port, st] of Object.entries(br.ports)) {

@@ -2,7 +2,7 @@
 // Computed from config + derived L2/L3 state; nothing is scripted per lab.
 
 import { derive, type Derived } from './engine'
-import { ifBandwidth, l2Domain, l3Ifs, routeTable, type L3If, type RouteCode } from './net'
+import { duplicateIps, ifBandwidth, l2Domain, l3Ifs, routeTable, type L3If, type RouteCode } from './net'
 import type { Topo } from './topology'
 import type { Hardware, L3Opts, OspfConfig, PcConfig, SwitchConfig, SwitchDef } from './types'
 import { ipToInt, maskToPrefix, networkOf, sameSubnet } from './util'
@@ -92,6 +92,7 @@ export function computeState(
 ): Derived {
   const d = derive(topo, cfgs, pcs, errdis, hw)
   d.ospf = computeOspf(d)
+  d.dups = duplicateIps(d)
   return d
 }
 

@@ -91,6 +91,13 @@ export interface NativeMismatch {
   peerNative: number
 }
 
+/** One IP used by several interfaces in the same broadcast domain (filled in ospf.ts computeState). */
+export interface DupIp {
+  ip: string
+  /** in lab device order; the first one answers ARP */
+  owners: { dev: string; kind: 'pc' | 'svi' | 'routed' | 'loop'; name: string; mac: string }[]
+}
+
 export interface Derived {
   topo: Topo
   cfgs: Record<string, SwitchConfig>
@@ -111,6 +118,8 @@ export interface Derived {
   hw: Hardware
   /** filled by computeState() in ospf.ts */
   ospf: Record<string, OspfState>
+  /** duplicate addresses; filled by computeState() in ospf.ts */
+  dups: DupIp[]
 }
 
 const protoOf = (m: ChannelMode): 'LACP' | 'PAgP' | '-' =>
@@ -359,6 +368,7 @@ export function derive(
     errdis,
     hw,
     ospf: {},
+    dups: [],
   }
 
   // 5. STP per VLAN

@@ -409,7 +409,7 @@ export class BridgeError extends Error {}
  * AğLab modelinde ifade edilemeyen bir Labber durumu açık bir BridgeError ile durur.
  */
 export function toAglab(
-  rt: { running: Record<string, SwitchConfig>; pcs: Record<string, PcConfig>; hw?: Hardware },
+  rt: { running: Record<string, SwitchConfig>; pcs: Record<string, PcConfig>; hw?: Hardware; def?: LabDef },
   original: AglabTopology,
 ): AglabTopology {
   const out = clone(original) as AglabTopology
@@ -417,6 +417,22 @@ export function toAglab(
   // Kablo durumu (yalnız Labber'a giden bağlantılar; diğerleri özgün kalır)
   const canonOf = (dev: string, port: string) =>
     Object.entries(portNames[dev] ?? {}).find(([, o]) => o === port)?.[0]
+  // Taşınan kablolar: Labber bağlantısı i, özgün bağlantı i'ye karşılık gelir (labber
+  // kararında reddedilen bağlantı yoktur); uç değiştiyse özgün port adıyla yazılır.
+  const outLinks = out.links ?? []
+  if (rt.def && rt.def.links.length === outLinks.length)
+    rt.def.links.forEach((dl, i) => {
+      const l = outLinks[i]!
+      for (const [side, end] of [['a', dl.a], ['b', dl.b]] as const) {
+        const portKey = side === 'a' ? 'portA' : 'portB'
+        const [dev, canon] = end
+        if (String(l[side]) === dev && canonOf(dev, String(l[portKey])) === canon) continue
+        const name = portNames[dev]?.[canon]
+        if (!name) throw new BridgeError(`${dev}:${canon} AğLab port listesinde yok`)
+        l[side] = dev
+        l[portKey] = name
+      }
+    })
   if (rt.hw)
     for (const l of out.links ?? []) {
       const ca = canonOf(String(l.a), String(l.portA))
