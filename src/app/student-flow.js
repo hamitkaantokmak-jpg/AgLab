@@ -11,6 +11,7 @@
       'dns': ['dns'],
       'dhcp': ['dhcp'],
       'vlan': ['vlan'],
+      'intervlan': ['intervlan'],
       'physical': ['physical'],
       'ethernet': ['ethernet'],
       'stp': ['stp'],

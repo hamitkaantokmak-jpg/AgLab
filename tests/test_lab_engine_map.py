@@ -4,7 +4,7 @@ Köprü kararları derlenmiş HTML'deki AgLabSim ile tarayıcıda (playwright) h
 CI bu test üzerinden köprü kararının tabloyla eşleştiğini doğrular.
 """
 
-import importlib.util, unittest
+import importlib.util, json, unittest
 from playwright.sync_api import sync_playwright
 from aglab_test_support import ROOT, launch_chromium
 
@@ -25,7 +25,10 @@ class MapTests(unittest.TestCase):
             "Tablo güncel değil: python tools/build_lab_engine_map.py",
         )
         self.assertEqual(sum(x.startswith("| AGL-") for x in text.splitlines()), 40)
-        self.assertEqual(sum(x.startswith("| `") for x in text.splitlines()), 22)
+        scenarios = json.loads(
+            (ROOT / "simulator/network-scenarios.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(sum(x.startswith("| `") for x in text.splitlines()), len(scenarios))
 
 
 if __name__ == "__main__":
