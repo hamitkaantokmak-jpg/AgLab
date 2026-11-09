@@ -187,13 +187,90 @@ describe('köprü: alan eşlemesi', () => {
   })
 })
 
+describe('köprü: fiziksel durum (L2)', () => {
+  // PC-01 (d1), PC-02 (d2) aynı VLAN'da SW1'e (d3) bağlı.
+  const ping = (t: AglabTopology | ReturnType<typeof createRuntime>) => {
+    const rt = 'derived' in t ? t : createRuntime(toLabber(t))
+    return new LabQuery(rt.derived, rt.startup).ping('d1', '192.168.10.12').ok
+  }
+
+  it('up:false, enabled:false ve kapalı PC NIC Labber durumuna eşlenir; motor labber', () => {
+    expect(ping(lan())).toBe(true)
+    const cases: [string, (t: AglabTopology) => void, (r: ReturnType<typeof toLabber>) => unknown, unknown][] = [
+      ['kopuk kablo', (t) => (t.links[1]!.up = false), (r) => r.def.links[1], { a: ['d2', 'eth0'], b: ['d3', 'FastEthernet0/2'], up: false }],
+      ['kapalı PC', (t) => (t.devices[1]!.enabled = false), (r) => r.def.devices[1]!.off, true],
+      ['kapalı switch', (t) => (t.devices[2]!.enabled = false), (r) => r.def.devices[2]!.off, true],
+      ['kapalı PC NIC', (t) => (t.devices[1]!.interfaces!['eth0']!.enabled = false), (r) => (r.def.devices[1] as { nicDown?: boolean }).nicDown, true],
+    ]
+    for (const [name, mutate, pick, want] of cases) {
+      const t = lan()
+      mutate(t)
+      const r = toLabber(t)
+      expect(r.report.engineDecision, name + ': ' + r.report.reasons.join('; ')).toBe('labber')
+      expect(r.report.unsupported, name).toEqual([])
+      expect(pick(r), name).toEqual(want)
+      expect(ping(t), name + ': ping başarısız olmalı').toBe(false)
+      expect(roundTrip(t), name + ': gidiş-dönüş').toEqual(t)
+    }
+  })
+
+  it('eksik up / enabled alanı açık sayılır ve geri yazılmaz (karar: yalnız açık false kapalıdır)', () => {
+    const t = lan()
+    delete t.links[1]!.up
+    delete t.devices[1]!.enabled
+    delete t.devices[2]!.enabled
+    const r = toLabber(t)
+    expect(r.def.links[1]).toEqual({ a: ['d2', 'eth0'], b: ['d3', 'FastEthernet0/2'] })
+    expect(r.def.devices.map((d) => d.off)).toEqual([undefined, undefined, undefined])
+    expect(ping(t)).toBe(true)
+    expect(roundTrip(t)).toEqual(t)
+  })
+
+  it('çalışırken değişen kablo/güç/NIC durumu AğLab JSON\'una geri yazılır', () => {
+    const t = lan()
+    const rt = createRuntime(toLabber(t))
+    rt.setLink('d3', 'FastEthernet0/2', false)
+    rt.setPower('d1', false)
+    rt.setNic('d2', false)
+    expect(ping(rt)).toBe(false)
+    const back = toAglab(rt, t)
+    expect(back.links.map((l) => l.up)).toEqual([true, false])
+    expect(back.devices.map((d) => d.enabled)).toEqual([false, true, true])
+    expect(back.devices[1]!.interfaces!['eth0']).toEqual({ enabled: false })
+    // geri yazılan JSON yeniden yüklenince aynı durum
+    const again = createRuntime(toLabber(back))
+    expect([...again.hw.cut].sort()).toEqual([...rt.hw.cut].sort())
+    expect([...again.hw.off]).toEqual(['d1'])
+    expect([...again.hw.nicDown]).toEqual(['d2'])
+    // geri alınınca özgün JSON birebir
+    rt.setLink('d2', 'eth0', true)
+    rt.setPower('d1', true)
+    rt.setNic('d2', true)
+    expect(ping(rt)).toBe(true)
+    expect(toAglab(rt, t)).toEqual(t)
+  })
+
+  it('özgünde alan yoksa kapalı durum yine yazılır, açık durum eklenmez', () => {
+    const t = lan()
+    delete t.links[0]!.up
+    delete t.devices[0]!.enabled
+    delete t.devices[0]!.interfaces
+    const rt = createRuntime(toLabber(t))
+    expect(toAglab(rt, t)).toEqual(t)
+    rt.setLink('d1', 'eth0', false)
+    rt.setNic('d1', false)
+    rt.setPower('d1', false)
+    const back = toAglab(rt, t)
+    expect(back.links[0]!.up).toBe(false)
+    expect(back.devices[0]!.enabled).toBe(false)
+    expect(back.devices[0]!.interfaces).toEqual({ eth0: { enabled: false } })
+  })
+})
+
 describe('köprü: desteklenmeyen ve reddedilen', () => {
   const cases: [string, (t: AglabTopology) => void, RegExp][] = [
     ['Router', (t) => t.devices.push({ id: 'r1', name: 'R1', type: 'Router', ports: ['g0/0'], interfaces: {} }), /Router cihaz tipi/],
     ['Server', (t) => t.devices.push({ id: 's1', name: 'S1', type: 'Server', ports: ['eth0'] }), /Server cihaz tipi/],
-    ['kopuk kablo', (t) => (t.links[0]!.up = false), /up:false/],
-    ['kapalı cihaz', (t) => (t.devices[0]!.enabled = false), /Kapalı cihaz/],
-    ['kapalı PC NIC', (t) => (t.devices[0]!.interfaces!['eth0']!.enabled = false), /PC NIC/],
     ['statik rota AD', (t) => (t.devices[2]!.staticRoutes = [{ network: '0.0.0.0', mask: '0.0.0.0', nextHop: '1.1.1.1', distance: 5 }]), /Statik rota/],
     ['alt arayüz', (t) => (t.devices[2]!.interfaces!['gi0/1']!.encapsulation = 'dot1q'), /Alt arayüz/],
     ['DHCP relay', (t) => (t.devices[2]!.interfaces!['gi0/1']!.helperAddress = '10.0.0.1'), /DHCP relay/],
@@ -307,6 +384,18 @@ export function randomTopology(seed: number): AglabTopology {
   return { app: 'AgLab', version: 23, nextId: devices.length + 1, selected: '', devices, links }
 }
 
+/** Topolojinin kopyasında rastgele kablo kopar, cihaz kapatır, PC NIC'i kapatır. */
+export function withHardwareFaults(t: AglabTopology, seed: number): AglabTopology {
+  const r = rng(seed * 7919 + 13)
+  const out = clone(t)
+  for (const l of out.links) if (!r(4)) l.up = false
+  for (const d of out.devices) {
+    if (!r(6)) d.enabled = false
+    if (d.type === 'PC' && !r(5)) d.interfaces = { eth0: { enabled: false } }
+  }
+  return out
+}
+
 describe('köprü: 200 rastgele topoloji (seed\'li)', () => {
   it('desteklenen alt kümede hepsi labber kararı alır ve gidiş-dönüş birebir', () => {
     let checked = 0
@@ -315,6 +404,11 @@ describe('köprü: 200 rastgele topoloji (seed\'li)', () => {
       const r = toLabber(clone(t))
       expect(r.report.engineDecision, `seed ${seed}: ${r.report.reasons.join('; ')}`).toBe('labber')
       expect(toAglab(createRuntime(r), t), `seed ${seed}`).toEqual(t)
+      // aynı topoloji fiziksel arızalarla (kopuk kablo, kapalı cihaz, kapalı NIC)
+      const h = withHardwareFaults(t, seed)
+      const rh = toLabber(clone(h))
+      expect(rh.report.engineDecision, `seed ${seed} hw: ${rh.report.reasons.join('; ')}`).toBe('labber')
+      expect(toAglab(createRuntime(rh), h), `seed ${seed} hw`).toEqual(h)
       checked++
     }
     expect(checked).toBe(200)

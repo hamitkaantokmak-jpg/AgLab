@@ -188,7 +188,7 @@ Korunacaklar (değişmez):
 | `stpPriorities{vlan: p}` | `stpPriority{vlan: p}` | Labber VLAN kimliğini eklemeden saklıyor; sys-id-ext dönüşümü testle sabitlenir |
 | `staticRoutes[]`, `route` | `routes[]`, `defaultGateway` | AD (`distance`) Labber'da yok → L3 tablosu |
 | MAC | `AgLabMacAddress.resolve` | Labber benzersiz MAC istiyor; mevcut çözücü kullanılır |
-| `links[].up:false`, `device.enabled:false` | **karşılığı yok** | L3 tablosu sıra 1 (Akademi M1/M3) |
+| `links[].up:false`, `device.enabled:false`, PC `eth0.enabled:false` | **Var (L2-B)**: `LinkDef.up`, `off`, `nicDown`; çalışırken `setLink`/`setPower`/`setNic` | L3 tablosu sıra 1 — tamamlandı |
 | `sourceArchive`, `config.runningConfig` | köprüden **olduğu gibi geçer** | Özgün `.pkt` geri yükleme etkilenmez |
 
 **Ters yön (`toAglab(runtime) → aglabJson`):**
@@ -243,7 +243,7 @@ oracle'a uyulur. Karar PR'da belirtilir.
 
 | Sıra | Özellik | AğLab'da şu an | Labber'da | Oracle / kabul testleri | Gerekçe |
 |---|---|---|---|---|---|
-| 1 | Bağlantı durumu (`link.up`), cihaz gücü (`enabled`) | Var | Yok | `topology.linkUp` + `test_engine_routing`; Akademi AGL-003/004/005/010/028/031/033/040 | M1 labları buna bağlı |
+| 1 | Bağlantı durumu (`link.up`), cihaz gücü (`enabled`) | Var | **Var (L2-B)** | `topology.linkUp` + `test_engine_routing`; Akademi AGL-003/004/005/010/028/031/033/040 | M1 labları buna bağlı |
 | 2 | **Router cihaz tipi** | Var (Router, varsayılan routed portlar, `ip routing` gerekmez) | Yok; L3 switch + `no switchport` | `routing.js` + `test_engine_routing`; Akademi M4 (AGL-031…040, 10 lab) | 10 Akademi labı ve tüm routing senaryoları |
 | 3 | Statik rotada AD (floating static) ve özyinelemeli next-hop | Var | Statik rota yalnızca next-hop doğrudan bağlı bir ağdaysa kuruluyor (özyineleme yok); rota başına AD yok (`StaticRoute{net, mask, nh}`) | `routing.js` LPM/AD/özyineleme testleri; `floating-static`, `unresolved-next-hop`, `lpm-next-hop` senaryoları | Sorun Çöz routing görevleri |
 | 4 | Alt arayüz / router-on-a-stick (dot1q) | Var | Yok (ROADMAP "CCNA kalanlar") | `routing.activeRouterInterfaces` alt arayüz kuralları; `test_aglab_subinterfaces`, `test_aglab_pkt_dot1q`, `test_aglab_l2_router_trunk`; `subif-missing` | PKT örneklerinde yaygın |

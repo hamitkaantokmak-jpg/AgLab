@@ -11,7 +11,7 @@
 import AgLabMacAddress from '../../simulator/mac-address.js'
 import { defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED_VLANS } from '../sim/config'
 import { LabRuntime } from '../sim/runtime'
-import type { LabDef, LinkDef, PcConfig, PcDef, SwitchConfig, SwitchDef } from '../sim/types'
+import type { Hardware, LabDef, PcConfig, PcDef, SwitchConfig, SwitchDef } from '../sim/types'
 import { canonIf, clone, ipToInt, isIp, maskToPrefix, ports as expandPorts, prefixToMask } from '../sim/util'
 import type { AglabDevice, AglabInterface, AglabLink, AglabTopology } from './aglab'
 
@@ -163,7 +163,8 @@ export function toLabber(input: AglabTopology): BridgeResult {
     for (const key of Object.keys(d))
       if (!DEVICE_OPAQUE.has(key) && !fields.has(key))
         unsupported(id, key, FEATURE_REASON[key] ?? 'Labber\'da karşılığı olmayan alan')
-    if (d.enabled === false) unsupported(id, 'enabled', 'Kapalı cihaz (güç) Labber\'da modellenmiyor (L2)')
+    // Güç: yalnız açık `enabled: false` kapalıdır (eksik alan açık sayılır; içerikte hep açık yazılı).
+    const off = d.enabled === false
 
     if (d.type === 'PC') {
       const ports = d.ports ?? ['eth0']
@@ -175,7 +176,6 @@ export function toLabber(input: AglabTopology): BridgeResult {
         }
         for (const key of Object.keys(iface))
           if (key !== 'enabled') unsupported(id, `interfaces.eth0.${key}`, 'Labber\'da karşılığı olmayan PC arayüz alanı')
-        if (iface.enabled === false) unsupported(id, 'interfaces.eth0.enabled', 'Kapalı PC NIC\'i Labber\'da modellenmiyor (L2)')
       }
       const ip = d.ip ?? ''
       const prefix = d.mask ? maskToPrefix(d.mask) : null
@@ -189,7 +189,11 @@ export function toLabber(input: AglabTopology): BridgeResult {
       }
       const mac = resolveMac ? intToDotted(macToInt(resolveMac(d))) : '0000.0000.0000'
       claimMac(id, mac)
-      const pc: PcDef = { id, kind: 'pc', mac, x: Number(d.x ?? 0), y: Number(d.y ?? 0) }
+      const pc: PcDef = {
+        id, kind: 'pc', mac, x: Number(d.x ?? 0), y: Number(d.y ?? 0),
+        ...(off ? { off: true } : {}),
+        ...(d.interfaces?.['eth0']?.enabled === false ? { nicDown: true } : {}),
+      }
       def.devices.push(pc)
       canonByDevice[id] = { eth0: 'eth0' }
       report.portNames[id] = { eth0: 'eth0' }
@@ -236,6 +240,7 @@ export function toLabber(input: AglabTopology): BridgeResult {
       id, kind: 'switch', model, mac: '0000.0000.0000', ports: canonPorts, x: Number(d.x ?? 0), y: Number(d.y ?? 0),
       ...(l3 ? { l3: true } : {}),
       ...(needsEncapFor(model) ? { needsEncap: true } : {}),
+      ...(off ? { off: true } : {}),
     }
     if (resolveMac) {
       // Labber SVI/routed port MAC'lerini tabandan türetir (taban+0x40, taban+port+1);
@@ -350,7 +355,6 @@ export function toLabber(input: AglabTopology): BridgeResult {
     const tag = `links[${index}]`
     for (const key of Object.keys(l))
       if (!['a', 'portA', 'b', 'portB', 'up'].includes(key)) unsupported(tag, key, 'Labber\'da karşılığı olmayan bağlantı alanı')
-    if (l.up === false) unsupported(tag, 'up', 'Kopuk/çıkarılmış kablo (up:false) Labber\'da modellenmiyor (L2)')
     const end = (dev: string, port: string): [string, string] | null => {
       if (!ids.has(dev)) {
         reject(tag, `${dev}:${port}`, 'Bağlantı bilinmeyen cihaza gidiyor')
@@ -376,7 +380,8 @@ export function toLabber(input: AglabTopology): BridgeResult {
     }
     const a = end(String(l.a), String(l.portA))
     const b = end(String(l.b), String(l.portB))
-    if (a && b) def.links.push({ a, b } as LinkDef)
+    // Kablo: yalnız açık `up: false` kopuktur (eksik alan takılı sayılır).
+    if (a && b) def.links.push(l.up === false ? { a, b, up: false } : { a, b })
   })
 
   const reasons = new Set<string>()
@@ -403,11 +408,38 @@ export class BridgeError extends Error {}
  * Labber durumundan yazılır. Özgünde olmayıp varsayılana eşit alanlar eklenmez.
  * AğLab modelinde ifade edilemeyen bir Labber durumu açık bir BridgeError ile durur.
  */
-export function toAglab(rt: { running: Record<string, SwitchConfig>; pcs: Record<string, PcConfig> }, original: AglabTopology): AglabTopology {
+export function toAglab(
+  rt: { running: Record<string, SwitchConfig>; pcs: Record<string, PcConfig>; hw?: Hardware },
+  original: AglabTopology,
+): AglabTopology {
   const out = clone(original) as AglabTopology
   const portNames = toLabber(original).report.portNames
+  // Kablo durumu (yalnız Labber'a giden bağlantılar; diğerleri özgün kalır)
+  const canonOf = (dev: string, port: string) =>
+    Object.entries(portNames[dev] ?? {}).find(([, o]) => o === port)?.[0]
+  if (rt.hw)
+    for (const l of out.links ?? []) {
+      const ca = canonOf(String(l.a), String(l.portA))
+      const cb = canonOf(String(l.b), String(l.portB))
+      if (!ca || !cb) continue
+      const cut = rt.hw.cut.has(`${l.a}|${ca}`) || rt.hw.cut.has(`${l.b}|${cb}`)
+      if (l.up !== undefined || cut) l.up = !cut
+    }
   for (const d of out.devices) {
     const id = String(d.id)
+    // Güç ve PC NIC'i
+    if (rt.hw && (d.type === 'PC' || d.type === 'Switch') && portNames[id]) {
+      const on = !rt.hw.off.has(id)
+      if (d.enabled !== undefined || !on) d.enabled = on
+      if (d.type === 'PC') {
+        const nic = !rt.hw.nicDown.has(id)
+        const eth0 = d.interfaces?.['eth0']
+        if (eth0?.enabled !== undefined || !nic) {
+          d.interfaces = d.interfaces ?? {}
+          d.interfaces['eth0'] = { ...(eth0 ?? {}), enabled: nic }
+        }
+      }
+    }
     if (d.type === 'PC' && rt.pcs[id]) {
       const pc = rt.pcs[id]!
       const ip = pc.ip ?? ''

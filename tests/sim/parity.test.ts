@@ -4,6 +4,8 @@
 //     oracle stpLinkEligible  ⇄  Labber egress() iki uçta ve VLAN iki uçta var
 // - STP: her switch'in bileşen kökü ve bloklanan bağlantılar
 //     oracle stpTreeInfo/stpIsBlocked  ⇄  Labber derived.stp
+// - Bağlantı durumu (L2: kopuk kablo, kapalı cihaz, kapalı port/NIC):
+//     oracle topology.linkUp  ⇄  Labber derived.phys[].up (switch ucu) / LabQuery.linkUp (PC)
 // - Statik rota (sentetik router zincirleri; köprü Router'ı desteklemediği için test içi
 //   eşdeğer kurulum): oracle routeLookup  ⇄  Labber routeTable + ilk atlama
 //
@@ -21,12 +23,14 @@ import { deliver, routeTable } from '../../src/sim/net'
 import { createLab, runScript } from '../../src/sim/index'
 import { ports } from '../../src/sim/util'
 import type { LabDef } from '../../src/sim/types'
-import { randomTopology } from './bridge.test'
+import { randomTopology, withHardwareFaults } from './bridge.test'
+import { LabQuery } from '../../src/sim/query'
 
 const require_ = createRequire(import.meta.url)
 const ROOT = join(__dirname, '..', '..')
 const stp = require_(join(ROOT, 'src/engine/stp.js'))
 const routing = require_(join(ROOT, 'src/engine/routing.js'))
+const topology = require_(join(ROOT, 'src/engine/topology.js'))
 
 /** Bilinen ve kararı kullanıcıya bırakılan fark türleri (PR açıklamasında gerekçeli). */
 const KNOWN_DIFFS = new Set([
@@ -56,7 +60,7 @@ const note = (kind: string, where: string, oracle: unknown, labber: unknown) => 
   bySource[src]![kind] = (bySource[src]![kind] ?? 0) + 1
   if (diffs.filter((d) => d.kind === kind).length < 5) diffs.push({ kind, where, oracle, labber })
 }
-let compared = { links: 0, roots: 0, blocked: 0, routes: 0, topologies: 0 }
+let compared = { links: 0, roots: 0, blocked: 0, routes: 0, topologies: 0, linkStates: 0, linksDown: 0 }
 let skippedStp = 0
 let adRejected = 0
 
@@ -106,6 +110,17 @@ function compareL2(name: string, t: AglabTopology) {
   const topo = { devices: t.devices, links: t.links }
   const canon = (dev: string, port: string) =>
     Object.entries(r.report.portNames[dev] ?? {}).find(([, o]) => o === port)?.[0] ?? port
+  // Bağlantı durumu: her bağlantının switch ucu (PC–PC bağlantısı köprüde yok)
+  const q = new LabQuery(d, rt.startup)
+  for (const l of t.links) {
+    const sw = t.devices.find((x) => x.id === l.a)?.type === 'Switch' ? [l.a, l.portA] : [l.b, l.portB]
+    if (t.devices.find((x) => x.id === sw[0])?.type !== 'Switch') continue
+    const lab = q.linkUp(sw[0]!, canon(sw[0]!, sw[1]!))
+    const ora = !!topology.linkUp(topo, l)
+    compared.linkStates++
+    if (!ora) compared.linksDown++
+    if (lab !== ora) note('link-up', `${name} ${l.a}:${l.portA}-${l.b}:${l.portB}`, ora, lab)
+  }
   const lport = (dev: string, port: string) => d.lportOfPhys[`${dev}|${canon(dev, port)}`]
   const macToDev = new Map(Object.values(d.stp).flatMap((bs) => Object.entries(bs).map(([dev, b]) => [b.mac, dev])))
   const vlans = new Set(t.devices.flatMap((x) => (x.type === 'Switch' ? x.vlans ?? [1] : [])).map(Number))
@@ -278,6 +293,7 @@ describe('oracle paritesi', () => {
   it('VLAN taşıma, STP ve statik rota farkları yalnızca bilinen türlerde', () => {
     for (const [name, t] of content()) compareL2(name, t)
     for (let seed = 1; seed <= 300; seed++) compareL2(`loop-${seed}`, loopTopology(seed))
+    for (let seed = 1; seed <= 300; seed++) compareL2(`loop-hw-${seed}`, withHardwareFaults(loopTopology(seed), seed))
     for (let seed = 1; seed <= 300; seed++) compareRoutes(seed)
     const result = { compared, skippedStpVlans: skippedStp, labberRejectedAdRoutes: adRejected, counts, bySource, examples: diffs, known: [...KNOWN_DIFFS] }
     const out = process.env.AGLAB_TEST_ARTIFACT_DIR
@@ -290,6 +306,9 @@ describe('oracle paritesi', () => {
     expect(bySource['content']).toEqual({})
     expect(compared.topologies).toBeGreaterThan(300)
     expect(compared.routes).toBeGreaterThan(500)
+    // bağlantı durumu hem açık hem kapalı örneklerle karşılaştırılmış olmalı
+    expect(compared.linksDown).toBeGreaterThan(200)
+    expect(compared.linkStates - compared.linksDown).toBeGreaterThan(1000)
     const unknown = Object.keys(counts).filter((k) => !KNOWN_DIFFS.has(k))
     expect(unknown, JSON.stringify(diffs.filter((x) => unknown.includes(x.kind)), null, 1)).toEqual([])
   })

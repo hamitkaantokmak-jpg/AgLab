@@ -6,14 +6,14 @@ Bu tablo gerçek öğrenci JSON içeriklerinden üretilir. Yapısal adaylık, ak
 |---|---|---|---|---|---|---|---|---|
 | AGL-001 | İlk yerel ağ: iki PC ve switch | 3/0 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç reddedilir: Each PC needs a physical data link; missing-cable labs unsupported; onarım sonrası yeniden değerlendir | Gerekmez | `00afca5af204fdb234bd7752fdbe392769d44d2b0dacdb6c044617e8175cbb73` |
 | AGL-002 | Cihaz rolleri ve uç IP ayarı | 3/2 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç reddedilir: Invalid IPv4/mask; onarım sonrası yeniden değerlendir | Gerekmez | `4b8ce3b44456415b6ee60cfecf303d96ac9681eee625e0af650993db41788d3f` |
-| AGL-003 | Fiziksel bağlantı kesintisi | 3/2 | Mevcut | Eski motor: Kopuk/çıkarılmış kablo (up:false) Labber'da modellenmiyor (L2) | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `4e9ea298b744c628acc120c63492a0f2e2ec99df28eea7e19f7c4f677cc97ba7` |
-| AGL-004 | Kapalı cihazı teşhis etme | 3/2 | Mevcut | Eski motor: Kapalı cihaz (güç) Labber'da modellenmiyor (L2) | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç reddedilir: Routing/configuration/disabled device unsupported; onarım sonrası yeniden değerlendir | Gerekmez | `f79ee4414a8f0b623d244a2ed3552e5160d3da454dc17449fd968b1cb90e26d1` |
+| AGL-003 | Fiziksel bağlantı kesintisi | 3/2 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `4e9ea298b744c628acc120c63492a0f2e2ec99df28eea7e19f7c4f677cc97ba7` |
+| AGL-004 | Kapalı cihazı teşhis etme | 3/2 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç reddedilir: Routing/configuration/disabled device unsupported; onarım sonrası yeniden değerlendir | Gerekmez | `f79ee4414a8f0b623d244a2ed3552e5160d3da454dc17449fd968b1cb90e26d1` |
 | AGL-005 | Yönetimsel olarak kapalı port | 3/2 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `00e69cdbddd09e3f1070be5f4305edff69ff3bba319120457937ff0ad3c28552` |
 | AGL-006 | Üç uçlu yıldız topoloji | 4/2 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç reddedilir: Each PC needs a physical data link; missing-cable labs unsupported; onarım sonrası yeniden değerlendir | Gerekmez | `5ac27bb57328bad34e5438e99bd841b6bc0d95f1a54f8a245aacd243f90b1fb8` |
 | AGL-007 | Ping sonucunu doğru yorumlama | 3/2 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `deea6d0c0f012aeb39eb44be8989c9e87ee4265d72c5c15fbdecdbf759d2f832` |
 | AGL-008 | Yerel teslim ve ARP kavramı | 3/2 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `56b896b531d8f483594af28a1702b394d364cba9c7ce46d637a48b1ad3348fae` |
 | AGL-009 | Aynı kablo ağı, farklı IP ağı | 3/2 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `b25da3087d3860446497eee48916e683d04b0d9237c1509ca5e69ab9d74b7508` |
-| AGL-010 | Yerel ağ mini projesi: iki hatayı düzelt | 4/3 | Mevcut | Eski motor: Kopuk/çıkarılmış kablo (up:false) Labber'da modellenmiyor (L2) | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `00f0cac2e0ebf80df32f0f73dbe5f627de2b7f8f90e0e7c7880b593302e136b1` |
+| AGL-010 | Yerel ağ mini projesi: iki hatayı düzelt | 4/3 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `00f0cac2e0ebf80df32f0f73dbe5f627de2b7f8f90e0e7c7880b593302e136b1` |
 | AGL-011 | IPv4 ve /24 maskesi | 3/2 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç reddedilir: Invalid IPv4/mask; onarım sonrası yeniden değerlendir | Gerekmez | `5feebb3a5b15033bdd38d3ff845dfb3ee5900a84c700db9885bfaf65050b4677` |
 | AGL-012 | Ağ, ilk host ve son host | 3/2 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç reddedilir: Invalid IPv4/mask; onarım sonrası yeniden değerlendir | Gerekmez | `8942c0d52d6c7c1a5451e5d72e05aa124f9aecb0a08591ea81eacf3534db3d46` |
 | AGL-013 | /25 ile iki eşit alt ağ | 3/2 | Mevcut | **Labber** | Access LAN adayı; görev/CLI aktarılmaz | Başlangıç reddedilir: Invalid IPv4/mask; onarım sonrası yeniden değerlendir | Gerekmez | `dc62635d7cac8f2365fcf1430cb81eb15f581e36d9adb8c1b00da93d029b2e57` |
@@ -31,7 +31,7 @@ Bu tablo gerçek öğrenci JSON içeriklerinden üretilir. Yapısal adaylık, ak
 | AGL-025 | Trunk allowed VLAN eksikliğini giderme | 6/5 | Mevcut | **Labber** | Sınırlı aday; unused trunk portları da reddedilir | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `2a07e6e9e246c400517ffd2055060a052e09fad1c681ed1fc9750c72b2972381` |
 | AGL-026 | Yanlış access VLAN üyeliği | 6/5 | Mevcut | **Labber** | Sınırlı aday; unused trunk portları da reddedilir | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `aa64f6a85a08016c563be88caefff01901e90068faa08f127be48a14838141c5` |
 | AGL-027 | VLAN ve IPv4 alt ağını birlikte planlama | 6/5 | Mevcut | **Labber** | Sınırlı aday; unused trunk portları da reddedilir | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `6d10f0a94b2f3d06d5be9526af1cc0f18d7828ea948551b67a440bb8e352328b` |
-| AGL-028 | Tek trunk kesintisinin etki alanı | 6/5 | Mevcut | Eski motor: Kopuk/çıkarılmış kablo (up:false) Labber'da modellenmiyor (L2) | Sınırlı aday; unused trunk portları da reddedilir | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `fdcf2e3db673eaac5031ca060cfcee3dc46b078e94bfc2ef1d46003e0a863369` |
+| AGL-028 | Tek trunk kesintisinin etki alanı | 6/5 | Mevcut | **Labber** | Sınırlı aday; unused trunk portları da reddedilir | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `fdcf2e3db673eaac5031ca060cfcee3dc46b078e94bfc2ef1d46003e0a863369` |
 | AGL-029 | Yayın alanları ve native VLAN farkındalığı | 6/5 | Mevcut | **Labber** | Sınırlı aday; unused trunk portları da reddedilir | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `a2376624e1064ba58023f45209efec12b6d9a532cdc11868f3bcd6e51a697f42` |
 | AGL-030 | VLAN mini projesi: iki bölümlü ofis | 6/5 | Mevcut | **Labber** | Sınırlı aday; unused trunk portları da reddedilir | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `6d36e30ff2ce99fc2c0b12679e905073f024f5db5b74317fd2f888d68d53e6d4` |
 | AGL-031 | Router ile iki doğrudan bağlı ağı birleştirme | 5/4 | Mevcut | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `a69e3d1b0f1a79abc2785c77cc5c7ab0bd4fd0058b5aad654a753f6b9ace0039` |
@@ -83,17 +83,15 @@ birine dayanır.
 
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
-| Akademi labları | 26 | 14 | 40 |
+| Akademi labları | 30 | 10 | 40 |
 | Ortak senaryolar | 9 | 13 | 22 |
-| Toplam | 35 | 27 | 62 |
+| Toplam | 39 | 23 | 62 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
 | Router cihaz tipi Labber köprüsünde yok (L4) | 22 |
 | Server cihaz tipi Labber köprüsünde yok (L5) | 9 |
-| Kopuk/çıkarılmış kablo (up:false) Labber'da modellenmiyor (L2) | 3 |
 | DHCP istemci kirası Labber'da yok (L5) | 1 |
-| Kapalı cihaz (güç) Labber'da modellenmiyor (L2) | 1 |
 | Port security Labber'da yok (L5) | 1 |
 
 ACL/NAT için security_smoke ayrı native operatör örnekleridir; mevcut 40 görevin ACL/NAT alanlarını dönüştürdüğü veya native doğruladığı iddia edilmez. ACL 28 ve SNAT/PAT 21 native kontrolü [CI 42205155584 / 6f651fe](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42205155584) güvenlik işlerinde geçti; görev aktarımı sayılmaz.
