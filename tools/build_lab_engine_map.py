@@ -41,9 +41,10 @@ def bridge_decisions(browser):
     return {"academy": academy, "scenarios": scenarios}
 
 
-def _decision_cell(report):
+def _decision_cell(report, academy=False):
     if report["decision"] == "labber":
-        return "**Labber**"
+        # L2-D2: Labber kararındaki Akademi labının ölçütleri Labber'da değerlendirilir.
+        return "**Labber** — ölçütler Labber'da" if academy else "**Labber**"
     return "Eski motor: " + "; ".join(r.replace("|", "/") for r in report["reasons"])
 
 
@@ -96,7 +97,7 @@ def render(browser):
             if lab["id"] in ("AGL-034", "AGL-035"):
                 frr = "Başlangıç/çözüm native CI geçti (a1d6382; kanıt aşağıda)"
         lines.append(
-            f"| {lab['id']} | {lab['title'].replace('|','/')} | {len(ds)}/{len(t['links'])} | Mevcut | {_decision_cell(decisions['academy'][lab['id']])} | {mit} | {linux} | {frr} | `{hashlib.sha256(raw).hexdigest()}` |"
+            f"| {lab['id']} | {lab['title'].replace('|','/')} | {len(ds)}/{len(t['links'])} | Mevcut | {_decision_cell(decisions['academy'][lab['id']], academy=True)} | {mit} | {linux} | {frr} | `{hashlib.sha256(raw).hexdigest()}` |"
         )
     scen = decisions["scenarios"]
     lines.extend(
@@ -130,8 +131,9 @@ def render(browser):
             "",
             "Karar köprünün yapısal sonucudur: `labber`, içeriğin bütün alanlarının Labber'a",
             "eşlendiği anlamına gelir. Ürün kararı içerik yüklenirken aynı köprüden alır ve",
-            "ekranda gösterir. Ortak senaryolarda `labber` kararı başarı ölçütünün Labber'da",
-            "değerlendirildiği anlamına gelir (L2-D1); Akademi labları için geçiş L2-D2'dedir.",
+            "ekranda gösterir. `labber` kararındaki ortak senaryonun başarı ölçütü (L2-D1) ve",
+            "Akademi labının ölçütleri (L2-D2: `probe.icmp` → LabQuery.ping, `state.equals` →",
+            "toAglab görünümü) Labber'da değerlendirilir.",
             "Cihaz CLI'si ve Simulation Mode L3'e kadar eski motorda kalır. Eski motor kararı,",
             "aşağıdaki gerekçelerden en az birine dayanır.",
             "",

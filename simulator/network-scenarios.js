@@ -71,14 +71,14 @@ function sharedRecipeGoal(row) {
     const reached = () =>
       aglabEngineChoice.labberPing(sharedScenario.sourceId, sharedScenario.target).ok;
     if (row.verify.kind === 'stp-root')
-      return aglabEngineChoice.labberStpRoot(10) === 'SW-03' && reached();
+      return aglabEngineChoice.labberStpRoot(row.verify.vlan) === row.verify.root && reached();
     if (row.verify.kind === 'ping') return reached();
     throw new Error('Labber bu doğrulama türünü desteklemiyor: ' + row.verify.kind);
   }
   if (row.verify.kind === 'dhcp') return !!get(sharedScenario.sourceId)?.dhcpLease;
   if (row.verify.kind === 'stp-root')
     return (
-      stpRootForVlan(10)?.name === 'SW-03' &&
+      stpRootForVlan(row.verify.vlan)?.name === row.verify.root &&
       ping(sharedScenario.sourceId, sharedScenario.target).ok
     );
   return ping(sharedScenario.sourceId, sharedScenario.target).ok;
@@ -124,7 +124,11 @@ function validateSharedScenarios() {
           ok: !initial && solved,
           detail:
             row.verify.kind === 'stp-root'
-              ? 'Başlangıçta hedef root değil; CLI sonrası SW-03 root ve ping başarılı.'
+              ? 'Başlangıçta hedef root değil; CLI sonrası ' +
+                row.verify.root +
+                ' VLAN ' +
+                row.verify.vlan +
+                ' root ve ping başarılı.'
               : 'Başlangıç ' +
                 (initial ? 'başarılı' : 'başarısız') +
                 ' / çözüm sonrası ' +

@@ -20,6 +20,7 @@ academyPanel.innerHTML = `<h2>AğLab Akademi v1</h2>
 </details>
 <label>Laboratuvar <select id="academySelect"></select></label>
 <p id="academyEngineScope" role="note"></p>
+<p id="academyEngineBadge" class="engine-badge" role="note"></p>
 <div id="academyCatalogSearch">
 <label>Laboratuvar ara <input id="academySearch" type="search" placeholder="Numara veya konu (örn. AGL-024, VLAN)" autocomplete="off" maxlength="100"></label>
 <label>İlerleme <select id="academyProgressFilter"><option value="all">Tüm laboratuvarlar</option><option value="completed">Tamamlananlar (100 puan)</option><option value="remaining">Henüz tamamlanmayanlar</option></select></label>
@@ -47,9 +48,32 @@ academyLabs.forEach((l) => {
   o.textContent = l.id + ' — ' + l.title;
   ac('academySelect').append(o);
 });
+// Motor kararı içerikten (başlangıç topolojisi, köprü raporu) gelir; lab başına bir kez.
+// Labber kararındaki labda ölçütler Labber'da değerlendirilir; çalışma sırasında motor
+// değişmez (engine-choice.js).
+const academyEngineCache = {};
+function academyEngineFor(lab) {
+  if (!academyEngineCache[lab.id])
+    academyEngineCache[lab.id] = aglabEngineChoice.decide(lab.initial_topology);
+  return academyEngineCache[lab.id];
+}
+// Motorun sağladığı yetenekler (ölçütlerdeki required_capabilities ile eşleşir).
+// Labber: state_adapter = toAglab görünümü, icmp_probe = LabQuery.ping. Kaynak arayüz
+// seçimli probe (routing) Labber köprüsünde henüz yok (L4).
+const ACADEMY_CAPABILITIES = {
+  labber: ['state_adapter', 'icmp_probe', 'answer_input'],
+  legacy: ['state_adapter', 'icmp_probe', 'icmp_source_interface', 'answer_input'],
+};
+function academyRequiredCapabilities(c) {
+  const caps = [...(c.required_capabilities || [])];
+  if (c.kind === 'probe.icmp' && c.target?.source_interface) caps.push('icmp_source_interface');
+  return caps;
+}
 // The catalog search only selects an option; it never starts or resets a lab.
 function academyRenderEngineScope() {
   const id = ac('academySelect').value;
+  const lab = academyLabs.find((l) => l.id === id);
+  if (lab) aglabEngineChoice.renderBadge(ac('academyEngineBadge'), academyEngineFor(lab));
   const evidence =
     id === 'AGL-024'
       ? 'Bu görevin başlangıç arızası ve onarımı için gerçek Linux bridge doğrulaması vardır.'
@@ -914,7 +938,7 @@ function acState(target) {
   for (const p of parts.slice(2)) val = val?.[p];
   return val;
 }
-function acProbe(source, destination, spec = {}) {
+function acProbe(source, destination, spec = {}, engine = 'legacy') {
   const src = get(source),
     d = get(destination);
   if (!src) throw new Error('Probe için kaynak cihaz eksik.');
@@ -925,6 +949,25 @@ function acProbe(source, destination, spec = {}) {
       ok: false,
       why: 'Hedef cihazda geçerli IPv4 adresi yapılandırılmamış.',
     }));
+  if (engine === 'labber') {
+    // Labber deterministik: tek ping beş denemenin hepsini temsil eder. CLI L3'e kadar eski
+    // motorda olduğundan iki motor aynı sonucu vermeli; vermezse sonuç kabul edilmez.
+    const r = aglabEngineChoice.labberPing(source, ip);
+    const legacy = ping(source, ip);
+    if (legacy.ok !== r.ok)
+      throw new Error(
+        'Motor uyuşmazlığı: Labber ping ' +
+          (r.ok ? 'başarılı' : 'başarısız') +
+          ', eski motor ' +
+          (legacy.ok ? 'başarılı' : 'başarısız') +
+          ' (' +
+          source +
+          ' → ' +
+          ip +
+          '). Sonuç kabul edilmedi; bu bir motor hatasıdır, lütfen bildir.',
+      );
+    return Array.from({ length: 5 }, () => ({ ok: r.ok, why: r.why }));
+  }
   let binding = null;
   if (spec.source_interface) {
     binding = AgLabRoutingGrading.sourceBinding(src, spec.source_interface, routeLookup(src, ip));
@@ -941,29 +984,73 @@ function acProbe(source, destination, spec = {}) {
       : r;
   });
 }
-function academyEvaluate(criteria, answers, health = null) {
+// state.equals karşılaştırması: bağlantılar uç/durum kümesi, rotalar ve VLAN listeleri sırasız,
+// arayüz durumu normalize, adresler sayısal biçimde.
+function acStateMatches(target, actual, expected) {
+  let a = actual,
+    e = expected;
+  if (target === 'links') {
+    a = acLinks(actual);
+    e = acLinks(e);
+  } else if (/\.staticRoutes$/.test(target)) {
+    a = AgLabRoutingGrading.sameRoutes(a, e) ? e : null;
+  } else if (/^devices\.[^.]+\.interfaces\.[^.]+$/.test(target)) {
+    a = AgLabRoutingGrading.interfaceState(a);
+    e = AgLabRoutingGrading.interfaceState(e);
+  } else if (/\.(vlans|allowed)$/.test(target)) {
+    a = AgLabVlanHealth.sameVlanSet(a, e) ? e : null;
+  } else if (/\.(ip|mask|gateway)$/.test(target) && typeof a === 'string' && validIP(a))
+    a = a.split('.').map(Number).join('.');
+  return JSON.stringify(acCanonical(a)) === JSON.stringify(acCanonical(e));
+}
+function academyEvaluate(criteria, answers, health = null, engine = null) {
+  const used = engine || (academyActive ? academyEngineFor(academyActive).engine : 'legacy');
+  const caps = ACADEMY_CAPABILITIES[used];
+  // Labber görünümü (state_adapter) ölçüt başına değil değerlendirme başına bir kez kurulur.
+  let view = null;
+  const stateOf = (target) => {
+    if (used !== 'labber') return acState(target);
+    if (!view) view = aglabEngineChoice.labberView();
+    const parts = target.split('.');
+    let val;
+    if (parts[0] === 'links') val = view.links;
+    else if (parts[0] !== 'devices') throw new Error('Desteklenmeyen durum yolu');
+    else {
+      val = view.devices.find((d) => d.id === parts[1]);
+      for (const p of parts.slice(2)) val = val?.[p];
+    }
+    return val;
+  };
   const rows = criteria.map((c) => {
     let status = 'not_evaluated',
       detail = 'Bu ölçüt henüz desteklenmiyor.';
+    const missing = academyRequiredCapabilities(c).filter((k) => !caps.includes(k));
+    if (missing.length)
+      return {
+        id: c.id,
+        kind: c.kind,
+        label: c.label,
+        points: c.points,
+        status: c.on_unavailable || 'not_evaluated',
+        detail:
+          'Bu ölçüt ' +
+          (used === 'labber' ? 'Labber' : 'eski') +
+          ' motorunda değerlendirilemiyor (eksik yetenek: ' +
+          missing.join(', ') +
+          '); geçti sayılmaz.',
+      };
     try {
       if (c.kind === 'state.equals') {
-        const actual = acState(c.target);
-        let a = actual,
-          e = c.expected;
-        if (c.target === 'links') {
-          validateTopologyData({ app: 'AgLab', devices, links });
-          a = acLinks(actual);
-          e = acLinks(e);
-        } else if (/\.staticRoutes$/.test(c.target)) {
-          a = AgLabRoutingGrading.sameRoutes(a, e) ? e : null;
-        } else if (/^devices\.[^.]+\.interfaces\.[^.]+$/.test(c.target)) {
-          a = AgLabRoutingGrading.interfaceState(a);
-          e = AgLabRoutingGrading.interfaceState(e);
-        } else if (/\.(vlans|allowed)$/.test(c.target)) {
-          a = AgLabVlanHealth.sameVlanSet(a, e) ? e : null;
-        } else if (/\.(ip|mask|gateway)$/.test(c.target) && typeof a === 'string' && validIP(a))
-          a = a.split('.').map(Number).join('.');
-        const ok = JSON.stringify(acCanonical(a)) === JSON.stringify(acCanonical(e));
+        if (c.target === 'links') validateTopologyData({ app: 'AgLab', devices, links });
+        const ok = acStateMatches(c.target, stateOf(c.target), c.expected);
+        // Labber görünümünde ölçüt sonucu canlı AğLab durumundakiyle aynı olmalı
+        // (küme alanları sırasız, adresler normalize karşılaştırılır).
+        if (used === 'labber' && ok !== acStateMatches(c.target, acState(c.target), c.expected))
+          throw new Error(
+            'Motor uyuşmazlığı: ' +
+              c.target +
+              ' Labber görünümünde farklı sonuç veriyor. Sonuç kabul edilmedi; bu bir motor hatasıdır, lütfen bildir.',
+          );
         status = ok ? 'passed' : 'failed';
         detail = ok
           ? 'Ölçüt sağlandı.'
@@ -995,7 +1082,7 @@ function academyEvaluate(criteria, answers, health = null) {
             AgLabVlanHealth.assertHealthy({ devices, links }, health);
             for (const control of health.controls) {
               if (
-                acProbe(control.source, control.destination)
+                acProbe(control.source, control.destination, {}, used)
                   .slice(1)
                   .filter((r) => r.ok).length < 3
               )
@@ -1008,7 +1095,7 @@ function academyEvaluate(criteria, answers, health = null) {
             }
           }
           // Deterministic synchronous engine: first of five is warm-up, no wall-clock timing.
-          const runs = acProbe(c.target.source, c.target.destination, c.target);
+          const runs = acProbe(c.target.source, c.target.destination, c.target, used);
           const ok = c.expected
             ? runs.slice(1).filter((r) => r.ok).length >= 3
             : runs.every((r) => !r.ok);
@@ -1027,7 +1114,7 @@ function academyEvaluate(criteria, answers, health = null) {
     }
     return { id: c.id, kind: c.kind, label: c.label, points: c.points, status, detail };
   });
-  return AgLabGradingVerdict.finalize(rows);
+  return { ...AgLabGradingVerdict.finalize(rows), engine: used };
 }
 function academyCheck(persist = true) {
   if (!academyActive) return null;
@@ -1049,6 +1136,11 @@ function academyCheck(persist = true) {
         : result.earned_points === 100
           ? 'Tüm ölçütler sağlandı'
           : 'Düzenlemeye devam et'),
+  );
+  acText(
+    box,
+    'p',
+    'Değerlendirme motoru: ' + (result.engine === 'labber' ? 'Labber' : 'eski motor') + '.',
   );
   acText(
     box,

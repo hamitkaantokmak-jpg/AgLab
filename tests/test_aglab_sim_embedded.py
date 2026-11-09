@@ -5,10 +5,9 @@
    başta BAŞARISIZ (PC'lerin portları farklı VLAN'da), referans çözüm `runScript` ile
    uygulandıktan sonra BAŞARILI. Çözüm CLI hatası üretmez. Farklı VLAN'a erişim çözümden
    sonra da başarısız kalır.
-3. Ürün AgLabSim'i yalnız ortak senaryonun motor kararı ve Labber değerlendirmesi için
-   kullanır (L2-D1): sayfa yüklemesi, Sorun Çöz/Öğren ve Akademi boyunca sayfa
-   betiklerinden önce kurulan sayaçlı erişimci 0 kalır; senaryo yüklenince yalnız
-   toLabber (ve Labber kararında createRuntime) erişimi görülür.
+3. Ürün AgLabSim'i yalnız motor kararı ve Labber değerlendirmesi için kullanır (L2-D1
+   ortak senaryolar, L2-D2 Akademi). Sayfa betiklerinden önce kurulan sayaçlı erişimci
+   her akışta erişilen API kümesini tam olarak denetler; Sorun Çöz/Öğren 0 erişim.
 """
 
 import unittest
@@ -123,6 +122,7 @@ class SimEmbeddedTests(unittest.TestCase):
         self.assertTrue(self.page.evaluate("typeof window.__aglabSimReal() === 'object'"))
 
     def test_lab_fails_before_and_passes_after_solution(self):
+        before = self.accesses()
         result = self.page.evaluate(RUN_LAB)
         # L0 motor API'si + L1 köprüsü (toLabber/toAglab/createRuntime ve yardımcıları).
         self.assertEqual(
@@ -147,30 +147,49 @@ class SimEmbeddedTests(unittest.TestCase):
         self.assertTrue(result["after"], "çözümden sonra aynı VLAN'da ping başarılı olmalı")
         self.assertFalse(result["otherVlan"], "VLAN 20'deki PC'ye erişim kapalı kalmalı")
         self.assertEqual(result["session"], "VpcsSession")
-        self.assertEqual(self.accesses(), [], "testin kendi erişimi sayılmamalı")
+        self.assertEqual(self.accesses(), before, "testin kendi erişimi sayılmamalı")
 
-    def test_product_uses_aglabsim_only_for_scenario_engine_choice(self):
-        """L2-D1'den itibaren ürün AgLabSim'i yalnız ortak senaryonun motor kararı ve Labber
-        değerlendirmesi için çağırır (engine-choice.js). Sayfa yüklemesi, Sorun Çöz/Öğren
-        ve Akademi (L2-D2'ye kadar) ona dokunmaz."""
+    def reset_accesses(self):
+        self.page.evaluate("window.__aglabSimAccess.length = 0")
+
+    def test_product_uses_aglabsim_only_for_engine_choice(self):
+        """Ürün AgLabSim'i yalnız motor kararı ve Labber değerlendirmesi için çağırır
+        (engine-choice.js; L2-D1 ortak senaryolar, L2-D2 Akademi). Erişilen API kümesi
+        her akışta tam olarak denetlenir."""
         page = self.page
-        self.assertEqual(self.accesses(), [], "sayfa yüklemesi")
+        # Sayfa yüklemesi: Akademi'de seçili labın motor rozeti için yalnız karar
+        self.assertEqual(set(self.accesses()), {"global", "toLabber"}, "sayfa yüklemesi")
+        self.reset_accesses()
         page.click('[data-area="troubleshoot"]')
         page.click('[data-area="learn"]')
         self.assertEqual(self.accesses(), [], "Sorun Çöz / Öğren")
-        # Akademi: lab başlat ve değerlendir
+        # Akademi (Labber kararındaki lab): karar + çalışma zamanı + toAglab görünümü
         page.click('[data-area="lab"]')
         page.select_option("#academySelect", "AGL-022")
         page.click("#academyStart")
         if page.locator("#academyReplacePrompt").is_visible():
             page.click("#academyReplaceContinue")
         page.evaluate("academy.check()")
-        self.assertEqual(self.accesses(), [], "Akademi")
+        self.assertEqual(
+            set(self.accesses()),
+            {"global", "toLabber", "createRuntime", "toAglab"},
+            "Akademi Labber labı",
+        )
+        # Akademi (eski motor kararındaki lab): yalnız karar
+        self.reset_accesses()
+        page.select_option("#academySelect", "AGL-031")
+        page.click("#academyStart")
+        if page.locator("#academyReplacePrompt").is_visible():
+            page.click("#academyReplaceContinue")
+        page.evaluate("academy.check()")
+        self.assertEqual(set(self.accesses()), {"global", "toLabber"}, "Akademi eski motor labı")
         # Lab: eski motor kararındaki senaryo da karar için köprüye sorulur
+        self.reset_accesses()
         page.evaluate("aglabSharedEngine.load('return-route')")
         page.evaluate("aglabSharedEngine.reach('PC-01','SRV-01')")
         self.assertEqual(set(self.accesses()), {"global", "toLabber"}, "eski motor senaryosu")
         # Labber kararındaki senaryo: karar + değerlendirme çalışma zamanı
+        self.reset_accesses()
         page.evaluate("aglabSharedEngine.load('vlan-wrong-access')")
         page.evaluate("aglabSharedEngine.goal()")
         self.assertEqual(

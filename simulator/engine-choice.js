@@ -59,12 +59,29 @@ const aglabEngineChoice = (() => {
         (r.reason === 'unreach' && r.unreachFrom ? ' (' + r.unreachFrom + ' yanıt verdi)' : '');
     return { ok: r.ok, why, replier: r.replier || null, reason: r.reason || null };
   }
+  /**
+   * Durumun Labber üzerinden AğLab görünümü: toAglab(createRuntime(toLabber(t)), t).
+   * Akademi `state_adapter` yeteneği; ifade edilemeyen durum açık hata verir.
+   */
+  function labberView() {
+    const snap = snapshot();
+    return AgLabSim.toAglab(runtime(), snap);
+  }
   /** Labber STP kökü (cihaz adı) veya null. */
   function labberStpRoot(vlan) {
     const id = runtime().query().stpRoot(vlan);
     return id ? get(id)?.name || id : null;
   }
-  return { decide, badgeText, renderBadge, labberPing, labberStpRoot, snapshot, REASON_TR };
+  return {
+    decide,
+    badgeText,
+    renderBadge,
+    labberPing,
+    labberStpRoot,
+    labberView,
+    snapshot,
+    REASON_TR,
+  };
 })();
 window.aglabEngineChoice = {
   decide: (t) => aglabEngineChoice.decide(t),
