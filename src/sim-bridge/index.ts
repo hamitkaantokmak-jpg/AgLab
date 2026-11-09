@@ -7,6 +7,8 @@
 
 export { createLab, createSession, IosSession, runScript, VpcsSession } from '../sim/index'
 export { LabQuery } from '../sim/query'
+// E: Labber'ın kendi labları (src/labs, kullanıcının içeriği; değiştirilmeden alındı).
+export { LABS as LABBER_LABS } from '../labs/index'
 export type { Session } from '../sim/index'
 export type * from '../sim/types'
 export { BridgeError, canonPort, createRuntime, needsEncapFor, toAglab, toLabber, MODEL_L2, MODEL_L3 } from './bridge'

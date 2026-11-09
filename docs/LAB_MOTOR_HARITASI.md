@@ -89,6 +89,29 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `eth-moved-cable-vlan` | Ethernet/ARP · Masası değişen çalışan ağa giremiyor | **Labber** |
 | `eth-two-switch-vlan` | Ethernet/ARP · Yeni switch'e bağlananlar ofise ulaşamıyor | **Labber** |
 
+## Labber labları (E)
+
+Labber simülatörünün kendi labları (`src/labs`, kullanıcının içeriği). Ayrı içerik
+grubudur; Akademi labları ve SHA256 kayıtlarıyla karışmaz. Lab tanımı (LabDef)
+köprü kullanılmadan doğrudan Labber'da kurulur; terminal Labber oturumudur, hedefler
+`rt.objectives()` ile değerlendirilir. Hepsi Labber.
+
+| Lab | Başlık | Seviye | Cihaz/bağ | Hedef | Konular | Motor |
+|---|---|---|---|---|---|---|
+| `vlan-temelleri` | VLAN temelleri: tek switch | Başlangıç | 5/4 | 6 | VLAN, Access port, hostname | **Labber** — LabDef doğrudan |
+| `ariza-trunk` | Arıza bul: Bozuk trunk | Başlangıç | 6/5 | 5 | Troubleshooting, VLAN, Trunk, Native VLAN | **Labber** — LabDef doğrudan |
+| `trunk-guvenligi` | Trunk ve port güvenliği (DTP) | Orta | 6/5 | 6 | DTP, Native VLAN, Best practice, Portfast | **Labber** — LabDef doğrudan |
+| `kampus-vlan-trunk-stp` | Kampüs ağı: VLAN, Trunk, STP, EtherChannel | Orta | 7/8 | 9 | VLAN, Trunk, STP, EtherChannel, SVI | **Labber** — LabDef doğrudan |
+| `stp-yuk-dengeleme` | STP: root seçimi ve VLAN başına yük dengeleme | Orta | 8/9 | 6 | STP, Rapid PVST+, Root bridge, Portfast | **Labber** — LabDef doğrudan |
+| `etherchannel-ariza` | Arıza bul: EtherChannel kurulmuyor | Orta | 7/8 | 5 | EtherChannel, LACP, PAgP, Troubleshooting | **Labber** — LabDef doğrudan |
+| `l3-statik-route` | İki L3 switch arasında statik yönlendirme | İleri | 5/4 | 6 | L3 switch, SVI, Static route, Default route | **Labber** — LabDef doğrudan |
+| `yonetim-vlan` | Switch yönetimi: hostname, yönetim VLAN'ı, varsayılan ağ geçidi | Başlangıç | 5/4 | 6 | CCNA, Yönetim SVI, Default gateway, copy run start | **Labber** — LabDef doğrudan |
+| `ospf-tek-alan` | Tek alanlı OSPF: routed linkler, router ID, passive-interface | Orta | 6/6 | 6 | CCNA, OSPF, Routed port, Loopback, Passive interface | **Labber** — LabDef doğrudan |
+| `routed-erisim-blogu` | Tamamen routed switch bloğu (L3 erişim katmanı) | İleri | 6/7 | 7 | ENCOR, Kampüs tasarımı, Routed port, OSPF, ECMP | **Labber** — LabDef doğrudan |
+| `bpdu-guard` | BPDU Guard, err-disable ve otomatik kurtarma | Orta | 5/5 | 6 | ENCOR, STP, PortFast, BPDU Guard, err-disable | **Labber** — LabDef doğrudan |
+| `ospf-ariza` | OSPF arıza giderme: komşuluk şartları ve metrik ayarı | İleri | 5/5 | 6 | ENCOR, OSPF, Arıza giderme, Hello/Dead, MTU, Reference bandwidth | **Labber** — LabDef doğrudan |
+| `ospf-cok-alan` | Çok alanlı OSPF: ABR, ASBR, varsayılan rota, totally stubby area | İleri | 6/5 | 5 | ENCOR, OSPF, Multi-area, ABR/ASBR, Stub area, Default route | **Labber** — LabDef doğrudan |
+
 ## Labber köprüsü özeti (L1)
 
 Karar köprünün yapısal sonucudur: `labber`, içeriğin bütün alanlarının Labber'a
@@ -96,14 +119,15 @@ eşlendiği anlamına gelir. Ürün kararı içerik yüklenirken aynı köprüde
 ekranda gösterir. `labber` kararındaki ortak senaryonun başarı ölçütü (L2-D1) ve
 Akademi labının ölçütleri (L2-D2: `probe.icmp` → LabQuery.ping, `state.equals` →
 toAglab görünümü) Labber'da değerlendirilir.
-Cihaz CLI'si ve Simulation Mode L3'e kadar eski motorda kalır. Eski motor kararı,
-aşağıdaki gerekçelerden en az birine dayanır.
+L3-a'dan beri Labber kararındaki içerikte terminal de Labber'dadır (tek kalıcı
+çalışma zamanı). Eski motor kararı aşağıdaki gerekçelerden en az birine dayanır.
 
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 30 | 10 | 40 |
 | Ortak senaryolar | 19 | 18 | 37 |
-| Toplam | 49 | 28 | 77 |
+| Labber labları | 13 | 0 | 13 |
+| Toplam | 62 | 28 | 90 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

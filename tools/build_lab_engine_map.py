@@ -35,10 +35,16 @@ def bridge_decisions(browser):
         page.evaluate("(id)=>aglabSharedEngine.load(id)", rec["id"])
         snap = page.evaluate("academyEngine.snapshot()")
         scenarios.append((rec["id"], rec["title"], page.evaluate(decide, snap)))
+    # E: Labber'ın kendi labları; lab tanımı doğrudan Labber'da (köprü kullanılmaz).
+    labber_labs = page.evaluate(
+        "() => AgLabSim.LABBER_LABS.map((l) => ({ id: l.id, title: l.title, level: l.level,"
+        " devices: l.devices.length, links: l.links.length, objectives: l.objectives.length,"
+        " tags: l.tags }))"
+    )
     page.close()
     if errors:
         raise RuntimeError("Sayfa hatası: " + "; ".join(errors))
-    return {"academy": academy, "scenarios": scenarios}
+    return {"academy": academy, "scenarios": scenarios, "labber_labs": labber_labs}
 
 
 def _decision_cell(report, academy=False):
@@ -113,6 +119,27 @@ def render(browser):
     )
     for sid, title, report in scen:
         lines.append(f"| `{sid}` | {title.replace('|', '/')} | {_decision_cell(report)} |")
+    labber_labs = decisions["labber_labs"]
+    lines.extend(
+        [
+            "",
+            "## Labber labları (E)",
+            "",
+            "Labber simülatörünün kendi labları (`src/labs`, kullanıcının içeriği). Ayrı içerik",
+            "grubudur; Akademi labları ve SHA256 kayıtlarıyla karışmaz. Lab tanımı (LabDef)",
+            "köprü kullanılmadan doğrudan Labber'da kurulur; terminal Labber oturumudur, hedefler",
+            "`rt.objectives()` ile değerlendirilir. Hepsi Labber.",
+            "",
+            "| Lab | Başlık | Seviye | Cihaz/bağ | Hedef | Konular | Motor |",
+            "|---|---|---|---|---|---|---|",
+        ]
+    )
+    for l in labber_labs:
+        lines.append(
+            f"| `{l['id']}` | {l['title'].replace('|', '/')} | {l['level']} | "
+            f"{l['devices']}/{l['links']} | {l['objectives']} | "
+            f"{', '.join(l['tags']).replace('|', '/')} | **Labber** — LabDef doğrudan |"
+        )
     everything = list(decisions["academy"].values()) + [r for _, _, r in scen]
     reasons = {}
     for r in everything:
@@ -134,14 +161,15 @@ def render(browser):
             "ekranda gösterir. `labber` kararındaki ortak senaryonun başarı ölçütü (L2-D1) ve",
             "Akademi labının ölçütleri (L2-D2: `probe.icmp` → LabQuery.ping, `state.equals` →",
             "toAglab görünümü) Labber'da değerlendirilir.",
-            "Cihaz CLI'si ve Simulation Mode L3'e kadar eski motorda kalır. Eski motor kararı,",
-            "aşağıdaki gerekçelerden en az birine dayanır.",
+            "L3-a'dan beri Labber kararındaki içerikte terminal de Labber'dadır (tek kalıcı",
+            "çalışma zamanı). Eski motor kararı aşağıdaki gerekçelerden en az birine dayanır.",
             "",
             "| Grup | Labber | Eski motor | Toplam |",
             "|---|---|---|---|",
             f"| Akademi labları | {a_lab} | {a_leg} | {a_lab + a_leg} |",
             f"| Ortak senaryolar | {s_lab} | {s_leg} | {s_lab + s_leg} |",
-            f"| Toplam | {a_lab + s_lab} | {a_leg + s_leg} | {a_lab + a_leg + s_lab + s_leg} |",
+            f"| Labber labları | {len(labber_labs)} | 0 | {len(labber_labs)} |",
+            f"| Toplam | {a_lab + s_lab + len(labber_labs)} | {a_leg + s_leg} | {a_lab + a_leg + s_lab + s_leg + len(labber_labs)} |",
             "",
             "| Eski motor gerekçesi | İçerik sayısı |",
             "|---|---|",

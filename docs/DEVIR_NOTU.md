@@ -14,13 +14,12 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L2-C MAC/ARP (L3 tablosu 10–14) | #54 | birleşti |
 | L2-D1 ortak senaryolar Labber'da | #55 | birleşti |
 | L2-D2 Akademi M1–M3 Labber'da | #57 | birleşti |
-| L3-a terminal → IosSession/VpcsSession, tek kalıcı LabRuntime | #59 | açık (birleşmeyi bekliyor) |
-| F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | #60 (taban #59) | açık (birleşmeyi bekliyor) |
-| E Labber'ın 13 labı | — | **kaynak depoda**: `src/labs/*.ts` (Labber deposundan değiştirilmeden alındı), testi `tests/sim/labs.test.ts`; sıradaki adım arayüz grubu |
+| L3-a terminal → IosSession/VpcsSession, tek kalıcı LabRuntime | #59 | birleşti |
+| F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | #60 | birleşti |
+| E Labber'ın 13 labı (kaynak #61) | dal `claude/e-labber-labs` | PR açık (birleşmeyi bekliyor) |
 | L3-b Simulation Mode olay adaptörü | — | başlanmadı; tasarım aşağıda (E'nin içeriğine bağlı değil, F'nin üstüne yapılabilir) |
 
-**Sıradaki adım:** L3-b (F dalının üstüne). E'nin kaynağı artık depoda
-(`src/labs/`, testi `tests/sim/labs.test.ts`); lab metinleri değiştirilmeden kullanılır.
+**Sıradaki adım:** L3-b (E dalının üstüne).
 
 ## Bugünkü mimari (kısaca)
 
@@ -124,17 +123,20 @@ Yalnız Labber kararındaki içerikte. Önerilen yol:
    `test_aglab_cli_vlan`. IOS biçimli çıktı yüzünden beklenti değişirse davranış değişikliği
    olarak gerekçesiyle güncelle; mümkünse metin yerine `LabQuery` ile türetilmiş durumu sor.
 
-## E — engel (2026-11-09)
+## E — Labber'ın 13 labı (yapıldı)
 
-Labber'ın 13 labı kullanıcının kendi içeriği (`faarik-network/labber` `labs/*.ts` +
-`tests/labs.test.ts`). Bu depoda ve oturumda yok; `add_repo faarik-network/labber` bu
-oturumda izin denetiminde reddedildi. Lab tanımları (topoloji, initialConfig, objective
-`check(q)` fonksiyonları, referans çözüm) sıfırdan yazılırsa kullanıcının labları değil
-uydurma içerik olur; yapılmadı. Gerekli: depoya okuma erişimi ya da `labs/` klasörünün
-arşivi. Geldiğinde aşağıdaki "L2-E" planı geçerli; terminal (L3-a) hazır olduğundan
-labın arayüzde çözülmesi için ek terminal işi gerekmez (OSPF/EtherChannel/routed port
-komutları Labber IOS'unda var; `toAglab` bunları ifade edemediği için lab görünümü/kaydı
-için `toAglab` yerine doğrudan LabDef çizimi gerekecek — köprü kullanılmaz).
+- Kaynak #61 ile depoda: `src/labs/*.ts` (değiştirilmeden), testi `tests/sim/labs.test.ts`.
+- `src/sim-bridge/index.ts` `LABBER_LABS` (= `LABS`) dışa açar.
+- `simulator/labber-labs-ui.js`: Lab alanında Sorun Çöz panelinin altında ayrı grup
+  (`#labberLabsPanel`): seçim, başlat, rozet, brief, hedef listesi (`rt.objectives()`),
+  "Hedefleri kontrol et", referans çözüm. Terminal komutundan sonra hedefler yenilenir.
+- `aglabLabber.startLab(def)`: köprü kullanılmaz, `createLab(def)`. Tuval için
+  `labTopology(def)` yalnız çizim topolojisi üretir; geri yazım `labViewWrite`
+  (switch adı = hostname, PC adresi, güç, kablo). Düzenleyiciyle topoloji değişirse oturum
+  bozulur ("Labber labının topolojisi düzenleyiciyle değiştirilemez").
+- Kayıt: üst alan `labberLab: {id}` (doğrulanır); sayfa yenilenince lab baştan başlar.
+- Simulation Mode Labber labında yok (L3-b'ye kadar; eski motor kaydı üretilmez).
+- Motor tablosu: "Labber labları (E)" bölümü; özet tablosunda ayrı satır.
 
 ## L3-b — Simulation Mode olay adaptörü
 
