@@ -2,7 +2,7 @@
 
 Her içerik iki durumda denenir:
 * 40 Akademi labı: öğrenci başlangıç topolojisi ve öğretmen hedef topolojisi.
-* 22 ortak senaryo: yüklenmiş başlangıç ve tarif çözüm komutlarından sonraki durum.
+* Ortak senaryolar: yüklenmiş başlangıç ve tarif çözüm komutlarından sonraki durum.
 
 Köprü kararı 'labber' olan her durumda, IP'li PC'lerin bütün sıralı çiftleri için eski
 motorun `reach` sonucu ile Labber `LabQuery.ping().ok` karşılaştırılır. Fark sıfır
@@ -91,7 +91,10 @@ class SimPingParityTests(unittest.TestCase):
             json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         print("SIM_PING_PARITY", json.dumps({k: v for k, v in summary.items() if k != "diffs"}))
-        self.assertEqual(len(results), 2 * (40 + 22))
+        scenarios = json.loads(
+            (ROOT / "simulator/network-scenarios.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(len(results), 2 * (40 + len(scenarios)))
         self.assertGreater(summary["ping_ok"], 50, "başarılı ping de karşılaştırılmalı")
         self.assertGreater(summary["ping_fail"], 50, "başarısız ping de karşılaştırılmalı")
         self.assertEqual(diffs, [], "eski motor ile Labber arasında ping farkı")

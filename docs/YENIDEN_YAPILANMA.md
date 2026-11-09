@@ -309,8 +309,10 @@ gösterilmez. Geçiş boyunca:
 
 **Senaryo envanteri:**
 
-- **22 ortak motor senaryosu** (`simulator/network-scenarios.json`): önceki 17
-  senaryoya #46 ile beş VLAN/trunk senaryosu eklendi. Bu beşi L2 aşamasına girer.
+- **27 ortak motor senaryosu** (`simulator/network-scenarios.json`): önceki 17
+  senaryoya #46 ile beş VLAN/trunk senaryosu eklendi; bu beşi L2 aşamasına girer.
+  Konu #7 beş router-on-a-stick senaryosu (`roas-*`) daha ekledi; Router ve alt
+  arayüz gerektirdikleri için L4–L5 aşamalarına kadar eski motorda kalırlar.
 - **25 eski metin senaryosu** (`main.js` `scenarios`): L6 aşamasında ele alınır.
 - **13 Labber labı:** L2 aşamasında ayrı içerik grubu.
 

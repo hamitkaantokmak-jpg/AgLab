@@ -73,6 +73,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `vlan-allowed-overwritten` | Trunk · Misafir ağı eklendi, muhasebe koptu | **Labber** |
 | `vlan-missing-on-switch` | VLAN · Satış diğer kattaki satışçılara ulaşamıyor | **Labber** |
 | `vlan-two-faults` | VLAN + trunk · İki hata birden | **Labber** |
+| `roas-wrong-tag` | Router-on-a-stick · Satış yazıcıya ulaşamıyor | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
+| `roas-switch-port-access` | Router-on-a-stick · Yalnız bir VLAN dışarı çıkabiliyor | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
+| `roas-pc-gateway` | Gateway · Yeni PC yalnız kendi bölümünü görüyor | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
+| `roas-physical-shutdown` | Router-on-a-stick · Alt arayüzler yapılandırılmış ama hiçbiri çalışmıyor | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
+| `roas-two-faults` | Router-on-a-stick · İki hata birden | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
 
 ## Labber köprüsü özeti (L1)
 
@@ -87,12 +92,12 @@ aşağıdaki gerekçelerden en az birine dayanır.
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 30 | 10 | 40 |
-| Ortak senaryolar | 9 | 13 | 22 |
-| Toplam | 39 | 23 | 62 |
+| Ortak senaryolar | 9 | 18 | 27 |
+| Toplam | 39 | 28 | 67 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
-| Router cihaz tipi Labber köprüsünde yok (L4) | 22 |
+| Router cihaz tipi Labber köprüsünde yok (L4) | 27 |
 | Server cihaz tipi Labber köprüsünde yok (L5) | 9 |
 | DHCP istemci kirası Labber'da yok (L5) | 1 |
 | Port security Labber'da yok (L5) | 1 |
