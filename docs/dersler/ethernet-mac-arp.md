@@ -118,6 +118,13 @@ E4'ü VLAN konusundan ayıran nokta kanıttır: burada sorun MAC tablosundan bul
 
 ## 6. Arıza senaryoları
 
+> **Uygulamada (PR F):** S1–S5 Sorun Çöz'de `eth-printer-port`, `eth-wrong-mask`,
+> `eth-duplicate-ip`, `eth-moved-cable-vlan`, `eth-two-switch-vlan` kimlikleriyle Labber'da
+> çalışır (`simulator/network-scenarios.json`, `verify.kind: "query"`). Hedefteki ping'ler
+> değerlendirmede gerçek trafik gibi çalışır, böylece `macPort`/`macVlan` o trafikle
+> öğrenilen MAC'e bakar. `macPort` IOS'un tam port adını döndürür (`FastEthernet0/4`);
+> aşağıdaki `'Fa0/4'` yazımı kısaltmadır.
+
 Hedefler motordan bağımsız, Labber'ın `LabQuery` yaklaşımıyla yazıldı: yapılandırma metnine değil, ağın gerçek davranışına bakar. Hangi motor seçilirse seçilsin doğrudan lab tanımına çevrilebilir. Temel topoloji laptakiyle aynıdır: SW1, VLAN 10, PC-A .11, PC-B .12, PC-C .13; gerektiğinde yazıcı PRN .50 eklenir.
 
 ### S1 · Başlangıç · Yeni yazıcı kimseye görünmüyor (E3)

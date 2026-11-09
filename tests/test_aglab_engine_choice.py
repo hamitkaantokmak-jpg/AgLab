@@ -2,7 +2,7 @@
 
 * Motor kararı içerikten gelir (köprü raporu) ve docs/LAB_MOTOR_HARITASI.md ile aynıdır;
   ekranda rozet olarak görünür: "Motor: Labber" ya da "Eski motor — nedeni: …".
-* Labber kararındaki 9 senaryonun başarı ölçütü Labber'dan gelir: başlangıçta başarısız,
+* Labber kararındaki senaryoların (sayı motor tablosundan türetilir) başarı ölçütü Labber'dan gelir: başlangıçta başarısız,
   tarif çözümünden sonra başarılı (Labber lab değişmezi).
 * CLI ping'i senaryo durumunu Labber sonucu ile yazar; başarısız ve başarılı iletim ayrı
   ayrı denenir. L3-a'dan beri terminal de Labber'dadır: terminal ve hedef aynı kalıcı
@@ -19,17 +19,9 @@ from playwright.sync_api import sync_playwright
 
 from aglab_test_support import HTML, ROOT, launch_chromium
 
-LABBER_SCENARIOS = {
-    "access-vlan",
-    "trunk-allowed",
-    "native-vlan",
-    "stp-loop",
-    "vlan-wrong-access",
-    "vlan-uplink-not-trunk",
-    "vlan-allowed-overwritten",
-    "vlan-missing-on-switch",
-    "vlan-two-faults",
-}
+
+def labber_ids(decisions):
+    return {k for k, v in decisions.items() if v == "labber"}
 
 
 def map_decisions():
@@ -95,7 +87,13 @@ class EngineChoiceTests(unittest.TestCase):
             (ROOT / "simulator/network-scenarios.json").read_text(encoding="utf-8")
         )
         self.assertEqual(set(expected), {r["id"] for r in recipes})
-        self.assertEqual({k for k, v in expected.items() if v == "labber"}, LABBER_SCENARIOS)
+        # L2 VLAN/STP senaryoları ve ders senaryoları (Konu #3, #11) Labber'da olmalı.
+        self.assertTrue(
+            {"access-vlan", "stp-loop", "vlan-two-faults"} <= labber_ids(expected), expected
+        )
+        self.assertTrue(
+            {r["id"] for r in recipes if r["verify"]["kind"] == "query"} <= labber_ids(expected)
+        )
         for sid, engine in expected.items():
             decision = self.load(sid)
             self.assertEqual(decision["engine"], engine, sid)
@@ -111,7 +109,7 @@ class EngineChoiceTests(unittest.TestCase):
     def test_labber_scenarios_fail_first_and_pass_after_solution_on_labber(self):
         results = self.page.evaluate("aglabSharedEngine.validateScenarios()")
         labber = [r for r in results if r["engine"] == "labber"]
-        self.assertEqual({r["id"] for r in labber}, LABBER_SCENARIOS)
+        self.assertEqual({r["id"] for r in labber}, labber_ids(map_decisions()))
         for r in labber:
             self.assertEqual((r["initial"], r["solved"], r["ok"]), (False, True, True), r)
         self.assertTrue(all(r["ok"] for r in results), [r for r in results if not r["ok"]])

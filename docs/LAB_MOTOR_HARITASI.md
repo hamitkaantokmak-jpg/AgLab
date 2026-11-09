@@ -78,6 +78,16 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `roas-pc-gateway` | Gateway · Yeni PC yalnız kendi bölümünü görüyor | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
 | `roas-physical-shutdown` | Router-on-a-stick · Alt arayüzler yapılandırılmış ama hiçbiri çalışmıyor | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
 | `roas-two-faults` | Router-on-a-stick · İki hata birden | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
+| `mgmt-unsaved-lost` | Cihaz yönetimi · Gece kesintiden sonra switch'e ulaşılamıyor | **Labber** |
+| `mgmt-reload-revert` | Cihaz yönetimi · Kaydedilmemiş hatalı değişikliği geri al | **Labber** |
+| `mgmt-saved-fault` | Cihaz yönetimi · Yeniden başlatma hatayı düzeltmiyor | **Labber** |
+| `mgmt-svi-down` | Cihaz yönetimi · Kullanıcılar çalışıyor, switch yönetilemiyor | **Labber** |
+| `mgmt-wrong-vlan` | Cihaz yönetimi · Yönetim adresi yanlış VLAN arayüzünde | **Labber** |
+| `eth-printer-port` | Ethernet/ARP · Yeni yazıcı kimseye görünmüyor | **Labber** |
+| `eth-wrong-mask` | Ethernet/ARP · PC-C kendi ağındakilere ulaşamıyor | **Labber** |
+| `eth-duplicate-ip` | Ethernet/ARP · Muhasebe PC'sine bazen ulaşılıyor, bazen ulaşılamıyor | **Labber** |
+| `eth-moved-cable-vlan` | Ethernet/ARP · Masası değişen çalışan ağa giremiyor | **Labber** |
+| `eth-two-switch-vlan` | Ethernet/ARP · Yeni switch'e bağlananlar ofise ulaşamıyor | **Labber** |
 
 ## Labber köprüsü özeti (L1)
 
@@ -92,8 +102,8 @@ aşağıdaki gerekçelerden en az birine dayanır.
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 30 | 10 | 40 |
-| Ortak senaryolar | 9 | 18 | 27 |
-| Toplam | 39 | 28 | 67 |
+| Ortak senaryolar | 19 | 18 | 37 |
+| Toplam | 49 | 28 | 77 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

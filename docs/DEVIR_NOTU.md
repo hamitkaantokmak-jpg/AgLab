@@ -15,7 +15,7 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L2-D1 ortak senaryolar Labber'da | #55 | birleşti |
 | L2-D2 Akademi M1–M3 Labber'da | #57 | birleşti |
 | L3-a terminal → IosSession/VpcsSession, tek kalıcı LabRuntime | dal `claude/l3a-labber-terminal` | PR açık (birleşmeyi bekliyor) |
-| F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | — | sıradaki (L3-a'nın üstüne) |
+| F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | dal `claude/f-ders-senaryolari` (L3-a'nın üstünde) | PR açık (birleşmeyi bekliyor) |
 | E Labber'ın 13 labı | — | başlanmadı (F'den sonra) |
 | L3-b Simulation Mode olay adaptörü | — | başlanmadı (E'den sonra) |
 
@@ -54,6 +54,27 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
   tam küme olarak denetler (L3-a: `createSession`, `VpcsSession`/`IosSession` eklendi;
   içerik başına tek `createRuntime`).
 - `tests/test_aglab_labber_terminal.py`: L3-a kabul testi.
+
+## F — ders senaryoları (yapıldı)
+
+- `simulator/network-scenarios.json`'a 10 tarif: `mgmt-*` (Konu #11 S1–S5) ve `eth-*`
+  (Konu #3 S1–S5). Hepsi Labber kararında.
+- Yeni tarif alanları (yalnız Labber):
+  - `pending`: içerik yüklendikten sonra kaydedilmeden uygulanan komut blokları
+    (`aglabLabber.applyPending`); başlangıçta running ≠ startup.
+  - `verify.kind: "query"`: `checks: [{fn, args, field?, expected, label}]`, izinli
+    fonksiyonlar `SHARED_QUERY_FNS` (network-scenarios.js). Argümanda cihaz adı → kimlik,
+    `$MAC:<ad>` → MAC. Değerlendirme öğrencinin çalışma zamanının **kopyasında**
+    (`aglabLabber.cloneRuntime`); PC kaynaklı `ping` hedefleri kopyada gerçek trafik
+    gibi çalışır (MAC öğrenilir).
+  - `verify.survivesReload: true`: kopyada bütün switch'ler kapatılıp açılır, hedefler
+    yeniden denenir; kaydedilmeyen çözüm geçmez.
+  - `verify.source` / `verify.target`: senaryonun hedef ping'i (varsayılan PC-01 → PC-02).
+- Terminalden hedef ping'i başarılı ama `query` hedefi eksikse durum "Ping başarılı ama
+  senaryo hedefi tamamlanmadı: …" (neden: eksik hedef ya da kaydedilmemiş çözüm).
+- Parite: `eth-wrong-mask` ve `eth-duplicate-ip` başlangıcında eski motor ile Labber
+  ayrışır (eski motor dönüş yolunu kurmuyor). Karar Labber; `UYUMLULUK_MATRISI.md` ve
+  `tests/test_aglab_sim_parity.py` `KNOWN_DIFFS` (birebir eşleşme).
 
 ## L2-E — Labber'ın 13 labı
 
