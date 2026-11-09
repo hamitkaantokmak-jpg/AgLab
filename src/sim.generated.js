@@ -91,9 +91,11 @@ var AgLabSim = (() => {
   var index_exports = {};
   __export(index_exports, {
     BridgeError: () => BridgeError,
+    IosSession: () => IosSession,
     LabQuery: () => LabQuery,
     MODEL_L2: () => MODEL_L2,
     MODEL_L3: () => MODEL_L3,
+    VpcsSession: () => VpcsSession,
     canonPort: () => canonPort,
     createLab: () => createLab,
     createRuntime: () => createRuntime,
@@ -3021,12 +3023,15 @@ var AgLabSim = (() => {
       this.rt = rt;
       this.dev = dev;
       __publicField(this, "history", []);
+      /** shown name (prompt, `show ip`); the host app may set its own device label */
+      __publicField(this, "name");
+      this.name = dev;
     }
     get def() {
       return this.rt.topo.devices[this.dev];
     }
     prompt() {
-      return this.dev + "> ";
+      return this.name + "> ";
     }
     complete(line) {
       const cmds = ["ip", "clear", "show", "ping", "trace", "help"];
@@ -3089,13 +3094,13 @@ var AgLabSim = (() => {
       if (gw && !sameSubnet(addr, gw, prefix)) return ["Gateway is not in the same subnet"];
       this.rt.pcs[this.dev] = { ip: addr, prefix, gw };
       this.rt.commit();
-      return ["Checking for duplicate address...", `${this.dev} : ${addr} ${prefixToMask(prefix)}${gw ? " gateway " + gw : ""}`, ""];
+      return ["Checking for duplicate address...", `${this.name} : ${addr} ${prefixToMask(prefix)}${gw ? " gateway " + gw : ""}`, ""];
     }
     showIp() {
       const c = this.rt.pcs[this.dev];
       return [
         "",
-        `NAME        : ${this.dev}[1]`,
+        `NAME        : ${this.name}[1]`,
         `IP/MASK     : ${c.ip ? `${c.ip}/${c.prefix}` : "0.0.0.0/0"}`,
         `GATEWAY     : ${c.gw ?? "0.0.0.0"}`,
         "DNS         : ",

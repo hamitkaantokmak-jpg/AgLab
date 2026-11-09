@@ -1,0 +1,214 @@
+"""L3-a: Labber kararındaki içerikte terminal Labber'ın IOS/VPCS oturumudur.
+
+* İçerik boyunca TEK kalıcı LabRuntime: terminalden yazılan çözüm aynı çalışma zamanında
+  değerlendirilir (senaryo hedefi); komutlar yeni çalışma zamanı kurmaz.
+* İstem, `?` yardımı, Tab tamamlama ve onay soruları IOS gibidir: `reload` kaydedilmemiş
+  değişiklikte "Save? [yes/no]", ardından "[confirm]" sorar; "no" ile kaydedilmemiş ayar
+  geri gider, `copy running-config startup-config` ile kaydedilen kalır.
+* Güç düzenleyicisi (`device power off|on`) çalışma zamanına gider: açılış bir reload'dur.
+* Düzenleyicinin topoloji değişikliği (kablo sökme) çalışma zamanını yeniden kurar;
+  kaydedilmiş yapılandırma korunur, kablo sökülünce iletim başarısız olur.
+* Eski motor kararındaki içerikte terminal eski motorda kalır.
+* Başarılı ve başarısız iletim ayrı ayrı doğrulanır; durum metin yerine türetilmiş Labber
+  durumundan (LabQuery / toAglab görünümü) sorgulanır.
+"""
+
+import unittest
+
+from playwright.sync_api import sync_playwright
+
+from aglab_test_support import HTML, launch_chromium
+
+
+class LabberTerminalTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.pw = sync_playwright().start()
+        cls.browser = launch_chromium(cls.pw)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.browser.close()
+        cls.pw.stop()
+
+    def setUp(self):
+        self.page = self.browser.new_page(viewport={"width": 1280, "height": 960})
+        self.errors = []
+        self.page.on("pageerror", lambda e: self.errors.append(str(e)))
+        self.page.goto(HTML.as_uri())
+        self.page.click('[data-area="lab"]')
+
+    def tearDown(self):
+        self.page.close()
+        self.assertEqual(self.errors, [])
+
+    # --- yardımcılar -------------------------------------------------------------
+    def load(self, sid):
+        self.page.evaluate("(id) => aglabSharedEngine.load(id)", sid)
+
+    def device(self, name):
+        dev = self.page.evaluate(
+            "(n) => [...document.querySelectorAll('#ptCliDevice option')]"
+            ".find((o) => o.textContent.startsWith(n + ' ')).value",
+            name,
+        )
+        self.page.select_option("#ptCliDevice", dev)
+        return dev
+
+    def type(self, line):
+        """Terminale gerçek kullanıcı gibi yazar; bu satırın çıktısını döndürür."""
+        before = self.page.locator("#ptTerminal > div").count()
+        self.page.fill("#ptCliInput", line)
+        self.page.locator("#ptCliInput").press("Enter")
+        return self.page.locator("#ptTerminal > div").all_text_contents()[before:]
+
+    def prompt(self):
+        return self.page.text_content("#ptPrompt")
+
+    def goal(self):
+        return self.page.evaluate("aglabSharedEngine.goal()")
+
+    # --- testler ----------------------------------------------------------------
+    def test_ios_prompt_help_completion(self):
+        self.load("vlan-wrong-access")
+        self.assertTrue(self.page.evaluate("aglabLabberSession.active()"))
+        self.device("SW1")
+        self.assertEqual(self.prompt(), "SW1>")
+        self.type("enable")
+        self.assertEqual(self.prompt(), "SW1#")
+        # Tab: tek eşleşen anahtar sözcük tamamlanır
+        self.page.fill("#ptCliInput", "conf")
+        self.page.locator("#ptCliInput").press("Tab")
+        self.assertEqual(self.page.input_value("#ptCliInput"), "configure ")
+        self.type("configure terminal")
+        self.assertEqual(self.prompt(), "SW1(config)#")
+        self.type("interface fa0/1")
+        self.assertEqual(self.prompt(), "SW1(config-if)#")
+        # `?`: bağlam yardımı, yazılan satır girişte kalır
+        out = self.type("switchport access ?")
+        self.assertTrue(any("vlan" in line for line in out), out)
+        self.assertEqual(self.page.input_value("#ptCliInput"), "switchport access ")
+        # geçersiz komut IOS işaretçisiyle hata verir
+        out = self.type("switchport bogus")
+        self.assertIn("% Invalid input detected at '^' marker.", out)
+        self.type("end")
+        self.assertEqual(self.prompt(), "SW1#")
+        # PC: VPCS istemi cihaz adıyla
+        self.device("PC-01")
+        self.assertEqual(self.prompt(), "PC-01> ")
+
+    def test_terminal_solution_is_graded_on_same_runtime(self):
+        self.load("vlan-wrong-access")
+        runtime = self.page.evaluate("aglabLabberSession.runtimeId()")
+        self.device("PC-01")
+        out = self.type("ping 192.168.10.12")
+        self.assertTrue(any("timeout" in line for line in out), out)
+        self.assertFalse(self.goal())
+        self.assertIn("Henüz çözülmedi", self.page.text_content("#sharedScenarioStatus"))
+        self.device("SW1")
+        for line in ["enable", "configure terminal", "interface fa0/1"]:
+            self.type(line)
+        self.type("switchport access vlan 10")
+        self.type("end")
+        # değerlendirme terminalle aynı çalışma zamanında: anında görünür
+        self.assertTrue(self.goal())
+        self.device("PC-01")
+        out = self.type("ping 192.168.10.12")
+        self.assertTrue(any(line.startswith("84 bytes from 192.168.10.12") for line in out), out)
+        self.assertIn("BAŞARILI", self.page.text_content("#sharedScenarioStatus"))
+        self.assertEqual(self.page.evaluate("aglabLabberSession.runtimeId()"), runtime)
+        # AğLab görünümü (çizim/kayıt) Labber durumundan türetildi
+        self.assertEqual(
+            self.page.evaluate(
+                "aglabSharedEngine.view().devices.find((d) => d.name === 'SW1')"
+                ".interfaces['fa0/1'].vlan"
+            ),
+            10,
+        )
+
+    def test_reload_dialog_reverts_unsaved_and_keeps_saved(self):
+        self.load("vlan-wrong-access")
+        self.device("SW1")
+        for line in ["enable", "configure terminal", "interface fa0/1"]:
+            self.type(line)
+        self.type("switchport access vlan 10")
+        self.type("end")
+        self.assertTrue(self.goal())
+        self.type("reload")
+        self.assertEqual(self.prompt(), "System configuration has been modified. Save? [yes/no]: ")
+        self.type("no")
+        self.assertEqual(self.prompt(), "Proceed with reload? [confirm]")
+        out = self.type("")  # Enter onaylar
+        self.assertTrue(any("Press RETURN to get started" in line for line in out), out)
+        self.assertEqual(self.prompt(), "SW1>")
+        # kaydedilmeyen düzeltme gitti: başarısız iletim
+        self.assertFalse(self.goal())
+        # bu kez kaydet, sonra reload: düzeltme kalır
+        for line in ["enable", "configure terminal", "interface fa0/1"]:
+            self.type(line)
+        self.type("switchport access vlan 10")
+        self.type("end")
+        out = self.type("copy running-config startup-config")
+        self.assertEqual(self.prompt(), "Destination filename [startup-config]? ")
+        out = self.type("")
+        self.assertIn("[OK]", out)
+        self.type("reload")
+        self.assertEqual(self.prompt(), "Proceed with reload? [confirm]")
+        self.type("")
+        self.assertTrue(self.goal())
+
+    def test_power_editor_is_a_reload(self):
+        self.load("vlan-wrong-access")
+        self.device("SW1")
+        for line in ["enable", "configure terminal", "interface fa0/1"]:
+            self.type(line)
+        self.type("switchport access vlan 10")
+        self.type("end")
+        self.assertTrue(self.goal())
+        self.type("device power off")
+        self.assertFalse(self.goal())
+        self.assertIn("konsol", self.prompt())
+        self.type("device power on")
+        # kaydedilmemiş düzeltme açılışta kaybolur (startup-config yüklenir)
+        self.assertEqual(self.prompt(), "SW1>")
+        self.assertFalse(self.goal())
+
+    def test_editor_cable_change_rebuilds_runtime_and_keeps_saved_config(self):
+        self.load("vlan-wrong-access")
+        self.device("SW1")
+        for line in ["enable", "configure terminal", "interface fa0/1"]:
+            self.type(line)
+        self.type("switchport access vlan 10")
+        self.type("end")
+        self.type("copy running-config startup-config")
+        self.type("")
+        self.assertTrue(self.goal())
+        # düzenleyici: SW1 ↔ SW2 kablosunu sök → iletim başarısız
+        ids = self.page.evaluate(
+            "() => [...document.querySelectorAll('#ptSource option')]"
+            ".map((o) => [o.textContent.split(' ')[0], o.value])"
+        )
+        ids = dict(ids)
+        self.page.select_option("#ptSource", ids["SW1"])
+        self.page.select_option("#ptTarget", ids["SW2"])
+        self.page.click("#ptRemoveLink")
+        self.assertFalse(self.goal())
+        # yeniden bağla → kaydedilmiş yapılandırma yeni çalışma zamanında da geçerli
+        self.page.click("#ptMakeLink")
+        self.device("SW1")
+        out = self.type("show startup-config | include access vlan 10")
+        self.assertTrue(any("switchport access vlan 10" in line for line in out), out)
+
+    def test_legacy_content_keeps_legacy_terminal(self):
+        self.load("return-route")
+        self.assertFalse(self.page.evaluate("aglabLabberSession.active()"))
+        self.device("R1")
+        self.type("enable")
+        self.assertEqual(self.prompt(), "R1#")
+        # eski motorun AğLab komutu Labber'da yoktur, burada çalışır
+        out = self.type("show ip route")
+        self.assertFalse(any("Invalid input" in line for line in out), out)
+
+
+if __name__ == "__main__":
+    unittest.main()

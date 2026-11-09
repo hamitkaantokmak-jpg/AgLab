@@ -7,9 +7,9 @@
 // sonradan Labber'ın ifade edemediği bir duruma gelirse (ör. topolojiye router eklenirse)
 // sonuç eski motordan alınmaz: değerlendirme hata olarak gösterilir.
 //
-// L2 kapsamı: başarı/ölçüt değerlendirmesi (ping, STP kökü) Labber'dan gelir. Cihaz CLI'si
-// ve Simulation Mode L3 aşamasına kadar eski motorda kalır; iki motor aynı ping sonucunu
-// vermezse bu da gizlenmez, uyuşmazlık olarak gösterilir.
+// L3-a: Labber kararındaki içerikte terminal ve değerlendirme aynı kalıcı LabRuntime'ı
+// kullanır (labber-session.js); iki motor karşılaştırması yoktur. Simulation Mode L3-b'ye
+// kadar eski motorda kalır.
 const aglabEngineChoice = (() => {
   const REASON_TR = {
     noip: 'Kaynak cihazda geçerli IPv4 adresi yok.',
@@ -29,7 +29,7 @@ const aglabEngineChoice = (() => {
   }
   function badgeText(decision) {
     return decision.engine === 'labber'
-      ? 'Motor: Labber — değerlendirme Labber motorunda yapılır (cihaz CLI’si ve Simulation Mode henüz eski motorda).'
+      ? 'Motor: Labber — terminal ve değerlendirme Labber motorunda (Simulation Mode henüz eski motorda).'
       : 'Eski motor — nedeni: ' + decision.reasons.join('; ');
   }
   function renderBadge(el, decision) {
@@ -37,8 +37,12 @@ const aglabEngineChoice = (() => {
     el.textContent = badgeText(decision);
     el.dataset.engine = decision.engine;
   }
-  /** Mevcut topolojiden Labber çalışma zamanı; ifade edilemiyorsa açık hata. */
+  /**
+   * Labber çalışma zamanı: içerik oturumu varsa onun kalıcı çalışma zamanı (terminal ile
+   * aynı), yoksa mevcut topolojiden yeni bir tane. İfade edilemiyorsa açık hata.
+   */
   function runtime() {
+    if (aglabLabber.active()) return aglabLabber.runtime();
     const r = AgLabSim.toLabber(snapshot());
     if (r.report.engineDecision !== 'labber')
       throw new Error(
@@ -60,10 +64,11 @@ const aglabEngineChoice = (() => {
     return { ok: r.ok, why, replier: r.replier || null, reason: r.reason || null };
   }
   /**
-   * Durumun Labber üzerinden AğLab görünümü: toAglab(createRuntime(toLabber(t)), t).
+   * Durumun Labber üzerinden AğLab görünümü: toAglab(çalışma zamanı, t).
    * Akademi `state_adapter` yeteneği; ifade edilemeyen durum açık hata verir.
    */
   function labberView() {
+    if (aglabLabber.active()) return aglabLabber.view();
     const snap = snapshot();
     return AgLabSim.toAglab(runtime(), snap);
   }

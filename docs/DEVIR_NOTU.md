@@ -1,4 +1,4 @@
-# Devir notu — Labber entegrasyonu (L2 sonu → L3)
+# Devir notu — Labber entegrasyonu (L3)
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
@@ -13,25 +13,47 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L2-B kablo durumu / cihaz gücü | #53 | birleşti |
 | L2-C MAC/ARP (L3 tablosu 10–14) | #54 | birleşti |
 | L2-D1 ortak senaryolar Labber'da | #55 | birleşti |
-| L2-D2 Akademi M1–M3 Labber'da | #57 | açık; bu notla birlikte |
-| L2-E Labber'ın 13 labı | — | başlanmadı |
-| L3-a CLI → IosSession/VpcsSession | — | başlanmadı |
-| L3-b Simulation Mode olay adaptörü | — | başlanmadı |
+| L2-D2 Akademi M1–M3 Labber'da | #57 | birleşti |
+| L3-a terminal → IosSession/VpcsSession, tek kalıcı LabRuntime | dal `claude/l3a-labber-terminal` | PR açık (birleşmeyi bekliyor) |
+| F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | — | sıradaki (L3-a'nın üstüne) |
+| E Labber'ın 13 labı | — | başlanmadı (F'den sonra) |
+| L3-b Simulation Mode olay adaptörü | — | başlanmadı (E'den sonra) |
 
 ## Bugünkü mimari (kısaca)
 
 - `simulator/engine-choice.js` (`aglabEngineChoice`): içerik yüklenirken köprü kararı
   (`AgLabSim.toLabber(t).report`), rozet metni, Labber ping/STP/görünüm (`labberPing`,
-  `labberStpRoot`, `labberView`). Her çağrı güncel AğLab JSON'undan yeni bir Labber çalışma
-  zamanı kurar (`createRuntime(toLabber(snapshot))`). Kaynak gerçek: **AğLab JSON**.
-- Ortak senaryolar (`network-scenarios.js`) ve Akademi (`academy/academy.js`) değerlendirmeyi
-  Labber'dan alır. CLI ve Simulation Mode hâlâ eski motorda. İki motor farklı sonuç verirse
-  "Motor uyuşmazlığı" gösterilir, sonuç kabul edilmez. Labber kararındaki içerik çalışırken
-  Labber'ın ifade edemediği hale gelirse "Değerlendirme hatası … Motor değiştirilmez".
+  `labberStpRoot`, `labberView`).
+- `simulator/labber-session.js` (`aglabLabber`, L3-a): Labber kararındaki içerik
+  (Sorun Çöz senaryosu `sharedScenarioDecideEngine`, Akademi `academyRestoreSession`)
+  yüklenince **tek kalıcı** `LabRuntime` kurulur; `importTopology`/`reset` oturumu bitirir.
+  - Terminal (`main.js` `labberCommand`) cihaz başına `createSession` ile açılan
+    `IosSession`/`VpcsSession`'a gider; istem, `?`, Tab, onay soruları (reload
+    `Save? [yes/no]` → `[confirm]`, `copy run start` hedef sorusu) IOS'un kendisinin.
+    Syslog satırları (`rt.logs`) o cihazın konsoluna yazılır.
+  - Kaynak gerçek çalışma zamanıdır: her komuttan sonra `toAglab(rt, güncel topoloji)` ile
+    AğLab `devices/links` yeniden yazılır (çizim, denetçi, kayıt). `toAglab` ifade
+    edemezse (`BridgeError`: portfast, OSPF, statik rota…) görünüm güncellenmez ve
+    terminalde açık hata yazılır.
+  - `device power on|off` → `rt.setPower` (açılış reload'dur). `aglabLabberSession.setLink`
+    / `moveCable` API'si hazır (F senaryoları için). Düzenleyicinin diğer topoloji
+    değişiklikleri (kablo sök/bağla, cihaz ekle/sil, ad) `saveTopology` → `reconcile`
+    ile algılanır; çalışma zamanı yeni topolojiden yeniden kurulur, startup-config,
+    err-disable, öğrenilmiş MAC/ARP ve syslog taşınır. Yeni topoloji Labber'da ifade
+    edilemiyorsa oturum "bozuk" olur; her komut/değerlendirme "Motor değiştirilmez" hatası.
+  - `engine-choice.js runtime()` oturum varken kalıcı çalışma zamanını döndürür; yoksa
+    (karar anı, eski motor içeriği) eskisi gibi yeni kurar.
+  - "İki motor uyuşmazlığı" denetimleri (`recordSharedPing`, `acProbe`, `state.equals`)
+    Labber içeriğinde kaldırıldı (tek motor). Eski motor içeriğinde terminal değişmedi.
+  - Kalıcılık: tarayıcı kaydı yalnız AğLab JSON'udur; sayfa yenilenince Labber içeriği
+    kayıtlı JSON'dan yeniden başlar (running = startup). running/startup ayrımının
+    kaydı L7'de.
 - Akademi: `ACADEMY_CAPABILITIES` (labber: `state_adapter`, `icmp_probe`, `answer_input`);
   eksik yetenek → `on_unavailable` (`not_evaluated`).
 - `tests/test_aglab_sim_embedded.py`: ürünün AgLabSim'e hangi API ile dokunduğunu her akışta
-  tam küme olarak denetler. AgLabSim'e yeni erişim eklenince bu test bilinçli güncellenmeli.
+  tam küme olarak denetler (L3-a: `createSession`, `VpcsSession`/`IosSession` eklendi;
+  içerik başına tek `createRuntime`).
+- `tests/test_aglab_labber_terminal.py`: L3-a kabul testi.
 
 ## L2-E — Labber'ın 13 labı
 

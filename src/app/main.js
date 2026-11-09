@@ -7345,6 +7345,8 @@ labLoadExperiment();
     return true;
   }
   function saveTopology(quiet = false) {
+    // Düzenleyici değişikliği Labber oturumuna yansır (labber-session.js).
+    aglabLabber.reconcile();
     try {
       academyInvalidateResult();
       const data = JSON.stringify({
@@ -7411,6 +7413,8 @@ labLoadExperiment();
   }
   function importTopology(obj) {
     validateTopologyData(obj);
+    // Yeni içerik: önceki Labber oturumu biter; içerik Labber kararındaysa yeniden başlar.
+    aglabLabber.stop();
     sourceArchiveData = obj.sourceArchive || null;
     importReportData = obj.importReport ? clone(obj.importReport) : null;
     const newDevices = JSON.parse(JSON.stringify(obj.devices)),
@@ -7524,6 +7528,7 @@ labLoadExperiment();
     return d;
   }
   function reset() {
+    aglabLabber.stop();
     academyClearSession();
     devices = [];
     links = [];
@@ -7884,6 +7889,11 @@ labLoadExperiment();
   function updatePrompt() {
     let d = get($p('ptCliDevice').value);
     if (!d) return;
+    if (aglabLabber.active()) {
+      $p('ptPrompt').textContent = aglabLabber.prompt(d.id) ?? d.name + ' (konsol yok)';
+      refreshDeviceCli();
+      return;
+    }
     $p('ptPrompt').textContent =
       d.name +
       (cliMode === 'user'
@@ -9001,10 +9011,74 @@ labLoadExperiment();
   }
   let ptCommandHistory = [];
   let ptHistoryIndex = 0;
+  // L3-a: Labber kararındaki içerikte terminal satırı cihazın Labber oturumuna
+  // (IosSession/VpcsSession) gider; istem, `?` yardımı ve onay soruları IOS/VPCS'nin
+  // kendisinindir. `device power on|off` AğLab düzenleyici komutudur: Labber'da açılış bir
+  // reload'dur (running-config startup'tan gelir).
+  function labberCommand(d, raw) {
+    const line = raw.replace(/\s+$/, ''),
+      p = line.trim().toLowerCase().split(/\s+/);
+    const fail = (error) => {
+      say('Değerlendirme hatası: ' + error.message, 'outerr');
+      if (sharedScenario.active) sharedStatus('Değerlendirme hatası: ' + error.message, false);
+    };
+    if (line.trim()) {
+      selectDeviceCliHistory(d.id);
+      if (ptCommandHistory[ptCommandHistory.length - 1] !== line.trim())
+        ptCommandHistory.push(line.trim());
+      if (ptCommandHistory.length > 100) ptCommandHistory.shift();
+      ptHistoryIndex = ptCommandHistory.length;
+    }
+    say((aglabLabber.prompt(d.id) ?? d.name + '>') + line, 'outcmd');
+    if (p[0] === 'device' && p[1] === 'power' && ['on', 'off'].includes(p[2])) {
+      try {
+        aglabLabber.setPower(d.id, p[2] === 'on');
+      } catch (error) {
+        return fail(error);
+      }
+      say(d.name + ' power ' + p[2], 'outok');
+      afterLabberChange();
+      return;
+    }
+    let result;
+    try {
+      result = aglabLabber.exec(d.id, line);
+    } catch (error) {
+      return fail(error);
+    }
+    for (const row of result.lines) say(row.text, row.kind);
+    // IOS gibi: `?` yardımından sonra yazılan satır girişte kalır.
+    if (line.endsWith('?')) $p('ptCliInput').value = line.slice(0, -1);
+    afterLabberChange();
+    if (d.type === 'PC' && p[0] === 'ping' && p[1]) {
+      const ok = !result.lines.some((r) => r.kind === 'outerr');
+      labberSimulationTrace(d.id, p[1], ok);
+      recordSharedPing(d.id, p[1], { ok });
+    }
+  }
+  // Simulation Mode L3-b'ye kadar eski motorun paket olaylarını oynatır. Labber'daki PC
+  // ping'inden sonra aynı topoloji görünümünde eski motor yalnız olay kaydı için çalışır;
+  // sonucu değerlendirmede kullanılmaz. İki sonuç farklıysa kayıt silinir ve yazılır.
+  function labberSimulationTrace(src, target, ok) {
+    if (!validIP(target)) return;
+    if (ping(src, target).ok !== ok) {
+      beginEthernetEvents();
+      say(
+        'Simulation Mode bu ping’i gösteremiyor: animasyon henüz eski motordan geliyor ve o motor farklı sonuç verdi. Terminal ve değerlendirme Labber sonucunu kullanır.',
+        'outinfo',
+      );
+    }
+  }
+  function afterLabberChange() {
+    render();
+    syncSelects();
+    updateInspector();
+  }
   function command(raw) {
     let d = get($p('ptCliDevice').value);
     if (!d) return;
     selected = d.id;
+    if (aglabLabber.active()) return labberCommand(d, raw);
     let cmd = raw.trim(),
       p = cmd.toLowerCase().split(/\s+/);
     if (!cmd) return;
@@ -10810,28 +10884,16 @@ labLoadExperiment();
       target !== sharedScenario.target
     )
       return;
-    // Labber'da açılan senaryoda sonuç Labber'dan gelir; CLI (eski motor) ile farklıysa
-    // ya da topoloji Labber'da ifade edilemiyorsa hata gösterilir, motor değiştirilmez.
+    // Labber'da açılan senaryoda terminal ve değerlendirme aynı Labber çalışma zamanındadır;
+    // sonuç (gerekçesiyle) oradan alınır. Topoloji Labber'da ifade edilemiyorsa hata
+    // gösterilir, motor değiştirilmez.
     if (sharedScenario.engine?.engine === 'labber') {
-      let labber;
       try {
-        labber = aglabEngineChoice.labberPing(src, target);
+        result = aglabEngineChoice.labberPing(src, target);
       } catch (error) {
         sharedStatus('Değerlendirme hatası: ' + error.message, false);
         return;
       }
-      if (labber.ok !== result.ok) {
-        sharedStatus(
-          'Motor uyuşmazlığı: Labber ping ' +
-            (labber.ok ? 'başarılı' : 'başarısız') +
-            ', CLI (eski motor) ping ' +
-            (result.ok ? 'başarılı' : 'başarısız') +
-            '. Sonuç kabul edilmedi; bu bir motor hatasıdır, lütfen bildir.',
-          false,
-        );
-        return;
-      }
-      result = labber;
     }
     const sourceDevice = get(src),
       targetDevice = devices.find(
@@ -10946,6 +11008,16 @@ labLoadExperiment();
       $p('ptClearTerminal').click();
       return;
     }
+    if (e.target === $p('ptCliInput') && e.key === 'Tab' && aglabLabber.active()) {
+      e.preventDefault();
+      try {
+        const done = aglabLabber.complete($p('ptCliDevice').value, $p('ptCliInput').value);
+        if (done) $p('ptCliInput').value = done;
+      } catch (error) {
+        say('Değerlendirme hatası: ' + error.message, 'outerr');
+      }
+      return;
+    }
     if (e.target === $p('ptCliInput') && e.key === 'ArrowUp') {
       if (ptCommandHistory.length) {
         e.preventDefault();
@@ -10995,6 +11067,7 @@ labLoadExperiment();
   //@@module DEVICE CLI@@
   //@@module NETWORK PROTOCOLS@@
   //@@module PORT SECURITY@@
+  //@@module LABBER SESSION@@
   //@@module ENGINE CHOICE@@
   //@@module NETWORK SCENARIOS@@
   //@@module SIMULATION PLAYBACK@@

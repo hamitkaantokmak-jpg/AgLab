@@ -148,38 +148,48 @@ class AcademyEngineTests(unittest.TestCase):
             done = self.page.evaluate("academy.check()")
             self.assertEqual((done["engine"], done["earned_points"]), ("labber", 100), (lid, done))
 
-    def test_engine_disagreement_is_error_not_accepted(self):
+    def test_cli_and_grading_share_one_runtime(self):
+        """L3-a: Labber labında terminal ve ölçütler aynı kalıcı çalışma zamanındadır.
+
+        L2-D2'deki "motor uyuşmazlığı" denetimi (CLI eski motorda, ölçütler Labber'da)
+        bu içerikte bilerek kaldırıldı. Yerine: terminalden yazılan çözüm, yeni çalışma
+        zamanı kurulmadan aynı çalışma zamanında değerlendirilir.
+        """
         _, teacher = lab_json("AGL-025")
         self.start("AGL-025")
-        self.page.evaluate("t=>academyEngine.load(t)", teacher["target_topology"])
-        # Labber ping sonucunu ters çeviren saptırma (paket dışa aktarımları salt okunur).
+        before = self.page.evaluate("aglabLabberSession.runtimeId()")
         self.page.evaluate("""() => {
               const orig = AgLabSim.createRuntime;
+              window.__created = 0;
               window.AgLabSim = { ...AgLabSim, createRuntime: (r) => {
-                const rt = orig(r);
-                const query = rt.query.bind(rt);
-                rt.query = () => {
-                  const q = query();
-                  const ping = q.ping.bind(q);
-                  q.ping = (a, b) => { const p = ping(a, b); return { ...p, ok: !p.ok }; };
-                  return q;
-                };
-                return rt;
+                window.__created++;
+                return orig(r);
               } };
             }""")
-        result = self.page.evaluate("academy.check()")
-        probes = [c for c in result["criteria"] if c["kind"] == "probe.icmp"]
-        self.assertTrue(probes)
-        for c in probes:
-            self.assertEqual(c["status"], "error", c)
-            self.assertIn("Motor uyuşmazlığı", c["detail"])
-        self.assertNotEqual(result["earned_points"], 100)
+        self.assertNotEqual(self.page.evaluate("academy.check()")["earned_points"], 100)
+        for device in ("SW1", "SW2"):
+            self.page.select_option("#ptCliDevice", device)
+            for cmd in [
+                "enable",
+                "configure terminal",
+                "interface gi0/1",
+                "switchport trunk allowed vlan 10,20",
+                "end",
+            ]:
+                self.page.fill("#ptCliInput", cmd)
+                self.page.locator("#ptCliInput").press("Enter")
+        self.answer(teacher)
+        done = self.page.evaluate("academy.check()")
+        self.assertEqual((done["engine"], done["earned_points"]), ("labber", 100), done)
+        self.assertEqual(self.page.evaluate("window.__created"), 0)
+        self.assertEqual(self.page.evaluate("aglabLabberSession.runtimeId()"), before)
 
-    def test_state_disagreement_is_error_not_accepted(self):
+    def test_state_criteria_come_from_labber_view(self):
+        """state.equals ölçütleri Labber çalışma zamanının AğLab görünümünden (toAglab)
+        okunur; görünüm bozulursa ölçütler geçmez, eski motora geri dönülmez."""
         _, teacher = lab_json("AGL-025")
         self.start("AGL-025")
         self.page.evaluate("t=>academyEngine.load(t)", teacher["target_topology"])
-        # Labber görünümünü bozan saptırma: bütün arayüz kayıtları ve kablolar boşaltılır.
         self.page.evaluate("""() => {
               const orig = AgLabSim.toAglab;
               window.AgLabSim = { ...AgLabSim, toAglab: (rt, t) => {
@@ -192,10 +202,8 @@ class AcademyEngineTests(unittest.TestCase):
         result = self.page.evaluate("academy.check()")
         states = [c for c in result["criteria"] if c["kind"] == "state.equals"]
         self.assertTrue(states)
-        self.assertTrue(
-            all(c["status"] == "error" and "Motor uyuşmazlığı" in c["detail"] for c in states),
-            states,
-        )
+        self.assertTrue(all(c["status"] == "failed" for c in states), states)
+        self.assertNotEqual(result["earned_points"], 100)
 
     def test_probe_comes_from_labber_success_and_failure(self):
         # AGL-025: trunk izinli listesi eksik; PC2 → PC4 başta başarısız, PC1 → PC3 başarılı

@@ -753,6 +753,9 @@ function academyRestoreSession(session) {
   }
   const lab = academyValidateSession(session);
   academyActive = lab;
+  // L3-a: Labber kararındaki lab boyunca terminal ve ölçütler aynı kalıcı çalışma zamanında.
+  aglabLabber.stop();
+  if (academyEngineFor(lab).engine === 'labber') aglabLabber.start();
   academyHintIndex = session.hintIndex;
   academyBaseline = session.baseline;
   academyChecked = session.checked;
@@ -950,22 +953,9 @@ function acProbe(source, destination, spec = {}, engine = 'legacy') {
       why: 'Hedef cihazda geçerli IPv4 adresi yapılandırılmamış.',
     }));
   if (engine === 'labber') {
-    // Labber deterministik: tek ping beş denemenin hepsini temsil eder. CLI L3'e kadar eski
-    // motorda olduğundan iki motor aynı sonucu vermeli; vermezse sonuç kabul edilmez.
+    // Labber deterministik: tek ping beş denemenin hepsini temsil eder. Terminal de aynı
+    // çalışma zamanını kullandığından ikinci bir motorla karşılaştırma yapılmaz.
     const r = aglabEngineChoice.labberPing(source, ip);
-    const legacy = ping(source, ip);
-    if (legacy.ok !== r.ok)
-      throw new Error(
-        'Motor uyuşmazlığı: Labber ping ' +
-          (r.ok ? 'başarılı' : 'başarısız') +
-          ', eski motor ' +
-          (legacy.ok ? 'başarılı' : 'başarısız') +
-          ' (' +
-          source +
-          ' → ' +
-          ip +
-          '). Sonuç kabul edilmedi; bu bir motor hatasıdır, lütfen bildir.',
-      );
     return Array.from({ length: 5 }, () => ({ ok: r.ok, why: r.why }));
   }
   let binding = null;
@@ -1043,14 +1033,6 @@ function academyEvaluate(criteria, answers, health = null, engine = null) {
       if (c.kind === 'state.equals') {
         if (c.target === 'links') validateTopologyData({ app: 'AgLab', devices, links });
         const ok = acStateMatches(c.target, stateOf(c.target), c.expected);
-        // Labber görünümünde ölçüt sonucu canlı AğLab durumundakiyle aynı olmalı
-        // (küme alanları sırasız, adresler normalize karşılaştırılır).
-        if (used === 'labber' && ok !== acStateMatches(c.target, acState(c.target), c.expected))
-          throw new Error(
-            'Motor uyuşmazlığı: ' +
-              c.target +
-              ' Labber görünümünde farklı sonuç veriyor. Sonuç kabul edilmedi; bu bir motor hatasıdır, lütfen bildir.',
-          );
         status = ok ? 'passed' : 'failed';
         detail = ok
           ? 'Ölçüt sağlandı.'

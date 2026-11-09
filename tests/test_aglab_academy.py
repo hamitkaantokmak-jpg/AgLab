@@ -284,7 +284,8 @@ with sync_playwright() as pw:
     academy_action(page, "#academyStart")
     for device, ip in [("PC1", "192.168.13.129"), ("PC2", "192.168.13.130")]:
         page.select_option("#ptCliDevice", device)
-        page.fill("#ptCliInput", f"ip address {ip} 255.255.255.128")
+        # L3-a: AGL-013 Labber kararında; PC terminali VPCS'dir (`ip <adres> <maske>`).
+        page.fill("#ptCliInput", f"ip {ip} 255.255.255.128")
         page.locator("#ptCliInput").press("Enter")
     page.fill("#academyAnswer-network", " 192.168.013.128 ")
     page.fill("#academyAnswer-usable_hosts", "126")
