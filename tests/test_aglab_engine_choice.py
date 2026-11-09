@@ -4,11 +4,11 @@
   ekranda rozet olarak görünür: "Motor: Labber" ya da "Eski motor — nedeni: …".
 * Labber kararındaki 9 senaryonun başarı ölçütü Labber'dan gelir: başlangıçta başarısız,
   tarif çözümünden sonra başarılı (Labber lab değişmezi).
-* CLI ping'i (eski motor) senaryo durumunu Labber sonucu ile yazar; başarısız ve başarılı
-  iletim ayrı ayrı denenir.
+* CLI ping'i senaryo durumunu Labber sonucu ile yazar; başarısız ve başarılı iletim ayrı
+  ayrı denenir. L3-a'dan beri terminal de Labber'dadır: terminal ve hedef aynı kalıcı
+  çalışma zamanını kullanır (iki motor karşılaştırması bu içerikte yoktur).
 * Çalışma sırasında motor değişmez: topoloji Labber'ın ifade edemediği bir duruma gelirse
-  değerlendirme hata olarak gösterilir; iki motor farklı sonuç verirse uyuşmazlık
-  gösterilir ve sonuç kabul edilmez.
+  değerlendirme hata olarak gösterilir.
 """
 
 import json
@@ -148,27 +148,40 @@ class EngineChoiceTests(unittest.TestCase):
         self.ping_fails("PC-01", target)
         self.assertIn("Değerlendirme hatası", self.status())
 
-    def test_engine_disagreement_is_shown_and_not_accepted(self):
+    def test_labber_content_uses_one_runtime_for_cli_and_goal(self):
+        """L3-a: Labber içeriğinde terminal ve hedef aynı kalıcı çalışma zamanındadır.
+
+        L2'deki "iki motor uyuşmazlığı" denetimi (CLI eski motorda, hedef Labber'da) bu
+        içerikte bilerek kaldırıldı: karşılaştırılacak ikinci motor yok. Yerine şu
+        değişmez doğrulanır: içerik yüklendikten sonra komutlar ve hedef değerlendirmesi
+        yeni çalışma zamanı kurmaz, hepsi aynı çalışma zamanını kullanır.
+        """
         self.load("vlan-wrong-access")
-        # Labber sonucunu ters çeviren saptırma: iki motor uyuşmazsa sonuç kabul edilmez.
+        before = self.page.evaluate("aglabLabberSession.runtimeId()")
         self.page.evaluate("""() => {
-              // Paket dışa aktarımları salt okunur; global nesnenin kopyası takılır.
               const orig = AgLabSim.createRuntime;
+              window.__created = 0;
               window.AgLabSim = { ...AgLabSim, createRuntime: (r) => {
-                const rt = orig(r);
-                const query = rt.query.bind(rt);
-                rt.query = () => {
-                  const q = query();
-                  const ping = q.ping.bind(q);
-                  q.ping = (a, b) => { const p = ping(a, b); return { ...p, ok: !p.ok }; };
-                  return q;
-                };
-                return rt;
+                window.__created++;
+                return orig(r);
               } };
             }""")
         self.ping_fails("PC-01", "192.168.10.12")
-        self.assertIn("Motor uyuşmazlığı", self.status())
-        self.assertNotIn("BAŞARILI", self.status())
+        self.assertIn("Henüz çözülmedi", self.status())
+        self.cli(
+            "SW1",
+            "enable",
+            "configure terminal",
+            "interface fa0/1",
+            "switchport access vlan 10",
+            "end",
+        )
+        self.assertTrue(self.page.evaluate("aglabSharedEngine.goal()"))
+        self.cli("PC-01", "ping 192.168.10.12")
+        self.assertIn("BAŞARILI", self.status())
+        self.assertNotIn("Motor uyuşmazlığı", self.status())
+        self.assertEqual(self.page.evaluate("window.__created"), 0)
+        self.assertEqual(self.page.evaluate("aglabLabberSession.runtimeId()"), before)
 
     def test_legacy_scenario_keeps_old_engine(self):
         decision = self.load("return-route")

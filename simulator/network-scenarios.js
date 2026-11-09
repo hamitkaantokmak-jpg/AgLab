@@ -9,6 +9,7 @@ function sharedEngineCommandBlock(name, commands) {
   $p('ptCliDevice').value = d.id;
   cliMode = 'user';
   currentInterface = '';
+  if (aglabLabber.active()) aglabLabber.resetMode(d.id);
   updateInspector();
   for (const raw of commands) {
     const before = $p('ptTerminal').childElementCount;
@@ -65,6 +66,12 @@ function loadNetworkScenario(key) {
 function sharedScenarioDecideEngine() {
   sharedScenario.engine = aglabEngineChoice.decide(aglabEngineChoice.snapshot());
   aglabEngineChoice.renderBadge($p('sharedScenarioEngine'), sharedScenario.engine);
+  // L3-a: Labber kararındaki senaryo boyunca tek kalıcı çalışma zamanı (terminal + hedef).
+  aglabLabber.stop();
+  if (sharedScenario.engine.engine === 'labber') {
+    aglabLabber.start();
+    updatePrompt();
+  }
 }
 function sharedRecipeGoal(row) {
   if (sharedScenario.engine?.engine === 'labber') {
@@ -108,6 +115,7 @@ function validateSharedScenarios() {
     ]),
     oldArps = [...arpTables].map(([id, rows]) => [id, new Map(rows)]);
   const storage = localStorage.getItem('aglab-topology-v23'),
+    labberSession = aglabLabber.capture(),
     results = [];
   try {
     for (const row of sharedNetworkScenarios) {
@@ -141,6 +149,7 @@ function validateSharedScenarios() {
   } finally {
     importTopology(snapshot);
     sharedScenario = savedScenario;
+    aglabLabber.restore(labberSession);
     $p('sharedScenarioInstructions').innerHTML = instructions;
     $p('sharedScenarioStatus').textContent = status;
     macTables.clear();
@@ -167,6 +176,8 @@ window.aglabSharedEngine = {
   engine: () => clone(sharedScenario.engine || null),
   target: () => sharedScenario.target,
   goal: () => sharedRecipeGoal(sharedScenarioRecipe(sharedScenario.key)),
+  // Labber kararındaki içeriğin AğLab görünümü (toAglab; terminalle aynı çalışma zamanı).
+  view: () => aglabEngineChoice.labberView(),
   // Ad ile iki cihaz arası erişim; başarılı ve başarısız iletim testleri için.
   reach: (source, target) => {
     const src = devices.find((d) => d.name === source),

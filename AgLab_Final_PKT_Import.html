@@ -665,9 +665,11 @@ var AgLabSim = (() => {
   var index_exports = {};
   __export(index_exports, {
     BridgeError: () => BridgeError,
+    IosSession: () => IosSession,
     LabQuery: () => LabQuery,
     MODEL_L2: () => MODEL_L2,
     MODEL_L3: () => MODEL_L3,
+    VpcsSession: () => VpcsSession,
     canonPort: () => canonPort,
     createLab: () => createLab,
     createRuntime: () => createRuntime,
@@ -3595,12 +3597,15 @@ var AgLabSim = (() => {
       this.rt = rt;
       this.dev = dev;
       __publicField(this, "history", []);
+      /** shown name (prompt, `show ip`); the host app may set its own device label */
+      __publicField(this, "name");
+      this.name = dev;
     }
     get def() {
       return this.rt.topo.devices[this.dev];
     }
     prompt() {
-      return this.dev + "> ";
+      return this.name + "> ";
     }
     complete(line) {
       const cmds = ["ip", "clear", "show", "ping", "trace", "help"];
@@ -3663,13 +3668,13 @@ var AgLabSim = (() => {
       if (gw && !sameSubnet(addr, gw, prefix)) return ["Gateway is not in the same subnet"];
       this.rt.pcs[this.dev] = { ip: addr, prefix, gw };
       this.rt.commit();
-      return ["Checking for duplicate address...", `${this.dev} : ${addr} ${prefixToMask(prefix)}${gw ? " gateway " + gw : ""}`, ""];
+      return ["Checking for duplicate address...", `${this.name} : ${addr} ${prefixToMask(prefix)}${gw ? " gateway " + gw : ""}`, ""];
     }
     showIp() {
       const c = this.rt.pcs[this.dev];
       return [
         "",
-        `NAME        : ${this.dev}[1]`,
+        `NAME        : ${this.name}[1]`,
         `IP/MASK     : ${c.ip ? `${c.ip}/${c.prefix}` : "0.0.0.0/0"}`,
         `GATEWAY     : ${c.gw ?? "0.0.0.0"}`,
         "DNS         : ",
@@ -13115,6 +13120,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
     return true;
   }
   function saveTopology(quiet = false) {
+    // Düzenleyici değişikliği Labber oturumuna yansır (labber-session.js).
+    aglabLabber.reconcile();
     try {
       academyInvalidateResult();
       const data = JSON.stringify({
@@ -13181,6 +13188,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
   }
   function importTopology(obj) {
     validateTopologyData(obj);
+    // Yeni içerik: önceki Labber oturumu biter; içerik Labber kararındaysa yeniden başlar.
+    aglabLabber.stop();
     sourceArchiveData = obj.sourceArchive || null;
     importReportData = obj.importReport ? clone(obj.importReport) : null;
     const newDevices = JSON.parse(JSON.stringify(obj.devices)),
@@ -13294,6 +13303,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
     return d;
   }
   function reset() {
+    aglabLabber.stop();
     academyClearSession();
     devices = [];
     links = [];
@@ -13654,6 +13664,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
   function updatePrompt() {
     let d = get($p('ptCliDevice').value);
     if (!d) return;
+    if (aglabLabber.active()) {
+      $p('ptPrompt').textContent = aglabLabber.prompt(d.id) ?? d.name + ' (konsol yok)';
+      refreshDeviceCli();
+      return;
+    }
     $p('ptPrompt').textContent =
       d.name +
       (cliMode === 'user'
@@ -14841,10 +14856,58 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
   }
   let ptCommandHistory = [];
   let ptHistoryIndex = 0;
+  // L3-a: Labber kararındaki içerikte terminal satırı cihazın Labber oturumuna
+  // (IosSession/VpcsSession) gider; istem, `?` yardımı ve onay soruları IOS/VPCS'nin
+  // kendisinindir. `device power on|off` AğLab düzenleyici komutudur: Labber'da açılış bir
+  // reload'dur (running-config startup'tan gelir).
+  function labberCommand(d, raw) {
+    const line = raw.replace(/\s+$/, ''),
+      p = line.trim().toLowerCase().split(/\s+/);
+    const fail = (error) => {
+      say('Değerlendirme hatası: ' + error.message, 'outerr');
+      if (sharedScenario.active) sharedStatus('Değerlendirme hatası: ' + error.message, false);
+    };
+    if (line.trim()) {
+      selectDeviceCliHistory(d.id);
+      if (ptCommandHistory[ptCommandHistory.length - 1] !== line.trim())
+        ptCommandHistory.push(line.trim());
+      if (ptCommandHistory.length > 100) ptCommandHistory.shift();
+      ptHistoryIndex = ptCommandHistory.length;
+    }
+    say((aglabLabber.prompt(d.id) ?? d.name + '>') + line, 'outcmd');
+    if (p[0] === 'device' && p[1] === 'power' && ['on', 'off'].includes(p[2])) {
+      try {
+        aglabLabber.setPower(d.id, p[2] === 'on');
+      } catch (error) {
+        return fail(error);
+      }
+      say(d.name + ' power ' + p[2], 'outok');
+      afterLabberChange();
+      return;
+    }
+    let result;
+    try {
+      result = aglabLabber.exec(d.id, line);
+    } catch (error) {
+      return fail(error);
+    }
+    for (const row of result.lines) say(row.text, row.kind);
+    // IOS gibi: `?` yardımından sonra yazılan satır girişte kalır.
+    if (line.endsWith('?')) $p('ptCliInput').value = line.slice(0, -1);
+    afterLabberChange();
+    if (d.type === 'PC' && p[0] === 'ping' && p[1])
+      recordSharedPing(d.id, p[1], { ok: !result.lines.some((r) => r.kind === 'outerr') });
+  }
+  function afterLabberChange() {
+    render();
+    syncSelects();
+    updateInspector();
+  }
   function command(raw) {
     let d = get($p('ptCliDevice').value);
     if (!d) return;
     selected = d.id;
+    if (aglabLabber.active()) return labberCommand(d, raw);
     let cmd = raw.trim(),
       p = cmd.toLowerCase().split(/\s+/);
     if (!cmd) return;
@@ -16650,28 +16713,16 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
       target !== sharedScenario.target
     )
       return;
-    // Labber'da açılan senaryoda sonuç Labber'dan gelir; CLI (eski motor) ile farklıysa
-    // ya da topoloji Labber'da ifade edilemiyorsa hata gösterilir, motor değiştirilmez.
+    // Labber'da açılan senaryoda terminal ve değerlendirme aynı Labber çalışma zamanındadır;
+    // sonuç (gerekçesiyle) oradan alınır. Topoloji Labber'da ifade edilemiyorsa hata
+    // gösterilir, motor değiştirilmez.
     if (sharedScenario.engine?.engine === 'labber') {
-      let labber;
       try {
-        labber = aglabEngineChoice.labberPing(src, target);
+        result = aglabEngineChoice.labberPing(src, target);
       } catch (error) {
         sharedStatus('Değerlendirme hatası: ' + error.message, false);
         return;
       }
-      if (labber.ok !== result.ok) {
-        sharedStatus(
-          'Motor uyuşmazlığı: Labber ping ' +
-            (labber.ok ? 'başarılı' : 'başarısız') +
-            ', CLI (eski motor) ping ' +
-            (result.ok ? 'başarılı' : 'başarısız') +
-            '. Sonuç kabul edilmedi; bu bir motor hatasıdır, lütfen bildir.',
-          false,
-        );
-        return;
-      }
-      result = labber;
     }
     const sourceDevice = get(src),
       targetDevice = devices.find(
@@ -16784,6 +16835,16 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
       e.preventDefault();
       $p('ptClearTerminal').click();
+      return;
+    }
+    if (e.target === $p('ptCliInput') && e.key === 'Tab' && aglabLabber.active()) {
+      e.preventDefault();
+      try {
+        const done = aglabLabber.complete($p('ptCliDevice').value, $p('ptCliInput').value);
+        if (done) $p('ptCliInput').value = done;
+      } catch (error) {
+        say('Değerlendirme hatası: ' + error.message, 'outerr');
+      }
       return;
     }
     if (e.target === $p('ptCliInput') && e.key === 'ArrowUp') {
@@ -19961,6 +20022,272 @@ function portSecurityCommand(d, p, out) {
 }
 
 // END PORT SECURITY GENERATED
+// BEGIN LABBER SESSION GENERATED
+// Labber oturumu (Labber entegrasyonu L3-a, docs/YENIDEN_YAPILANMA.md "L4. Aşamalar").
+//
+// Labber kararındaki içerik (Sorun Çöz senaryosu, Akademi labı) yüklenince içerik boyunca
+// TEK bir kalıcı LabRuntime kurulur. Terminal komutları cihaz başına açılan
+// IosSession/VpcsSession'a gider; değerlendirme (engine-choice.js) aynı çalışma zamanını
+// kullanır. Kaynak gerçek çalışma zamanıdır: AğLab topolojisi (devices/links; çizim,
+// denetçi, kayıt) her değişiklikten sonra toAglab ile ondan türetilir.
+//
+// Kablo/güç düzenleyicisi çalışma zamanına gider (setPower, setLink, moveCable). Diğer
+// düzenleyici işlemleri (cihaz/kablo ekleme-silme, ad değiştirme) AğLab topolojisini
+// değiştirir; bu fark kayıt sırasında görülür ve çalışma zamanı yeni topolojiden yeniden
+// kurulur, kaydedilmiş yapılandırma (startup-config), err-disable, öğrenilmiş MAC/ARP ve
+// syslog taşınır. Yeni topoloji Labber'da ifade edilemiyorsa motor değiştirilmez: oturum
+// "bozuk" olur ve her değerlendirme/komut açık hata verir.
+//
+// Labber durumu AğLab modelinde ifade edilemiyorsa (ör. portfast, OSPF) toAglab
+// BridgeError atar; bu durumda AğLab görünümü güncellenmez ve terminalde açıkça yazılır
+// (sessiz veri kaybı yok). Kalıcılık (running/startup ayrımının tarayıcı kaydı) L7'dedir.
+const aglabLabber = (() => {
+  let state = null;
+  // Yerleşim alanları çalışma zamanını etkilemez; sürüklemede yeniden kurulum yapılmaz.
+  const LAYOUT = new Set(['x', 'y', 'w', 'h', 'selected']);
+  function key() {
+    return JSON.stringify({
+      devices: devices.map((d) =>
+        Object.fromEntries(Object.entries(d).filter(([k]) => !LAYOUT.has(k))),
+      ),
+      links,
+    });
+  }
+  function topology() {
+    return { app: 'AgLab', version: 23, devices: clone(devices), links: clone(links) };
+  }
+  function brokenMessage(reasons) {
+    return (
+      'Bu içerik Labber motorunda açıldı ama topoloji artık Labber’ın desteklemediği öğeler içeriyor (' +
+      reasons.join('; ') +
+      '). Motor değiştirilmez; değerlendirme yapılamadı.'
+    );
+  }
+  /** Labber kararındaki içerik yüklendi: güncel AğLab topolojisinden kalıcı çalışma zamanı. */
+  function start() {
+    const r = AgLabSim.toLabber(topology());
+    if (r.report.engineDecision !== 'labber') throw new Error(brokenMessage(r.report.reasons));
+    state = {
+      rt: AgLabSim.createRuntime(r),
+      sessions: {},
+      logSeq: {},
+      key: key(),
+      broken: null,
+      writeError: null,
+    };
+  }
+  function stop() {
+    state = null;
+  }
+  function active() {
+    return !!state;
+  }
+  /** Değerlendirme ve terminal için çalışma zamanı; oturum bozuksa açık hata. */
+  function runtime() {
+    reconcile();
+    if (state.broken) throw new Error(state.broken);
+    return state.rt;
+  }
+  /** Düzenleyici AğLab topolojisini değiştirdiyse çalışma zamanını yeniden kur. */
+  function reconcile() {
+    if (!state) return;
+    const k = key();
+    if (k === state.key) return;
+    state.key = k;
+    const r = AgLabSim.toLabber(topology());
+    if (r.report.engineDecision !== 'labber') {
+      state.broken = brokenMessage(r.report.reasons);
+      return;
+    }
+    if (state.writeError)
+      say(
+        'Uyarı: Labber durumunun AğLab’da ifade edilemeyen kısmı (' +
+          state.writeError +
+          ') düzenleyici değişikliğiyle yeniden kurulan çalışma zamanına taşınamadı.',
+        'outerr',
+      );
+    const old = state.rt,
+      rt = AgLabSim.createRuntime(r);
+    for (const id of Object.keys(rt.running)) {
+      if (!old.running[id] || !(id in old.startup)) continue;
+      const saved = old.startup[id];
+      // Yeni portlar eklenmediyse kaydedilmiş yapılandırma aynen geçerlidir.
+      const fits =
+        !saved || Object.keys(rt.running[id].ifaces).every((p) => p in (saved.ifaces || {}));
+      if (fits) rt.startup[id] = clone(saved);
+    }
+    for (const k2 of old.errdis) if (rt.topo.devices[k2.split('|')[0]]) rt.errdis.add(k2);
+    for (const m of old.seen) rt.seen.add(m);
+    for (const a of old.arp) if (rt.topo.devices[a.split('>')[0]]) rt.arp.add(a);
+    rt.logs = old.logs.slice();
+    rt.commit();
+    for (const [dev, s] of Object.entries(state.sessions)) {
+      if (rt.topo.devices[dev]) s.rt = rt;
+      else delete state.sessions[dev];
+    }
+    state.rt = rt;
+    state.broken = null;
+  }
+  /** Çalışma zamanından AğLab topolojisine geri yazım (görünüm, denetçi, kayıt). */
+  function writeBack() {
+    try {
+      const view = AgLabSim.toAglab(state.rt, topology());
+      devices = view.devices;
+      links = view.links;
+      state.writeError = null;
+    } catch (e) {
+      state.writeError =
+        'Labber durumu AğLab görünümüne yazılamadı: ' +
+        e.message +
+        '. Kayıt ve dışa aktarma bu değişikliği içermez; değerlendirme Labber durumunu kullanır.';
+    }
+    state.key = key();
+  }
+  function view() {
+    return AgLabSim.toAglab(runtime(), topology());
+  }
+  function session(dev) {
+    const rt = runtime();
+    if (!rt.topo.devices[dev]) throw new Error('Cihaz Labber çalışma zamanında yok: ' + dev);
+    if (!rt.powered(dev)) return null;
+    let s = state.sessions[dev];
+    if (!s) {
+      s = state.sessions[dev] = AgLabSim.createSession(rt, dev);
+      state.logSeq[dev] = rt.logs.at(-1)?.seq || 0;
+    }
+    if (s instanceof AgLabSim.VpcsSession) s.name = get(dev)?.name || dev;
+    return s;
+  }
+  /** Terminal istemi; kapalı cihazda ve bozuk oturumda null. */
+  function prompt(dev) {
+    if (!state || state.broken) return null;
+    try {
+      const s = session(dev);
+      return s ? s.prompt() : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  /** Cihazın yeni syslog satırları (konsolda gösterilir). */
+  function newLogs(dev) {
+    const from = state.logSeq[dev] || 0,
+      lines = state.rt.logs.filter((l) => l.dev === dev && l.seq > from).map((l) => l.text);
+    state.logSeq[dev] = state.rt.logs.at(-1)?.seq || from;
+    return lines;
+  }
+  /**
+   * Bir terminal satırını çalıştırır: { prompt, lines: [{text, kind}] }.
+   * kind: 'outerr' (IOS hata/başarısız ping), 'outinfo' (syslog), ''.
+   */
+  function exec(dev, line) {
+    const s = session(dev);
+    if (!s) return { lines: [{ text: '% Cihaz kapalı; konsol yanıt vermiyor.', kind: 'outerr' }] };
+    const out = s.exec(line);
+    const lines = out.map((text) => ({ text, kind: lineKind(text) }));
+    for (const text of newLogs(dev)) lines.push({ text, kind: 'outinfo' });
+    writeBack();
+    if (state.writeError) lines.push({ text: state.writeError, kind: 'outerr' });
+    return { lines, prompt: s.prompt() };
+  }
+  function lineKind(text) {
+    if (/^\s*% ?(Invalid|Incomplete|Ambiguous|Unknown|Unrecognized|Bad|Please)/.test(text))
+      return 'outerr';
+    if (/^Success rate is 0 percent/.test(text)) return 'outerr';
+    if (/ icmp_seq=\d+ timeout$|Destination host unreachable|not reachable$/.test(text))
+      return 'outerr';
+    if (
+      /^(Bad command|Invalid (address|netmask|gateway)|Cannot resolve|No gateway found)/.test(text)
+    )
+      return 'outerr';
+    return '';
+  }
+  function help(dev, line) {
+    const s = session(dev);
+    if (!s) return [];
+    return s instanceof AgLabSim.VpcsSession ? s.help() : s.help(line);
+  }
+  function complete(dev, line) {
+    const s = session(dev);
+    return s ? s.complete(line) : null;
+  }
+  /** Komut bloğu (tarif/öğretmen çözümü) kullanıcı modundan başlar. */
+  function resetMode(dev) {
+    const s = state?.sessions[dev];
+    if (s instanceof AgLabSim.IosSession) {
+      if (s.pendingPrompt) s.exec('no');
+      s.mode = 'user';
+      s.ifs = [];
+      s.vlanIds = [];
+    }
+  }
+  function changed() {
+    writeBack();
+  }
+  /** Cihaz gücü (açılış bir reload'dur: running-config startup'tan gelir). */
+  function setPower(dev, on) {
+    runtime().setPower(dev, on);
+    if (!on) delete state.sessions[dev];
+    changed();
+  }
+  function setLink(dev, port, up) {
+    const canon = AgLabSim.canonPort(port) || port;
+    const ok = runtime().setLink(dev, canon, up);
+    changed();
+    return ok;
+  }
+  function moveCable(fromDev, fromPort, toDev, toPort) {
+    const c = (p) => (get(toDev)?.type === 'PC' && p === 'eth0' ? p : AgLabSim.canonPort(p) || p);
+    const ok = runtime().moveCable(
+      fromDev,
+      get(fromDev)?.type === 'PC' ? fromPort : c(fromPort),
+      toDev,
+      c(toPort),
+    );
+    changed();
+    return ok;
+  }
+  /** Geçici içerik değişimleri (senaryo doğrulaması) için oturumun kendisi. */
+  function capture() {
+    return state;
+  }
+  function restore(s) {
+    state = s;
+  }
+  return {
+    start,
+    stop,
+    active,
+    runtime,
+    reconcile,
+    view,
+    prompt,
+    exec,
+    help,
+    complete,
+    resetMode,
+    setPower,
+    setLink,
+    moveCable,
+    capture,
+    restore,
+    broken: () => state?.broken || null,
+  };
+})();
+window.aglabLabberSession = {
+  active: () => aglabLabber.active(),
+  // Testler: terminal ve değerlendirme aynı çalışma zamanını mı kullanıyor?
+  runtimeId: () => {
+    const rt = aglabLabber.runtime();
+    if (!rt.__aglabId) rt.__aglabId = Math.random().toString(36).slice(2);
+    return rt.__aglabId;
+  },
+  prompt: (dev) => aglabLabber.prompt(dev),
+  setPower: (dev, on) => aglabLabber.setPower(dev, on),
+  setLink: (dev, port, up) => aglabLabber.setLink(dev, port, up),
+  moveCable: (a, pa, b, pb) => aglabLabber.moveCable(a, pa, b, pb),
+};
+
+// END LABBER SESSION GENERATED
 // BEGIN ENGINE CHOICE GENERATED
 // Motor seçimi (Labber entegrasyonu L2, docs/YENIDEN_YAPILANMA.md "L4. Geçiş sırası").
 //
@@ -19971,9 +20298,9 @@ function portSecurityCommand(d, p, out) {
 // sonradan Labber'ın ifade edemediği bir duruma gelirse (ör. topolojiye router eklenirse)
 // sonuç eski motordan alınmaz: değerlendirme hata olarak gösterilir.
 //
-// L2 kapsamı: başarı/ölçüt değerlendirmesi (ping, STP kökü) Labber'dan gelir. Cihaz CLI'si
-// ve Simulation Mode L3 aşamasına kadar eski motorda kalır; iki motor aynı ping sonucunu
-// vermezse bu da gizlenmez, uyuşmazlık olarak gösterilir.
+// L3-a: Labber kararındaki içerikte terminal ve değerlendirme aynı kalıcı LabRuntime'ı
+// kullanır (labber-session.js); iki motor karşılaştırması yoktur. Simulation Mode L3-b'ye
+// kadar eski motorda kalır.
 const aglabEngineChoice = (() => {
   const REASON_TR = {
     noip: 'Kaynak cihazda geçerli IPv4 adresi yok.',
@@ -19993,7 +20320,7 @@ const aglabEngineChoice = (() => {
   }
   function badgeText(decision) {
     return decision.engine === 'labber'
-      ? 'Motor: Labber — değerlendirme Labber motorunda yapılır (cihaz CLI’si ve Simulation Mode henüz eski motorda).'
+      ? 'Motor: Labber — terminal ve değerlendirme Labber motorunda (Simulation Mode henüz eski motorda).'
       : 'Eski motor — nedeni: ' + decision.reasons.join('; ');
   }
   function renderBadge(el, decision) {
@@ -20001,8 +20328,12 @@ const aglabEngineChoice = (() => {
     el.textContent = badgeText(decision);
     el.dataset.engine = decision.engine;
   }
-  /** Mevcut topolojiden Labber çalışma zamanı; ifade edilemiyorsa açık hata. */
+  /**
+   * Labber çalışma zamanı: içerik oturumu varsa onun kalıcı çalışma zamanı (terminal ile
+   * aynı), yoksa mevcut topolojiden yeni bir tane. İfade edilemiyorsa açık hata.
+   */
   function runtime() {
+    if (aglabLabber.active()) return aglabLabber.runtime();
     const r = AgLabSim.toLabber(snapshot());
     if (r.report.engineDecision !== 'labber')
       throw new Error(
@@ -20024,10 +20355,11 @@ const aglabEngineChoice = (() => {
     return { ok: r.ok, why, replier: r.replier || null, reason: r.reason || null };
   }
   /**
-   * Durumun Labber üzerinden AğLab görünümü: toAglab(createRuntime(toLabber(t)), t).
+   * Durumun Labber üzerinden AğLab görünümü: toAglab(çalışma zamanı, t).
    * Akademi `state_adapter` yeteneği; ifade edilemeyen durum açık hata verir.
    */
   function labberView() {
+    if (aglabLabber.active()) return aglabLabber.view();
     const snap = snapshot();
     return AgLabSim.toAglab(runtime(), snap);
   }
@@ -23610,6 +23942,7 @@ function sharedEngineCommandBlock(name, commands) {
   $p('ptCliDevice').value = d.id;
   cliMode = 'user';
   currentInterface = '';
+  if (aglabLabber.active()) aglabLabber.resetMode(d.id);
   updateInspector();
   for (const raw of commands) {
     const before = $p('ptTerminal').childElementCount;
@@ -23666,6 +23999,12 @@ function loadNetworkScenario(key) {
 function sharedScenarioDecideEngine() {
   sharedScenario.engine = aglabEngineChoice.decide(aglabEngineChoice.snapshot());
   aglabEngineChoice.renderBadge($p('sharedScenarioEngine'), sharedScenario.engine);
+  // L3-a: Labber kararındaki senaryo boyunca tek kalıcı çalışma zamanı (terminal + hedef).
+  aglabLabber.stop();
+  if (sharedScenario.engine.engine === 'labber') {
+    aglabLabber.start();
+    updatePrompt();
+  }
 }
 function sharedRecipeGoal(row) {
   if (sharedScenario.engine?.engine === 'labber') {
@@ -23709,6 +24048,7 @@ function validateSharedScenarios() {
     ]),
     oldArps = [...arpTables].map(([id, rows]) => [id, new Map(rows)]);
   const storage = localStorage.getItem('aglab-topology-v23'),
+    labberSession = aglabLabber.capture(),
     results = [];
   try {
     for (const row of sharedNetworkScenarios) {
@@ -23742,6 +24082,7 @@ function validateSharedScenarios() {
   } finally {
     importTopology(snapshot);
     sharedScenario = savedScenario;
+    aglabLabber.restore(labberSession);
     $p('sharedScenarioInstructions').innerHTML = instructions;
     $p('sharedScenarioStatus').textContent = status;
     macTables.clear();
@@ -23768,6 +24109,8 @@ window.aglabSharedEngine = {
   engine: () => clone(sharedScenario.engine || null),
   target: () => sharedScenario.target,
   goal: () => sharedRecipeGoal(sharedScenarioRecipe(sharedScenario.key)),
+  // Labber kararındaki içeriğin AğLab görünümü (toAglab; terminalle aynı çalışma zamanı).
+  view: () => aglabEngineChoice.labberView(),
   // Ad ile iki cihaz arası erişim; başarılı ve başarısız iletim testleri için.
   reach: (source, target) => {
     const src = devices.find((d) => d.name === source),
@@ -27757,6 +28100,9 @@ function academyRestoreSession(session) {
   }
   const lab = academyValidateSession(session);
   academyActive = lab;
+  // L3-a: Labber kararındaki lab boyunca terminal ve ölçütler aynı kalıcı çalışma zamanında.
+  aglabLabber.stop();
+  if (academyEngineFor(lab).engine === 'labber') aglabLabber.start();
   academyHintIndex = session.hintIndex;
   academyBaseline = session.baseline;
   academyChecked = session.checked;
@@ -27954,22 +28300,9 @@ function acProbe(source, destination, spec = {}, engine = 'legacy') {
       why: 'Hedef cihazda geçerli IPv4 adresi yapılandırılmamış.',
     }));
   if (engine === 'labber') {
-    // Labber deterministik: tek ping beş denemenin hepsini temsil eder. CLI L3'e kadar eski
-    // motorda olduğundan iki motor aynı sonucu vermeli; vermezse sonuç kabul edilmez.
+    // Labber deterministik: tek ping beş denemenin hepsini temsil eder. Terminal de aynı
+    // çalışma zamanını kullandığından ikinci bir motorla karşılaştırma yapılmaz.
     const r = aglabEngineChoice.labberPing(source, ip);
-    const legacy = ping(source, ip);
-    if (legacy.ok !== r.ok)
-      throw new Error(
-        'Motor uyuşmazlığı: Labber ping ' +
-          (r.ok ? 'başarılı' : 'başarısız') +
-          ', eski motor ' +
-          (legacy.ok ? 'başarılı' : 'başarısız') +
-          ' (' +
-          source +
-          ' → ' +
-          ip +
-          '). Sonuç kabul edilmedi; bu bir motor hatasıdır, lütfen bildir.',
-      );
     return Array.from({ length: 5 }, () => ({ ok: r.ok, why: r.why }));
   }
   let binding = null;
@@ -28047,14 +28380,6 @@ function academyEvaluate(criteria, answers, health = null, engine = null) {
       if (c.kind === 'state.equals') {
         if (c.target === 'links') validateTopologyData({ app: 'AgLab', devices, links });
         const ok = acStateMatches(c.target, stateOf(c.target), c.expected);
-        // Labber görünümünde ölçüt sonucu canlı AğLab durumundakiyle aynı olmalı
-        // (küme alanları sırasız, adresler normalize karşılaştırılır).
-        if (used === 'labber' && ok !== acStateMatches(c.target, acState(c.target), c.expected))
-          throw new Error(
-            'Motor uyuşmazlığı: ' +
-              c.target +
-              ' Labber görünümünde farklı sonuç veriyor. Sonuç kabul edilmedi; bu bir motor hatasıdır, lütfen bildir.',
-          );
         status = ok ? 'passed' : 'failed';
         detail = ok
           ? 'Ölçüt sağlandı.'

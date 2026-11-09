@@ -20,17 +20,21 @@ const HELP = [
 
 export class VpcsSession {
   history: string[] = []
+  /** shown name (prompt, `show ip`); the host app may set its own device label */
+  name: string
   constructor(
     public rt: LabRuntime,
     public dev: string,
-  ) {}
+  ) {
+    this.name = dev
+  }
 
   get def(): PcDef {
     return this.rt.topo.devices[this.dev] as PcDef
   }
 
   prompt(): string {
-    return this.dev + '> '
+    return this.name + '> '
   }
 
   complete(line: string): string | null {
@@ -98,14 +102,14 @@ export class VpcsSession {
     if (gw && !sameSubnet(addr, gw, prefix)) return ['Gateway is not in the same subnet']
     this.rt.pcs[this.dev] = { ip: addr, prefix, gw }
     this.rt.commit()
-    return ['Checking for duplicate address...', `${this.dev} : ${addr} ${prefixToMask(prefix)}${gw ? ' gateway ' + gw : ''}`, '']
+    return ['Checking for duplicate address...', `${this.name} : ${addr} ${prefixToMask(prefix)}${gw ? ' gateway ' + gw : ''}`, '']
   }
 
   private showIp(): string[] {
     const c = this.rt.pcs[this.dev]!
     return [
       '',
-      `NAME        : ${this.dev}[1]`,
+      `NAME        : ${this.name}[1]`,
       `IP/MASK     : ${c.ip ? `${c.ip}/${c.prefix}` : '0.0.0.0/0'}`,
       `GATEWAY     : ${c.gw ?? '0.0.0.0'}`,
       'DNS         : ',

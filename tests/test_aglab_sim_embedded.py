@@ -5,8 +5,8 @@
    başta BAŞARISIZ (PC'lerin portları farklı VLAN'da), referans çözüm `runScript` ile
    uygulandıktan sonra BAŞARILI. Çözüm CLI hatası üretmez. Farklı VLAN'a erişim çözümden
    sonra da başarısız kalır.
-3. Ürün AgLabSim'i yalnız motor kararı ve Labber değerlendirmesi için kullanır (L2-D1
-   ortak senaryolar, L2-D2 Akademi). Sayfa betiklerinden önce kurulan sayaçlı erişimci
+3. Ürün AgLabSim'i yalnız motor kararı, Labber değerlendirmesi ve Labber içeriğinin
+   terminali için kullanır (L2-D1 ortak senaryolar, L2-D2 Akademi, L3-a terminal). Sayfa betiklerinden önce kurulan sayaçlı erişimci
    her akışta erişilen API kümesini tam olarak denetler; Sorun Çöz/Öğren 0 erişim.
 """
 
@@ -124,14 +124,17 @@ class SimEmbeddedTests(unittest.TestCase):
     def test_lab_fails_before_and_passes_after_solution(self):
         before = self.accesses()
         result = self.page.evaluate(RUN_LAB)
-        # L0 motor API'si + L1 köprüsü (toLabber/toAglab/createRuntime ve yardımcıları).
+        # L0 motor API'si + L1 köprüsü (toLabber/toAglab/createRuntime ve yardımcıları) +
+        # L3-a terminal oturum sınıfları (IosSession/VpcsSession).
         self.assertEqual(
             result["api"],
             [
                 "BridgeError",
+                "IosSession",
                 "LabQuery",
                 "MODEL_L2",
                 "MODEL_L3",
+                "VpcsSession",
                 "canonPort",
                 "createLab",
                 "createRuntime",
@@ -170,11 +173,14 @@ class SimEmbeddedTests(unittest.TestCase):
         if page.locator("#academyReplacePrompt").is_visible():
             page.click("#academyReplaceContinue")
         page.evaluate("academy.check()")
+        # L3-a: lab boyunca tek kalıcı çalışma zamanı; terminal istemi için seçili cihazın
+        # Labber oturumu açılır (createSession; PC ise VpcsSession adı yazılır).
         self.assertEqual(
             set(self.accesses()),
-            {"global", "toLabber", "createRuntime", "toAglab"},
+            {"global", "toLabber", "createRuntime", "toAglab", "createSession", "VpcsSession"},
             "Akademi Labber labı",
         )
+        self.assertEqual(self.accesses().count("createRuntime"), 1, "lab başına tek çalışma zamanı")
         # Akademi (eski motor kararındaki lab): yalnız karar
         self.reset_accesses()
         page.select_option("#academySelect", "AGL-031")
@@ -188,13 +194,16 @@ class SimEmbeddedTests(unittest.TestCase):
         page.evaluate("aglabSharedEngine.load('return-route')")
         page.evaluate("aglabSharedEngine.reach('PC-01','SRV-01')")
         self.assertEqual(set(self.accesses()), {"global", "toLabber"}, "eski motor senaryosu")
-        # Labber kararındaki senaryo: karar + değerlendirme çalışma zamanı
+        # Labber kararındaki senaryo: karar + tek kalıcı çalışma zamanı + terminal oturumu
         self.reset_accesses()
         page.evaluate("aglabSharedEngine.load('vlan-wrong-access')")
         page.evaluate("aglabSharedEngine.goal()")
         self.assertEqual(
-            set(self.accesses()), {"global", "toLabber", "createRuntime"}, "Labber senaryosu"
+            set(self.accesses()),
+            {"global", "toLabber", "createRuntime", "createSession", "VpcsSession"},
+            "Labber senaryosu",
         )
+        self.assertEqual(self.accesses().count("createRuntime"), 1, "senaryo başına tek")
 
 
 if __name__ == "__main__":
