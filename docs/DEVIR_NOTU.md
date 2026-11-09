@@ -16,8 +16,11 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L2-D2 Akademi M1–M3 Labber'da | #57 | birleşti |
 | L3-a terminal → IosSession/VpcsSession, tek kalıcı LabRuntime | dal `claude/l3a-labber-terminal` | PR açık (birleşmeyi bekliyor) |
 | F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | dal `claude/f-ders-senaryolari` (L3-a'nın üstünde) | PR açık (birleşmeyi bekliyor) |
-| E Labber'ın 13 labı | — | başlanmadı (F'den sonra) |
-| L3-b Simulation Mode olay adaptörü | — | başlanmadı (E'den sonra) |
+| E Labber'ın 13 labı | — | **engelli**: kaynak (`labs/*.ts`) bu depoda yok, oturuma Labber deposu eklenemedi (aşağıda) |
+| L3-b Simulation Mode olay adaptörü | — | başlanmadı; tasarım aşağıda (E'nin içeriğine bağlı değil, F'nin üstüne yapılabilir) |
+
+**Sıradaki adım:** L3-b (F dalının üstüne). E, kullanıcı Labber `labs/` kaynağını
+sağlayınca (depo erişimi ya da arşiv yüklemesi) yapılır; lab metinleri uydurulmaz.
 
 ## Bugünkü mimari (kısaca)
 
@@ -121,12 +124,49 @@ Yalnız Labber kararındaki içerikte. Önerilen yol:
    `test_aglab_cli_vlan`. IOS biçimli çıktı yüzünden beklenti değişirse davranış değişikliği
    olarak gerekçesiyle güncelle; mümkünse metin yerine `LabQuery` ile türetilmiş durumu sor.
 
+## E — engel (2026-11-09)
+
+Labber'ın 13 labı kullanıcının kendi içeriği (`faarik-network/labber` `labs/*.ts` +
+`tests/labs.test.ts`). Bu depoda ve oturumda yok; `add_repo faarik-network/labber` bu
+oturumda izin denetiminde reddedildi. Lab tanımları (topoloji, initialConfig, objective
+`check(q)` fonksiyonları, referans çözüm) sıfırdan yazılırsa kullanıcının labları değil
+uydurma içerik olur; yapılmadı. Gerekli: depoya okuma erişimi ya da `labs/` klasörünün
+arşivi. Geldiğinde aşağıdaki "L2-E" planı geçerli; terminal (L3-a) hazır olduğundan
+labın arayüzde çözülmesi için ek terminal işi gerekmez (OSPF/EtherChannel/routed port
+komutları Labber IOS'unda var; `toAglab` bunları ifade edemediği için lab görünümü/kaydı
+için `toAglab` yerine doğrudan LabDef çizimi gerekecek — köprü kullanılmaz).
+
 ## L3-b — Simulation Mode olay adaptörü
 
 `net.ts` `deliver()` atlamaları (`Hop[]`: cihaz, IP, çıkış arayüzü) ve `l2Domain()` BFS yolu
 (`via.out/in` portları) → `simulator/packet-events.js` olay biçimi. ARP/Ethernet çerçeve
 olayları üretilemiyorsa animasyon yalnız L3 atlamalarını gösterir ve bu UI'da yazılır.
 Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_packet_events`.
+
+**Bugünkü ara çözüm (L3-a):** `main.js` `labberSimulationTrace`: Labber içeriğinde PC
+ping'inden sonra aynı AğLab görünümünde eski motor ping'i yalnız olay kaydı için çalışır;
+sonuç Labber'dan farklıysa kayıt silinir ve terminalde yazılır. L3-b bunu kaldırır.
+
+**Önerilen tasarım:**
+1. `src/sim-bridge/events.ts`: `pingTrace(rt, from, ip)` → `ethernetTraceEvents` ile aynı
+   kayıt biçimi (`{raw, eventId, frameId, frame, kind?, device?, edge?, ingressPort?}`;
+   `simulator/packet-events.js` `fromEvidence` bunu normalize eder).
+   - `net.ping(d, from, ip)` → `forward.hops` (her `Hop`: varılan cihaz/IP ve önceki
+     cihazın çıkış `L3If`'i; `L3If.node` = segment düğümü `{dev, vlan}`).
+   - Her atlama için L2 yolu: `l2Domain(d, outIf.node)` BFS'inde hedef `L3If.node`'dan
+     `via.from/out/in` zinciri geriye izlenir → switch'ler arası kenarlar; PC uçları
+     `topo.peer['PC|eth0']` ile eklenir. Kenarlar AğLab port adlarına
+     `report.portNames` ile çevrilir (animasyon `matchWire` AğLab `links` ile eşler).
+   - Çerçeveler: ARP isteği/yanıtı (`rt.arp` önbelleğinde yoksa), ICMP echo
+     istek/yanıt; `frame` alanları eski biçimle aynı (`sourceMac`, `destinationMac`,
+     `vlan`, `etherType`, `arp`, `ipv4.ttl` — router geçişinde TTL azalır).
+   - Dönüş: `back` teslimatı aynı şekilde.
+2. L2 yolu çıkarılamayan durumda yalnız L3 atlama olayları üretilir ve Simulation Mode
+   panelinde "yalnız L3 atlamaları" notu gösterilir.
+3. `labberSimulationTrace` → adaptör; eski motor çağrısı kalkar.
+4. Testlere Labber içerik vakası: `test_aglab_simulation_mode` (AGL-001/005 zaten
+   Labber), `test_aglab_frame_forwarding` (bir Labber senaryosu), `test_packet_events`
+   (adaptör çıktısı `fromEvidence` ile normalize olur).
 Not: `test_aglab_simulation_mode` donmuş saat pencerelerinde düğmelere klavyeyle basar
 (`press()`); yük altında fare tıklaması sayfayı kaydırıp tuvali görüş dışına taşıyordu.
 
