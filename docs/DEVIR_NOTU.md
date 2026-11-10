@@ -18,7 +18,7 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | #60 | birleşti |
 | E Labber'ın 13 labı (kaynak #61) | #62 | birleşti |
 | L3-b Simulation Mode olay adaptörü | #63 | birleşti |
-| L4 Router, AD, özyinelemeli statik rota; Akademi M4 + routing senaryoları | dal `claude/l4-router-routing` | PR açık (birleşmeyi bekliyor) |
+| L4 Router, AD, özyinelemeli statik rota; Akademi M4 + routing senaryoları | #64 | açık (birleşmeyi bekliyor) |
 
 **L4 PR'ı açık, sıradaki: L5** (alt arayüz/router-on-a-stick, DHCP/Server servisleri,
 ACL, NAT, port security; PKT IOS metin yolu). Plan: `YENIDEN_YAPILANMA.md` L3 tablosu
