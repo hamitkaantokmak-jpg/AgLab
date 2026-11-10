@@ -27,24 +27,22 @@ MODULES = {p.stem: json.loads(p.read_text(encoding="utf-8"))["module_id"] for p 
 LABBER_LABS = [lid for lid, m in MODULES.items() if m in ("M1", "M2", "M3", "M4")]
 M4 = [lid for lid, m in MODULES.items() if m == "M4"]
 
-# Öğretmen çözümü: hedef topolojinin CLI dışı kısmı (PC adresleri, kablo, güç) + switch'lerde
-# başlangıç yapılandırması üzerine öğretmen reference_commands'ı Labber IOS'unda.
-# Router'larda öğretmen komutları eksiksiz bir yapılandırmadır (her arayüz ve rota yazılır;
-# AGL-036'daki hatalı rotayı silmez, hiç kurmaz): router fabrika durumundan başlar
-# (arayüzler kapalı ve adressiz, rota yok).
+# Öğretmen çözümü: hedef topolojinin CLI dışı kısmı (PC adresleri, kablo, güç) + switch ve
+# router'larda öğrencinin gerçek başlangıç yapılandırması üzerine öğretmen
+# reference_commands'ı Labber IOS'unda (AGL-036: hatalı rota `no ip route` ile silinir).
 APPLY_TEACHER_CLI = """([init, target, cmds]) => {
-  const sw = new Map(init.devices.filter((d) => d.type === 'Switch').map((d) => [d.id, d]));
-  const blank = (r) => ({ ...JSON.parse(JSON.stringify(r)), staticRoutes: [], route: '',
-    interfaces: Object.fromEntries(Object.keys(r.interfaces || {}).map((n) => [n, { enabled: false }])) });
+  const own = new Map(init.devices.filter((d) => d.type === 'Switch' || d.type === 'Router')
+    .map((d) => [d.id, d]));
   const hybrid = { ...target, devices: target.devices.map((d) =>
-    sw.has(d.id) ? JSON.parse(JSON.stringify(sw.get(d.id))) : d.type === 'Router' ? blank(d) : d) };
+    own.has(d.id) ? JSON.parse(JSON.stringify(own.get(d.id))) : d) };
   const r = AgLabSim.toLabber(hybrid);
   if (r.report.engineDecision !== 'labber') return { reasons: r.report.reasons };
   const rt = AgLabSim.createRuntime(r);
   const errors = [];
   for (const [dev, list] of Object.entries(cmds)) {
     const out = AgLabSim.runScript(rt, dev, list.join('\\n'));
-    errors.push(...out.filter((l) => /^% (Invalid|Incomplete|Ambiguous)/.test(l)).map((l) => dev + ': ' + l));
+    // her IOS uyarı/hata satırı (`% Invalid`, `%No matching route to delete` …) hatadır
+    errors.push(...out.filter((l) => /^%/.test(l)).map((l) => dev + ': ' + l));
   }
   return { errors, topology: AgLabSim.toAglab(rt, hybrid) };
 }"""
