@@ -105,6 +105,9 @@ const SHARED_QUERY_FNS = new Set([
   'stpRoot',
   'powered',
   'linkUp',
+  // L5-b
+  'dhcpLease',
+  'dnsLookup',
 ]);
 /**
  * Bir hedef satırı: { fn, args, field?, expected, label? }. Bağımsız değişkenlerde cihaz
@@ -181,6 +184,10 @@ function sharedRecipeGoal(row) {
       return aglabEngineChoice.labberStpRoot(row.verify.vlan) === row.verify.root && reached();
     if (row.verify.kind === 'ping') return reached();
     if (row.verify.kind === 'query') return sharedQueryGoal(row).ok;
+    // L5-b: kaynak PC'nin adresi DHCP'den (link-local değil); AğLab görünümünde dhcpLease.
+    if (row.verify.kind === 'dhcp')
+      return !!aglabEngineChoice.labberView().devices.find((d) => d.id === sharedScenario.sourceId)
+        ?.dhcpLease;
     throw new Error('Labber bu doğrulama türünü desteklemiyor: ' + row.verify.kind);
   }
   if (row.verify.kind === 'query')

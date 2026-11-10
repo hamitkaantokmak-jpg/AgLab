@@ -287,7 +287,16 @@ const aglabLabber = (() => {
     if (/ icmp_seq=\d+ timeout$|Destination host unreachable|not reachable$/.test(text))
       return 'outerr';
     if (
-      /^(Bad command|Invalid (address|netmask|gateway)|Cannot resolve|No gateway found)/.test(text)
+      /^(Bad command|Invalid (address|netmask|gateway|options)|Cannot resolve|No gateway found)/.test(
+        text,
+      )
+    )
+      return 'outerr';
+    // L5-b: DHCP istemcisi ve nslookup başarısızlıkları
+    if (
+      /^(Can't find dhcp server|DNS request timed out\.|\*\*\* (Default servers are not available|Request to .* timed-out|.* can't find ))/.test(
+        text,
+      )
     )
       return 'outerr';
     return '';

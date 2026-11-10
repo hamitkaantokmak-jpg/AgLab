@@ -1,12 +1,13 @@
 // Lab runtime: owns configs, recomputes derived state, emits syslog on state changes.
 
 import { defaultSwitchConfig } from './config'
+import { apipaFor, dhcpDiscover, isApipa, type DhcpResult } from './dhcp'
 import { bpduViolations, type Derived } from './engine'
 import { l3Ifs, macTable, type Hop } from './net'
 import { candidateRid, computeState } from './ospf'
 import { LabQuery } from './query'
 import { buildTopo, pk, type Topo } from './topology'
-import { noHardwareFaults, type Hardware, type LabDef, type ObjectiveResult, type PcConfig, type SwitchConfig } from './types'
+import { noHardwareFaults, type DhcpBinding, type Hardware, type LabDef, type ObjectiveResult, type PcConfig, type SwitchConfig } from './types'
 import { clone, shortIf } from './util'
 
 export interface LogLine {
@@ -35,6 +36,8 @@ export interface SavedState {
   errdis?: string[]
   /** cut cables ('dev|port', both ends), powered-off devices, PCs with a disabled NIC */
   hw?: { cut: string[]; off: string[]; nicDown: string[] }
+  /** L5-b: DHCP leases */
+  dhcp?: DhcpBinding[]
 }
 
 export class LabRuntime {
@@ -52,6 +55,8 @@ export class LabRuntime {
   errdis = new Set<string>()
   /** cut cables, powered-off devices, disabled PC NICs (see Hardware) */
   hw: Hardware = noHardwareFaults()
+  /** L5-b: DHCP leases handed out by the lab's servers (kept in RAM: lost on reload) */
+  dhcp: DhcpBinding[] = []
   private seq = 0
   private t0 = Date.now()
   private listeners = new Set<() => void>()
@@ -72,6 +77,7 @@ export class LabRuntime {
     }
     for (const pc of this.topo.pcs) this.pcs[pc.id] = clone(this.def.initialPcs?.[pc.id] ?? { ip: null, prefix: 24, gw: null })
     this.errdis.clear()
+    this.dhcp = []
     this.hw = noHardwareFaults()
     for (const l of this.def.links)
       if (l.up === false) for (const [dev, port] of [l.a, l.b]) this.hw.cut.add(pk(dev, port))
@@ -224,7 +230,64 @@ export class LabRuntime {
 
   /** Read-only queries on the current state, including learned MAC addresses. */
   query(): LabQuery {
-    return new LabQuery(this.derived, this.startup, this.seen)
+    return new LabQuery(this.derived, this.startup, this.seen, this.dhcp)
+  }
+
+  /**
+   * L5-b: the PC asks for an address (DHCP DISCOVER … ACK). On success its address, mask,
+   * gateway and DNS server come from the lease. When nothing answers it keeps the
+   * link-local (169.254/16) address it already has, or gives itself one; the gateway is
+   * cleared and an earlier lease of this client is dropped.
+   */
+  dhcpRequest(pc: string): DhcpResult {
+    const def = this.topo.devices[pc]
+    if (!def || def.kind !== 'pc') return { ok: false, reason: 'nolink' }
+    const old = this.pcs[pc]!
+    const keep = { ...(old.services ? { services: old.services } : {}) }
+    const r = dhcpDiscover(this.derived, pc, this.dhcp)
+    this.dhcp = this.dhcp.filter((b) => b.client !== pc)
+    if (r.ok) {
+      this.pcs[pc] = { ip: r.ip, prefix: r.prefix, gw: r.gw, dhcp: true, dns: r.dns, ...keep }
+      this.dhcp.push({ server: r.server, serverIp: r.serverIp, pool: r.pool, ip: r.ip, client: pc, mac: def.mac, expires: this.leaseExpiry() })
+      this.seen.add(def.mac)
+    } else {
+      // already on a link-local address: nothing changes (the client keeps retrying)
+      if (old.ip && isApipa(old.ip)) this.pcs[pc] = { ...old, dhcp: true }
+      else this.pcs[pc] = { ip: apipaFor(def.mac), prefix: 16, gw: null, dhcp: true, ...(old.dns && !old.dhcp ? { dns: old.dns } : {}), ...keep }
+    }
+    this.commit()
+    return r
+  }
+
+  /** L5-b: DHCP release: the client gives its address back and has none. */
+  dhcpRelease(pc: string) {
+    const old = this.pcs[pc]
+    if (!old) return
+    this.dhcp = this.dhcp.filter((b) => b.client !== pc)
+    this.pcs[pc] = { ip: null, prefix: 24, gw: null, ...(old.services ? { services: old.services } : {}) }
+    this.commit()
+  }
+
+  /** L5-b: lease of this PC that is still in use (address obtained from DHCP), or null. */
+  dhcpLeaseOf(pc: string): DhcpBinding | null {
+    const c = this.pcs[pc]
+    return (c?.dhcp && this.dhcp.find((b) => b.client === pc && b.ip === c.ip)) || null
+  }
+
+  /** `clear ip dhcp binding *` / reload: the server forgets its leases. */
+  dhcpClear(server: string, ip?: string): number {
+    const before = this.dhcp.length
+    this.dhcp = this.dhcp.filter((b) => b.server !== server || (ip !== undefined && b.ip !== ip))
+    return before - this.dhcp.length
+  }
+
+  /** Default lease is one day: expiration on the lab clock (starts on Mar 1). */
+  private leaseExpiry(): string {
+    const ms = Date.now() - this.t0 + 3_723_000
+    const h = Math.floor(ms / 3_600_000) % 24
+    const m = Math.floor(ms / 60_000) % 60
+    const two = (n: number) => String(n).padStart(2, '0')
+    return `Mar 02 1993 ${two(h % 12 === 0 ? 12 : h % 12)}:${two(m)} ${h < 12 ? 'AM' : 'PM'}`
   }
 
   /** Cable on this port is plugged in and intact (says nothing about the far device). */
@@ -254,6 +317,8 @@ export class LabRuntime {
         for (const k of [...this.arp]) if (k.startsWith(dev + '>')) this.arp.delete(k)
         for (const k of [...this.arpIncomplete]) if (k.startsWith(dev + '>')) this.arpIncomplete.delete(k)
       }
+      // DHCP bindings live in RAM: a restarted server has none
+      this.dhcpClear(dev)
     }
     this.commit()
   }
@@ -310,6 +375,7 @@ export class LabRuntime {
       arpIncomplete: [...this.arpIncomplete],
       errdis: [...this.errdis],
       hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
+      dhcp: clone(this.dhcp),
     }
   }
 
@@ -328,6 +394,7 @@ export class LabRuntime {
     this.arpIncomplete = new Set(s.arpIncomplete ?? [])
     this.errdis = new Set(s.errdis ?? [])
     if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) }
+    this.dhcp = clone(s.dhcp ?? [])
     this.derived = this.recompute()
     this.emit()
     return true

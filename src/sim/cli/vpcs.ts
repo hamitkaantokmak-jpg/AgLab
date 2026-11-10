@@ -1,5 +1,6 @@
 // VPCS-style console for a lab PC.
 
+import { dnsLookup, dnsRecords, isApipa } from '../dhcp'
 import { arpMac, deliver, ping } from '../net'
 import type { LabRuntime } from '../runtime'
 import type { PcDef } from '../types'
@@ -10,11 +11,23 @@ const HELP = [
   'ip ARG ... [OPTION]      Configure the current VPC\'s IP settings',
   '  ip <address>/<len> [gateway]',
   '  ip <address> <mask> [gateway]',
+  '  ip dhcp [-r|-x]        Get an address from a DHCP server (-r renew, -x release)',
+  '  ip dns <address>       Set the DNS server (0.0.0.0 clears it)',
   'clear ip                 Clear IP address, mask and gateway',
   'show [arp|ip]            Print the information of the VPC',
   'ping <address>           Ping the network host',
   'trace <address>          Print the path packets take to network host',
+  'nslookup <name>          Ask the DNS server for the address of a host name',
   'help, ?                  Print help',
+  '',
+]
+
+/** Extra commands of a lab server (PcDef.server). */
+const SERVER_HELP = [
+  'service dhcp|dns on|off  Start or stop a service of this server',
+  'show services            Print the services and their state',
+  'show ip dhcp binding     Print the addresses this server leased',
+  'show dns                 Print the host names this server resolves',
   '',
 ]
 
@@ -38,7 +51,7 @@ export class VpcsSession {
   }
 
   complete(line: string): string | null {
-    const cmds = ['ip', 'clear', 'show', 'ping', 'trace', 'help']
+    const cmds = ['ip', 'clear', 'show', 'ping', 'trace', 'nslookup', 'help', ...(this.def.server ? ['service'] : [])]
     const t = line.trim()
     if (!t || t.includes(' ')) return null
     const m = cmds.filter((c) => c.startsWith(t))
@@ -46,7 +59,7 @@ export class VpcsSession {
   }
 
   help(): string[] {
-    return HELP
+    return this.def.server ? [...HELP, ...SERVER_HELP] : HELP
   }
 
   ctrlZ(): string[] {
@@ -59,12 +72,20 @@ export class VpcsSession {
     this.history.push(line)
     const [cmd, ...args] = line.split(/\s+/)
     const c = cmd!.toLowerCase()
-    if (c === '?' || c === 'help') return HELP
+    if (c === '?' || c === 'help') return this.help()
+    if (c === 'ip' && args[0]?.toLowerCase() === 'dhcp') return this.dhcp(args.slice(1))
+    if (c === 'dhcp') return this.dhcp(args)
+    if (c === 'ip' && args[0]?.toLowerCase() === 'dns') return this.setDns(args[1])
     if (c === 'ip') return this.ip(args)
     if (c === 'clear' && args[0] === 'ip') {
-      this.rt.pcs[this.dev] = { ip: null, prefix: 24, gw: null }
-      this.rt.commit()
+      // the lease is given back; a server keeps its services
+      this.rt.dhcpRelease(this.dev)
       return ['IPv4 address/mask, gateway, DNS, and DHCP cleared']
+    }
+    if (c === 'nslookup') return args[0] ? this.nslookup(args[0]) : ['Incomplete command.']
+    if (this.def.server) {
+      const srv = this.server(c, args)
+      if (srv) return srv
     }
     if (c === 'show' && (!args[0] || args[0] === 'ip')) return this.showIp()
     if (c === 'show' && args[0] === 'arp') return this.showArp()
@@ -100,19 +121,81 @@ export class VpcsSession {
     if (!isIp(addr) || prefix < 1 || prefix > 30) return ['Invalid address']
     if (gw && !isIp(gw)) return ['Invalid gateway']
     if (gw && !sameSubnet(addr, gw, prefix)) return ['Gateway is not in the same subnet']
-    this.rt.pcs[this.dev] = { ip: addr, prefix, gw }
+    // a static address replaces a DHCP one; the DNS server and a server's services stay
+    const old = this.rt.pcs[this.dev]!
+    this.rt.pcs[this.dev] = { ip: addr, prefix, gw, ...(old.dns ? { dns: old.dns } : {}), ...(old.services ? { services: old.services } : {}) }
     this.rt.commit()
     return ['Checking for duplicate address...', `${this.name} : ${addr} ${prefixToMask(prefix)}${gw ? ' gateway ' + gw : ''}`, '']
   }
 
+  /** `ip dhcp` (also `dhcp`): -x releases, anything else asks for a (new) lease. */
+  private dhcp(args: string[]): string[] {
+    const opt = args[0]?.toLowerCase()
+    if (opt && opt !== '-r' && opt !== '-x') return ['Invalid options']
+    if (opt === '-x') {
+      this.rt.dhcpRelease(this.dev)
+      return []
+    }
+    const r = this.rt.dhcpRequest(this.dev)
+    const c = this.rt.pcs[this.dev]!
+    if (r.ok) return [`DDORA IP ${c.ip}/${c.prefix}` + (c.gw ? ` GW ${c.gw}` : ''), '']
+    return ['DDD', "Can't find dhcp server", `Autoconfiguration IPv4 address ${c.ip}/${c.prefix} (no DHCP lease)`, '']
+  }
+
+  private setDns(addr: string | undefined): string[] {
+    if (!addr) return ['Incomplete command.']
+    if (!isIp(addr)) return ['Invalid address']
+    const c = this.rt.pcs[this.dev]!
+    if (addr === '0.0.0.0') delete c.dns
+    else c.dns = addr
+    this.rt.commit()
+    return []
+  }
+
+  /** Windows-style `nslookup <name>` through the configured DNS server. */
+  private nslookup(name: string): string[] {
+    const r = dnsLookup(this.rt.derived, this.dev, name)
+    if (r.ok) return ['Server:  UnKnown', `Address:  ${r.server}`, '', `Name:    ${r.name}`, `Address:  ${r.address}`, '']
+    if (r.reason === 'noserver') return ['*** Default servers are not available', '']
+    if (r.reason === 'timeout') return ['DNS request timed out.', '    timeout was 2 seconds.', '*** Request to UnKnown timed-out', '']
+    return ['Server:  UnKnown', `Address:  ${r.server}`, '', `*** UnKnown can't find ${name}: Non-existent domain`, '']
+  }
+
+  /** Server-only commands; null when the line is not one of them. */
+  private server(c: string, args: string[]): string[] | null {
+    const cfg = this.rt.pcs[this.dev]!
+    const a = args.map((x) => x.toLowerCase())
+    if (c === 'service') {
+      if ((a[0] !== 'dhcp' && a[0] !== 'dns') || (a[1] !== 'on' && a[1] !== 'off')) return ['Usage: service dhcp|dns on|off']
+      cfg.services = { ...(cfg.services ?? {}), [a[0]]: a[1] === 'on' }
+      // a stopped DHCP service forgets its leases
+      if (a[0] === 'dhcp' && a[1] === 'off') this.rt.dhcpClear(this.dev)
+      this.rt.commit()
+      return [`${a[0].toUpperCase()} service is ${a[1]}`]
+    }
+    if (c !== 'show') return null
+    if (a[0] === 'services') return ['Service     Status', ...(['dhcp', 'dns'] as const).map((k) => k.padEnd(12) + (cfg.services?.[k] ? 'on' : 'off')), '']
+    if (a[0] === 'ip' && a[1] === 'dhcp' && a[2] === 'binding') {
+      const rows = this.rt.dhcp.filter((b) => b.server === this.dev)
+      return ['IP address       Hardware address     Lease expiration', ...rows.map((b) => b.ip.padEnd(17) + b.mac.padEnd(21) + b.expires), '']
+    }
+    if (a[0] === 'dns') {
+      if (!cfg.services?.dns) return ['DNS service is off', '']
+      return ['Name                 Address', ...dnsRecords(this.rt.derived).map((x) => x.name.padEnd(21) + x.address), '']
+    }
+    return null
+  }
+
   private showIp(): string[] {
     const c = this.rt.pcs[this.dev]!
+    const lease = this.rt.dhcpLeaseOf(this.dev)
     return [
       '',
       `NAME        : ${this.name}[1]`,
       `IP/MASK     : ${c.ip ? `${c.ip}/${c.prefix}` : '0.0.0.0/0'}`,
       `GATEWAY     : ${c.gw ?? '0.0.0.0'}`,
-      'DNS         : ',
+      `DNS         : ${c.dns ?? ''}`,
+      ...(lease ? [`DHCP SERVER : ${lease.serverIp}`] : c.dhcp && c.ip && isApipa(c.ip) ? ['DHCP SERVER : none (autoconfiguration address)'] : []),
       `MAC         : ${macToColon(this.def.mac)}`,
       'LPORT       : 20000',
       'RHOST:PORT  : 127.0.0.1:30000',
