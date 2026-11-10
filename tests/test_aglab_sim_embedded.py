@@ -131,6 +131,7 @@ class SimEmbeddedTests(unittest.TestCase):
             [
                 "BridgeError",
                 "IosSession",
+                "LABBER_LABS",
                 "LabQuery",
                 "MODEL_L2",
                 "MODEL_L3",
@@ -160,8 +161,11 @@ class SimEmbeddedTests(unittest.TestCase):
         (engine-choice.js; L2-D1 ortak senaryolar, L2-D2 Akademi). Erişilen API kümesi
         her akışta tam olarak denetlenir."""
         page = self.page
-        # Sayfa yüklemesi: Akademi'de seçili labın motor rozeti için yalnız karar
-        self.assertEqual(set(self.accesses()), {"global", "toLabber"}, "sayfa yüklemesi")
+        # Sayfa yüklemesi: Akademi'de seçili labın motor rozeti için karar; Labber lab
+        # grubunun listesi (E) için LABBER_LABS
+        self.assertEqual(
+            set(self.accesses()), {"global", "toLabber", "LABBER_LABS"}, "sayfa yüklemesi"
+        )
         self.reset_accesses()
         page.click('[data-area="troubleshoot"]')
         page.click('[data-area="learn"]')
@@ -204,6 +208,17 @@ class SimEmbeddedTests(unittest.TestCase):
             "Labber senaryosu",
         )
         self.assertEqual(self.accesses().count("createRuntime"), 1, "senaryo başına tek")
+        # Labber labı (E): lab tanımı doğrudan createLab ile; köprü (toLabber) kullanılmaz
+        self.reset_accesses()
+        page.select_option("#labberLabSelect", page.evaluate("aglabLabberLabs.list()[0].id"))
+        page.click("#labberLabStart")
+        page.evaluate("aglabLabberLabs.objectives()")
+        self.assertEqual(
+            set(self.accesses()),
+            {"global", "LABBER_LABS", "createLab", "createSession", "VpcsSession"},
+            "Labber labı",
+        )
+        self.assertEqual(self.accesses().count("createLab"), 1, "lab başına tek çalışma zamanı")
 
 
 if __name__ == "__main__":

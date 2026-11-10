@@ -64,6 +64,7 @@ MODULES: dict[str, list[str]] = {
     "LABBER SESSION": ["simulator/labber-session.js"],
     "ENGINE CHOICE": ["simulator/engine-choice.js"],
     "NETWORK SCENARIOS": ["simulator/network-scenarios.js"],
+    "LABBER LABS UI": ["simulator/labber-labs-ui.js"],
     "SIMULATION PLAYBACK": ["simulator/simulation-playback.js"],
     "BORCK ENGINE": ["simulator/borck-engine.generated.js"],
     "ENGINE MANAGER": ["simulator/engine-manager.js"],

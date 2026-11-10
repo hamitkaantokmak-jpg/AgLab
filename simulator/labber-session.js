@@ -16,6 +16,59 @@
 // Labber durumu AğLab modelinde ifade edilemiyorsa (ör. portfast, OSPF) toAglab
 // BridgeError atar; bu durumda AğLab görünümü güncellenmez ve terminalde açıkça yazılır
 // (sessiz veri kaybı yok). Kalıcılık (running/startup ayrımının tarayıcı kaydı) L7'dedir.
+/** Lab tanımındaki tam port adının çizimdeki kısa yazımı: FastEthernet0/1 → fa0/1. */
+function labShortPort(p) {
+  const m = /^(FastEthernet|GigabitEthernet|TenGigabitEthernet|Ethernet)(.*)$/.exec(p);
+  if (!m) return p.toLowerCase();
+  return (
+    { FastEthernet: 'fa', GigabitEthernet: 'gi', TenGigabitEthernet: 'te', Ethernet: 'e' }[m[1]] +
+    m[2]
+  );
+}
+/** Lab tanımından (LabDef) yalnız çizim için AğLab topolojisi; köprü kullanılmaz. */
+function labTopology(def) {
+  const W = def.view?.w || 800,
+    H = def.view?.h || 420,
+    sx = (x) => Math.round(70 + (Math.max(0, Math.min(W, x)) * 710) / W),
+    sy = (y) => Math.round(55 + (Math.max(0, Math.min(H, y)) * 320) / H);
+  const devices = def.devices.map((d) => {
+    const base = { id: d.id, name: d.id, x: sx(d.x), y: sy(d.y), enabled: !d.off };
+    if (d.kind === 'switch')
+      return {
+        ...base,
+        type: 'Switch',
+        w: 112,
+        h: 72,
+        ports: d.ports.map(labShortPort),
+        vlans: [1],
+        interfaces: {},
+        config: { labberModel: d.model },
+      };
+    const pc = def.initialPcs?.[d.id];
+    const mask = pc?.ip
+      ? [24, 16, 8, 0].map((s) => (((0xffffffff << (32 - pc.prefix)) >>> 0) >>> s) & 255).join('.')
+      : '';
+    return {
+      ...base,
+      type: 'PC',
+      w: 104,
+      h: 72,
+      ip: pc?.ip || '',
+      mask,
+      gateway: pc?.gw || '',
+      ports: ['eth0'],
+      interfaces: { eth0: { enabled: !d.nicDown } },
+    };
+  });
+  const links = def.links.map((l) => ({
+    a: l.a[0],
+    portA: labShortPort(l.a[1]),
+    b: l.b[0],
+    portB: labShortPort(l.b[1]),
+    up: l.up !== false,
+  }));
+  return { app: 'AgLab', version: 23, devices, links, labberLab: { id: def.id } };
+}
 const aglabLabber = (() => {
   let state = null;
   // Yerleşim alanları çalışma zamanını etkilemez; sürüklemede yeniden kurulum yapılmaz.
@@ -51,6 +104,28 @@ const aglabLabber = (() => {
       writeError: null,
     };
   }
+  /**
+   * Labber labı (src/labs, E): lab tanımı (LabDef) köprü kullanılmadan doğrudan
+   * createLab ile kurulur. AğLab topolojisi yalnız çizim içindir (labTopology); geri
+   * yazım toAglab yerine labViewWrite ile yapılır (ad, PC adresi, güç, kablo), çünkü
+   * lablar AğLab modelinin ifade edemediği özellikler (OSPF, EtherChannel…) içerir.
+   */
+  function startLab(def) {
+    state = {
+      rt: AgLabSim.createLab(def),
+      lab: def,
+      sessions: {},
+      logSeq: {},
+      key: key(),
+      broken: null,
+      writeError: null,
+    };
+    labViewWrite();
+    state.key = key();
+  }
+  function lab() {
+    return state?.lab || null;
+  }
   function stop() {
     state = null;
   }
@@ -69,6 +144,11 @@ const aglabLabber = (() => {
     const k = key();
     if (k === state.key) return;
     state.key = k;
+    if (state.lab) {
+      state.broken =
+        'Labber labının topolojisi düzenleyiciyle değiştirilemez (lab tanımı sabittir). Labı yeniden başlat.';
+      return;
+    }
     const r = AgLabSim.toLabber(topology());
     if (r.report.engineDecision !== 'labber') {
       state.broken = brokenMessage(r.report.reasons);
@@ -105,6 +185,11 @@ const aglabLabber = (() => {
   }
   /** Çalışma zamanından AğLab topolojisine geri yazım (görünüm, denetçi, kayıt). */
   function writeBack() {
+    if (state.lab) {
+      labViewWrite();
+      state.key = key();
+      return;
+    }
     try {
       const view = AgLabSim.toAglab(state.rt, topology());
       devices = view.devices;
@@ -117,6 +202,37 @@ const aglabLabber = (() => {
         '. Kayıt ve dışa aktarma bu değişikliği içermez; değerlendirme Labber durumunu kullanır.';
     }
     state.key = key();
+  }
+  /** Lab kipinde çizimdeki durum: switch adı (hostname), PC adresi, güç, kablo. */
+  function labViewWrite() {
+    const rt = state.rt;
+    for (const d of devices) {
+      const def = rt.topo.devices[d.id];
+      if (!def) continue;
+      d.enabled = rt.powered(d.id);
+      if (def.kind === 'switch') d.name = rt.hostname(d.id);
+      else {
+        const pc = rt.pcs[d.id];
+        d.ip = pc?.ip || '';
+        d.mask = pc?.ip ? prefixMask(pc.prefix) : '';
+        d.gateway = pc?.gw || '';
+      }
+    }
+    for (const l of links) {
+      const a = labPort(l.a, l.portA),
+        b = labPort(l.b, l.portB);
+      l.up = rt.cableIntact(l.a, a) && rt.cableIntact(l.b, b);
+    }
+  }
+  function prefixMask(p) {
+    const n = p ? (0xffffffff << (32 - p)) >>> 0 : 0;
+    return [24, 16, 8, 0].map((s) => (n >>> s) & 255).join('.');
+  }
+  /** Çizimdeki kısa port adı (fa0/1) → lab tanımındaki tam ad (FastEthernet0/1). */
+  function labPort(dev, port) {
+    const def = state.rt.topo.devices[dev];
+    if (!def || def.kind === 'pc') return port;
+    return def.ports.find((p) => labShortPort(p) === port) || port;
   }
   function view() {
     return AgLabSim.toAglab(runtime(), topology());
@@ -266,6 +382,8 @@ const aglabLabber = (() => {
   }
   return {
     start,
+    startLab,
+    lab,
     stop,
     active,
     runtime,

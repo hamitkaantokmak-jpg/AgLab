@@ -6951,10 +6951,12 @@ labLoadExperiment();
       'importReport',
       'sourceArchive',
       'academySession',
+      'labberLab',
     ]);
     for (const k of Object.keys(obj))
       if (!allowedTop.has(k)) throw new Error('Beklenmeyen üst seviye alan: ' + k);
     if (obj.academySession !== undefined) academyValidateSession(obj.academySession);
+    if (obj.labberLab !== undefined) labberLabValidate(obj.labberLab);
     if (obj.app && obj.app !== 'AgLab') throw new Error('Dosya AgLab topoloji dosyası değil.');
     if (
       obj.sourceArchive !== undefined &&
@@ -7359,6 +7361,7 @@ labLoadExperiment();
         ...(sourceArchiveData ? { sourceArchive: sourceArchiveData } : {}),
         ...(importReportData ? { importReport: importReportData } : {}),
         ...academySessionFields(),
+        ...labberLabFields(),
       });
       localStorage.setItem('aglab-topology-v23', data);
       document.getElementById('aglabSaveWarning')?.remove();
@@ -7392,6 +7395,7 @@ labLoadExperiment();
         ...(sourceArchiveData ? { sourceArchive: sourceArchiveData } : {}),
         ...(importReportData ? { importReport: importReportData } : {}),
         ...academySessionFields(),
+        ...labberLabFields(),
       },
       null,
       2,
@@ -7432,6 +7436,7 @@ labLoadExperiment();
     cliMode = 'user';
     currentInterface = '';
     academyRestoreSession(obj.academySession || null);
+    labberLabRestore(obj.labberLab || null);
     render();
     syncSelects();
     updateInspector();
@@ -9061,6 +9066,11 @@ labLoadExperiment();
   // sonucu değerlendirmede kullanılmaz. İki sonuç farklıysa kayıt silinir ve yazılır.
   function labberSimulationTrace(src, target, ok) {
     if (!validIP(target)) return;
+    if (aglabLabber.lab()) {
+      // Lab tanımı AğLab modelinde ifade edilemeyebilir; eski motor kaydı üretilmez.
+      beginEthernetEvents();
+      return;
+    }
     if (ping(src, target).ok !== ok) {
       beginEthernetEvents();
       say(
@@ -9073,6 +9083,7 @@ labLoadExperiment();
     render();
     syncSelects();
     updateInspector();
+    labberLabsRefresh();
   }
   function command(raw) {
     let d = get($p('ptCliDevice').value);
@@ -11080,6 +11091,7 @@ labLoadExperiment();
   //@@module LABBER SESSION@@
   //@@module ENGINE CHOICE@@
   //@@module NETWORK SCENARIOS@@
+  //@@module LABBER LABS UI@@
   //@@module SIMULATION PLAYBACK@@
   //@@module BORCK ENGINE@@
   //@@module ENGINE MANAGER@@
@@ -11108,6 +11120,7 @@ labLoadExperiment();
       nextId = nextIdForTopology(obj);
       selected = devices.some((d) => d.id === obj.selected) ? obj.selected : devices[0]?.id || '';
       academyRestoreSession(obj.academySession || null);
+      labberLabRestore(obj.labberLab || null);
       render();
       syncSelects();
       updateInspector();

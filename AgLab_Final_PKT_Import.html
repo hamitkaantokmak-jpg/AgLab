@@ -666,6 +666,7 @@ var AgLabSim = (() => {
   __export(index_exports, {
     BridgeError: () => BridgeError,
     IosSession: () => IosSession,
+    LABBER_LABS: () => LABS,
     LabQuery: () => LabQuery,
     MODEL_L2: () => MODEL_L2,
     MODEL_L3: () => MODEL_L3,
@@ -884,19 +885,19 @@ var AgLabSim = (() => {
 
   // src/sim/topology.ts
   var pk = (dev, port) => `${dev}|${port}`;
-  function buildTopo(lab) {
+  function buildTopo(lab14) {
     const devices = {};
-    for (const d of lab.devices) devices[d.id] = d;
+    for (const d of lab14.devices) devices[d.id] = d;
     const peer = {};
-    for (const l of lab.links) {
+    for (const l of lab14.links) {
       peer[pk(l.a[0], l.a[1])] = { dev: l.b[0], port: l.b[1] };
       peer[pk(l.b[0], l.b[1])] = { dev: l.a[0], port: l.a[1] };
     }
-    const switches = lab.devices.filter((d) => d.kind === "switch");
-    const pcs = lab.devices.filter((d) => d.kind === "pc");
+    const switches = lab14.devices.filter((d) => d.kind === "switch");
+    const pcs = lab14.devices.filter((d) => d.kind === "pc");
     const pcAttach = {};
     for (const pc of pcs) pcAttach[pc.id] = peer[pk(pc.id, "eth0")] ?? null;
-    return { lab, devices, switches, pcs, peer, pcAttach };
+    return { lab: lab14, devices, switches, pcs, peer, pcAttach };
   }
 
   // src/sim/engine.ts
@@ -1123,18 +1124,18 @@ var AgLabSim = (() => {
     for (const sw of topo.switches) {
       const cfg = cfgs[sw.id];
       const out = [];
-      for (const [vs, svi] of Object.entries(cfg.svis)) {
+      for (const [vs, svi2] of Object.entries(cfg.svis)) {
         const v = Number(vs);
         const hasFwd = (d.lports[sw.id] ?? []).some((lp) => portForwards(d, sw.id, lp, v));
-        const up = !svi.shutdown && vlanExists(cfg, v) && hasFwd && !hw.off.has(sw.id);
+        const up = !svi2.shutdown && vlanExists(cfg, v) && hasFwd && !hw.off.has(sw.id);
         out.push({
           dev: sw.id,
           vlan: v,
-          adminDown: svi.shutdown,
+          adminDown: svi2.shutdown,
           up,
-          status: svi.shutdown ? "administratively down" : vlanExists(cfg, v) ? "up" : "down",
-          ip: svi.ip?.addr ?? null,
-          mask: svi.ip?.mask ?? null,
+          status: svi2.shutdown ? "administratively down" : vlanExists(cfg, v) ? "up" : "down",
+          ip: svi2.ip?.addr ?? null,
+          mask: svi2.ip?.mask ?? null,
           mac: macAdd(sw.mac, 64 + 0)
         });
       }
@@ -1562,8 +1563,8 @@ var AgLabSim = (() => {
     const back = deliver(d, replier, src);
     const backTo = back.hops[back.hops.length - 1]?.dev ?? replier;
     if (back.kind !== "ok" || backTo !== from) return { ok: false, reason: "timeout", forward: fwd, firstHopArp };
-    const base = d.topo.devices[replier].kind === "pc" ? 64 : 255;
-    return { ok: true, ttl: base - back.routersCrossed, replier, forward: fwd, firstHopArp };
+    const base2 = d.topo.devices[replier].kind === "pc" ? 64 : 255;
+    return { ok: true, ttl: base2 - back.routersCrossed, replier, forward: fwd, firstHopArp };
   }
   function isValidIp(s) {
     return ipToInt(s) !== null;
@@ -2026,12 +2027,12 @@ var AgLabSim = (() => {
     const c = rt.running[dev];
     const sw = rt.topo.devices[dev];
     const o = ["", "VLAN Name                             Status    Ports", "---- -------------------------------- --------- -------------------------------"];
-    const accessPorts = (v) => sortIfs(
+    const accessPorts2 = (v) => sortIfs(
       sw,
       (d.lports[dev] ?? []).filter((lp) => !lp.isPo && !lp.routed && lp.opMode === "access" && lp.cfg.accessVlan === v).map((lp) => lp.name)
     ).map(shortIf);
     for (const vs of Object.keys(c.vlans).map(Number).sort((a, b) => a - b)) {
-      const ports2 = vs >= 1002 && vs <= 1005 ? [] : accessPorts(vs);
+      const ports2 = vs >= 1002 && vs <= 1005 ? [] : accessPorts2(vs);
       const status = vs >= 1002 && vs <= 1005 ? "act/unsup" : "active";
       const chunks = [];
       for (let i = 0; i < ports2.length; i += 4) chunks.push(ports2.slice(i, i + 4).join(", "));
@@ -2078,11 +2079,11 @@ var AgLabSim = (() => {
   }
   function showIntTrunk(rt, dev) {
     const d = rt.derived;
-    const trunks = (d.lports[dev] ?? []).filter((lp) => lp.active && lp.opMode === "trunk");
-    if (!trunks.length) return [""];
+    const trunks2 = (d.lports[dev] ?? []).filter((lp) => lp.active && lp.opMode === "trunk");
+    if (!trunks2.length) return [""];
     const c = rt.running[dev];
     const o = ["", "Port        Mode             Encapsulation  Status        Native vlan"];
-    for (const lp of trunks)
+    for (const lp of trunks2)
       o.push(pad(shortIf(lp.name), 12) + pad(trunkMode(lp.cfg), 17) + pad("802.1q", 15) + pad("trunking", 14) + lp.cfg.nativeVlan);
     const allowedList = (lp) => lp.cfg.allowed === null ? "1-4094" : lp.cfg.allowed.length ? formatVlanList(lp.cfg.allowed) : "none";
     const active = (lp) => {
@@ -2094,11 +2095,11 @@ var AgLabSim = (() => {
       return vs.length ? formatVlanList(vs) : "none";
     };
     o.push("", "Port        Vlans allowed on trunk");
-    for (const lp of trunks) o.push(pad(shortIf(lp.name), 12) + allowedList(lp));
+    for (const lp of trunks2) o.push(pad(shortIf(lp.name), 12) + allowedList(lp));
     o.push("", "Port        Vlans allowed and active in management domain");
-    for (const lp of trunks) o.push(pad(shortIf(lp.name), 12) + active(lp));
+    for (const lp of trunks2) o.push(pad(shortIf(lp.name), 12) + active(lp));
     o.push("", "Port        Vlans in spanning tree forwarding state and not pruned");
-    for (const lp of trunks) o.push(pad(shortIf(lp.name), 12) + fwd(lp));
+    for (const lp of trunks2) o.push(pad(shortIf(lp.name), 12) + fwd(lp));
     return o;
   }
   function showIntSwitchport(rt, dev, only) {
@@ -2396,11 +2397,11 @@ var AgLabSim = (() => {
   function showSpanningTree(rt, dev, only) {
     const d = rt.derived;
     const c = rt.running[dev];
-    const vlans = Object.keys(d.stp).map(Number).filter((v) => d.stp[v][dev] && (only === void 0 || v === only));
-    if (only !== void 0 && !vlans.length) return [`Spanning tree instance(s) for vlan ${only} does not exist.`];
-    if (!vlans.length) return ["No spanning tree instance exists."];
+    const vlans3 = Object.keys(d.stp).map(Number).filter((v) => d.stp[v][dev] && (only === void 0 || v === only));
+    if (only !== void 0 && !vlans3.length) return [`Spanning tree instance(s) for vlan ${only} does not exist.`];
+    if (!vlans3.length) return ["No spanning tree instance exists."];
     const o = [];
-    for (const v of vlans) {
+    for (const v of vlans3) {
       const b = d.stp[v][dev];
       const ports2 = Object.entries(b.ports);
       if (!ports2.length && only === void 0) continue;
@@ -3153,10 +3154,10 @@ var AgLabSim = (() => {
       return name;
     }
     newPo(from) {
-      const base = from ? pickL2(from) : { shutdown: false, description: "", mode: "dynamic-auto", accessVlan: 1, nativeVlan: 1, allowed: null, nonegotiate: false, encapDot1q: false, portfast: false };
-      base.shutdown = false;
-      base.description = "";
-      return base;
+      const base2 = from ? pickL2(from) : { shutdown: false, description: "", mode: "dynamic-auto", accessVlan: 1, nativeVlan: 1, allowed: null, nonegotiate: false, encapDot1q: false, portfast: false };
+      base2.shutdown = false;
+      base2.description = "";
+      return base2;
     }
     enterIf(type, num) {
       const name = this.resolveIf(type, num, 1, true);
@@ -3935,11 +3936,11 @@ var AgLabSim = (() => {
         for (const [k, v] of dist2) if (!done.has(k) && (cur === null || v.cost < dist2.get(cur).cost)) cur = k;
         if (cur === null) break;
         done.add(cur);
-        const base = dist2.get(cur);
+        const base2 = dist2.get(cur);
         for (const e of edges.get(ekey(cur, area)) ?? []) {
           if (done.has(e.to)) continue;
-          const cost = base.cost + e.cost;
-          const paths = cur === root ? [e.path] : base.paths;
+          const cost = base2.cost + e.cost;
+          const paths = cur === root ? [e.path] : base2.paths;
           const prev = dist2.get(e.to);
           if (!prev || cost < prev.cost) dist2.set(e.to, { cost, paths: [...paths] });
           else if (cost === prev.cost) prev.paths = mergePaths(prev.paths, paths);
@@ -4656,6 +4657,1944 @@ var AgLabSim = (() => {
     return out;
   }
 
+  // src/labs/vlan-basics.ts
+  var pingBoth = (q, a, b) => q.ping(a, q.pcIp(b) ?? "0.0.0.0").ok && q.ping(b, q.pcIp(a) ?? "0.0.0.0").ok;
+  var UNUSED = ["Fa0/5", "Fa0/6", "Fa0/7", "Fa0/8"];
+  var lab = {
+    id: "vlan-temelleri",
+    title: "VLAN temelleri: tek switch",
+    summary: "Aynı subnet'teki dört PC'yi iki VLAN'a ayır ve VLAN'ın broadcast domain'i nasıl böldüğünü gör.",
+    level: "Başlangıç",
+    tags: ["VLAN", "Access port", "hostname"],
+    brief: [
+      "Dört PC aynı switch'e bağlı ve hepsi 192.168.1.0/24 subnet'inde. Şu an hepsi VLAN 1'de olduğu için birbirine ping atabiliyor.",
+      "Switch'in adını ERISIM-1 yap. VLAN 10 (YONETIM) ve VLAN 20 (MISAFIR) oluştur. PC1 ve PC2 VLAN 10'da, PC3 ve PC4 VLAN 20'de olsun.",
+      "Kullanılmayan Fa0/5–Fa0/8 portlarını kapat.",
+      "Sonuçta IP adresleri aynı subnet'te olsa bile PC1, PC3'e ulaşamamalı. VLAN'lar farklı broadcast domain'lerdir; aradaki trafik için router gerekir.",
+      "Kısayol: interface range fa0/5 - 8 → shutdown. Kontrol: show vlan brief, show interfaces status."
+    ],
+    view: { w: 760, h: 420 },
+    devices: [
+      { id: "SW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0001.0001", ports: ports("Fa0/1-8", "Gi0/1-2"), x: 380, y: 120 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.0101", x: 100, y: 330 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.0102", x: 285, y: 330 },
+      { id: "PC3", kind: "pc", mac: "0050.7966.0103", x: 475, y: 330 },
+      { id: "PC4", kind: "pc", mac: "0050.7966.0104", x: 660, y: 330 }
+    ],
+    links: [
+      { a: ["PC1", "eth0"], b: ["SW1", "FastEthernet0/1"] },
+      { a: ["PC2", "eth0"], b: ["SW1", "FastEthernet0/2"] },
+      { a: ["PC3", "eth0"], b: ["SW1", "FastEthernet0/3"] },
+      { a: ["PC4", "eth0"], b: ["SW1", "FastEthernet0/4"] }
+    ],
+    initialPcs: {
+      PC1: { ip: "192.168.1.11", prefix: 24, gw: null },
+      PC2: { ip: "192.168.1.12", prefix: 24, gw: null },
+      PC3: { ip: "192.168.1.13", prefix: 24, gw: null },
+      PC4: { ip: "192.168.1.14", prefix: 24, gw: null }
+    },
+    objectives: [
+      {
+        id: "hostname",
+        title: "Switch adı ERISIM-1",
+        hint: "configure terminal → hostname ERISIM-1. Prompt hemen değişir.",
+        check: (q) => q.hostname("SW1") === "ERISIM-1"
+      },
+      {
+        id: "vlans",
+        title: "VLAN 10 (YONETIM) ve VLAN 20 (MISAFIR) tanımlı",
+        hint: "vlan 10 → name YONETIM, vlan 20 → name MISAFIR. Kontrol: show vlan brief",
+        check: (q) => q.vlanName("SW1", 10) === "YONETIM" && q.vlanName("SW1", 20) === "MISAFIR"
+      },
+      {
+        id: "access",
+        title: "Fa0/1–2 VLAN 10, Fa0/3–4 VLAN 20 (access mod)",
+        hint: "interface range fa0/1 - 2 → switchport mode access → switchport access vlan 10",
+        check: (q) => {
+          const want = [["Fa0/1", 10], ["Fa0/2", 10], ["Fa0/3", 20], ["Fa0/4", 20]];
+          const bad = want.filter(([p, v]) => q.portCfg("SW1", p)?.mode !== "access" || q.port("SW1", p)?.cfg.accessVlan !== v || q.port("SW1", p)?.inactive);
+          return { ok: !bad.length, detail: bad.length ? "Sorunlu: " + bad.map(([p]) => p).join(", ") : void 0 };
+        }
+      },
+      {
+        id: "unused",
+        title: "Kullanılmayan Fa0/5–Fa0/8 kapalı",
+        hint: `interface range fa0/5 - 8 → shutdown. show interfaces status'ta "disabled" görünür.`,
+        check: (q) => UNUSED.every((p) => q.phys("SW1", p)?.adminDown)
+      },
+      {
+        id: "same",
+        title: "PC1 ↔ PC2 ve PC3 ↔ PC4 ping çalışıyor",
+        hint: "Aynı VLAN'daki PC'ler hâlâ konuşabilmeli.",
+        check: (q) => q.pcVlan("PC1") === 10 && q.pcVlan("PC3") === 20 && pingBoth(q, "PC1", "PC2") && pingBoth(q, "PC3", "PC4")
+      },
+      {
+        id: "isolated",
+        title: "PC1 → PC3 ping çalışmıyor (VLAN izolasyonu)",
+        hint: "Aynı subnet ama farklı VLAN: ARP isteği diğer VLAN'a ulaşmaz, ping timeout olur.",
+        check: (q) => q.pcVlan("PC1") === 10 && q.pcVlan("PC3") === 20 && !q.ping("PC1", "192.168.1.13").ok
+      }
+    ],
+    solution: {
+      SW1: `configure terminal
+hostname ERISIM-1
+vlan 10
+ name YONETIM
+vlan 20
+ name MISAFIR
+exit
+interface range fa0/1 - 2
+ switchport mode access
+ switchport access vlan 10
+interface range fa0/3 - 4
+ switchport mode access
+ switchport access vlan 20
+interface range fa0/5 - 8
+ shutdown
+end
+write memory`
+    }
+  };
+  var vlan_basics_default = lab;
+
+  // src/labs/trunk-troubleshoot.ts
+  var pingBoth2 = (q, a, b) => q.ping(a, q.pcIp(b) ?? "0.0.0.0").ok && q.ping(b, q.pcIp(a) ?? "0.0.0.0").ok;
+  var lab2 = {
+    id: "ariza-trunk",
+    title: "Arıza bul: Bozuk trunk",
+    summary: "Önceden yapılandırılmış iki switch'te dört hata var. show komutlarıyla bul ve düzelt.",
+    level: "Başlangıç",
+    tags: ["Troubleshooting", "VLAN", "Trunk", "Native VLAN"],
+    brief: [
+      "SWA ve SWB arasındaki Gi0/1 linki trunk. VLAN 10 (OFIS) ve VLAN 30 (KAMERA) iki switch'e de yayılmalı.",
+      "PC1 ↔ PC2 (VLAN 10) ve PC3 ↔ PC4 (VLAN 30) birbirine ping atabilmeli. Şu an ikisi de çalışmıyor.",
+      "Trunk yalnızca VLAN 10 ve 30'u taşısın ve iki uçta native VLAN aynı olsun. Routing yok; PC'ler yalnızca kendi VLAN'larıyla konuşur.",
+      "İpucu: show vlan brief, show interfaces trunk, show interfaces status ve syslog paneli yeterli."
+    ],
+    view: { w: 760, h: 440 },
+    devices: [
+      { id: "SWA", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.00aa.0001", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 200, y: 140 },
+      { id: "SWB", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.00aa.0002", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 560, y: 140 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.6a01", x: 100, y: 360 },
+      { id: "PC3", kind: "pc", mac: "0050.7966.6a03", x: 290, y: 360 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.6a02", x: 470, y: 360 },
+      { id: "PC4", kind: "pc", mac: "0050.7966.6a04", x: 660, y: 360 }
+    ],
+    links: [
+      { a: ["SWA", "GigabitEthernet0/1"], b: ["SWB", "GigabitEthernet0/1"] },
+      { a: ["PC1", "eth0"], b: ["SWA", "FastEthernet0/1"] },
+      { a: ["PC3", "eth0"], b: ["SWA", "FastEthernet0/2"] },
+      { a: ["PC2", "eth0"], b: ["SWB", "FastEthernet0/1"] },
+      { a: ["PC4", "eth0"], b: ["SWB", "FastEthernet0/2"] }
+    ],
+    initialPcs: {
+      PC1: { ip: "10.0.10.11", prefix: 24, gw: null },
+      PC2: { ip: "10.0.10.12", prefix: 24, gw: null },
+      PC3: { ip: "10.0.30.11", prefix: 24, gw: null },
+      PC4: { ip: "10.0.30.12", prefix: 24, gw: null }
+    },
+    initialConfig: {
+      SWA: `vlan 10
+ name OFIS
+vlan 30
+ name KAMERA
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+interface fa0/2
+ switchport mode access
+ switchport access vlan 30
+interface gi0/1
+ switchport mode trunk
+ switchport trunk allowed vlan 10,30
+exit`,
+      SWB: `vlan 10
+ name OFIS
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan 20
+interface fa0/2
+ switchport mode access
+ switchport access vlan 30
+interface gi0/1
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10
+exit`
+    },
+    objectives: [
+      {
+        id: "vlans",
+        title: "VLAN 10 (OFIS) ve 30 (KAMERA) iki switch'te de var",
+        hint: `show vlan brief ile karşılaştır. Eksik VLAN'a atanan port "inactive" görünür.`,
+        check: (q) => ["SWA", "SWB"].every((s) => q.vlanName(s, 10) === "OFIS" && q.vlanName(s, 30) === "KAMERA")
+      },
+      {
+        id: "access",
+        title: "PC1/PC2 VLAN 10'da, PC3/PC4 VLAN 30'da",
+        hint: "show interfaces status ile PC portlarının VLAN sütununa bak.",
+        check: (q) => q.pcVlan("PC1") === 10 && q.pcVlan("PC2") === 10 && q.pcVlan("PC3") === 30 && q.pcVlan("PC4") === 30
+      },
+      {
+        id: "native",
+        title: "Trunk'ın iki ucunda native VLAN aynı",
+        hint: "Syslog'da CDP-4-NATIVE_VLAN_MISMATCH var mı? show interfaces trunk → Native vlan sütunu.",
+        check: (q) => q.isTrunk("SWA", "Gi0/1") && q.isTrunk("SWB", "Gi0/1") && q.nativeMismatches().length === 0
+      },
+      {
+        id: "allowed",
+        title: "Trunk iki uçta da yalnızca VLAN 10 ve 30'u taşıyor",
+        hint: 'show interfaces trunk → "Vlans allowed on trunk". switchport trunk allowed vlan add 30',
+        check: (q) => ["SWA", "SWB"].every((s) => {
+          const lp = q.port(s, "Gi0/1");
+          return !!lp && lp.cfg.allowed?.join(",") === "10,30" && q.trunkAllows(s, "Gi0/1", 10) && q.trunkAllows(s, "Gi0/1", 30);
+        })
+      },
+      {
+        id: "ping",
+        title: "PC1 ↔ PC2 ve PC3 ↔ PC4 ping",
+        hint: "Önceki hedefler tamamsa ping de çalışmalı. PC konsolunda: ping 10.0.10.12",
+        check: (q) => pingBoth2(q, "PC1", "PC2") && pingBoth2(q, "PC3", "PC4")
+      }
+    ],
+    solution: {
+      SWB: `configure terminal
+vlan 30
+ name KAMERA
+exit
+interface fa0/1
+ switchport access vlan 10
+interface gi0/1
+ no switchport trunk native vlan
+ switchport trunk allowed vlan add 30
+end
+write memory`
+    }
+  };
+  var trunk_troubleshoot_default = lab2;
+
+  // src/labs/trunk-hardening.ts
+  var SW = ["SW1", "SW2"];
+  var PC_PORTS = ["Fa0/1", "Fa0/2"];
+  var UNUSED2 = ["Fa0/3", "Fa0/4", "Gi0/2"];
+  var pingBoth3 = (q, a, b) => q.ping(a, q.pcIp(b) ?? "0.0.0.0").ok && q.ping(b, q.pcIp(a) ?? "0.0.0.0").ok;
+  var lab3 = {
+    id: "trunk-guvenligi",
+    title: "Trunk ve port güvenliği (DTP)",
+    summary: "Varsayılan DTP ayarlarını kapat: statik trunk, nonegotiate, kullanılmayan native VLAN, park VLAN ve portfast.",
+    level: "Orta",
+    tags: ["DTP", "Native VLAN", "Best practice", "Portfast"],
+    brief: [
+      'İki switch fabrika ayarında. Tüm portlar "dynamic auto": iki uç da auto olduğu için aradaki link trunk olmadı ve bir saldırgan DTP ile trunk açabilir.',
+      "VLAN 10 (KULLANICI), VLAN 998 (PARK) ve VLAN 999 (NATIVE) oluştur. PC portları VLAN 10'da statik access olsun ve portfast açık olsun.",
+      "Gi0/1 linki iki uçta statik trunk olsun, DTP kapalı olsun (switchport nonegotiate), native VLAN 999 olsun ve yalnızca VLAN 10 taşınsın.",
+      "Kullanılmayan portlar (Fa0/3, Fa0/4, Gi0/2) access modda, VLAN 998'de ve kapalı olsun.",
+      `Not: nonegotiate yalnızca access veya trunk modda kabul edilir. dynamic moddayken "Conflict between 'nonegotiate' and 'dynamic' status" hatası alırsın.`
+    ],
+    view: { w: 760, h: 400 },
+    devices: [
+      { id: "SW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0002.0001", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 210, y: 130 },
+      { id: "SW2", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0002.0002", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 550, y: 130 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.0201", x: 110, y: 320 },
+      { id: "PC3", kind: "pc", mac: "0050.7966.0203", x: 300, y: 320 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.0202", x: 460, y: 320 },
+      { id: "PC4", kind: "pc", mac: "0050.7966.0204", x: 650, y: 320 }
+    ],
+    links: [
+      { a: ["SW1", "GigabitEthernet0/1"], b: ["SW2", "GigabitEthernet0/1"] },
+      { a: ["PC1", "eth0"], b: ["SW1", "FastEthernet0/1"] },
+      { a: ["PC3", "eth0"], b: ["SW1", "FastEthernet0/2"] },
+      { a: ["PC2", "eth0"], b: ["SW2", "FastEthernet0/1"] },
+      { a: ["PC4", "eth0"], b: ["SW2", "FastEthernet0/2"] }
+    ],
+    initialPcs: {
+      PC1: { ip: "10.10.10.11", prefix: 24, gw: null },
+      PC3: { ip: "10.10.10.13", prefix: 24, gw: null },
+      PC2: { ip: "10.10.10.12", prefix: 24, gw: null },
+      PC4: { ip: "10.10.10.14", prefix: 24, gw: null }
+    },
+    objectives: [
+      {
+        id: "vlans",
+        title: "VLAN 10 (KULLANICI), 998 (PARK), 999 (NATIVE) iki switch'te var",
+        hint: "vlan 10 → name KULLANICI, vlan 998 → name PARK, vlan 999 → name NATIVE",
+        check: (q) => SW.every((s) => q.vlanName(s, 10) === "KULLANICI" && q.vlanName(s, 998) === "PARK" && q.vlanName(s, 999) === "NATIVE")
+      },
+      {
+        id: "static-trunk",
+        title: "Gi0/1 iki uçta statik trunk ve DTP kapalı",
+        hint: 'switchport mode trunk → switchport nonegotiate. show interfaces switchport → "Negotiation of Trunking: Off"',
+        check: (q) => SW.every((s) => q.portCfg(s, "Gi0/1")?.mode === "trunk" && q.portCfg(s, "Gi0/1")?.nonegotiate && q.isTrunk(s, "Gi0/1"))
+      },
+      {
+        id: "native",
+        title: "Native VLAN 999, trunk yalnızca VLAN 10'u taşıyor",
+        hint: "switchport trunk native vlan 999 + switchport trunk allowed vlan 10. İki uç aynı olmalı.",
+        check: (q) => q.nativeMismatches().length === 0 && SW.every((s) => {
+          const c = q.portCfg(s, "Gi0/1");
+          return c?.nativeVlan === 999 && c.allowed?.join(",") === "10" && q.trunkAllows(s, "Gi0/1", 10);
+        })
+      },
+      {
+        id: "access",
+        title: "PC portları VLAN 10'da statik access, portfast açık",
+        hint: "interface range fa0/1 - 2 → switchport mode access → switchport access vlan 10 → spanning-tree portfast",
+        check: (q) => SW.every(
+          (s) => PC_PORTS.every((p) => {
+            const c = q.portCfg(s, p);
+            return c?.mode === "access" && c.accessVlan === 10 && c.portfast;
+          })
+        )
+      },
+      {
+        id: "parked",
+        title: "Kullanılmayan portlar VLAN 998'de ve kapalı",
+        hint: "interface range fa0/3 - 4, gi0/2 → switchport mode access → switchport access vlan 998 → shutdown",
+        check: (q) => {
+          const bad = SW.flatMap(
+            (s) => UNUSED2.filter((p) => {
+              const c = q.portCfg(s, p);
+              return !(c?.mode === "access" && c.accessVlan === 998 && c.shutdown);
+            }).map((p) => `${s} ${p}`)
+          );
+          return { ok: !bad.length, detail: bad.length ? "Sorunlu: " + bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "ping",
+        title: "Dört PC birbirine ping atabiliyor (VLAN 10)",
+        hint: "Trunk VLAN 10'u taşıyorsa PC1 → PC2 çalışır. PC konsolunda: ping 10.10.10.12",
+        check: (q) => ["PC1", "PC2", "PC3", "PC4"].every((p) => q.pcVlan(p) === 10) && pingBoth3(q, "PC1", "PC2") && pingBoth3(q, "PC3", "PC4")
+      }
+    ],
+    solution: Object.fromEntries(
+      SW.map((s) => [
+        s,
+        `configure terminal
+vlan 10
+ name KULLANICI
+vlan 998
+ name PARK
+vlan 999
+ name NATIVE
+exit
+interface range fa0/1 - 2
+ switchport mode access
+ switchport access vlan 10
+ spanning-tree portfast
+interface range fa0/3 - 4, gi0/2
+ switchport mode access
+ switchport access vlan 998
+ shutdown
+interface gi0/1
+ switchport mode trunk
+ switchport nonegotiate
+ switchport trunk native vlan 999
+ switchport trunk allowed vlan 10
+end
+write memory`
+      ])
+    )
+  };
+  var trunk_hardening_default = lab3;
+
+  // src/labs/campus-l2-l3.ts
+  var SW2 = ["SW1", "SW2", "SW3"];
+  var TRUNKS = [
+    ["SW1", "Gi0/1", "SW2", "Gi0/1"],
+    ["SW1", "Gi0/3", "SW3", "Gi0/1"],
+    ["SW2", "Gi0/3", "SW3", "Gi0/2"]
+  ];
+  var pingBoth4 = (q, a, b) => {
+    const ab = q.ping(a, q.pcIp(b) ?? "0.0.0.0");
+    const ba = q.ping(b, q.pcIp(a) ?? "0.0.0.0");
+    return ab.ok && ba.ok;
+  };
+  var lab4 = {
+    id: "kampus-vlan-trunk-stp",
+    title: "Kampüs ağı: VLAN, Trunk, STP, EtherChannel",
+    summary: "Üç switch ve dört PC ile VLAN, trunk, native VLAN, LACP, root bridge ve VLAN'lar arası yönlendirme kur.",
+    level: "Orta",
+    tags: ["VLAN", "Trunk", "STP", "EtherChannel", "SVI"],
+    brief: [
+      "SW1 çekirdek (L3, Catalyst 3560), SW2 ve SW3 erişim switch'leri. PC'lerin IP adresleri hazır; sen yalnızca switch'leri yapılandırırsın.",
+      "VLAN 10 adı SATIS, VLAN 20 adı MUHASEBE, VLAN 99 adı NATIVE olsun. PC1 ve PC2 VLAN 10'da, PC3 ve PC4 VLAN 20'de.",
+      "Switch'ler arası tüm linkler trunk olsun, native VLAN 99 kullansın ve yalnızca 10, 20, 99 taşınsın. SW1–SW2 arasındaki iki link LACP ile Port-channel 1 olsun.",
+      "SW1 VLAN 10 ve 20 için root bridge olsun. SW1 VLAN'lar arası yönlendirme yapsın: Vlan10 = 192.168.10.1/24, Vlan20 = 192.168.20.1/24.",
+      `Not: SW1 bir 3560 olduğu için trunk öncesi "switchport trunk encapsulation dot1q" gerekir. VLAN'ı oluşturmadan porta atarsan port "inactive" kalır.`
+    ],
+    view: { w: 900, h: 520 },
+    devices: [
+      { id: "SW1", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0010.0300", ports: ports("Fa0/1-4", "Gi0/1-4"), l3: true, needsEncap: true, x: 450, y: 80 },
+      { id: "SW2", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0010.0101", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 210, y: 270 },
+      { id: "SW3", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0010.0202", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 690, y: 270 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.6801", x: 100, y: 450 },
+      { id: "PC3", kind: "pc", mac: "0050.7966.6803", x: 320, y: 450 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.6802", x: 580, y: 450 },
+      { id: "PC4", kind: "pc", mac: "0050.7966.6804", x: 800, y: 450 }
+    ],
+    links: [
+      { a: ["SW1", "GigabitEthernet0/1"], b: ["SW2", "GigabitEthernet0/1"] },
+      { a: ["SW1", "GigabitEthernet0/2"], b: ["SW2", "GigabitEthernet0/2"] },
+      { a: ["SW1", "GigabitEthernet0/3"], b: ["SW3", "GigabitEthernet0/1"] },
+      { a: ["SW2", "GigabitEthernet0/3"], b: ["SW3", "GigabitEthernet0/2"] },
+      { a: ["PC1", "eth0"], b: ["SW2", "FastEthernet0/1"] },
+      { a: ["PC3", "eth0"], b: ["SW2", "FastEthernet0/2"] },
+      { a: ["PC2", "eth0"], b: ["SW3", "FastEthernet0/1"] },
+      { a: ["PC4", "eth0"], b: ["SW3", "FastEthernet0/2"] }
+    ],
+    initialPcs: {
+      PC1: { ip: "192.168.10.11", prefix: 24, gw: "192.168.10.1" },
+      PC2: { ip: "192.168.10.12", prefix: 24, gw: "192.168.10.1" },
+      PC3: { ip: "192.168.20.11", prefix: 24, gw: "192.168.20.1" },
+      PC4: { ip: "192.168.20.12", prefix: 24, gw: "192.168.20.1" }
+    },
+    objectives: [
+      {
+        id: "vlans",
+        title: "VLAN 10 (SATIS), 20 (MUHASEBE), 99 (NATIVE) üç switch'te tanımlı",
+        hint: "Her switch'te: vlan 10 → name SATIS, vlan 20 → name MUHASEBE, vlan 99 → name NATIVE. Kontrol: show vlan brief",
+        check: (q) => {
+          const want = [[10, "SATIS"], [20, "MUHASEBE"], [99, "NATIVE"]];
+          const missing = SW2.flatMap((s) => want.filter(([v, n]) => q.vlanName(s, v) !== n).map(([v]) => `${s}:${v}`));
+          return { ok: !missing.length, detail: missing.length ? "Eksik/yanlış: " + missing.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "access",
+        title: "PC1/PC2 VLAN 10'da, PC3/PC4 VLAN 20'de",
+        hint: "PC portlarında: switchport mode access + switchport access vlan N. Kontrol: show interfaces status",
+        check: (q) => {
+          const want = { PC1: 10, PC2: 10, PC3: 20, PC4: 20 };
+          const bad = Object.entries(want).filter(([pc, v]) => q.pcVlan(pc) !== v);
+          return { ok: !bad.length, detail: bad.length ? bad.map(([pc]) => `${pc}: ${q.pcVlan(pc) ?? "bağlı değil"}`).join(", ") : void 0 };
+        }
+      },
+      {
+        id: "trunks",
+        title: "Switch'ler arası linkler trunk; yalnızca 10, 20, 99 taşınıyor",
+        hint: "switchport mode trunk + switchport trunk allowed vlan 10,20,99 (SW1'de önce encapsulation dot1q). Kontrol: show interfaces trunk",
+        check: (q) => {
+          const bad = [];
+          for (const [a, ap, b, bp] of TRUNKS) {
+            for (const [d, p] of [[a, ap], [b, bp]]) {
+              const lp = q.port(d, p);
+              const allowedOk = !!lp && lp.cfg.allowed !== null && [...lp.cfg.allowed].sort((x, y) => x - y).join(",") === "10,20,99";
+              if (![10, 20, 99].every((v) => q.trunkAllows(d, p, v)) || !allowedOk) bad.push(`${d} ${p}`);
+            }
+          }
+          return { ok: !bad.length, detail: bad.length ? "Sorunlu: " + bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "native",
+        title: "Tüm trunk'larda native VLAN 99, uyuşmazlık yok",
+        hint: "switchport trunk native vlan 99 (Po1 üzerinde de). Uyuşmazlık syslog'da CDP-4-NATIVE_VLAN_MISMATCH olarak görünür.",
+        check: (q) => {
+          const trunks2 = q.trunks();
+          if (!trunks2.length) return { ok: false, detail: "Henüz kurulu trunk yok" };
+          const bad = trunks2.filter((t) => t.cfg.nativeVlan !== 99).map((t) => `${t.dev} ${t.name}`);
+          const mm = q.nativeMismatches().length;
+          return { ok: !bad.length && !mm && q.vlanExists("SW1", 99), detail: bad.length ? "Native ≠ 99: " + bad.join(", ") : mm ? "Native VLAN uyuşmazlığı var" : void 0 };
+        }
+      },
+      {
+        id: "po1",
+        title: "SW1–SW2 arasında LACP Port-channel 1 kurulu (2 üye)",
+        hint: "İki uçta da: interface range gi0/1 - 2 → channel-group 1 mode active (veya bir uç passive). Kontrol: show etherchannel summary",
+        check: (q) => {
+          const a = q.etherchannel("SW1", 1);
+          const b = q.etherchannel("SW2", 1);
+          const ok = !!a && !!b && a.up && b.up && a.protocol === "LACP" && a.bundled === 2 && b.bundled === 2;
+          return { ok, detail: !ok && a && b ? `SW1 Po1: ${a.bundled} üye, SW2 Po1: ${b.bundled} üye` : void 0 };
+        }
+      },
+      {
+        id: "root",
+        title: "SW1, VLAN 10 ve 20 için root bridge",
+        hint: "SW1: spanning-tree vlan 10,20 priority 4096 (veya root primary). Varsayılan root, MAC adresi en düşük olan SW2.",
+        check: (q) => {
+          const r10 = q.stpRoot(10);
+          const r20 = q.stpRoot(20);
+          return { ok: r10 === "SW1" && r20 === "SW1", detail: `VLAN 10 root: ${r10 ?? "-"}, VLAN 20 root: ${r20 ?? "-"}` };
+        }
+      },
+      {
+        id: "ping10",
+        title: "PC1 ↔ PC2 ping (VLAN 10)",
+        hint: "PC1 konsolunda: ping 192.168.10.12",
+        check: (q) => q.pcVlan("PC1") === 10 && q.pcVlan("PC2") === 10 && pingBoth4(q, "PC1", "PC2")
+      },
+      {
+        id: "ping20",
+        title: "PC3 ↔ PC4 ping (VLAN 20)",
+        hint: "PC3 konsolunda: ping 192.168.20.12",
+        check: (q) => q.pcVlan("PC3") === 20 && q.pcVlan("PC4") === 20 && pingBoth4(q, "PC3", "PC4")
+      },
+      {
+        id: "intervlan",
+        title: "VLAN'lar arası: PC1 ↔ PC4 ve PC3 ↔ PC2 ping",
+        hint: "SW1: ip routing, interface vlan 10/20 + ip address. Kontrol: show ip route, show ip interface brief",
+        check: (q) => q.pcVlan("PC1") === 10 && q.pcVlan("PC4") === 20 && pingBoth4(q, "PC1", "PC4") && pingBoth4(q, "PC3", "PC2")
+      }
+    ],
+    solution: {
+      SW1: `configure terminal
+vlan 10
+ name SATIS
+vlan 20
+ name MUHASEBE
+vlan 99
+ name NATIVE
+exit
+interface range gi0/1 - 2
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,20,99
+ channel-group 1 mode active
+exit
+interface gi0/3
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,20,99
+exit
+spanning-tree vlan 10,20 priority 4096
+ip routing
+interface vlan 10
+ ip address 192.168.10.1 255.255.255.0
+ no shutdown
+interface vlan 20
+ ip address 192.168.20.1 255.255.255.0
+ no shutdown
+end
+write memory`,
+      SW2: `configure terminal
+vlan 10
+ name SATIS
+vlan 20
+ name MUHASEBE
+vlan 99
+ name NATIVE
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+interface fa0/2
+ switchport mode access
+ switchport access vlan 20
+interface range gi0/1 - 2
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,20,99
+ channel-group 1 mode active
+interface gi0/3
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,20,99
+end
+write memory`,
+      SW3: `configure terminal
+vlan 10
+ name SATIS
+vlan 20
+ name MUHASEBE
+vlan 99
+ name NATIVE
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+interface fa0/2
+ switchport mode access
+ switchport access vlan 20
+interface range gi0/1 - 2
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,20,99
+end
+write memory`
+    }
+  };
+  var campus_l2_l3_default = lab4;
+
+  // src/labs/stp-load-balancing.ts
+  var ALL = ["DSW1", "DSW2", "ASW1", "ASW2"];
+  var ACCESS = ["ASW1", "ASW2"];
+  var pingBoth5 = (q, a, b) => q.ping(a, q.pcIp(b) ?? "0.0.0.0").ok && q.ping(b, q.pcIp(a) ?? "0.0.0.0").ok;
+  var trunks = (list) => `interface range ${list}
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20
+exit`;
+  var vlans = `vlan 10
+ name SES
+vlan 20
+ name VERI
+exit`;
+  var lab5 = {
+    id: "stp-yuk-dengeleme",
+    title: "STP: root seçimi ve VLAN başına yük dengeleme",
+    summary: "Yanlış switch root olmuş. Root ve yedek root'u VLAN başına ayarla, trafiği iki dağıtım switch'ine böl.",
+    level: "Orta",
+    tags: ["STP", "Rapid PVST+", "Root bridge", "Portfast"],
+    brief: [
+      "DSW1 ve DSW2 dağıtım, ASW1 ve ASW2 erişim switch'leri. Trunk'lar ve VLAN'lar hazır. Ağ çalışıyor ama MAC adresi en düşük olduğu için ASW1 her VLAN'da root bridge.",
+      "Tüm switch'leri Rapid PVST+ moduna al.",
+      "DSW1 VLAN 10 için root, VLAN 20 için yedek root olsun. DSW2 VLAN 20 için root, VLAN 10 için yedek root olsun.",
+      "Sonuçta her erişim switch'i VLAN 10'u DSW1 uplink'inden (Gi0/1), VLAN 20'yi DSW2 uplink'inden (Gi0/2) iletmeli; diğer uplink o VLAN için bloklanmalı.",
+      `Erişim switch'lerinde PC portlarına portfast aç. İpucu: yedek root ayarlamazsan tie-breaker MAC adresi olur ve yük dengeleme bozulabilir. "STP görünümü" ile VLAN seçip bloklanan portları izle.`
+    ],
+    view: { w: 820, h: 500 },
+    devices: [
+      { id: "DSW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0003.0010", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 230, y: 80 },
+      { id: "DSW2", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0003.0011", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 590, y: 80 },
+      { id: "ASW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0003.0001", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 150, y: 300 },
+      { id: "ASW2", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0003.0002", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 670, y: 300 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.0301", x: 70, y: 450 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.0302", x: 250, y: 450 },
+      { id: "PC3", kind: "pc", mac: "0050.7966.0303", x: 570, y: 450 },
+      { id: "PC4", kind: "pc", mac: "0050.7966.0304", x: 750, y: 450 }
+    ],
+    links: [
+      { a: ["DSW1", "GigabitEthernet0/1"], b: ["DSW2", "GigabitEthernet0/1"] },
+      { a: ["DSW1", "GigabitEthernet0/2"], b: ["ASW1", "GigabitEthernet0/1"] },
+      { a: ["DSW1", "GigabitEthernet0/3"], b: ["ASW2", "GigabitEthernet0/1"] },
+      { a: ["DSW2", "GigabitEthernet0/2"], b: ["ASW1", "GigabitEthernet0/2"] },
+      { a: ["DSW2", "GigabitEthernet0/3"], b: ["ASW2", "GigabitEthernet0/2"] },
+      { a: ["PC1", "eth0"], b: ["ASW1", "FastEthernet0/1"] },
+      { a: ["PC2", "eth0"], b: ["ASW1", "FastEthernet0/2"] },
+      { a: ["PC3", "eth0"], b: ["ASW2", "FastEthernet0/1"] },
+      { a: ["PC4", "eth0"], b: ["ASW2", "FastEthernet0/2"] }
+    ],
+    initialPcs: {
+      PC1: { ip: "10.1.10.11", prefix: 24, gw: null },
+      PC2: { ip: "10.1.20.11", prefix: 24, gw: null },
+      PC3: { ip: "10.1.10.12", prefix: 24, gw: null },
+      PC4: { ip: "10.1.20.12", prefix: 24, gw: null }
+    },
+    initialConfig: {
+      DSW1: `${vlans}
+${trunks("gi0/1 - 3")}`,
+      DSW2: `${vlans}
+${trunks("gi0/1 - 3")}`,
+      ASW1: `${vlans}
+${trunks("gi0/1 - 2")}
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+interface fa0/2
+ switchport mode access
+ switchport access vlan 20
+exit`,
+      ASW2: `${vlans}
+${trunks("gi0/1 - 2")}
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+interface fa0/2
+ switchport mode access
+ switchport access vlan 20
+exit`
+    },
+    objectives: [
+      {
+        id: "mode",
+        title: "Dört switch de Rapid PVST+ modunda",
+        hint: 'configure terminal → spanning-tree mode rapid-pvst. show spanning-tree → "protocol rstp"',
+        check: (q) => {
+          const bad = ALL.filter((s) => q.cfg(s).stpMode !== "rapid-pvst");
+          return { ok: !bad.length, detail: bad.length ? "Hâlâ pvst: " + bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "roots",
+        title: "VLAN 10 root: DSW1, VLAN 20 root: DSW2",
+        hint: "DSW1: spanning-tree vlan 10 root primary. DSW2: spanning-tree vlan 20 root primary.",
+        check: (q) => {
+          const r10 = q.stpRoot(10);
+          const r20 = q.stpRoot(20);
+          return { ok: r10 === "DSW1" && r20 === "DSW2", detail: `VLAN 10 root: ${r10 ?? "-"}, VLAN 20 root: ${r20 ?? "-"}` };
+        }
+      },
+      {
+        id: "secondary",
+        title: "Yedek root: VLAN 10 için DSW2, VLAN 20 için DSW1",
+        hint: "DSW2: spanning-tree vlan 10 root secondary (priority 28672). Yedek root, erişim switch'lerinden düşük priority'ye sahip olmalı.",
+        check: (q) => {
+          const second = (v, want, root) => {
+            const p = q.bridgePriority(want, v);
+            if (p === null) return false;
+            return ALL.filter((s) => s !== want && s !== root).every((s) => (q.bridgePriority(s, v) ?? Infinity) > p);
+          };
+          return second(10, "DSW2", "DSW1") && second(20, "DSW1", "DSW2");
+        }
+      },
+      {
+        id: "balance",
+        title: "Erişim switch'leri: VLAN 10 Gi0/1'den, VLAN 20 Gi0/2'den akıyor",
+        hint: "show spanning-tree vlan 10 (ASW1'de): Gi0/1 Root FWD, Gi0/2 Altn BLK olmalı. VLAN 20 için tersi.",
+        check: (q) => {
+          const bad = [];
+          for (const s of ACCESS) {
+            if (q.stpState(s, "Gi0/1", 10) !== "FWD" || q.stpState(s, "Gi0/2", 10) !== "BLK") bad.push(`${s} v10`);
+            if (q.stpState(s, "Gi0/2", 20) !== "FWD" || q.stpState(s, "Gi0/1", 20) !== "BLK") bad.push(`${s} v20`);
+          }
+          return { ok: !bad.length, detail: bad.length ? "Beklenmeyen: " + bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "portfast",
+        title: "ASW1 ve ASW2'de PC portlarında portfast açık",
+        hint: "interface range fa0/1 - 2 → spanning-tree portfast",
+        check: (q) => ACCESS.every((s) => ["Fa0/1", "Fa0/2"].every((p) => q.portCfg(s, p)?.portfast))
+      },
+      {
+        id: "ping",
+        title: "PC1 ↔ PC3 (VLAN 10) ve PC2 ↔ PC4 (VLAN 20) ping",
+        hint: "STP değişikliği bağlantıyı koparmamalı. PC1 konsolunda: ping 10.1.10.12",
+        check: (q) => pingBoth5(q, "PC1", "PC3") && pingBoth5(q, "PC2", "PC4")
+      }
+    ],
+    solution: {
+      DSW1: `configure terminal
+spanning-tree mode rapid-pvst
+spanning-tree vlan 10 root primary
+spanning-tree vlan 20 root secondary
+end
+write memory`,
+      DSW2: `configure terminal
+spanning-tree mode rapid-pvst
+spanning-tree vlan 20 root primary
+spanning-tree vlan 10 root secondary
+end
+write memory`,
+      ASW1: `configure terminal
+spanning-tree mode rapid-pvst
+interface range fa0/1 - 2
+ spanning-tree portfast
+end
+write memory`,
+      ASW2: `configure terminal
+spanning-tree mode rapid-pvst
+interface range fa0/1 - 2
+ spanning-tree portfast
+end
+write memory`
+    }
+  };
+  var stp_load_balancing_default = lab5;
+
+  // src/labs/etherchannel-troubleshoot.ts
+  var pingBoth6 = (q, a, b) => q.ping(a, q.pcIp(b) ?? "0.0.0.0").ok && q.ping(b, q.pcIp(a) ?? "0.0.0.0").ok;
+  var vlans2 = `vlan 10
+ name SATIS
+vlan 20
+ name DEPO
+exit`;
+  var accessPorts = `interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+interface fa0/2
+ switchport mode access
+ switchport access vlan 20
+exit`;
+  var bundle = (q, a, b, id) => {
+    const x = q.etherchannel(a, id);
+    const y = q.etherchannel(b, id);
+    return {
+      ok: !!x && !!y && x.up && y.up && x.bundled === 2 && y.bundled === 2 && x.protocol === "LACP" && y.protocol === "LACP",
+      detail: `${a} Po${id}: ${x ? `${x.protocol}, ${x.bundled} üye` : "yok"} · ${b} Po${id}: ${y ? `${y.protocol}, ${y.bundled} üye` : "yok"}`
+    };
+  };
+  var lab6 = {
+    id: "etherchannel-ariza",
+    title: "Arıza bul: EtherChannel kurulmuyor",
+    summary: "İki port-channel'ın hiçbiri kurulmamış. Mod, protokol ve üye config uyumsuzluklarını bul.",
+    level: "Orta",
+    tags: ["EtherChannel", "LACP", "PAgP", "Troubleshooting"],
+    brief: [
+      "SW1–SW2 arasındaki iki link Port-channel 1, SW1–SW3 arasındaki iki link Port-channel 2 olmalı. İkisi de LACP kullanmalı.",
+      "PC'ler şu an birbirine ping atabiliyor, çünkü bundle kurulmayınca linkler tek tek trunk olarak çalışıyor. STP de her çiftte bir linki blokluyor, yani bant genişliğinin yarısı boşa gidiyor.",
+      "Üç ayrı hata var. show etherchannel summary çıktısındaki bayraklara bak: (P) bundle'da, (I) tek başına, (s) askıya alınmış.",
+      `Not: Bir gruptaki portların protokolü (LACP / PAgP) aynı olmalı. Protokolü değiştirmek için önce iki porttan da "no channel-group" ile çıkar. Üye portun config'i port-channel'ınkiyle aynı değilse port askıya alınır; port-channel arayüzündeki switchport komutları üyelere de uygulanır.`
+    ],
+    view: { w: 820, h: 480 },
+    devices: [
+      { id: "SW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0004.0001", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 410, y: 70 },
+      { id: "SW2", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0004.0002", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 160, y: 300 },
+      { id: "SW3", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0004.0003", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 660, y: 300 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.0401", x: 70, y: 430 },
+      { id: "PC3", kind: "pc", mac: "0050.7966.0403", x: 260, y: 430 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.0402", x: 560, y: 430 },
+      { id: "PC4", kind: "pc", mac: "0050.7966.0404", x: 750, y: 430 }
+    ],
+    links: [
+      { a: ["SW1", "GigabitEthernet0/1"], b: ["SW2", "GigabitEthernet0/1"] },
+      { a: ["SW1", "GigabitEthernet0/2"], b: ["SW2", "GigabitEthernet0/2"] },
+      { a: ["SW1", "GigabitEthernet0/3"], b: ["SW3", "GigabitEthernet0/1"] },
+      { a: ["SW1", "GigabitEthernet0/4"], b: ["SW3", "GigabitEthernet0/2"] },
+      { a: ["PC1", "eth0"], b: ["SW2", "FastEthernet0/1"] },
+      { a: ["PC3", "eth0"], b: ["SW2", "FastEthernet0/2"] },
+      { a: ["PC2", "eth0"], b: ["SW3", "FastEthernet0/1"] },
+      { a: ["PC4", "eth0"], b: ["SW3", "FastEthernet0/2"] }
+    ],
+    initialPcs: {
+      PC1: { ip: "10.4.10.11", prefix: 24, gw: null },
+      PC2: { ip: "10.4.10.12", prefix: 24, gw: null },
+      PC3: { ip: "10.4.20.11", prefix: 24, gw: null },
+      PC4: { ip: "10.4.20.12", prefix: 24, gw: null }
+    },
+    initialConfig: {
+      SW1: `${vlans2}
+interface range gi0/1 - 2
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20
+ channel-group 1 mode passive
+interface range gi0/3 - 4
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20
+ channel-group 2 mode active
+interface gi0/4
+ switchport trunk allowed vlan 10
+exit`,
+      SW2: `${vlans2}
+${accessPorts}
+interface range gi0/1 - 2
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20
+ channel-group 1 mode passive
+exit`,
+      SW3: `${vlans2}
+${accessPorts}
+interface range gi0/1 - 2
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20
+ channel-group 2 mode desirable
+exit`
+    },
+    objectives: [
+      {
+        id: "po1",
+        title: "SW1–SW2: Port-channel 1 LACP ile kurulu (2 üye)",
+        hint: "İki uç da passive ise LACP hiç başlamaz. En az bir uç active olmalı.",
+        check: (q) => bundle(q, "SW1", "SW2", 1)
+      },
+      {
+        id: "po2",
+        title: "SW1–SW3: Port-channel 2 LACP ile kurulu (2 üye)",
+        hint: "SW3 PAgP (desirable) kullanıyor, SW1 LACP. SW1'de Gi0/4'ün allowed listesi de farklı (show run interface gi0/4).",
+        check: (q) => bundle(q, "SW1", "SW3", 2)
+      },
+      {
+        id: "nostray",
+        title: "Askıda (s) veya tek başına (I) üye port yok",
+        hint: "Üç switch'te de show etherchannel summary → tüm üyeler (P) olmalı.",
+        check: (q) => {
+          const bad = Object.values(q.d.ec).flat().flatMap((g) => g.members.filter((m) => m.flag !== "P").map((m) => `${g.dev} ${m.port.replace("GigabitEthernet", "Gi")}(${m.flag})`));
+          return { ok: !bad.length, detail: bad.length ? bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "stp",
+        title: "STP hiçbir uplink'i bloklamıyor (VLAN 10 ve 20)",
+        hint: "Bundle kurulunca iki fiziksel link STP için tek mantıksal port olur. show spanning-tree vlan 10",
+        check: (q) => [10, 20].every(
+          (v) => [
+            ["SW2", "Gi0/1"],
+            ["SW2", "Gi0/2"],
+            ["SW3", "Gi0/1"],
+            ["SW3", "Gi0/2"]
+          ].every(([s, p]) => q.stpState(s, p, v) === "FWD")
+        )
+      },
+      {
+        id: "ping",
+        title: "PC1 ↔ PC2 (VLAN 10) ve PC3 ↔ PC4 (VLAN 20) ping",
+        hint: "Trafik SW2 → Po1 → SW1 → Po2 → SW3 yolundan geçer.",
+        check: (q) => pingBoth6(q, "PC1", "PC2") && pingBoth6(q, "PC3", "PC4")
+      }
+    ],
+    solution: {
+      SW1: `configure terminal
+interface range gi0/1 - 2
+ channel-group 1 mode active
+interface port-channel 2
+ switchport trunk allowed vlan 10,20
+end
+write memory`,
+      SW3: `configure terminal
+interface range gi0/1 - 2
+ no channel-group
+ channel-group 2 mode active
+end
+write memory`
+    }
+  };
+  var etherchannel_troubleshoot_default = lab6;
+
+  // src/labs/l3-static-routing.ts
+  var pingBoth7 = (q, a, b) => q.ping(a, q.pcIp(b) ?? "0.0.0.0").ok && q.ping(b, q.pcIp(a) ?? "0.0.0.0").ok;
+  var svi = (q, dev, vlan, addr, mask) => {
+    const s = q.cfg(dev).svis[String(vlan)];
+    return !!s?.ip && s.ip.addr === addr && s.ip.mask === mask && q.sviUp(dev, vlan);
+  };
+  var lab7 = {
+    id: "l3-statik-route",
+    title: "İki L3 switch arasında statik yönlendirme",
+    summary: "İki çok katmanlı switch'i /30 transit VLAN ile bağla, SVI'ları kur ve statik + varsayılan rota ile uçtan uca ulaşım sağla.",
+    level: "İleri",
+    tags: ["L3 switch", "SVI", "Static route", "Default route"],
+    brief: [
+      "SW1 ve SW2 Catalyst 3560 (L3). İkisi de fabrika ayarında. PC'lerin IP ve gateway'leri hazır.",
+      "SW1: VLAN 10 (PC1) ve VLAN 100 (TRANSIT). Vlan10 = 192.168.10.1/24, Vlan100 = 10.0.100.1/30.",
+      "SW2: VLAN 20 (PC2), VLAN 30 (PC3) ve VLAN 100. Vlan20 = 192.168.20.1/24, Vlan30 = 172.16.30.1/24, Vlan100 = 10.0.100.2/30.",
+      "Gi0/1 transit linki iki uçta VLAN 100'de access port olsun. İki switch'te de ip routing açık olsun.",
+      "Rotalar: SW1 uzak ağların hepsine tek bir varsayılan rota (0.0.0.0/0) ile gitsin. SW2, 192.168.10.0/24 için statik rota kullansın. Kontrol: show ip route, PC'den trace."
+    ],
+    view: { w: 820, h: 440 },
+    devices: [
+      { id: "SW1", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0005.0001", ports: ports("Fa0/1-4", "Gi0/1-2"), l3: true, needsEncap: true, x: 240, y: 130 },
+      { id: "SW2", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0005.0002", ports: ports("Fa0/1-4", "Gi0/1-2"), l3: true, needsEncap: true, x: 580, y: 130 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.0501", x: 240, y: 360 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.0502", x: 480, y: 360 },
+      { id: "PC3", kind: "pc", mac: "0050.7966.0503", x: 690, y: 360 }
+    ],
+    links: [
+      { a: ["SW1", "GigabitEthernet0/1"], b: ["SW2", "GigabitEthernet0/1"] },
+      { a: ["PC1", "eth0"], b: ["SW1", "FastEthernet0/1"] },
+      { a: ["PC2", "eth0"], b: ["SW2", "FastEthernet0/1"] },
+      { a: ["PC3", "eth0"], b: ["SW2", "FastEthernet0/2"] }
+    ],
+    initialPcs: {
+      PC1: { ip: "192.168.10.10", prefix: 24, gw: "192.168.10.1" },
+      PC2: { ip: "192.168.20.10", prefix: 24, gw: "192.168.20.1" },
+      PC3: { ip: "172.16.30.10", prefix: 24, gw: "172.16.30.1" }
+    },
+    objectives: [
+      {
+        id: "routing",
+        title: "İki switch'te de ip routing açık",
+        hint: "configure terminal → ip routing. Kapalıyken switch yalnızca kendi SVI'larına cevap verir, yönlendirme yapmaz.",
+        check: (q) => q.cfg("SW1").ipRouting && q.cfg("SW2").ipRouting
+      },
+      {
+        id: "svis",
+        title: "Tüm SVI'lar doğru adresle up/up",
+        hint: "SVI'ın up olması için VLAN'ın var olması ve o VLAN'da aktif bir port bulunması gerekir. show ip interface brief",
+        check: (q) => {
+          const want = [
+            ["SW1", 10, "192.168.10.1", "255.255.255.0"],
+            ["SW1", 100, "10.0.100.1", "255.255.255.252"],
+            ["SW2", 20, "192.168.20.1", "255.255.255.0"],
+            ["SW2", 30, "172.16.30.1", "255.255.255.0"],
+            ["SW2", 100, "10.0.100.2", "255.255.255.252"]
+          ];
+          const bad = want.filter(([d, v, a, m]) => !svi(q, d, v, a, m)).map(([d, v]) => `${d} Vlan${v}`);
+          return { ok: !bad.length, detail: bad.length ? "Eksik/down: " + bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "transit",
+        title: "SW1, transit üzerinden 10.0.100.2'ye ping atabiliyor",
+        hint: "Gi0/1 iki uçta: switchport mode access + switchport access vlan 100. SW1'de: ping 10.0.100.2",
+        check: (q) => q.ping("SW1", "10.0.100.2").ok
+      },
+      {
+        id: "default",
+        title: "SW1'de varsayılan rota 10.0.100.2'ye, SW2'de 192.168.10.0/24 statik rotası var",
+        hint: "SW1: ip route 0.0.0.0 0.0.0.0 10.0.100.2. SW2: ip route 192.168.10.0 255.255.255.0 10.0.100.1",
+        check: (q) => q.cfg("SW1").routes.some((r) => r.net === "0.0.0.0" && r.mask === "0.0.0.0" && r.nh === "10.0.100.2") && q.cfg("SW2").routes.some((r) => r.net === "192.168.10.0" && r.mask === "255.255.255.0" && r.nh === "10.0.100.1")
+      },
+      {
+        id: "local",
+        title: "SW2 üzerinde PC2 ↔ PC3 ping (VLAN'lar arası)",
+        hint: "Aynı switch'teki iki SVI arasında yönlendirme için ip routing yeterli.",
+        check: (q) => pingBoth7(q, "PC2", "PC3")
+      },
+      {
+        id: "e2e",
+        title: "PC1 ↔ PC2 ve PC1 ↔ PC3 ping (iki router üzerinden)",
+        hint: "Dönüş yolunu unutma: SW2 192.168.10.0/24'e nasıl gideceğini bilmeli. PC1'de: trace 172.16.30.10",
+        check: (q) => pingBoth7(q, "PC1", "PC2") && pingBoth7(q, "PC1", "PC3")
+      }
+    ],
+    solution: {
+      SW1: `configure terminal
+ip routing
+vlan 10
+ name LAN10
+vlan 100
+ name TRANSIT
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+interface gi0/1
+ switchport mode access
+ switchport access vlan 100
+interface vlan 10
+ ip address 192.168.10.1 255.255.255.0
+interface vlan 100
+ ip address 10.0.100.1 255.255.255.252
+exit
+ip route 0.0.0.0 0.0.0.0 10.0.100.2
+end
+write memory`,
+      SW2: `configure terminal
+ip routing
+vlan 20
+ name LAN20
+vlan 30
+ name LAN30
+vlan 100
+ name TRANSIT
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan 20
+interface fa0/2
+ switchport mode access
+ switchport access vlan 30
+interface gi0/1
+ switchport mode access
+ switchport access vlan 100
+interface vlan 20
+ ip address 192.168.20.1 255.255.255.0
+interface vlan 30
+ ip address 172.16.30.1 255.255.255.0
+interface vlan 100
+ ip address 10.0.100.2 255.255.255.252
+exit
+ip route 192.168.10.0 255.255.255.0 10.0.100.1
+end
+write memory`
+    }
+  };
+  var l3_static_routing_default = lab7;
+
+  // src/labs/mgmt-vlan.ts
+  var MGMT = { ASW1: "192.168.99.11", ASW2: "192.168.99.12" };
+  var mgmtUp = (q, dev) => {
+    const s = q.cfg(dev).svis["99"];
+    return !!s?.ip && s.ip.addr === MGMT[dev] && s.ip.mask === "255.255.255.0" && q.sviUp(dev, 99);
+  };
+  var lab8 = {
+    id: "yonetim-vlan",
+    title: "Switch yönetimi: hostname, yönetim VLAN'ı, varsayılan ağ geçidi",
+    summary: "İki erişim switch'ine isim ver, VLAN 99 üzerinden yönetim IP'si ata, ip default-gateway ile başka VLAN'dan erişilebilir yap ve kaydet.",
+    level: "Başlangıç",
+    tags: ["CCNA", "Yönetim SVI", "Default gateway", "copy run start"],
+    brief: [
+      "CORE (Catalyst 3560) hazır: VLAN 10 (KULLANICI) ve VLAN 99 (YONETIM) arasında yönlendirme yapıyor. Vlan10 = 192.168.10.1/24, Vlan99 = 192.168.99.1/24. Switch'ler arası trunk'lar kurulu.",
+      `İki erişim switch'i fabrikadan yeni çıkmış gibi "Switch" adıyla geliyor. Hostname'lerini ASW1 ve ASW2 yap.`,
+      "Her erişim switch'inde VLAN 99'u YONETIM adıyla oluştur ve interface vlan 99'a yönetim adresi ver: ASW1 = 192.168.99.11/24, ASW2 = 192.168.99.12/24.",
+      "Bir L2 switch yönlendirme yapmaz. Başka bir VLAN'daki yöneticiye cevap verebilmesi için ip default-gateway 192.168.99.1 gerekir.",
+      "Kontrol: PC1 (VLAN 10) iki switch'in yönetim adresine ping atabilsin. Bitirince yapılandırmayı NVRAM'e kaydet (copy running-config startup-config)."
+    ],
+    view: { w: 860, h: 470 },
+    devices: [
+      { id: "CORE", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0020.0001", ports: ports("Fa0/1-4", "Gi0/1-2"), l3: true, needsEncap: true, x: 430, y: 80 },
+      { id: "ASW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0020.0011", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 230, y: 250 },
+      { id: "ASW2", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0020.0012", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 630, y: 250 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.2001", x: 230, y: 410 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.2002", x: 630, y: 410 }
+    ],
+    links: [
+      { a: ["CORE", "GigabitEthernet0/1"], b: ["ASW1", "GigabitEthernet0/1"] },
+      { a: ["CORE", "GigabitEthernet0/2"], b: ["ASW2", "GigabitEthernet0/1"] },
+      { a: ["PC1", "eth0"], b: ["ASW1", "FastEthernet0/1"] },
+      { a: ["PC2", "eth0"], b: ["ASW2", "FastEthernet0/1"] }
+    ],
+    initialConfig: {
+      CORE: `ip routing
+vlan 10
+ name KULLANICI
+vlan 99
+ name YONETIM
+exit
+interface range gi0/1 - 2
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+exit
+interface vlan 10
+ ip address 192.168.10.1 255.255.255.0
+interface vlan 99
+ ip address 192.168.99.1 255.255.255.0
+exit`,
+      ASW1: `hostname Switch
+vlan 10
+ name KULLANICI
+exit
+interface gi0/1
+ switchport mode trunk
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+exit`,
+      ASW2: `hostname Switch
+vlan 10
+ name KULLANICI
+exit
+interface gi0/1
+ switchport mode trunk
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+exit`
+    },
+    initialPcs: {
+      PC1: { ip: "192.168.10.10", prefix: 24, gw: "192.168.10.1" },
+      PC2: { ip: "192.168.10.20", prefix: 24, gw: "192.168.10.1" }
+    },
+    objectives: [
+      {
+        id: "hostname",
+        title: "Erişim switch'lerinin adı ASW1 ve ASW2",
+        hint: "configure terminal → hostname ASW1. Prompt hemen değişir.",
+        check: (q) => q.hostname("ASW1") === "ASW1" && q.hostname("ASW2") === "ASW2"
+      },
+      {
+        id: "vlan99",
+        title: "VLAN 99 iki erişim switch'inde YONETIM adıyla var",
+        hint: "vlan 99 → name YONETIM. VLAN yoksa interface vlan 99 hiçbir zaman up olmaz.",
+        check: (q) => ["ASW1", "ASW2"].every((d) => q.vlanName(d, 99) === "YONETIM")
+      },
+      {
+        id: "svi",
+        title: "Yönetim SVI'ları doğru adresle up/up",
+        hint: "interface vlan 99 → ip address 192.168.99.11 255.255.255.0. Kontrol: show ip interface brief",
+        check: (q) => {
+          const bad = ["ASW1", "ASW2"].filter((d) => !mgmtUp(q, d));
+          return { ok: !bad.length, detail: bad.length ? "Eksik/down: " + bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "local",
+        title: "CORE, iki switch'in yönetim adresine ping atabiliyor",
+        hint: "Aynı VLAN içinde gateway gerekmez. Burada sorun varsa trunk'ın VLAN 99'u taşıdığını kontrol et: show interfaces trunk",
+        check: (q) => q.ping("CORE", MGMT.ASW1).ok && q.ping("CORE", MGMT.ASW2).ok
+      },
+      {
+        id: "gateway",
+        title: "PC1 (VLAN 10), ASW1 ve ASW2'ye ping atabiliyor",
+        hint: `Switch cevabı başka bir ağa göndermek zorunda: ip default-gateway 192.168.99.1. Kontrol: show ip route (L2 switch'te "Default gateway is ..." yazar)`,
+        check: (q) => q.ping("PC1", MGMT.ASW1).ok && q.ping("PC1", MGMT.ASW2).ok
+      },
+      {
+        id: "saved",
+        title: "Yapılandırma iki switch'te de kaydedildi",
+        hint: "copy running-config startup-config (veya write memory). Kayıttan sonra yaptığın her değişiklik tekrar kaydedilmeli.",
+        check: (q) => ["ASW1", "ASW2"].every((d) => q.saved(d) && mgmtUp(q, d) && !!q.cfg(d).defaultGateway)
+      }
+    ],
+    solution: {
+      ASW1: `configure terminal
+hostname ASW1
+vlan 99
+ name YONETIM
+exit
+interface vlan 99
+ ip address 192.168.99.11 255.255.255.0
+ no shutdown
+exit
+ip default-gateway 192.168.99.1
+end
+copy running-config startup-config
+`,
+      ASW2: `configure terminal
+hostname ASW2
+vlan 99
+ name YONETIM
+exit
+interface vlan 99
+ ip address 192.168.99.12 255.255.255.0
+ no shutdown
+exit
+ip default-gateway 192.168.99.1
+end
+copy running-config startup-config
+`
+    }
+  };
+  var mgmt_vlan_default = lab8;
+
+  // src/labs/ospf-single-area.ts
+  var R = ["R1", "R2", "R3"];
+  var RID = { R1: "1.1.1.1", R2: "2.2.2.2", R3: "3.3.3.3" };
+  var PCS = ["PC1", "PC2", "PC3"];
+  var pingAll = (q) => {
+    for (const a of PCS) for (const b of PCS) if (a !== b && !q.ping(a, q.pcIp(b) ?? "0.0.0.0").ok) return `${a} → ${b}`;
+    return null;
+  };
+  var lan = (n) => `interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+exit
+vlan 10
+ name LAN
+exit
+interface vlan 10
+ ip address 192.168.${n}.1 255.255.255.0
+exit`;
+  var lab9 = {
+    id: "ospf-tek-alan",
+    title: "Tek alanlı OSPF: routed linkler, router ID, passive-interface",
+    summary: "Üç L3 switch'i /30 routed portlarla üçgen şeklinde bağla, loopback'lerden router ID ver, area 0'da OSPF kur ve LAN'ları passive yap.",
+    level: "Orta",
+    tags: ["CCNA", "OSPF", "Routed port", "Loopback", "Passive interface"],
+    brief: [
+      "R1, R2, R3 birer Catalyst 3560 ve ip routing açık. Her birinin LAN'ı hazır: VLAN 10, Vlan10 = 192.168.N.1/24 (N = 1, 2, 3).",
+      "Aradaki linkleri switchport değil routed port yap (no switchport) ve /30 adres ver. R1–R2 Gi0/1: 10.0.12.0/30, R1 Gi0/2–R3 Gi0/1: 10.0.13.0/30, R2 Gi0/2–R3 Gi0/2: 10.0.23.0/30. Küçük numaralı router .1 alsın.",
+      "Her router'a Loopback0 ekle: 1.1.1.1/32, 2.2.2.2/32, 3.3.3.3/32. OSPF router ID'leri bu adresler olsun (router-id ile ya da loopback'ten seçilerek).",
+      "router ospf 1 altında bütün arayüzleri area 0'a al. LAN arayüzlerinde (Vlan10) hello gönderilmesin: passive-interface.",
+      "Kontrol: show ip ospf neighbor, show ip route ospf, show ip protocols. Loopback'ler /32 olarak öğrenilir."
+    ],
+    view: { w: 880, h: 520 },
+    devices: [
+      { id: "R1", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0030.0001", ports: ports("Fa0/1-4", "Gi0/1-2"), l3: true, needsEncap: true, x: 440, y: 90 },
+      { id: "R2", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0030.0002", ports: ports("Fa0/1-4", "Gi0/1-2"), l3: true, needsEncap: true, x: 210, y: 300 },
+      { id: "R3", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0030.0003", ports: ports("Fa0/1-4", "Gi0/1-2"), l3: true, needsEncap: true, x: 670, y: 300 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.3001", x: 700, y: 70 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.3002", x: 210, y: 470 },
+      { id: "PC3", kind: "pc", mac: "0050.7966.3003", x: 670, y: 470 }
+    ],
+    links: [
+      { a: ["R1", "GigabitEthernet0/1"], b: ["R2", "GigabitEthernet0/1"] },
+      { a: ["R1", "GigabitEthernet0/2"], b: ["R3", "GigabitEthernet0/1"] },
+      { a: ["R2", "GigabitEthernet0/2"], b: ["R3", "GigabitEthernet0/2"] },
+      { a: ["PC1", "eth0"], b: ["R1", "FastEthernet0/1"] },
+      { a: ["PC2", "eth0"], b: ["R2", "FastEthernet0/1"] },
+      { a: ["PC3", "eth0"], b: ["R3", "FastEthernet0/1"] }
+    ],
+    initialConfig: {
+      R1: "ip routing\n" + lan(1),
+      R2: "ip routing\n" + lan(2),
+      R3: "ip routing\n" + lan(3)
+    },
+    initialPcs: {
+      PC1: { ip: "192.168.1.10", prefix: 24, gw: "192.168.1.1" },
+      PC2: { ip: "192.168.2.10", prefix: 24, gw: "192.168.2.1" },
+      PC3: { ip: "192.168.3.10", prefix: 24, gw: "192.168.3.1" }
+    },
+    objectives: [
+      {
+        id: "links",
+        title: "Üç /30 routed link çalışıyor (komşu adresine ping)",
+        hint: "interface gi0/1 → no switchport → ip address 10.0.12.1 255.255.255.252. Kontrol: show ip interface brief, ping 10.0.12.2",
+        check: (q) => {
+          const pairs = [["R1", "10.0.12.2"], ["R1", "10.0.13.2"], ["R2", "10.0.23.2"]];
+          const bad = pairs.filter(([d, ip]) => !q.ping(d, ip).ok).map(([d, ip]) => `${d}→${ip}`);
+          return { ok: !bad.length, detail: bad.length ? "Ping yok: " + bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "rid",
+        title: "Router ID'ler 1.1.1.1, 2.2.2.2, 3.3.3.3",
+        hint: 'Router ID OSPF süreci başlarken seçilir. Sonradan değiştirirsen komşuluk varken "clear ip ospf process" gerekir. Kontrol: show ip protocols',
+        check: (q) => {
+          const bad = R.filter((d) => q.ospf(d)?.rid !== RID[d]).map((d) => `${d}=${q.ospf(d)?.rid ?? "yok"}`);
+          return { ok: !bad.length, detail: bad.length ? bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "adj",
+        title: "Üç OSPF komşuluğu FULL",
+        hint: "network 10.0.0.0 0.255.255.255 area 0 gibi bir ifade linkleri OSPF'e alır. Kontrol: show ip ospf neighbor",
+        check: (q) => q.ospfAdjacent("R1", "R2") && q.ospfAdjacent("R1", "R3") && q.ospfAdjacent("R2", "R3")
+      },
+      {
+        id: "passive",
+        title: "LAN arayüzleri OSPF'te ama passive",
+        hint: "router ospf 1 → passive-interface vlan 10. Passive arayüz hello göndermez ama ağı yine de ilan edilir. Kontrol: show ip ospf interface vlan 10",
+        check: (q) => R.every((d) => q.ospf(d)?.ifs.some((i) => i.name === "Vlan10" && i.passive && i.area === 0) ?? false)
+      },
+      {
+        id: "loop",
+        title: "R1, diğer router'ların loopback'lerini /32 olarak OSPF'ten öğrendi",
+        hint: "Loopback0 da bir network ifadesiyle eşleşmeli (ör. network 2.2.2.2 0.0.0.0 area 0). Kontrol: show ip route ospf",
+        check: (q) => ["2.2.2.2", "3.3.3.3"].every((ip) => q.route("R1", ip, 32)?.code === "O")
+      },
+      {
+        id: "e2e",
+        title: "Bütün PC'ler birbirine ping atabiliyor",
+        hint: "Her LAN diğer iki router'da O olarak görünmeli. PC'de: trace 192.168.3.10",
+        check: (q) => {
+          const bad = pingAll(q);
+          return { ok: !bad, detail: bad ? "Ping yok: " + bad : void 0 };
+        }
+      }
+    ],
+    solution: {
+      R1: `configure terminal
+interface loopback 0
+ ip address 1.1.1.1 255.255.255.255
+interface gi0/1
+ no switchport
+ ip address 10.0.12.1 255.255.255.252
+interface gi0/2
+ no switchport
+ ip address 10.0.13.1 255.255.255.252
+exit
+router ospf 1
+ router-id 1.1.1.1
+ network 10.0.0.0 0.255.255.255 area 0
+ network 192.168.1.0 0.0.0.255 area 0
+ network 1.1.1.1 0.0.0.0 area 0
+ passive-interface vlan 10
+end
+write memory`,
+      R2: `configure terminal
+interface loopback 0
+ ip address 2.2.2.2 255.255.255.255
+interface gi0/1
+ no switchport
+ ip address 10.0.12.2 255.255.255.252
+interface gi0/2
+ no switchport
+ ip address 10.0.23.1 255.255.255.252
+exit
+router ospf 1
+ router-id 2.2.2.2
+ network 10.0.0.0 0.255.255.255 area 0
+ network 192.168.2.0 0.0.0.255 area 0
+ network 2.2.2.2 0.0.0.0 area 0
+ passive-interface vlan 10
+end
+write memory`,
+      R3: `configure terminal
+interface loopback 0
+ ip address 3.3.3.3 255.255.255.255
+interface gi0/1
+ no switchport
+ ip address 10.0.13.2 255.255.255.252
+interface gi0/2
+ no switchport
+ ip address 10.0.23.2 255.255.255.252
+exit
+router ospf 1
+ router-id 3.3.3.3
+ network 10.0.0.0 0.255.255.255 area 0
+ network 192.168.3.0 0.0.0.255 area 0
+ network 3.3.3.3 0.0.0.0 area 0
+ passive-interface vlan 10
+end
+write memory`
+    }
+  };
+  var ospf_single_area_default = lab9;
+
+  // src/labs/routed-access.ts
+  var UPLINKS = [
+    // dist, dist port, access, access port, /30 network (dist .1, access .2)
+    ["DSW1", "Gi0/1", "ASW1", "Gi0/1", "10.1.11"],
+    ["DSW2", "Gi0/1", "ASW1", "Gi0/2", "10.1.21"],
+    ["DSW1", "Gi0/2", "ASW2", "Gi0/1", "10.1.12"],
+    ["DSW2", "Gi0/2", "ASW2", "Gi0/2", "10.1.22"]
+  ];
+  var ALL2 = ["DSW1", "DSW2", "ASW1", "ASW2"];
+  var routedIf = (port, ip) => `interface ${port}
+ no switchport
+ ip address ${ip} 255.255.255.252
+ ip ospf network point-to-point`;
+  var solutionFor = (dev) => {
+    const lines = ["configure terminal"];
+    for (const [d, dp, a, ap, net] of UPLINKS) {
+      if (d === dev) lines.push(routedIf(dp, net + ".1"));
+      if (a === dev) lines.push(routedIf(ap, net + ".2"));
+    }
+    if (dev === "DSW1" || dev === "DSW2") {
+      lines.push(routedIf("Gi0/3", dev === "DSW1" ? "10.1.0.1" : "10.1.0.2"), "exit");
+      if (dev === "DSW1") lines.push("no interface vlan 10", "no interface vlan 20");
+      lines.push("no vlan 10,20");
+    } else {
+      const v = dev === "ASW1" ? 10 : 20;
+      lines.push("exit", `interface vlan ${v}`, ` ip address 192.168.${v}.1 255.255.255.0`, "exit");
+    }
+    const rid = { DSW1: "10.255.0.1", DSW2: "10.255.0.2", ASW1: "10.255.0.11", ASW2: "10.255.0.12" }[dev];
+    lines.push("router ospf 1", ` router-id ${rid}`, " network 10.1.0.0 0.0.255.255 area 0");
+    if (dev.startsWith("ASW")) lines.push(` network 192.168.${dev === "ASW1" ? 10 : 20}.0 0.0.0.255 area 0`, ` passive-interface vlan ${dev === "ASW1" ? 10 : 20}`);
+    lines.push("end", "write memory");
+    return lines.join("\n");
+  };
+  var trunk = (list) => `interface range ${list}
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+exit`;
+  var lab10 = {
+    id: "routed-erisim-blogu",
+    title: "Tamamen routed switch bloğu (L3 erişim katmanı)",
+    summary: "Klasik L2 dağıtım bloğunu, erişim switch'lerinin kendi VLAN'larına gateway olduğu, STP'nin port bloklamadığı ve OSPF'in iki uplink'i birlikte kullandığı routed bir bloğa dönüştür.",
+    level: "İleri",
+    tags: ["ENCOR", "Kampüs tasarımı", "Routed port", "OSPF", "ECMP"],
+    brief: [
+      "Mevcut tasarım klasik L2 bloğu: VLAN 10 ve 20 dört switch'e de yayılmış, bütün linkler trunk, gateway'ler DSW1'deki SVI'lar. STP her VLAN'da bir uplink'i blokluyor; uplink'lerin yarısı boşta.",
+      `Hedef, PDF'teki "A Completely Routed Switch Block" tasarımı: dört switch arasındaki her link /30 routed port olsun ve hiçbir VLAN erişim switch'inin dışına çıkmasın.`,
+      "Adresleme: DSWn Gi0/x tarafı .1, erişim tarafı .2 alsın. DSW1–ASW1 10.1.11.0/30, DSW2–ASW1 10.1.21.0/30, DSW1–ASW2 10.1.12.0/30, DSW2–ASW2 10.1.22.0/30, DSW1–DSW2 (Gi0/3) 10.1.0.0/30 (DSW1 .1).",
+      "Gateway'ler erişim katmanına taşınsın: ASW1 Vlan10 = 192.168.10.1/24, ASW2 Vlan20 = 192.168.20.1/24. DSW1'deki eski SVI'ları ve dağıtım switch'lerindeki VLAN 10/20'yi kaldır.",
+      "OSPF area 0. Router ID'ler: DSW1 10.255.0.1, DSW2 10.255.0.2, ASW1 10.255.0.11, ASW2 10.255.0.12. İki router'lık linklerde DR/BDR seçimi gereksiz: ip ospf network point-to-point. LAN SVI'ları passive.",
+      "Sonuç: her erişim switch'i karşı LAN'a iki eşit maliyetli yol görmeli (ECMP). Kontrol: show ip route 192.168.20.0, show spanning-tree, show ip ospf neighbor."
+    ],
+    view: { w: 900, h: 560 },
+    devices: [
+      { id: "DSW1", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0040.0001", ports: ports("Fa0/1-2", "Gi0/1-3"), l3: true, needsEncap: true, x: 260, y: 90 },
+      { id: "DSW2", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0040.0002", ports: ports("Fa0/1-2", "Gi0/1-3"), l3: true, needsEncap: true, x: 640, y: 90 },
+      { id: "ASW1", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0040.0011", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 260, y: 330 },
+      { id: "ASW2", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0040.0012", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 640, y: 330 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.4001", x: 260, y: 500 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.4002", x: 640, y: 500 }
+    ],
+    links: [
+      { a: ["DSW1", "GigabitEthernet0/1"], b: ["ASW1", "GigabitEthernet0/1"] },
+      { a: ["DSW2", "GigabitEthernet0/1"], b: ["ASW1", "GigabitEthernet0/2"] },
+      { a: ["DSW1", "GigabitEthernet0/2"], b: ["ASW2", "GigabitEthernet0/1"] },
+      { a: ["DSW2", "GigabitEthernet0/2"], b: ["ASW2", "GigabitEthernet0/2"] },
+      { a: ["DSW1", "GigabitEthernet0/3"], b: ["DSW2", "GigabitEthernet0/3"] },
+      { a: ["PC1", "eth0"], b: ["ASW1", "FastEthernet0/1"] },
+      { a: ["PC2", "eth0"], b: ["ASW2", "FastEthernet0/1"] }
+    ],
+    initialConfig: {
+      DSW1: `ip routing
+vlan 10,20
+exit
+spanning-tree vlan 10,20 root primary
+${trunk("gi0/1 - 3")}
+interface vlan 10
+ ip address 192.168.10.1 255.255.255.0
+interface vlan 20
+ ip address 192.168.20.1 255.255.255.0
+exit`,
+      DSW2: `ip routing
+vlan 10,20
+exit
+${trunk("gi0/1 - 3")}`,
+      ASW1: `ip routing
+vlan 10,20
+exit
+${trunk("gi0/1 - 2")}
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+ spanning-tree portfast
+exit`,
+      ASW2: `ip routing
+vlan 10,20
+exit
+${trunk("gi0/1 - 2")}
+interface fa0/1
+ switchport mode access
+ switchport access vlan 20
+ spanning-tree portfast
+exit`
+    },
+    initialPcs: {
+      PC1: { ip: "192.168.10.10", prefix: 24, gw: "192.168.10.1" },
+      PC2: { ip: "192.168.20.10", prefix: 24, gw: "192.168.20.1" }
+    },
+    objectives: [
+      {
+        id: "routed",
+        title: "Blok içindeki bütün linkler routed port",
+        hint: "interface gi0/1 → no switchport → ip address … 255.255.255.252. Trunk kalan link VLAN'ı dağıtıma taşımaya devam eder.",
+        check: (q) => {
+          const ends = [...UPLINKS.flatMap(([d, dp, a, ap]) => [[d, dp], [a, ap]]), ["DSW1", "Gi0/3"], ["DSW2", "Gi0/3"]];
+          const bad = ends.filter(([dev, p]) => !q.portCfg(dev, p)?.routed || !q.portCfg(dev, p)?.ip).map(([dev, p]) => `${dev} ${p}`);
+          return { ok: !bad.length, detail: bad.length ? "L2 ya da IP'siz: " + bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "novlan",
+        title: "VLAN 10/20 dağıtıma yayılmıyor, gateway'ler erişim switch'inde",
+        hint: "DSW1: no interface vlan 10, no interface vlan 20, no vlan 10,20 (DSW2'de de). ASW1'de interface vlan 10, ASW2'de interface vlan 20.",
+        check: (q) => ["DSW1", "DSW2"].every((d) => !q.vlanExists(d, 10) && !q.vlanExists(d, 20)) && q.cfg("ASW1").svis["10"]?.ip?.addr === "192.168.10.1" && q.sviUp("ASW1", 10) && q.cfg("ASW2").svis["20"]?.ip?.addr === "192.168.20.1" && q.sviUp("ASW2", 20)
+      },
+      {
+        id: "nostp",
+        title: "STP hiçbir portu bloklamıyor",
+        hint: "Routed portlar STP'ye katılmaz; döngü L3'te OSPF tarafından çözülür. Kontrol: show spanning-tree",
+        check: (q) => {
+          const blk = [];
+          for (const [v, bridges] of Object.entries(q.d.stp))
+            for (const [dev, b] of Object.entries(bridges))
+              for (const [p, st] of Object.entries(b.ports)) if (st.state !== "FWD") blk.push(`${dev} ${p} (VLAN ${v})`);
+          return { ok: !blk.length, detail: blk.length ? "Bloklu: " + blk.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "p2p",
+        title: "Beş OSPF komşuluğu FULL, hepsi point-to-point (DR/BDR yok)",
+        hint: `Her routed linkte iki uçta: ip ospf network point-to-point. show ip ospf neighbor'da durum "FULL/  -" olmalı.`,
+        check: (q) => {
+          const pairs = [["DSW1", "DSW2"], ...UPLINKS.map(([d, , a]) => [d, a])];
+          const bad = pairs.filter(([a, b]) => !q.ospfAdjacent(a, b)).map(([a, b]) => `${a}–${b}`);
+          const dr = ALL2.flatMap((d) => q.ospfFull(d).filter((n) => n.role !== "-").map((n) => `${d} ${n.ifname}`));
+          if (bad.length) return { ok: false, detail: "Komşuluk yok: " + bad.join(", ") };
+          return { ok: !dr.length, detail: dr.length ? "Hâlâ broadcast: " + dr.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "rid",
+        title: "Router ID'ler plana uygun",
+        hint: "router ospf 1 → router-id 10.255.0.11. Komşuluk kurulduktan sonra değiştirirsen: clear ip ospf process",
+        check: (q) => {
+          const want = { DSW1: "10.255.0.1", DSW2: "10.255.0.2", ASW1: "10.255.0.11", ASW2: "10.255.0.12" };
+          const bad = ALL2.filter((d) => q.ospf(d)?.rid !== want[d]).map((d) => `${d}=${q.ospf(d)?.rid ?? "yok"}`);
+          return { ok: !bad.length, detail: bad.length ? bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "ecmp",
+        title: "Erişim switch'leri karşı LAN'a iki eşit maliyetli yol görüyor",
+        hint: 'İki uplink aynı maliyette olmalı. Kontrol: show ip route 192.168.20.0 → iki "via" satırı.',
+        check: (q) => (q.route("ASW1", "192.168.20.0", 24)?.paths?.length ?? 0) >= 2 && (q.route("ASW2", "192.168.10.0", 24)?.paths?.length ?? 0) >= 2
+      },
+      {
+        id: "e2e",
+        title: "PC1 ↔ PC2 ping",
+        hint: "LAN'lar OSPF'e alınmalı (network 192.168.10.0 0.0.0.255 area 0) ve passive olmalı.",
+        check: (q) => q.ping("PC1", "192.168.20.10").ok && q.ping("PC2", "192.168.10.10").ok && q.route("ASW1", "192.168.20.0", 24)?.code === "O"
+      }
+    ],
+    solution: Object.fromEntries(ALL2.map((d) => [d, solutionFor(d)]))
+  };
+  var routed_access_default = lab10;
+
+  // src/labs/bpdu-guard.ts
+  var EDGE = ["Fa0/1", "Fa0/2", "Fa0/3"];
+  var lab11 = {
+    id: "bpdu-guard",
+    title: "BPDU Guard, err-disable ve otomatik kurtarma",
+    summary: "Kullanıcı portuna takılan sahte bir switch root bridge'i ele geçirmiş, uplink'lerden biri yanlış koruma yüzünden err-disabled. Kenar portları koru, uplink'i kurtar, otomatik recovery kur.",
+    level: "Orta",
+    tags: ["ENCOR", "STP", "PortFast", "BPDU Guard", "err-disable"],
+    brief: [
+      "DSW1 dağıtım switch'i VLAN 10'un root bridge'i olmalı (priority 4096). ASW1'e iki uplink ile bağlı. PC1 ve PC2 ASW1'in Fa0/1–2 portlarında.",
+      "Bir kullanıcı Fa0/3'e kendi küçük switch'ini (ROGUE) takmış. ROGUE VLAN 10 için priority 0 ile geliyor ve root bridge oldu; bütün VLAN 10 trafiği artık onun üzerinden hesaplanıyor.",
+      "Önceki bir değişiklikte ASW1 Gi0/2 uplink'ine yanlışlıkla PortFast ve BPDU Guard yazılmış. Port DSW1'den BPDU aldığı için err-disabled.",
+      `Görevler: ASW1'de Fa0/1–3 kenar portları PortFast + BPDU Guard ile korunsun (port başına ya da "spanning-tree portfast bpduguard default" ile). ROGUE'un portu err-disable olmalı, DSW1 tekrar root olmalı.`,
+      "Gi0/2'den PortFast ve BPDU Guard'ı kaldır ve portu kurtar (shutdown / no shutdown). Son olarak err-disable olan portların 60 saniyede bir kendiliğinden denensin: errdisable recovery cause bpduguard, errdisable recovery interval 60.",
+      "Kontrol: show interfaces status, show interfaces status err-disabled, show spanning-tree vlan 10, show errdisable recovery."
+    ],
+    view: { w: 860, h: 520 },
+    devices: [
+      { id: "DSW1", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0050.0001", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 430, y: 80 },
+      { id: "ASW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0050.0011", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 430, y: 270 },
+      { id: "ROGUE", kind: "switch", model: "WS-C2960-8TC-L", mac: "5254.0050.00ff", ports: ports("Fa0/1-4"), x: 730, y: 430 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.5001", x: 150, y: 440 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.5002", x: 430, y: 450 }
+    ],
+    links: [
+      { a: ["DSW1", "GigabitEthernet0/1"], b: ["ASW1", "GigabitEthernet0/1"] },
+      { a: ["DSW1", "GigabitEthernet0/2"], b: ["ASW1", "GigabitEthernet0/2"] },
+      { a: ["PC1", "eth0"], b: ["ASW1", "FastEthernet0/1"] },
+      { a: ["PC2", "eth0"], b: ["ASW1", "FastEthernet0/2"] },
+      { a: ["ROGUE", "FastEthernet0/1"], b: ["ASW1", "FastEthernet0/3"] }
+    ],
+    initialConfig: {
+      DSW1: `ip routing
+vlan 10
+ name KULLANICI
+exit
+spanning-tree vlan 10 priority 4096
+interface range gi0/1 - 2
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+exit
+interface vlan 10
+ ip address 192.168.10.1 255.255.255.0
+exit`,
+      ASW1: `vlan 10
+ name KULLANICI
+exit
+interface range gi0/1 - 2
+ switchport mode trunk
+exit
+interface gi0/2
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+exit
+interface range fa0/1 - 3
+ switchport mode access
+ switchport access vlan 10
+exit
+interface range fa0/1 - 2
+ spanning-tree portfast
+exit`,
+      ROGUE: `hostname ROGUE
+vlan 10
+exit
+spanning-tree vlan 10 priority 0
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+exit`
+    },
+    initialPcs: {
+      PC1: { ip: "192.168.10.11", prefix: 24, gw: "192.168.10.1" },
+      PC2: { ip: "192.168.10.12", prefix: 24, gw: "192.168.10.1" }
+    },
+    objectives: [
+      {
+        id: "edge",
+        title: "ASW1 Fa0/1–3: PortFast ve BPDU Guard etkin",
+        hint: "interface range fa0/1 - 3 → spanning-tree portfast → spanning-tree bpduguard enable. Ya da global: spanning-tree portfast bpduguard default (yalnızca PortFast portlara uygulanır).",
+        check: (q) => {
+          const c = q.cfg("ASW1");
+          const bad = EDGE.filter((p) => {
+            const pc = q.portCfg("ASW1", p);
+            const guard = pc.bpduguard ?? (!!c.bpduguardDefault && pc.portfast);
+            return !pc.portfast || !guard;
+          });
+          return { ok: !bad.length, detail: bad.length ? "Eksik: " + bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "rogue",
+        title: "ROGUE'un bağlı olduğu Fa0/3 err-disabled",
+        hint: "BPDU Guard açık bir port BPDU alınca err-disable olur. Kontrol: show interfaces status err-disabled",
+        check: (q) => q.errDisabled("ASW1", "Fa0/3")
+      },
+      {
+        id: "root",
+        title: "VLAN 10'un root bridge'i DSW1",
+        hint: "ROGUE ağdan kopunca DSW1 (4096) en düşük bridge ID olur. Kontrol: show spanning-tree vlan 10",
+        check: (q) => q.stpRoot(10) === "DSW1"
+      },
+      {
+        id: "uplink",
+        title: "Gi0/2 uplink'i PortFast/BPDU Guard'sız, up ve trunk",
+        hint: "interface gi0/2 → no spanning-tree portfast → no spanning-tree bpduguard → shutdown → no shutdown. Switch'ler arası portta PortFast olmaz.",
+        check: (q) => {
+          const pc = q.portCfg("ASW1", "Gi0/2");
+          return !pc.portfast && !pc.bpduguard && !q.errDisabled("ASW1", "Gi0/2") && q.isTrunk("ASW1", "Gi0/2");
+        }
+      },
+      {
+        id: "recovery",
+        title: "errdisable recovery: bpduguard, 60 saniye",
+        hint: "errdisable recovery cause bpduguard ve errdisable recovery interval 60. Sebep ortadan kalkmadıkça port tekrar err-disable olur. Kontrol: show errdisable recovery",
+        check: (q) => !!q.cfg("ASW1").errRecoveryBpdu && q.cfg("ASW1").errRecoveryInterval === 60
+      },
+      {
+        id: "ping",
+        title: "PC1 ve PC2 gateway'e (192.168.10.1) ping atabiliyor",
+        hint: "Kenar portları err-disable olmamalı: PC'ler BPDU göndermez.",
+        check: (q) => q.ping("PC1", "192.168.10.1").ok && q.ping("PC2", "192.168.10.1").ok
+      }
+    ],
+    solution: {
+      ASW1: `configure terminal
+interface range fa0/1 - 3
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+exit
+interface gi0/2
+ no spanning-tree portfast
+ no spanning-tree bpduguard
+ shutdown
+ no shutdown
+exit
+errdisable recovery cause bpduguard
+errdisable recovery interval 60
+end
+write memory`
+    }
+  };
+  var bpdu_guard_default = lab11;
+
+  // src/labs/ospf-troubleshoot.ts
+  var R2 = ["R1", "R2", "R3"];
+  var base = (n, rid, extra) => `ip routing
+vlan 10
+ name LAN
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+exit
+interface vlan 10
+ ip address 192.168.${n}.1 255.255.255.0
+exit
+${extra}
+router ospf 1
+ router-id ${rid}
+ passive-interface vlan 10
+ network 192.168.${n}.0 0.0.0.255 area 0`;
+  var routed = (port, ip, more = "") => `interface ${port}
+ no switchport
+ ip address ${ip} 255.255.255.252${more}
+exit`;
+  var lab12 = {
+    id: "ospf-ariza",
+    title: "OSPF arıza giderme: komşuluk şartları ve metrik ayarı",
+    summary: "Üç router arasında hiçbir OSPF komşuluğu FULL değil. Hello/dead, area ve MTU uyumsuzluklarını bul, sonra reference bandwidth ile trafiği gigabit yola çek.",
+    level: "İleri",
+    tags: ["ENCOR", "OSPF", "Arıza giderme", "Hello/Dead", "MTU", "Reference bandwidth"],
+    brief: [
+      'R1–R2 ve R2–R3 arası Gigabit, R1–R3 arası FastEthernet routed linkler. IP adresleri ve OSPF süreci hazır, ama "show ip ospf neighbor" neredeyse boş.',
+      "OSPF komşuluğu için iki uçta eşleşmesi gerekenler: subnet ve mask, area ID, hello ve dead süresi, stub bayrağı, farklı router ID. MTU eşleşmezse komşu görünür ama EXSTART'ta takılır.",
+      "Her linkte sorunu bul ve doğru taraftan düzelt: standart değerler hello 10 / dead 40, MTU 1500, bütün linkler area 0.",
+      "Sonra metrik: varsayılan reference bandwidth 100 Mbps, FastEthernet ile Gigabit'i aynı maliyette (1) görür ve R1 192.168.3.0/24'e yavaş linkten gider. Üç router'da da auto-cost reference-bandwidth 10000 yap; R1 artık R2 üzerinden gitmeli, R1–R3 linki yedek kalmalı.",
+      "Kontrol: show ip ospf neighbor, show ip ospf interface Gi0/1, show running-config | section interface, show ip route ospf."
+    ],
+    view: { w: 880, h: 520 },
+    devices: [
+      { id: "R1", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0060.0001", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 210, y: 150 },
+      { id: "R2", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0060.0002", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 440, y: 330 },
+      { id: "R3", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0060.0003", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 670, y: 150 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.6001", x: 210, y: 460 },
+      { id: "PC3", kind: "pc", mac: "0050.7966.6003", x: 670, y: 460 }
+    ],
+    links: [
+      { a: ["R1", "GigabitEthernet0/1"], b: ["R2", "GigabitEthernet0/1"] },
+      { a: ["R2", "GigabitEthernet0/2"], b: ["R3", "GigabitEthernet0/2"] },
+      { a: ["R1", "FastEthernet0/2"], b: ["R3", "FastEthernet0/2"] },
+      { a: ["PC1", "eth0"], b: ["R1", "FastEthernet0/1"] },
+      { a: ["PC3", "eth0"], b: ["R3", "FastEthernet0/1"] }
+    ],
+    initialConfig: {
+      R1: base(1, "1.1.1.1", [routed("gi0/1", "10.0.12.1"), routed("fa0/2", "10.0.13.1")].join("\n")) + `
+ network 10.0.12.0 0.0.0.3 area 0
+ network 10.0.13.0 0.0.0.3 area 0
+exit`,
+      // fault 1: hello timer on the R1-R2 link
+      R2: base(2, "2.2.2.2", [routed("gi0/1", "10.0.12.2", "\n ip ospf hello-interval 5"), routed("gi0/2", "10.0.23.1")].join("\n")) + `
+ network 10.0.12.0 0.0.0.3 area 0
+ network 10.0.23.0 0.0.0.3 area 0
+exit`,
+      // fault 2: R2-R3 link put in area 1 on R3; fault 3: MTU on the R1-R3 link
+      R3: base(3, "3.3.3.3", [routed("gi0/2", "10.0.23.2"), routed("fa0/2", "10.0.13.2", "\n ip mtu 1400")].join("\n")) + `
+ network 10.0.23.0 0.0.0.3 area 1
+ network 10.0.13.0 0.0.0.3 area 0
+exit`
+    },
+    initialPcs: {
+      PC1: { ip: "192.168.1.10", prefix: 24, gw: "192.168.1.1" },
+      PC3: { ip: "192.168.3.10", prefix: 24, gw: "192.168.3.1" }
+    },
+    objectives: [
+      {
+        id: "r1r2",
+        title: "R1–R2 komşuluğu FULL",
+        hint: 'Hello/dead iki uçta aynı olmalı. show ip ospf interface gi0/1 çıktısındaki "Timer intervals" satırlarını karşılaştır.',
+        check: (q) => q.ospfAdjacent("R1", "R2")
+      },
+      {
+        id: "r2r3",
+        title: "R2–R3 komşuluğu FULL ve area 0'da",
+        hint: "İki uçta show ip ospf interface brief ile Area sütununu karşılaştır. R3: no network 10.0.23.0 0.0.0.3 area 1 → network 10.0.23.0 0.0.0.3 area 0",
+        check: (q) => q.ospfAdjacent("R2", "R3") && q.ospf("R3").ifs.some((i) => i.name === "GigabitEthernet0/2" && i.area === 0)
+      },
+      {
+        id: "r1r3",
+        title: "R1–R3 komşuluğu FULL (EXSTART'ta takılı değil)",
+        hint: "Komşu görünüyor ama EXSTART'ta kalıyorsa DBD paketleri MTU yüzünden kabul edilmiyor. R3 Fa0/2: no ip mtu",
+        check: (q) => q.ospfAdjacent("R1", "R3")
+      },
+      {
+        id: "refbw",
+        title: "Üç router'da auto-cost reference-bandwidth 10000",
+        hint: "Değer bütün router'larda aynı olmalı. Yoksa her router linkleri farklı maliyetle hesaplar.",
+        check: (q) => {
+          const bad = R2.filter((d) => q.cfg(d).ospf?.refBw !== 1e4);
+          return { ok: !bad.length, detail: bad.length ? "Farklı: " + bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "path",
+        title: "R1, 192.168.3.0/24'e yalnızca R2 üzerinden gidiyor",
+        hint: "Ref BW 10000 ile Gi = 10, Fa = 100. R1 → R2 → R3 = 20 + LAN < 100. Kontrol: show ip route 192.168.3.0",
+        check: (q) => {
+          const r = q.route("R1", "192.168.3.0", 24);
+          return { ok: !!r && r.code === "O" && r.paths?.length === 1 && r.nh === "10.0.12.2", detail: r ? `via ${r.paths?.map((p) => p.nh).join(", ")}` : "rota yok" };
+        }
+      },
+      {
+        id: "e2e",
+        title: "PC1 ↔ PC3 ping",
+        hint: "PC1'de: trace 192.168.3.10. İlk hop 192.168.1.1, ikinci 10.0.12.2 olmalı.",
+        check: (q) => q.ping("PC1", "192.168.3.10").ok && q.ping("PC3", "192.168.1.10").ok
+      }
+    ],
+    solution: {
+      R1: `configure terminal
+router ospf 1
+ auto-cost reference-bandwidth 10000
+end
+write memory`,
+      R2: `configure terminal
+interface gi0/1
+ no ip ospf hello-interval
+exit
+router ospf 1
+ auto-cost reference-bandwidth 10000
+end
+write memory`,
+      R3: `configure terminal
+interface fa0/2
+ no ip mtu
+exit
+router ospf 1
+ no network 10.0.23.0 0.0.0.3 area 1
+ network 10.0.23.0 0.0.0.3 area 0
+ auto-cost reference-bandwidth 10000
+end
+write memory`
+    }
+  };
+  var ospf_troubleshoot_default = lab12;
+
+  // src/labs/ospf-multiarea.ts
+  var lanCfg = (n) => `vlan 10
+ name LAN
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+exit
+interface vlan 10
+ ip address 192.168.${n}.1 255.255.255.0
+exit`;
+  var routed2 = (port, ip, mask = "255.255.255.252") => `interface ${port}
+ no switchport
+ ip address ${ip} ${mask}
+exit`;
+  var lab13 = {
+    id: "ospf-cok-alan",
+    title: "Çok alanlı OSPF: ABR, ASBR, varsayılan rota, totally stubby area",
+    summary: "Şube router'ını area 1'e al, ABR üzerinden backbone'a bağla, ASBR'den internete varsayılan rota yay ve area 1'i totally stubby yaparak şubenin rota tablosunu tek bir default'a indir.",
+    level: "İleri",
+    tags: ["ENCOR", "OSPF", "Multi-area", "ABR/ASBR", "Stub area", "Default route"],
+    brief: [
+      "Topoloji: R1 (şube, area 1) — R2 (ABR) — R3 (merkez, area 0, ASBR) — ISP. ISP hazır: Loopback0 8.8.8.8 ve iç ağlara dönüş rotaları var. Bütün IP adresleri ve ip routing hazır.",
+      "Area 0 kurulu: R2 Gi0/2, R2 Loopback0 (2.2.2.2) ve R3'ün iç arayüzleri. Area 1 eksik: R1 tarafında OSPF hiç yok, R2 Gi0/1 de OSPF'te değil.",
+      "R1'de router ospf 1 (router-id 1.1.1.1), Gi0/1 ve LAN area 1, LAN passive. R2'de 10.1.12.0/30 linkini area 1'e al. R2 artık ABR olmalı.",
+      "R3 internet çıkışı: ip route 0.0.0.0 0.0.0.0 203.0.113.1 ve router ospf altında default-information originate. R3 ASBR olur, R2 varsayılanı O*E2 olarak öğrenmeli.",
+      "Şube router'ının bütün iç rotaları ve dış rotaları bilmesine gerek yok. Area 1'i totally stubby yap: R1'de area 1 stub, ABR'de (R2) area 1 stub no-summary. Stub bayrağı iki uçta da olmazsa komşuluk düşer.",
+      "Sonuç: R1'in tablosunda yalnızca kendi alanının rotaları ve O*IA 0.0.0.0/0 kalmalı. Kontrol: show ip route, show ip ospf, show ip ospf neighbor. PC1 hem PC3'e hem 8.8.8.8'e ping atabilmeli."
+    ],
+    view: { w: 960, h: 500 },
+    devices: [
+      { id: "R1", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0070.0001", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 130, y: 150 },
+      { id: "R2", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0070.0002", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 370, y: 150 },
+      { id: "R3", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0070.0003", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 610, y: 150 },
+      { id: "ISP", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0070.00ee", ports: ports("Gi0/1-2"), l3: true, needsEncap: true, x: 850, y: 150 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.7001", x: 130, y: 400 },
+      { id: "PC3", kind: "pc", mac: "0050.7966.7003", x: 610, y: 400 }
+    ],
+    links: [
+      { a: ["R1", "GigabitEthernet0/1"], b: ["R2", "GigabitEthernet0/1"] },
+      { a: ["R2", "GigabitEthernet0/2"], b: ["R3", "GigabitEthernet0/1"] },
+      { a: ["R3", "GigabitEthernet0/2"], b: ["ISP", "GigabitEthernet0/1"] },
+      { a: ["PC1", "eth0"], b: ["R1", "FastEthernet0/1"] },
+      { a: ["PC3", "eth0"], b: ["R3", "FastEthernet0/1"] }
+    ],
+    initialConfig: {
+      R1: `ip routing
+${lanCfg(1)}
+${routed2("gi0/1", "10.1.12.1")}`,
+      R2: `ip routing
+interface loopback 0
+ ip address 2.2.2.2 255.255.255.255
+exit
+${routed2("gi0/1", "10.1.12.2")}
+${routed2("gi0/2", "10.0.23.1")}
+router ospf 1
+ router-id 2.2.2.2
+ network 10.0.23.0 0.0.0.3 area 0
+ network 2.2.2.2 0.0.0.0 area 0
+exit`,
+      R3: `ip routing
+${lanCfg(3)}
+${routed2("gi0/1", "10.0.23.2")}
+${routed2("gi0/2", "203.0.113.2")}
+router ospf 1
+ router-id 3.3.3.3
+ passive-interface vlan 10
+ network 10.0.23.0 0.0.0.3 area 0
+ network 192.168.3.0 0.0.0.255 area 0
+exit`,
+      ISP: `ip routing
+interface loopback 0
+ ip address 8.8.8.8 255.255.255.255
+exit
+${routed2("gi0/1", "203.0.113.1")}
+ip route 10.0.0.0 255.0.0.0 203.0.113.2
+ip route 192.168.0.0 255.255.0.0 203.0.113.2`
+    },
+    initialPcs: {
+      PC1: { ip: "192.168.1.10", prefix: 24, gw: "192.168.1.1" },
+      PC3: { ip: "192.168.3.10", prefix: 24, gw: "192.168.3.1" }
+    },
+    objectives: [
+      {
+        id: "area1",
+        title: "R1–R2 komşuluğu FULL ve area 1'de; R2 ABR",
+        hint: 'R1: router ospf 1 → router-id 1.1.1.1 → network 10.1.12.0 0.0.0.3 area 1. R2: network 10.1.12.0 0.0.0.3 area 1. Kontrol: show ip ospf ("It is an area border router")',
+        check: (q) => q.ospfAdjacent("R1", "R2") && !!q.ospf("R2")?.abr && q.ospf("R1")?.rid === "1.1.1.1" && q.ospf("R1").areas.join() === "1"
+      },
+      {
+        id: "lan1",
+        title: "R1 LAN'ı area 1'de, passive; R3 onu O IA olarak görüyor",
+        hint: `Başka alandan gelen ağ, ABR'nin ürettiği Type 3 (summary) LSA ile gelir ve tabloda "O IA" görünür.`,
+        check: (q) => !!q.ospf("R1")?.ifs.some((i) => i.name === "Vlan10" && i.passive && i.area === 1) && q.route("R3", "192.168.1.0", 24)?.code === "O IA"
+      },
+      {
+        id: "asbr",
+        title: "R3 ASBR: statik default + default-information originate, R2'de O*E2",
+        hint: "R3: ip route 0.0.0.0 0.0.0.0 203.0.113.1, router ospf 1 → default-information originate. Statik default olmadan (always yoksa) ilan edilmez.",
+        check: (q) => !!q.ospf("R3")?.asbr && q.route("R2", "0.0.0.0", 0)?.code === "O E2"
+      },
+      {
+        id: "stub",
+        title: "Area 1 totally stubby: R1'de yalnızca O*IA default var",
+        hint: `R1: area 1 stub. R2: area 1 stub no-summary. R1'de "O IA" olarak yalnızca 0.0.0.0/0 kalmalı, O E2 hiç olmamalı.`,
+        check: (q) => {
+          const rs = q.routes("R1").filter((e) => e.code.startsWith("O"));
+          const def = rs.find((e) => e.prefix === 0);
+          const extra = rs.filter((e) => e.code !== "O" && e.prefix !== 0).map((e) => `${e.code} ${e.net}/${e.prefix}`);
+          const ok = def?.code === "O IA" && !extra.length && !!q.cfg("R2").ospf?.stubs["1"]?.noSummary;
+          return { ok, detail: !def ? "R1'de default yok" : def.code !== "O IA" ? `default ${def.code}` : extra.length ? "Fazla: " + extra.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "e2e",
+        title: "PC1 → PC3 ve PC1 → 8.8.8.8 ping",
+        hint: "R1 internete O*IA default ile R2'ye, R2 O*E2 ile R3'e, R3 statik default ile ISP'ye gider. PC1'de: trace 8.8.8.8",
+        check: (q) => q.ping("PC1", "192.168.3.10").ok && q.ping("PC1", "8.8.8.8").ok
+      }
+    ],
+    solution: {
+      R1: `configure terminal
+router ospf 1
+ router-id 1.1.1.1
+ area 1 stub
+ passive-interface vlan 10
+ network 10.1.12.0 0.0.0.3 area 1
+ network 192.168.1.0 0.0.0.255 area 1
+end
+write memory`,
+      R2: `configure terminal
+router ospf 1
+ area 1 stub no-summary
+ network 10.1.12.0 0.0.0.3 area 1
+end
+write memory`,
+      R3: `configure terminal
+ip route 0.0.0.0 0.0.0.0 203.0.113.1
+router ospf 1
+ default-information originate
+end
+write memory`
+    }
+  };
+  var ospf_multiarea_default = lab13;
+
+  // src/labs/index.ts
+  var LABS = [vlan_basics_default, trunk_troubleshoot_default, trunk_hardening_default, campus_l2_l3_default, stp_load_balancing_default, etherchannel_troubleshoot_default, l3_static_routing_default, mgmt_vlan_default, ospf_single_area_default, routed_access_default, bpdu_guard_default, ospf_troubleshoot_default, ospf_multiarea_default];
+
   // src/sim-bridge/bridge.ts
   var import_mac_address = __toESM(require_mac_address());
   var MODEL_L2 = "WS-C2960-24TT-L";
@@ -4914,14 +6853,14 @@ var AgLabSim = (() => {
           }
           for (const key of Object.keys(iface))
             if (!SVI_FIELDS.has(key)) unsupported(id, `interfaces.${name}.${key}`, FEATURE_REASON[key] ?? "Labber'da karşılığı olmayan SVI alanı");
-          const svi = cfg.svis[String(v)] ?? defaultSvi(v);
-          svi.shutdown = iface.enabled === false;
+          const svi2 = cfg.svis[String(v)] ?? defaultSvi(v);
+          svi2.shutdown = iface.enabled === false;
           if (iface.ip) {
             const pre = iface.mask ? maskToPrefix(iface.mask) : null;
             if (!isIp(iface.ip) || pre === null) reject(id, name, "Geçersiz SVI IPv4 adresi/maskesi");
-            else svi.ip = { addr: iface.ip, mask: iface.mask };
+            else svi2.ip = { addr: iface.ip, mask: iface.mask };
           }
-          cfg.svis[String(v)] = svi;
+          cfg.svis[String(v)] = svi2;
           continue;
         }
         const c = canonPort(name);
@@ -5074,10 +7013,10 @@ var AgLabSim = (() => {
       const gw = cfg.defaultGateway ?? "";
       if (d.gateway !== void 0 || gw) d.gateway = gw;
       const hadOne = (original.devices.find((x) => String(x.id) === id)?.vlans ?? [1]).map(Number).includes(1);
-      const vlans = Object.keys(cfg.vlans).map(Number).filter((v) => !RESERVED_VLANS.slice(1).includes(v) && (v !== 1 || hadOne)).sort(sortNum);
-      if (d.vlans !== void 0 || vlans.join() !== "1") d.vlans = vlans;
+      const vlans3 = Object.keys(cfg.vlans).map(Number).filter((v) => !RESERVED_VLANS.slice(1).includes(v) && (v !== 1 || hadOne)).sort(sortNum);
+      if (d.vlans !== void 0 || vlans3.join() !== "1") d.vlans = vlans3;
       const names = {};
-      for (const v of vlans) {
+      for (const v of vlans3) {
         const n = cfg.vlans[String(v)];
         const keep = d.vlanNames !== void 0 && Object.prototype.hasOwnProperty.call(d.vlanNames, String(v));
         if (keep || n !== defaultVlanName(v) && !(v === 1 && n === "default")) names[String(v)] = n;
@@ -5117,21 +7056,21 @@ var AgLabSim = (() => {
         put("enabled", !phys.shutdown, true);
         if (prev || Object.keys(iface).length) d.interfaces[name] = iface;
       }
-      for (const [v, svi] of Object.entries(cfg.svis)) {
+      for (const [v, svi2] of Object.entries(cfg.svis)) {
         const name = "vlan" + v;
-        if (svi.description) fail(`Vlan${v} description`);
-        if (svi.l3) fail(`Vlan${v} L3/OSPF ayarı`);
+        if (svi2.description) fail(`Vlan${v} description`);
+        if (svi2.l3) fail(`Vlan${v} L3/OSPF ayarı`);
         const prev = d.interfaces[name];
-        if (!prev && !svi.ip && JSON.stringify(svi) === JSON.stringify(defaultSvi(Number(v)))) continue;
+        if (!prev && !svi2.ip && JSON.stringify(svi2) === JSON.stringify(defaultSvi(Number(v)))) continue;
         const iface = prev ? { ...prev } : { vlan: Number(v) };
-        if (svi.ip) {
-          iface.ip = svi.ip.addr;
-          iface.mask = svi.ip.mask;
+        if (svi2.ip) {
+          iface.ip = svi2.ip.addr;
+          iface.mask = svi2.ip.mask;
         } else {
           if (prev?.ip !== void 0) iface.ip = "";
           if (prev?.mask !== void 0) iface.mask = "";
         }
-        if (prev?.enabled !== void 0 || svi.shutdown) iface.enabled = !svi.shutdown;
+        if (prev?.enabled !== void 0 || svi2.shutdown) iface.enabled = !svi2.shutdown;
         d.interfaces[name] = iface;
       }
     }
@@ -12726,10 +14665,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
       'importReport',
       'sourceArchive',
       'academySession',
+      'labberLab',
     ]);
     for (const k of Object.keys(obj))
       if (!allowedTop.has(k)) throw new Error('Beklenmeyen üst seviye alan: ' + k);
     if (obj.academySession !== undefined) academyValidateSession(obj.academySession);
+    if (obj.labberLab !== undefined) labberLabValidate(obj.labberLab);
     if (obj.app && obj.app !== 'AgLab') throw new Error('Dosya AgLab topoloji dosyası değil.');
     if (
       obj.sourceArchive !== undefined &&
@@ -13134,6 +15075,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
         ...(sourceArchiveData ? { sourceArchive: sourceArchiveData } : {}),
         ...(importReportData ? { importReport: importReportData } : {}),
         ...academySessionFields(),
+        ...labberLabFields(),
       });
       localStorage.setItem('aglab-topology-v23', data);
       document.getElementById('aglabSaveWarning')?.remove();
@@ -13167,6 +15109,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
         ...(sourceArchiveData ? { sourceArchive: sourceArchiveData } : {}),
         ...(importReportData ? { importReport: importReportData } : {}),
         ...academySessionFields(),
+        ...labberLabFields(),
       },
       null,
       2,
@@ -13207,6 +15150,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
     cliMode = 'user';
     currentInterface = '';
     academyRestoreSession(obj.academySession || null);
+    labberLabRestore(obj.labberLab || null);
     render();
     syncSelects();
     updateInspector();
@@ -14906,6 +16850,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
   // sonucu değerlendirmede kullanılmaz. İki sonuç farklıysa kayıt silinir ve yazılır.
   function labberSimulationTrace(src, target, ok) {
     if (!validIP(target)) return;
+    if (aglabLabber.lab()) {
+      // Lab tanımı AğLab modelinde ifade edilemeyebilir; eski motor kaydı üretilmez.
+      beginEthernetEvents();
+      return;
+    }
     if (ping(src, target).ok !== ok) {
       beginEthernetEvents();
       say(
@@ -14918,6 +16867,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
     render();
     syncSelects();
     updateInspector();
+    labberLabsRefresh();
   }
   function command(raw) {
     let d = get($p('ptCliDevice').value);
@@ -20067,6 +22017,59 @@ function portSecurityCommand(d, p, out) {
 // Labber durumu AğLab modelinde ifade edilemiyorsa (ör. portfast, OSPF) toAglab
 // BridgeError atar; bu durumda AğLab görünümü güncellenmez ve terminalde açıkça yazılır
 // (sessiz veri kaybı yok). Kalıcılık (running/startup ayrımının tarayıcı kaydı) L7'dedir.
+/** Lab tanımındaki tam port adının çizimdeki kısa yazımı: FastEthernet0/1 → fa0/1. */
+function labShortPort(p) {
+  const m = /^(FastEthernet|GigabitEthernet|TenGigabitEthernet|Ethernet)(.*)$/.exec(p);
+  if (!m) return p.toLowerCase();
+  return (
+    { FastEthernet: 'fa', GigabitEthernet: 'gi', TenGigabitEthernet: 'te', Ethernet: 'e' }[m[1]] +
+    m[2]
+  );
+}
+/** Lab tanımından (LabDef) yalnız çizim için AğLab topolojisi; köprü kullanılmaz. */
+function labTopology(def) {
+  const W = def.view?.w || 800,
+    H = def.view?.h || 420,
+    sx = (x) => Math.round(70 + (Math.max(0, Math.min(W, x)) * 710) / W),
+    sy = (y) => Math.round(55 + (Math.max(0, Math.min(H, y)) * 320) / H);
+  const devices = def.devices.map((d) => {
+    const base = { id: d.id, name: d.id, x: sx(d.x), y: sy(d.y), enabled: !d.off };
+    if (d.kind === 'switch')
+      return {
+        ...base,
+        type: 'Switch',
+        w: 112,
+        h: 72,
+        ports: d.ports.map(labShortPort),
+        vlans: [1],
+        interfaces: {},
+        config: { labberModel: d.model },
+      };
+    const pc = def.initialPcs?.[d.id];
+    const mask = pc?.ip
+      ? [24, 16, 8, 0].map((s) => (((0xffffffff << (32 - pc.prefix)) >>> 0) >>> s) & 255).join('.')
+      : '';
+    return {
+      ...base,
+      type: 'PC',
+      w: 104,
+      h: 72,
+      ip: pc?.ip || '',
+      mask,
+      gateway: pc?.gw || '',
+      ports: ['eth0'],
+      interfaces: { eth0: { enabled: !d.nicDown } },
+    };
+  });
+  const links = def.links.map((l) => ({
+    a: l.a[0],
+    portA: labShortPort(l.a[1]),
+    b: l.b[0],
+    portB: labShortPort(l.b[1]),
+    up: l.up !== false,
+  }));
+  return { app: 'AgLab', version: 23, devices, links, labberLab: { id: def.id } };
+}
 const aglabLabber = (() => {
   let state = null;
   // Yerleşim alanları çalışma zamanını etkilemez; sürüklemede yeniden kurulum yapılmaz.
@@ -20102,6 +22105,28 @@ const aglabLabber = (() => {
       writeError: null,
     };
   }
+  /**
+   * Labber labı (src/labs, E): lab tanımı (LabDef) köprü kullanılmadan doğrudan
+   * createLab ile kurulur. AğLab topolojisi yalnız çizim içindir (labTopology); geri
+   * yazım toAglab yerine labViewWrite ile yapılır (ad, PC adresi, güç, kablo), çünkü
+   * lablar AğLab modelinin ifade edemediği özellikler (OSPF, EtherChannel…) içerir.
+   */
+  function startLab(def) {
+    state = {
+      rt: AgLabSim.createLab(def),
+      lab: def,
+      sessions: {},
+      logSeq: {},
+      key: key(),
+      broken: null,
+      writeError: null,
+    };
+    labViewWrite();
+    state.key = key();
+  }
+  function lab() {
+    return state?.lab || null;
+  }
   function stop() {
     state = null;
   }
@@ -20120,6 +22145,11 @@ const aglabLabber = (() => {
     const k = key();
     if (k === state.key) return;
     state.key = k;
+    if (state.lab) {
+      state.broken =
+        'Labber labının topolojisi düzenleyiciyle değiştirilemez (lab tanımı sabittir). Labı yeniden başlat.';
+      return;
+    }
     const r = AgLabSim.toLabber(topology());
     if (r.report.engineDecision !== 'labber') {
       state.broken = brokenMessage(r.report.reasons);
@@ -20156,6 +22186,11 @@ const aglabLabber = (() => {
   }
   /** Çalışma zamanından AğLab topolojisine geri yazım (görünüm, denetçi, kayıt). */
   function writeBack() {
+    if (state.lab) {
+      labViewWrite();
+      state.key = key();
+      return;
+    }
     try {
       const view = AgLabSim.toAglab(state.rt, topology());
       devices = view.devices;
@@ -20168,6 +22203,37 @@ const aglabLabber = (() => {
         '. Kayıt ve dışa aktarma bu değişikliği içermez; değerlendirme Labber durumunu kullanır.';
     }
     state.key = key();
+  }
+  /** Lab kipinde çizimdeki durum: switch adı (hostname), PC adresi, güç, kablo. */
+  function labViewWrite() {
+    const rt = state.rt;
+    for (const d of devices) {
+      const def = rt.topo.devices[d.id];
+      if (!def) continue;
+      d.enabled = rt.powered(d.id);
+      if (def.kind === 'switch') d.name = rt.hostname(d.id);
+      else {
+        const pc = rt.pcs[d.id];
+        d.ip = pc?.ip || '';
+        d.mask = pc?.ip ? prefixMask(pc.prefix) : '';
+        d.gateway = pc?.gw || '';
+      }
+    }
+    for (const l of links) {
+      const a = labPort(l.a, l.portA),
+        b = labPort(l.b, l.portB);
+      l.up = rt.cableIntact(l.a, a) && rt.cableIntact(l.b, b);
+    }
+  }
+  function prefixMask(p) {
+    const n = p ? (0xffffffff << (32 - p)) >>> 0 : 0;
+    return [24, 16, 8, 0].map((s) => (n >>> s) & 255).join('.');
+  }
+  /** Çizimdeki kısa port adı (fa0/1) → lab tanımındaki tam ad (FastEthernet0/1). */
+  function labPort(dev, port) {
+    const def = state.rt.topo.devices[dev];
+    if (!def || def.kind === 'pc') return port;
+    return def.ports.find((p) => labShortPort(p) === port) || port;
   }
   function view() {
     return AgLabSim.toAglab(runtime(), topology());
@@ -20317,6 +22383,8 @@ const aglabLabber = (() => {
   }
   return {
     start,
+    startLab,
+    lab,
     stop,
     active,
     runtime,
@@ -26924,6 +28992,154 @@ areaNavigation.forEach((button) =>
 announceArea();
 
 // END NETWORK SCENARIOS GENERATED
+// BEGIN LABBER LABS UI GENERATED
+// Labber'ın kendi labları (E; src/labs, kullanıcının içeriği, değiştirilmeden alındı).
+//
+// Ayrı içerik grubu: Akademi'nin 40 labından ve onların SHA256 kayıtlarından bağımsızdır.
+// Lab tanımı (LabDef) köprü kullanılmadan doğrudan Labber'da kurulur (aglabLabber.startLab);
+// terminal L3-a'daki Labber oturumudur, hedefler rt.objectives() ile değerlendirilir.
+// Tuvaldeki topoloji yalnız çizimdir (labTopology). Kalıcılık: tarayıcı kaydı yalnız hangi
+// labın açık olduğunu tutar; sayfa yenilenince lab baştan başlar (running/startup kaydı L7).
+const labberLabsPanel = document.createElement('section');
+labberLabsPanel.id = 'labberLabsPanel';
+labberLabsPanel.setAttribute('aria-labelledby', 'labberLabsTitle');
+labberLabsPanel.innerHTML = `<h3 id="labberLabsTitle"></h3>
+<p id="labberLabsIntro"></p>
+<label for="labberLabSelect">Lab</label> <select id="labberLabSelect"></select>
+<button type="button" id="labberLabStart">Labı başlat</button>
+<p id="labberLabEngine" role="note"></p>
+<div id="labberLabBrief"></div>
+<ol id="labberLabObjectives" aria-label="Lab hedefleri"></ol>
+<button type="button" id="labberLabCheck" disabled>Hedefleri kontrol et</button>
+<p id="labberLabStatus" role="status" aria-live="polite"></p>
+<details id="labberLabSolution"><summary>Referans çözüm</summary><div></div></details>`;
+$p('sharedScenarioPanel').after(labberLabsPanel);
+function labberLabList() {
+  return AgLabSim.LABBER_LABS;
+}
+function labberLabFind(id) {
+  return labberLabList().find((l) => l.id === id) || null;
+}
+(function renderLabberLabCatalog() {
+  const labs = labberLabList();
+  $p('labberLabsTitle').textContent = 'Labber labları (' + labs.length + ')';
+  $p('labberLabsIntro').textContent =
+    'Labber simülatörünün kendi labları. Akademi lablarından ayrı bir gruptur; terminal Labber’ın IOS/VPCS oturumudur ve hedefler Labber’da değerlendirilir.';
+  for (const l of labs) {
+    const o = document.createElement('option');
+    o.value = l.id;
+    o.textContent = l.title + ' — ' + l.level;
+    $p('labberLabSelect').append(o);
+  }
+})();
+/** Kayıt/dışa aktarma alanı: açık Labber labının kimliği. */
+function labberLabFields() {
+  const lab = aglabLabber.lab();
+  return lab ? { labberLab: { id: lab.id } } : {};
+}
+function labberLabValidate(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Object.keys(value).join() !== 'id' ||
+    !labberLabFind(value.id)
+  )
+    throw new Error('labberLab alanı geçersiz ya da bilinmeyen lab.');
+}
+/** Topoloji yüklendikten sonra: labberLab alanı varsa lab baştan başlar. */
+function labberLabRestore(value) {
+  const panel = $p('labberLabBrief');
+  if (!value) {
+    $p('labberLabCheck').disabled = true;
+    return;
+  }
+  const def = labberLabFind(value.id);
+  aglabLabber.startLab(def);
+  $p('labberLabSelect').value = def.id;
+  $p('labberLabEngine').textContent =
+    'Motor: Labber — lab tanımı doğrudan Labber’da kurulur (köprü kullanılmaz); terminal ve hedefler Labber motorunda. Simulation Mode bu labda henüz yok.';
+  $p('labberLabEngine').dataset.engine = 'labber';
+  panel.replaceChildren();
+  const head = document.createElement('h4');
+  head.textContent = def.title;
+  const summary = document.createElement('p');
+  summary.textContent = def.summary;
+  panel.append(head, summary);
+  for (const line of def.brief) {
+    const p = document.createElement('p');
+    p.textContent = line;
+    panel.append(p);
+  }
+  const sol = $p('labberLabSolution').querySelector('div');
+  sol.replaceChildren();
+  for (const [dev, script] of Object.entries(def.solution)) {
+    const pre = document.createElement('pre');
+    pre.textContent = dev + ' (ayrıcalıklı moddan)\n' + script;
+    sol.append(pre);
+  }
+  $p('labberLabCheck').disabled = false;
+  labberLabsRefresh();
+}
+/** Hedefler: rt.objectives(); her biri ok / detay / ipucu. */
+function labberLabObjectives() {
+  if (!aglabLabber.lab()) return null;
+  return aglabLabber.runtime().objectives();
+}
+function labberLabsRefresh() {
+  const list = $p('labberLabObjectives');
+  if (!aglabLabber.lab()) {
+    list.replaceChildren();
+    $p('labberLabStatus').textContent = '';
+    return;
+  }
+  let rows;
+  try {
+    rows = labberLabObjectives();
+  } catch (error) {
+    $p('labberLabStatus').textContent = 'Değerlendirme hatası: ' + error.message;
+    return;
+  }
+  list.replaceChildren();
+  for (const o of rows) {
+    const li = document.createElement('li');
+    li.dataset.id = o.id;
+    li.dataset.ok = String(o.ok);
+    li.textContent = (o.ok ? '✓ ' : '✗ ') + o.title + (o.detail ? ' — ' + o.detail : '');
+    if (!o.ok) {
+      const hint = document.createElement('details'),
+        s = document.createElement('summary');
+      s.textContent = 'İpucu';
+      hint.append(s, document.createTextNode(o.hint));
+      li.append(hint);
+    }
+    list.append(li);
+  }
+  const done = rows.filter((o) => o.ok).length;
+  $p('labberLabStatus').textContent =
+    done === rows.length
+      ? 'Lab tamamlandı: ' + done + '/' + rows.length + ' hedef sağlandı.'
+      : 'Henüz çözülmedi: ' + done + '/' + rows.length + ' hedef sağlandı.';
+}
+function labberLabStart(id) {
+  const def = labberLabFind(id);
+  if (!def) throw new Error('Bilinmeyen Labber labı: ' + id);
+  academyClearSession();
+  importTopology(labTopology(def));
+  $p('ptTerminal').replaceChildren();
+  say(def.title + ' başlatıldı. Hedefleri terminalden (IOS/VPCS) çöz.', 'outinfo');
+}
+$p('labberLabStart').addEventListener('click', () => labberLabStart($p('labberLabSelect').value));
+$p('labberLabCheck').addEventListener('click', labberLabsRefresh);
+window.aglabLabberLabs = {
+  list: () => labberLabList().map((l) => ({ id: l.id, title: l.title, level: l.level })),
+  start: (id) => labberLabStart(id),
+  active: () => aglabLabber.lab()?.id || null,
+  objectives: () =>
+    labberLabObjectives()?.map((o) => ({ id: o.id, ok: o.ok, detail: o.detail ?? null })) ?? null,
+  solution: (id) => ({ ...labberLabFind(id).solution }),
+};
+
+// END LABBER LABS UI GENERATED
 // BEGIN SIMULATION PLAYBACK GENERATED
 // Read-only playback utilities. No topology traversal or protocol execution.
 (function (root) {
@@ -31278,6 +33494,7 @@ academyRenderEngineScope();
       nextId = nextIdForTopology(obj);
       selected = devices.some((d) => d.id === obj.selected) ? obj.selected : devices[0]?.id || '';
       academyRestoreSession(obj.academySession || null);
+      labberLabRestore(obj.labberLab || null);
       render();
       syncSelects();
       updateInspector();
