@@ -5,7 +5,9 @@ let ethernetTraceEvents = [],
   ethernetTraceOverflow = 0,
   ethernetTraceGeneration = 0,
   ethernetFrameNumber = 0,
-  ethernetTraceTopology = '';
+  ethernetTraceTopology = '',
+  // L3-b: Labber içeriğinde ping izi Labber olay adaptöründen gelir (labberSimulationTrace).
+  ethernetLabberTrace = null;
 function ethernetTopologyFingerprint() {
   // Narrow production-module harnesses supply adjacency/get without the UI's
   // complete topology arrays. Observation must not become a new engine dependency.
@@ -13,6 +15,7 @@ function ethernetTopologyFingerprint() {
   return JSON.stringify({ devices: devices.map(({ x, y, w, h, ...d }) => d), links });
 }
 function beginEthernetEvents() {
+  ethernetLabberTrace = null;
   ethernetEvents = [];
   ethernetEventOverflow = 0;
   ethernetTraceEvents = [];
@@ -39,6 +42,12 @@ function finishEthernetTrace() {
   ethernetTraceTopology = ethernetTopologyFingerprint();
 }
 function readEthernetTrace() {
+  if (ethernetLabberTrace)
+    return AgLabPacketEvents.fromLabber(ethernetLabberTrace, {
+      generation: ethernetTraceGeneration,
+      topologyKey: ethernetTraceTopology,
+      legacy: [],
+    });
   return AgLabPacketEvents.fromEvidence(ethernetTraceEvents, ethernetTraceOverflow, {
     generation: ethernetTraceGeneration,
     topologyKey: ethernetTraceTopology,

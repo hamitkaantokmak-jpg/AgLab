@@ -496,6 +496,19 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         if not state()["active"]:
             page.click("#simulationMode")
         page.click("#simulationCapture")
+        # L3-b: AGL-001/005 Labber kararında; yakalama Labber olay adaptöründen gelir ve
+        # her kablo aktarımı tuvaldeki bir bağlantıyla birebir eşleşir.
+        captured = page.evaluate("""() => {
+              const t = aglabSimulation.trace(), ls = academyEngine.snapshot().links;
+              return { origin: t.origin, note: t.note, delivered: t.events.at(-1).kind,
+                       wires: t.events.filter((e) => e.kind === 'wire')
+                         .map((e) => AgLabSimulationPlayback.matchWire(e, ls)) };
+            }""")
+        assert captured["origin"] == "labber", captured
+        assert captured["delivered"] == "icmp-delivered", captured
+        assert len(captured["wires"]) == 4 and min(captured["wires"]) >= 0, captured
+        assert "Labber ·" in page.text_content("#simulationStatus"), labid
+        assert "ARP çerçeveleri gösterilmez" in page.text_content("#simulationStatus"), labid
         freeze()
         press("#simulationForward")
         press("#simulationPause")

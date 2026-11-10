@@ -416,4 +416,6 @@ window.aglabLabberSession = {
   setPower: (dev, on) => aglabLabber.setPower(dev, on),
   setLink: (dev, port, up) => aglabLabber.setLink(dev, port, up),
   moveCable: (a, pa, b, pb) => aglabLabber.moveCable(a, pa, b, pb),
+  // L3-b: son ping'in Simulation Mode izi (Labber içeriğinde köken 'labber').
+  trace: () => readEthernetTrace(),
 };

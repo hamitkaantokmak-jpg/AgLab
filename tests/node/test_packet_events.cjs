@@ -98,3 +98,52 @@ assert.match(
   diagnose(normalize(['ttl-expired R1 quote 10.0.0.1 -> 10.0.1.2'])).issues[0].hint,
   /tek başına döngü kanıtı değildir/,
 );
+
+// L3-b: Labber olay adaptörü kayıtları (köken 'labber'); L2 yolu yoksa yalnız L3 notu.
+{
+  const { fromLabber, explain: why } = require('../../simulator/packet-events.js');
+  const { matchWire, createTimeline } = require('../../simulator/simulation-playback.js');
+  const frame = { protocol: 'ICMP', kind: 'icmp-request', ipv4: { ttl: 64 } };
+  const edge = { a: 'd1', portA: 'eth0', b: 'd3', portB: 'fa0/1' };
+  const trace = {
+    ok: true,
+    l2: true,
+    records: [
+      { raw: 'frame icmp-request src d1 dst 02:00:00:00:00:05 vlan 10', frameId: 'lf1', frame },
+      {
+        raw: 'wire icmp-request d1 -> d3',
+        frameId: 'lf1',
+        frame,
+        kind: 'wire',
+        device: 'd1',
+        edge,
+      },
+      { raw: 'unicast d3 ingress fa0/1 egress gi0/24 vlan 10', frameId: 'lf1', frame },
+      { raw: 'receive d5 icmp-request vlan 10', frameId: 'lf1', frame },
+      { raw: 'icmp-delivered d1 from d5' },
+    ],
+  };
+  const t = fromLabber(trace, { generation: 7, topologyKey: 'k' });
+  assert.equal(t.origin, 'labber');
+  assert.equal(t.l2, true);
+  assert.match(t.note, /ARP çerçeveleri gösterilmez/);
+  assert.deepEqual(
+    t.events.map((e) => e.kind),
+    ['frame', 'wire', 'forward', 'receive', 'icmp-delivered'],
+  );
+  assert.ok(t.events.every((e) => e.origin === 'labber'));
+  assert.equal(t.events[1].eventId, '7:l2');
+  assert.match(why(t.events[1]), /Labber motorunun hesapladığı yol/);
+  assert.equal(matchWire(t.events[1], [{ a: 'd3', b: 'd1', portA: 'fa0/1', portB: 'eth0' }]), 0);
+  const tl = createTimeline();
+  tl.load(t);
+  assert.equal(tl.state().total, 5);
+  const l3 = fromLabber({
+    ok: false,
+    l2: false,
+    records: [{ raw: 'icmp-undelivered d1 timeout' }],
+  });
+  assert.match(l3.note, /yalnız L3 atlamaları/);
+  assert.throws(() => fromLabber({ records: [] }));
+  console.log('PASS Labber trace normalization and replay');
+}
