@@ -19,13 +19,20 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | E Labber'ın 13 labı (kaynak #61) | #62 | birleşti |
 | L3-b Simulation Mode olay adaptörü | #63 | birleşti |
 | L4 Router, AD, özyinelemeli statik rota; Akademi M4 + routing senaryoları | #64 | birleşti |
-| AGL-036 öğretmen çözümü (`no ip route`), öğretmen CLI testi gerçek başlangıçtan | #65 | açık (birleşmeyi bekliyor) |
-| L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | açık (birleşmeyi bekliyor) |
+| AGL-036 öğretmen çözümü (`no ip route`), öğretmen CLI testi gerçek başlangıçtan | #65 | birleşti |
+| L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | birleşti |
+| CI tetikleme: push yalnız main, dal başına `concurrency` | #PRNUM | açık (birleşmeyi bekliyor) |
 
 **Sıradaki: L5'in kalanı** (L3 tablosu sıra 5–8: DHCP/Server servisleri + relay, ACL,
 NAT, port security; PKT IOS metin yolu). Bugün eski motorda kalan içerik ve gerekçeleri
 `LAB_MOTOR_HARITASI.md` özet tablosunda (hepsi bu kalemler: `nat-pat`, `relay-trunk`,
-`bgp-as`, `port-security`). #65 ve L5-a birbirinden bağımsız (farklı dosyalar; çakışma yok).
+`bgp-as`, `port-security`). Sıra ve dal zinciri: CI tetikleme → L5-b DHCP/DNS → L5-c ACL →
+L5-d NAT/PAT → L5-e port security → L5-f CDP/LLDP; her biri ayrı PR, ilki main'den,
+sonrakiler bir öncekinin dalından. Kapsam dışı: BGP, PKT IOS metin yolu, içe aktarmanın
+Labber'a geçmesi, arayüz değişikliği, Canlı Lab.
+
+CI (`aglab-ci.yml`): `push` yalnız `main`'de tetiklenir, PR'lar `pull_request` ile koşar;
+`concurrency` aynı dalın süren eski koşusunu iptal eder. `real-lab-live.yml` değişmedi.
 
 Not: birleşen dallar (`claude/e-labber-labs`, `claude/l3b-simulation-adapter`,
 `claude/l4-router-routing`) oturumdan silinemedi (GitHub proxy'si dal silmeyi reddediyor);
@@ -224,7 +231,7 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
   senaryosu, Akademi labı ve Labber labında kurulur. İçe aktarılan topolojinin Labber'a
   alınması L5'teki PKT IOS metin yoluyla birlikte ele alınmalı.
 
-## L5-a — router alt arayüzü / 802.1Q (yapıldı, PR açık)
+## L5-a — router alt arayüzü / 802.1Q (#66, birleşti)
 
 - **Labber** (`src/sim`):
   - `SwitchConfig.subifs` (yalnız router): `{parent, vlan, native, shutdown, description,
