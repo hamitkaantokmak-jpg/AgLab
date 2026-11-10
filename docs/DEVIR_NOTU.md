@@ -20,7 +20,7 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L3-b Simulation Mode olay adaptörü | #63 | birleşti |
 | L4 Router, AD, özyinelemeli statik rota; Akademi M4 + routing senaryoları | #64 | birleşti |
 | AGL-036 öğretmen çözümü (`no ip route`), öğretmen CLI testi gerçek başlangıçtan | #65 | açık (birleşmeyi bekliyor) |
-| L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | dal `claude/l5a-subinterfaces` | PR açık (birleşmeyi bekliyor) |
+| L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | açık (birleşmeyi bekliyor) |
 
 **Sıradaki: L5'in kalanı** (L3 tablosu sıra 5–8: DHCP/Server servisleri + relay, ACL,
 NAT, port security; PKT IOS metin yolu). Bugün eski motorda kalan içerik ve gerekçeleri
