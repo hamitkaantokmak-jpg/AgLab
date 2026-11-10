@@ -282,7 +282,7 @@
   {
     "id": "AGL-036",
     "title": "Yanlış sonraki atlamayı düzeltme",
-    "sha256": "a81fcb55ab181d2aab8e8ebb324799d9d643acf87cef99645b3b83a1c69706e4",
+    "sha256": "1769ab0f560257efc6e2f6ca2f14be832815f02145ec2bdc4c5e73c30850ca11",
     "content_errors": [],
     "status": "integrated",
     "blockers": []
