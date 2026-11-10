@@ -130,6 +130,21 @@ var AgLabSim = (() => {
   }
   function defaultSwitchConfig(def) {
     const ifaces = {};
+    if (def.router) {
+      for (const p of def.ports) ifaces[p] = { ...defaultPhys(), routed: true, ip: null, shutdown: true };
+      return {
+        hostname: "Router",
+        vlans: {},
+        ifaces,
+        pos: {},
+        svis: {},
+        stpMode: "pvst",
+        stpPriority: {},
+        ipRouting: true,
+        routes: [],
+        defaultGateway: null
+      };
+    }
     for (const p of def.ports) ifaces[p] = defaultPhys();
     return {
       hostname: "Switch",
@@ -835,9 +850,13 @@ var AgLabSim = (() => {
   }
   function isRouter(d, dev) {
     const def = d.topo.devices[dev];
-    return def.kind === "switch" && !!def.l3 && d.cfgs[dev].ipRouting;
+    return def.kind === "switch" && !!(def.l3 || def.router) && d.cfgs[dev].ipRouting;
   }
-  var RANK = { L: 0, C: 0, S: 1, O: 2, "O IA": 2, "O E2": 2 };
+  var OSPF_AD = 110;
+  var inPrefix = (ip, net, prefix) => {
+    const m = prefixMaskInt(prefix);
+    return (ipToInt(ip) & m) >>> 0 === (ipToInt(net) & m) >>> 0;
+  };
   function routeTable(d, dev) {
     const ifs = l3Ifs(d, dev);
     const out = [];
@@ -846,17 +865,48 @@ var AgLabSim = (() => {
       out.push({ code: "C", net: intTo((ipToInt(i.ip) & m) >>> 0), prefix: i.prefix, nh: null, ifname: i.name });
       if (i.prefix < 32) out.push({ code: "L", net: i.ip, prefix: 32, nh: null, ifname: i.name });
     }
-    if (isRouter(d, dev)) {
-      const have = (net, prefix) => out.some((e) => e.net === net && e.prefix === prefix);
-      for (const r of d.cfgs[dev].routes) {
-        const outIf = ifs.find((i) => i.node && sameSubnet(i.ip, r.nh, i.prefix));
-        if (!outIf) continue;
-        out.push({ code: "S", net: r.net, prefix: maskToPrefix(r.mask), nh: r.nh, ifname: outIf.name });
+    if (!isRouter(d, dev)) return out;
+    const connected = out.filter((e) => e.code === "C" && ifs.find((i) => i.name === e.ifname)?.node);
+    const statics = d.cfgs[dev].routes.flatMap((r, idx) => {
+      const prefix = maskToPrefix(r.mask);
+      return prefix === null ? [] : [{ code: "S", net: r.net, prefix, ad: r.ad ?? 1, idx, nh: r.nh, ifname: "" }];
+    });
+    const ospf = (d.ospf[dev]?.routes ?? []).filter((r) => r.paths.length).map((r) => ({ code: r.code, net: r.net, prefix: r.prefix, ad: OSPF_AD, nh: r.paths[0].nh, ifname: r.paths[0].ifname, metric: r.metric, paths: r.paths }));
+    const lookupFor = (dst, seen) => {
+      const matches = [
+        ...connected.filter((c) => inPrefix(dst, c.net, c.prefix)).map((c) => ({ ...c, ad: 0 })),
+        ...statics.filter((c) => !seen.has(c.idx) && inPrefix(dst, c.net, c.prefix)),
+        ...ospf.filter((c) => inPrefix(dst, c.net, c.prefix))
+      ].sort((a, b) => b.prefix - a.prefix || a.ad - b.ad || (a.code === "S" ? 0 : 1) - (b.code === "S" ? 0 : 1));
+      for (const m of matches) {
+        if (m.code === "C") return { ifname: m.ifname, via: dst };
+        if (m.code !== "S") return { ifname: m.ifname, via: m.nh };
+        const r = resolve(m, seen);
+        if (r) return r;
       }
-      for (const r of d.ospf[dev]?.routes ?? []) {
-        if (have(r.net, r.prefix) || !r.paths.length) continue;
-        out.push({ code: r.code, net: r.net, prefix: r.prefix, nh: r.paths[0].nh, ifname: r.paths[0].ifname, metric: r.metric, paths: r.paths });
-      }
+      return null;
+    };
+    const resolve = (s, seen) => {
+      const direct = connected.find((c) => inPrefix(s.nh, c.net, c.prefix));
+      if (direct) return { ifname: direct.ifname, via: s.nh };
+      return lookupFor(s.nh, /* @__PURE__ */ new Set([...seen, s.idx]));
+    };
+    const best = /* @__PURE__ */ new Map();
+    const consider = (e, rank) => {
+      const key = `${e.net}/${e.prefix}`;
+      if (out.some((c) => c.code === "C" && `${c.net}/${c.prefix}` === key)) return;
+      const cur = best.get(key);
+      if (!cur || rank < cur.rank) best.set(key, { ...e, rank });
+    };
+    for (const s of statics) {
+      const r = resolve(s, /* @__PURE__ */ new Set());
+      if (!r) continue;
+      consider({ code: "S", net: s.net, prefix: s.prefix, nh: s.nh, ifname: r.ifname, ...s.ad !== 1 ? { ad: s.ad } : {}, via: r.via }, s.ad * 2);
+    }
+    for (const r of ospf) consider({ code: r.code, net: r.net, prefix: r.prefix, nh: r.nh, ifname: r.ifname, metric: r.metric, paths: r.paths }, r.ad * 2 + 1);
+    for (const e of best.values()) {
+      const { rank: _rank, ...entry } = e;
+      out.push(entry);
     }
     return out;
   }
@@ -880,18 +930,14 @@ var AgLabSim = (() => {
       return gw && gi ? { out: gi, nh: gw } : null;
     }
     let best = null;
-    const dn = ipToInt(dst);
     for (const e of routeTable(d, dev)) {
-      if (e.code === "L") continue;
-      const m = prefixMaskInt(e.prefix);
-      if ((dn & m) >>> 0 !== (ipToInt(e.net) & m) >>> 0) continue;
-      if (best && best.e.prefix > e.prefix) continue;
-      if (best && best.e.prefix === e.prefix && RANK[best.e.code] <= RANK[e.code]) continue;
+      if (e.code === "L" || !inPrefix(dst, e.net, e.prefix)) continue;
+      if (best && best.e.prefix >= e.prefix) continue;
       const out = ifs.find((i) => i.name === e.ifname);
       best = { e, out };
     }
     if (!best) return null;
-    return { out: best.out, nh: best.e.code === "C" ? dst : best.e.nh };
+    return { out: best.out, nh: best.e.code === "C" ? dst : best.e.via ?? best.e.nh };
   }
   function owns(d, dev, ip) {
     return l3Ifs(d, dev).some((i) => i.ip === ip);
@@ -1368,7 +1414,51 @@ var AgLabSim = (() => {
     if (o?.ospfCost) out.push(" ip ospf cost " + o.ospfCost);
     return out;
   }
+  var routeLine = (r) => `ip route ${r.net} ${r.mask} ${r.nh}` + (r.ad && r.ad !== 1 ? " " + r.ad : "");
+  function routerRunningConfig(sw, c) {
+    const o = [];
+    o.push("!", "version 15.4", "service timestamps debug datetime msec", "service timestamps log datetime msec", "no service password-encryption", "!");
+    o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", "no aaa new-model");
+    if (!c.ipRouting) o.push("no ip routing");
+    o.push("!", "!");
+    for (const n of Object.keys(c.loopbacks ?? {}).map(Number).sort((a, b) => a - b)) {
+      const l = c.loopbacks[String(n)];
+      o.push("interface Loopback" + n);
+      if (l.description) o.push(" description " + l.description);
+      o.push(...l3Lines(l.ip, l.l3, true));
+      if (l.shutdown) o.push(" shutdown");
+      o.push("!");
+    }
+    for (const p of sw.ports) {
+      const ic = c.ifaces[p];
+      o.push("interface " + p);
+      if (ic.description) o.push(" description " + ic.description);
+      o.push(...l3Lines(ic.ip, ic.l3, true));
+      if (ic.shutdown) o.push(" shutdown");
+      o.push("!");
+    }
+    if (c.ospf) o.push(...ospfLines(c));
+    o.push("ip forward-protocol nd", "no ip http server", "!");
+    for (const r of c.routes) o.push(routeLine(r));
+    o.push("!", "line con 0", "line aux 0", "line vty 0 4", " login", "!", "end");
+    return o;
+  }
+  function ospfLines(c) {
+    const o = [];
+    const r = c.ospf;
+    o.push("router ospf " + r.pid);
+    if (r.routerId) o.push(" router-id " + r.routerId);
+    if (r.refBw !== 100) o.push(" auto-cost reference-bandwidth " + r.refBw);
+    for (const [a, st] of Object.entries(r.stubs).sort((x, y) => Number(x[0]) - Number(y[0]))) o.push(` area ${a} stub${st.noSummary ? " no-summary" : ""}`);
+    if (r.passiveDefault) o.push(" passive-interface default");
+    for (const p of r.passive) o.push(`${r.passiveDefault ? " no" : ""} passive-interface ${p}`);
+    for (const n of r.networks) o.push(` network ${n.addr} ${n.wildcard} area ${n.area}`);
+    if (r.defaultOriginate) o.push(" default-information originate" + (r.defaultOriginate.always ? " always" : ""));
+    o.push("!");
+    return o;
+  }
   function runningConfig(sw, c) {
+    if (sw.router) return routerRunningConfig(sw, c);
     const o = [];
     o.push("!", "version 15.2", "no service pad", "service timestamps debug datetime msec", "service timestamps log datetime msec", "no service password-encryption", "!");
     o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", "no aaa new-model");
@@ -1423,21 +1513,10 @@ var AgLabSim = (() => {
       if (s.shutdown) o.push(" shutdown");
       o.push("!");
     }
-    if (c.ospf) {
-      const r = c.ospf;
-      o.push("router ospf " + r.pid);
-      if (r.routerId) o.push(" router-id " + r.routerId);
-      if (r.refBw !== 100) o.push(" auto-cost reference-bandwidth " + r.refBw);
-      for (const [a, st] of Object.entries(r.stubs).sort((x, y) => Number(x[0]) - Number(y[0]))) o.push(` area ${a} stub${st.noSummary ? " no-summary" : ""}`);
-      if (r.passiveDefault) o.push(" passive-interface default");
-      for (const p of r.passive) o.push(`${r.passiveDefault ? " no" : ""} passive-interface ${p}`);
-      for (const n of r.networks) o.push(` network ${n.addr} ${n.wildcard} area ${n.area}`);
-      if (r.defaultOriginate) o.push(" default-information originate" + (r.defaultOriginate.always ? " always" : ""));
-      o.push("!");
-    }
+    if (c.ospf) o.push(...ospfLines(c));
     if (c.defaultGateway) o.push("ip default-gateway " + c.defaultGateway);
     o.push("ip forward-protocol nd", "no ip http server", "!");
-    for (const r of c.routes) o.push(`ip route ${r.net} ${r.mask} ${r.nh}`);
+    for (const r of c.routes) o.push(routeLine(r));
     o.push("!", "line con 0", "line vty 0 4", " login", "line vty 5 15", " login", "!", "end");
     return o;
   }
@@ -1600,7 +1679,7 @@ var AgLabSim = (() => {
     const d = rt.derived;
     const c = rt.running[dev];
     const sw = rt.topo.devices[dev];
-    if (!sw.l3 || !c.ipRouting) {
+    if (!(sw.l3 || sw.router) || !c.ipRouting) {
       return [c.defaultGateway ? `Default gateway is ${c.defaultGateway}` : "Default gateway is not set", "", "Host               Gateway           Last Use    Total Uses  Interface", "ICMP redirect cache is empty"];
     }
     const o = [
@@ -1620,7 +1699,7 @@ var AgLabSim = (() => {
     const keep = (e) => !only || (only === "C" ? e.code === "C" || e.code === "L" : e.code.startsWith(only));
     const line = (e, codeCol, width = 9) => {
       const head = `${codeCol.padEnd(width)}${e.net}/${e.prefix}`;
-      if (e.code === "S") return [`${head} [1/0] via ${e.nh}`];
+      if (e.code === "S") return [`${head} [${e.ad ?? 1}/0] via ${e.nh}`];
       if (e.code === "C" || e.code === "L") return [`${head} is directly connected, ${e.ifname}`];
       const paths = e.paths ?? [{ nh: e.nh, ifname: e.ifname }];
       const pad0 = " ".repeat(head.length + 1);
@@ -1645,15 +1724,14 @@ var AgLabSim = (() => {
   function showIpRouteFor(rt, dev, ip) {
     const c = rt.running[dev];
     const sw = rt.topo.devices[dev];
-    if (!sw.l3 || !c.ipRouting) return ["% Network not in table"];
+    if (!(sw.l3 || sw.router) || !c.ipRouting) return ["% Network not in table"];
     const dn = ipToInt(ip);
     let best = null;
-    const rank = (e2) => e2.code === "C" || e2.code === "L" ? 0 : e2.code === "S" ? 1 : 2;
     for (const e2 of routeTable(rt.derived, dev)) {
       if (e2.code === "L") continue;
       const m = prefixMaskInt(e2.prefix);
       if ((dn & m) >>> 0 !== (ipToInt(e2.net) & m) >>> 0) continue;
-      if (best && (best.prefix > e2.prefix || best.prefix === e2.prefix && rank(best) <= rank(e2))) continue;
+      if (best && best.prefix >= e2.prefix) continue;
       best = e2;
     }
     if (!best) return ["% Network not in table"];
@@ -1664,7 +1742,7 @@ var AgLabSim = (() => {
       return o;
     }
     if (e.code === "S") {
-      o.push('  Known via "static", distance 1, metric 0' + (e.prefix === 0 ? ", candidate default path" : ""), "  Routing Descriptor Blocks:", `  * ${e.nh}`, "      Route metric is 0, traffic share count is 1");
+      o.push(`  Known via "static", distance ${e.ad ?? 1}, metric 0` + (e.prefix === 0 ? ", candidate default path" : ""), "  Routing Descriptor Blocks:", `  * ${e.nh}`, "      Route metric is 0, traffic share count is 1");
       return o;
     }
     const type = e.code === "O" ? "intra area" : e.code === "O IA" ? "inter area" : "extern 2, forward metric 1";
@@ -1907,7 +1985,7 @@ var AgLabSim = (() => {
       const ps = d.phys[pk(dev, p)];
       if (!ps.up || !ps.peer || ps.peerIsPc) continue;
       const peer = rt.topo.devices[ps.peer.dev];
-      const caps = peer.l3 ? "R S I" : "S I";
+      const caps = peer.router ? "R B" : peer.l3 ? "R S I" : "S I";
       o.push(pad(rt.hostname(peer.id), 17) + pad(shortIf(p).replace(/^(\w\w)/, "$1 "), 18) + pad("163", 11) + pad(caps, 12) + pad(peer.model.split(" ")[0].slice(0, 9), 10) + shortIf(ps.peer.port).replace(/^(\w\w)/, "$1 "));
     }
     const n = o.length - 5;
@@ -2116,7 +2194,7 @@ var AgLabSim = (() => {
       { p: "no vlan <vlist:ISL VLAN IDs 1-4094>", run: (x, a) => x.deleteVlan(a[2]) },
       { p: "interface <if>", run: (x, a) => x.enterIf(a[1], a[2]) },
       { p: "interface range <LINE:Interface range, e.g. fa0/1 - 4, gi0/1>", run: (x, a) => x.enterRange(a[2]) },
-      { p: "no interface <if>", run: (x, a) => x.deleteIf(a[2], a[3]), ifTypes: ["Port-channel", "Vlan", "Loopback"] },
+      { p: "no interface <if>", run: (x, a) => x.deleteIf(a[2], a[3]), ifTypes: def.router ? ["Loopback"] : ["Port-channel", "Vlan", "Loopback"] },
       { p: "spanning-tree mode pvst", run: (x) => void (x.cfg.stpMode = "pvst") },
       { p: "spanning-tree mode rapid-pvst", run: (x) => void (x.cfg.stpMode = "rapid-pvst") },
       { p: "no spanning-tree mode", run: (x) => void (x.cfg.stpMode = "pvst") },
@@ -2140,7 +2218,7 @@ var AgLabSim = (() => {
       { p: "errdisable recovery interval <30-86400:timer-interval(sec)>", run: (x, a) => void (x.cfg.errRecoveryInterval = Number(a[3])) },
       { p: "no errdisable recovery interval", run: (x) => void delete x.cfg.errRecoveryInterval }
     ];
-    if (def.l3) {
+    if (def.l3 || def.router) {
       p.push(
         { p: "ip routing", run: (x) => void (x.cfg.ipRouting = true) },
         {
@@ -2159,15 +2237,27 @@ var AgLabSim = (() => {
         },
         { p: "ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router's address>", run: (x, a) => x.addRoute(a[2], a[3], a[4]) },
         {
+          p: "ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router's address> <1-255:Distance metric for this route>",
+          run: (x, a) => x.addRoute(a[2], a[3], a[4], Number(a[5]))
+        },
+        {
+          p: "no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask>",
+          run: (x, a) => x.removeRoute(a[3], a[4], null)
+        },
+        {
           p: "no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router's address>",
-          run: (x, a) => {
-            x.cfg.routes = x.cfg.routes.filter((r) => !(r.net === a[3] && r.mask === a[4] && r.nh === a[5]));
-          }
+          run: (x, a) => x.removeRoute(a[3], a[4], a[5])
+        },
+        {
+          p: "no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router's address> <1-255:Distance metric for this route>",
+          run: (x, a) => x.removeRoute(a[3], a[4], a[5])
         }
       );
     }
-    return p;
+    return def.router ? p.filter((x) => !ROUTER_HIDDEN_CONFIG.test(x.p)) : p;
   };
+  var ROUTER_HIDDEN_CONFIG = /^(no )?(vlan|spanning-tree|errdisable) /;
+  var ROUTER_HIDDEN_SHOW = /^show (vlan|spanning-tree|mac address-table|interfaces (trunk|status|switchport)|interfaces <if> switchport|etherchannel|errdisable|vtp)/;
   var l3OptPatterns = [
     { p: "ip ospf cost <1-65535:Cost>", run: (x, a) => x.eachL3((o) => void (o.ospfCost = Number(a[3]))) },
     { p: "no ip ospf cost", run: (x) => x.eachL3((o) => void delete o.ospfCost) },
@@ -2240,7 +2330,18 @@ var AgLabSim = (() => {
       }
     }
   ];
+  var routerIfPatterns = [
+    ...commonSub,
+    { p: "shutdown", run: (x) => x.eachPhys((c) => void (c.shutdown = true)) },
+    { p: "no shutdown", run: (x) => x.eachPhys((c) => void (c.shutdown = false)) },
+    { p: "description <LINE:Up to 240 characters describing this interface>", run: (x, a) => x.eachPhys((c) => void (c.description = a[1].slice(0, 240))) },
+    { p: "no description", run: (x) => x.eachPhys((c) => void (c.description = "")) },
+    { p: "ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>", run: (x, a) => x.setIp(a[2], a[3]) },
+    { p: "no ip address", run: (x) => x.eachPhys((c) => void (c.ip = null)) },
+    ...l3OptPatterns
+  ];
   var l2IfPatterns = (def) => {
+    if (def.router) return routerIfPatterns;
     const p = [
       ...commonSub,
       { p: "shutdown", run: (x) => x.eachL2((c) => void (c.shutdown = true)) },
@@ -2325,9 +2426,10 @@ var AgLabSim = (() => {
   function tries(def) {
     let t = trieCache.get(def);
     if (!t) {
+      const exec = (ps) => def.router ? ps.filter((x) => !ROUTER_HIDDEN_SHOW.test(x.p)) : ps;
       t = {
-        user: buildTrie(userPatterns),
-        priv: buildTrie(privPatterns),
+        user: buildTrie(exec(userPatterns)),
+        priv: buildTrie(exec(privPatterns)),
         config: buildTrie(configPatterns(def)),
         if: buildTrie(l2IfPatterns(def)),
         svi: buildTrie(sviPatterns),
@@ -2557,6 +2659,7 @@ var AgLabSim = (() => {
       var _a;
       const name = canonIf(type, num);
       if (!name) throw new InvalidAt(argIndex);
+      if (this.def.router && (name.startsWith("Vlan") || name.startsWith("Port-channel"))) throw new InvalidAt(argIndex);
       if (name.startsWith("Vlan")) {
         const v = Number(num);
         if (!/^\d+$/.test(num) || v < 1 || v > 4094) throw new InvalidAt(argIndex + 1);
@@ -2796,11 +2899,22 @@ var AgLabSim = (() => {
         return [];
       });
     }
-    addRoute(net, mask, nh) {
+    addRoute(net, mask, nh, ad = 1) {
       const len = maskToPrefix(mask);
       if (len === null) return ["%Inconsistent address and mask"];
       if (networkOf(net, len) !== net) return ["%Inconsistent address and mask"];
-      if (!this.cfg.routes.some((r) => r.net === net && r.mask === mask && r.nh === nh)) this.cfg.routes.push({ net, mask, nh });
+      if (nh === "0.0.0.0" || this.ipIfs().some(([, ip]) => ip.addr === nh)) return ["%Invalid next hop address (it's this router)"];
+      const same = this.cfg.routes.find((r) => r.net === net && r.mask === mask && r.nh === nh);
+      if (same) {
+        if (ad === 1) delete same.ad;
+        else same.ad = ad;
+      } else this.cfg.routes.push(ad === 1 ? { net, mask, nh } : { net, mask, nh, ad });
+    }
+    /** `no ip route net mask [nh [ad]]`: without a next hop every route to the prefix goes. */
+    removeRoute(net, mask, nh) {
+      const before = this.cfg.routes.length;
+      this.cfg.routes = this.cfg.routes.filter((r) => !(r.net === net && r.mask === mask && (nh === null || r.nh === nh)));
+      if (this.cfg.routes.length === before) return ["%No matching route to delete"];
     }
     // ---- spanning tree ----
     stpPriority(list, prio) {
@@ -3181,7 +3295,7 @@ var AgLabSim = (() => {
   function ospfRunning(d, dev) {
     const def = d.topo.devices[dev];
     const c = d.cfgs[dev];
-    return def?.kind === "switch" && !!def.l3 && !!c?.ipRouting && !!c.ospf && !d.hw.off.has(dev);
+    return def?.kind === "switch" && !!(def.l3 || def.router) && !!c?.ipRouting && !!c.ospf && !d.hw.off.has(dev);
   }
   function configuredL3(cfg, sw) {
     const out = [];
@@ -3583,6 +3697,22 @@ var AgLabSim = (() => {
     /** Installed route for exactly net/prefix. */
     route(dev, net, prefix) {
       return routeTable(this.d, dev).find((e) => e.net === net && e.prefix === prefix);
+    }
+    /**
+     * Route the device would use for dst (longest match over the installed table), or null.
+     * L4: Akademi kaynak arayüzlü ICMP ölçütü bunu eski motorun routeLookup'ı gibi kullanır.
+     */
+    routeFor(dev, dst) {
+      const n = ipToInt(dst);
+      if (n === null) return null;
+      let best = null;
+      for (const e of routeTable(this.d, dev)) {
+        if (e.code === "L") continue;
+        const m = prefixMaskInt(e.prefix);
+        if ((n & m) >>> 0 !== (ipToInt(e.net) & m) >>> 0) continue;
+        if (!best || e.prefix > best.prefix) best = e;
+      }
+      return best;
     }
     errDisabled(dev, port) {
       return !!this.d.phys[pk(dev, this.canon(port))]?.errDisabled;
@@ -6026,6 +6156,8 @@ write memory`
   var import_mac_address = __toESM(require_mac_address());
   var MODEL_L2 = "WS-C2960-24TT-L";
   var MODEL_L3 = "WS-C3650-24PS";
+  var MODEL_ROUTER = "ISR4331";
+  var ROUTER_TEMPLATE_PORTS = ["g0/0", "g0/1"];
   var TEMPLATES = {
     [MODEL_L2]: ["Fa0/1-24", "Gi0/1-2"],
     [MODEL_L3]: ["Gi1/0/1-24", "Gi1/1/1-4"]
@@ -6045,17 +6177,23 @@ write memory`
     "ip",
     "mask"
   ]);
+  var ROUTER_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "staticRoutes", "route", "ospf", "ip", "mask", "gateway", "vlan"]);
+  var ROUTER_IF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled"]);
+  var STATIC_ROUTE_FIELDS = /* @__PURE__ */ new Set(["network", "mask", "nextHop", "distance"]);
+  var OSPF_FIELDS = /* @__PURE__ */ new Set(["pid", "routerId", "networks"]);
+  var SERVER_FIELDS = /* @__PURE__ */ new Set([...PC_FIELDS, "services"]);
   var PHYS_FIELDS = /* @__PURE__ */ new Set(["mode", "vlan", "allowed", "nativeVlan", "enabled"]);
   var SVI_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "vlan"]);
   var FEATURE_REASON = {
-    staticRoutes: "Statik rota (router) Labber köprüsünde henüz yok (L4)",
-    route: "Varsayılan rota (router) Labber köprüsünde henüz yok (L4)",
+    staticRoutes: "Switch üzerinde statik rota AğLab modelinde yok",
+    route: "Switch üzerinde varsayılan rota AğLab modelinde yok",
     acls: "ACL Labber'da yok (L5)",
     natOverload: "NAT Labber'da yok (L5)",
     natTranslations: "NAT çeviri tablosu Labber'da yok (L5)",
-    ospf: "AğLab OSPF modeli köprüde eşlenmiyor (L4)",
+    ospf: "Switch üzerinde OSPF AğLab modelinde yok",
     bgp: "BGP Labber'da yok (L5)",
     services: "Sunucu servisleri (DHCP/DNS/HTTP) Labber'da yok (L5)",
+    subinterface: "Alt arayüz / dot1q Labber'da yok (L5)",
     startupConfig: "Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)",
     portSecurity: "Port security Labber'da yok (L5)",
     errdisabled: "Port security err-disable durumu Labber'da yok (L5)",
@@ -6130,6 +6268,123 @@ write memory`
       if (other !== void 0) reject(dev, "mac", `MAC ${mac} ${other} ile çakışıyor`);
       else usedMacs.set(mac, dev);
     };
+    const mapPorts = (id, sourcePorts) => {
+      const portMap = {};
+      const canonPorts = [];
+      for (const p of sourcePorts) {
+        const c = canonPort(p);
+        if (!c) {
+          reject(id, p, "Eşlenemeyen port adı");
+          continue;
+        }
+        if (portMap[c] !== void 0) {
+          reject(id, p, `Port ${c} iki kez tanımlı (${portMap[c]})`);
+          continue;
+        }
+        portMap[c] = p;
+        canonPorts.push(c);
+      }
+      return { portMap, canonPorts };
+    };
+    const routerToLabber = (d, id, off) => {
+      for (const key of ["ip", "mask", "gateway"])
+        if (d[key] !== void 0 && d[key] !== "") unsupported(id, key, "Router'da cihaz düzeyi adres alanı AğLab modelinde yok (arayüz adresleri kullanılır)");
+      const ifaces = d.interfaces ?? {};
+      const subifs = Object.keys(ifaces).filter((n) => n.includes("."));
+      for (const n of subifs) unsupported(id, `interfaces.${n}`, FEATURE_REASON["subinterface"]);
+      const sourcePorts = d.ports ?? [.../* @__PURE__ */ new Set([...ROUTER_TEMPLATE_PORTS, ...Object.keys(ifaces).filter((n) => !n.includes("."))])];
+      const { portMap, canonPorts } = mapPorts(id, sourcePorts);
+      canonByDevice[id] = Object.fromEntries(Object.entries(portMap).map(([c, o]) => [o, c]));
+      report.portNames[id] = portMap;
+      const pktModel = typeof d.config?.packetTracerModel === "string" ? d.config.packetTracerModel : "";
+      const sw = {
+        id,
+        kind: "switch",
+        router: true,
+        l3: true,
+        model: pktModel || MODEL_ROUTER,
+        mac: "0000.0000.0000",
+        ports: canonPorts,
+        x: Number(d.x ?? 0),
+        y: Number(d.y ?? 0),
+        ...off ? { off: true } : {}
+      };
+      if (resolveMac) sw.mac = intToDotted(0x02n << 40n | (macToInt(resolveMac(d)) & 0xffffffffn) << 8n);
+      claimMac(id, sw.mac);
+      def.devices.push(sw);
+      const cfg = defaultSwitchConfig(sw);
+      cfg.hostname = d.name || id;
+      for (const c of canonPorts) cfg.ifaces[c].shutdown = false;
+      for (const [name, iface] of Object.entries(ifaces)) {
+        if (name.includes(".")) continue;
+        const c = canonPort(name);
+        if (!c || portMap[c] === void 0) {
+          reject(id, name, c ? "Arayüz cihazın port listesinde yok" : "Eşlenemeyen arayüz adı");
+          continue;
+        }
+        for (const key of Object.keys(iface))
+          if (!ROUTER_IF_FIELDS.has(key)) unsupported(id, `interfaces.${name}.${key}`, FEATURE_REASON[key] ?? "Labber'da karşılığı olmayan router arayüz alanı");
+        const phys = cfg.ifaces[c];
+        phys.shutdown = iface.enabled === false;
+        if (iface.ip) {
+          const pre = iface.mask ? maskToPrefix(iface.mask) : null;
+          if (!isIp(iface.ip) || pre === null || pre === 0) reject(id, name, "Geçersiz router arayüzü IPv4 adresi/maskesi");
+          else phys.ip = { addr: iface.ip, mask: iface.mask };
+        }
+      }
+      const list = Array.isArray(d.staticRoutes) ? d.staticRoutes : [];
+      if (d.staticRoutes !== void 0 && !Array.isArray(d.staticRoutes)) reject(id, "staticRoutes", "Statik rota listesi dizi olmalı");
+      list.forEach((r, i) => {
+        const where = `staticRoutes[${i}]`;
+        for (const key of Object.keys(r ?? {}))
+          if (!STATIC_ROUTE_FIELDS.has(key)) unsupported(id, `${where}.${key}`, "Labber'da karşılığı olmayan statik rota alanı");
+        const prefix = isIp(r?.mask ?? "") ? maskToPrefix(r.mask) : null;
+        const ad = r?.distance === void 0 ? 1 : Number(r.distance);
+        if (!isIp(r?.network ?? "") || prefix === null || !isIp(r?.nextHop ?? "")) return reject(id, where, "Geçersiz statik rota (ağ/maske/next-hop)");
+        if (networkOf(r.network, prefix) !== r.network) return reject(id, where, "Statik rota ağ adresi maskeyle hizalı değil");
+        if (!Number.isInteger(ad) || ad < 1 || ad > 255) return reject(id, where, "Statik rota AD 1-255 arasında tam sayı olmalı");
+        if (cfg.routes.some((x) => x.net === r.network && x.mask === r.mask && x.nh === r.nextHop))
+          return reject(id, where, "Aynı ağ ve next-hop ile yinelenen statik rota");
+        cfg.routes.push(ad === 1 ? { net: r.network, mask: r.mask, nh: r.nextHop } : { net: r.network, mask: r.mask, nh: r.nextHop, ad });
+      });
+      if (d.route !== void 0 && d.route !== "") {
+        if (typeof d.route !== "string" || !isIp(d.route)) reject(id, "route", "Geçersiz varsayılan rota next-hop'u: " + String(d.route));
+        else if (!cfg.routes.some((x) => x.net === "0.0.0.0" && x.mask === "0.0.0.0")) cfg.routes.push({ net: "0.0.0.0", mask: "0.0.0.0", nh: d.route });
+      }
+      if (d.ospf !== void 0 && d.ospf !== null) {
+        const o = d.ospf;
+        for (const key of Object.keys(o))
+          if (!OSPF_FIELDS.has(key)) unsupported(id, `ospf.${key}`, "Labber'da karşılığı olmayan AğLab OSPF alanı");
+        const pid = Number(o["pid"] ?? 1);
+        const rid = o["routerId"] ?? null;
+        const nets = Array.isArray(o["networks"]) ? o["networks"] : [];
+        if (!Number.isInteger(pid) || pid < 1 || pid > 65535) reject(id, "ospf.pid", "Geçersiz OSPF süreç numarası");
+        else if (rid !== null && rid !== "" && !isIp(String(rid))) reject(id, "ospf.routerId", "Geçersiz OSPF router-id");
+        else {
+          const ospf = {
+            pid,
+            routerId: rid ? String(rid) : null,
+            activeRid: rid ? String(rid) : null,
+            networks: [],
+            passiveDefault: false,
+            passive: [],
+            refBw: 100,
+            defaultOriginate: null,
+            stubs: {}
+          };
+          nets.forEach((n, i) => {
+            for (const key of Object.keys(n ?? {}))
+              if (!["network", "wildcard", "area"].includes(key)) unsupported(id, `ospf.networks[${i}].${key}`, "Labber'da karşılığı olmayan OSPF network alanı");
+            const area = Number(n?.["area"]);
+            if (!isIp(String(n?.["network"] ?? "")) || !isIp(String(n?.["wildcard"] ?? "")) || !Number.isInteger(area) || area < 0)
+              reject(id, `ospf.networks[${i}]`, "Geçersiz OSPF network satırı");
+            else ospf.networks.push({ addr: String(n["network"]), wildcard: String(n["wildcard"]), area });
+          });
+          cfg.ospf = ospf;
+        }
+      }
+      running[id] = cfg;
+    };
     for (const d of devices) {
       const id = String(d.id);
       if (ids.has(id)) {
@@ -6137,16 +6392,28 @@ write memory`
         continue;
       }
       ids.add(id);
-      const fields = d.type === "PC" ? PC_FIELDS : d.type === "Switch" ? SWITCH_FIELDS : null;
+      const fields = d.type === "PC" ? PC_FIELDS : d.type === "Server" ? SERVER_FIELDS : d.type === "Switch" ? SWITCH_FIELDS : d.type === "Router" ? ROUTER_FIELDS : null;
       if (!fields) {
-        unsupported(id, "type", `${d.type} cihaz tipi Labber köprüsünde yok` + (d.type === "Router" ? " (L4)" : " (L5)"));
+        unsupported(id, "type", `${d.type} cihaz tipi Labber köprüsünde yok`);
         continue;
       }
       for (const key of Object.keys(d))
         if (!DEVICE_OPAQUE.has(key) && !fields.has(key))
           unsupported(id, key, FEATURE_REASON[key] ?? "Labber'da karşılığı olmayan alan");
       const off = d.enabled === false;
-      if (d.type === "PC") {
+      if (d.type === "Server") {
+        const services = d.services;
+        if (services !== void 0 && (typeof services !== "object" || services === null || Array.isArray(services)))
+          reject(id, "services", "Servis listesi nesne olmalı");
+        else
+          for (const [name, on] of Object.entries(services ?? {}))
+            if (on) unsupported(id, `services.${name}`, FEATURE_REASON["services"]);
+      }
+      if (d.type === "Router") {
+        routerToLabber(d, id, off);
+        continue;
+      }
+      if (d.type === "PC" || d.type === "Server") {
         const ports2 = d.ports ?? ["eth0"];
         if (ports2.length !== 1 || ports2[0] !== "eth0") reject(id, "ports", "PC yalnızca tek eth0 portuyla modellenir");
         for (const [name, iface] of Object.entries(d.interfaces ?? {})) {
@@ -6190,21 +6457,7 @@ write memory`
       const pktModel = typeof d.config?.packetTracerModel === "string" ? d.config.packetTracerModel : "";
       const model = pktModel || (l3 ? MODEL_L3 : MODEL_L2);
       const sourcePorts = d.ports ?? (TEMPLATES[model] ? ports(...TEMPLATES[model]).map((p) => p) : []);
-      const portMap = {};
-      const canonPorts = [];
-      for (const p of sourcePorts) {
-        const c = canonPort(p);
-        if (!c) {
-          reject(id, p, "Eşlenemeyen port adı");
-          continue;
-        }
-        if (portMap[c] !== void 0) {
-          reject(id, p, `Port ${c} iki kez tanımlı (${portMap[c]})`);
-          continue;
-        }
-        portMap[c] = p;
-        canonPorts.push(c);
-      }
+      const { portMap, canonPorts } = mapPorts(id, sourcePorts);
       if (!d.ports) {
         const used = [
           ...Object.keys(d.interfaces ?? {}),
@@ -6402,10 +6655,10 @@ write memory`
       }
     for (const d of out.devices) {
       const id = String(d.id);
-      if (rt.hw && (d.type === "PC" || d.type === "Switch") && portNames[id]) {
+      if (rt.hw && ["PC", "Server", "Switch", "Router"].includes(d.type) && portNames[id]) {
         const on = !rt.hw.off.has(id);
         if (d.enabled !== void 0 || !on) d.enabled = on;
-        if (d.type === "PC") {
+        if (d.type === "PC" || d.type === "Server") {
           const nic = !rt.hw.nicDown.has(id);
           const eth0 = d.interfaces?.["eth0"];
           if (eth0?.enabled !== void 0 || !nic) {
@@ -6414,13 +6667,17 @@ write memory`
           }
         }
       }
-      if (d.type === "PC" && rt.pcs[id]) {
+      if ((d.type === "PC" || d.type === "Server") && rt.pcs[id]) {
         const pc = rt.pcs[id];
         const ip = pc.ip ?? "";
         if (d.ip !== void 0 || ip) d.ip = ip;
         if (pc.ip !== null && (d.mask !== void 0 || pc.ip)) d.mask = prefixToMask(pc.prefix);
         const gw2 = pc.gw ?? "";
         if (d.gateway !== void 0 || gw2) d.gateway = gw2;
+        continue;
+      }
+      if (d.type === "Router" && rt.running[id]) {
+        routerToAglab(d, rt.running[id], portNames[id] ?? {}, original.devices.find((x) => String(x.id) === id));
         continue;
       }
       if (d.type !== "Switch" || !rt.running[id]) continue;
@@ -6502,6 +6759,59 @@ write memory`
       }
     }
     return out;
+  }
+  function routerToAglab(d, cfg, back, orig) {
+    const id = String(d.id);
+    const fail = (what) => {
+      throw new BridgeError(`${id}: ${what} AğLab modelinde ifade edilemiyor`);
+    };
+    if (cfg.hostname !== (d.name || id)) d.name = cfg.hostname;
+    if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail("Loopback");
+    if (!cfg.ipRouting) fail("no ip routing");
+    if (cfg.defaultGateway) fail("ip default-gateway");
+    d.interfaces = d.interfaces ?? {};
+    for (const [canon, phys] of Object.entries(cfg.ifaces)) {
+      const name = back[canon];
+      if (!name) continue;
+      if (phys.description) fail(`${canon} description`);
+      if (phys.l3 && Object.keys(phys.l3).length) fail(`${canon} arayüz OSPF/L3 ayarı`);
+      const prev2 = d.interfaces[name];
+      if (!prev2 && !phys.ip && !phys.shutdown) continue;
+      const iface = prev2 ? { ...prev2 } : {};
+      if (phys.ip) {
+        iface.ip = phys.ip.addr;
+        iface.mask = phys.ip.mask;
+      } else if (prev2?.ip !== void 0) iface.ip = "";
+      if (prev2?.enabled !== void 0 || phys.shutdown) iface.enabled = !phys.shutdown;
+      d.interfaces[name] = iface;
+    }
+    const legacyDefault = typeof orig.route === "string" && orig.route !== "" && !(orig.staticRoutes ?? []).some((r) => r.network === "0.0.0.0" && r.mask === "0.0.0.0");
+    let routes = cfg.routes;
+    if (legacyDefault) {
+      const i = routes.findIndex((r) => r.net === "0.0.0.0" && r.mask === "0.0.0.0" && r.nh === orig.route && (r.ad ?? 1) === 1);
+      if (i >= 0) routes = routes.filter((_, j) => j !== i);
+      else d.route = "";
+    }
+    const same = (a, r) => a.network === r.net && a.mask === r.mask && a.nextHop === r.nh && Number(a.distance ?? 1) === (r.ad ?? 1);
+    const list = routes.map((r) => {
+      const kept = (orig.staticRoutes ?? []).find((a) => same(a, r));
+      return kept ? clone(kept) : { network: r.net, mask: r.mask, nextHop: r.nh, distance: r.ad ?? 1 };
+    });
+    if (d.staticRoutes !== void 0 || list.length) d.staticRoutes = list;
+    const o = cfg.ospf;
+    if (!o) {
+      if (d.ospf !== void 0 && d.ospf !== null) delete d.ospf;
+      return;
+    }
+    if (o.passiveDefault || o.passive.length) fail("passive-interface");
+    if (o.refBw !== 100) fail("auto-cost reference-bandwidth");
+    if (o.defaultOriginate) fail("default-information originate");
+    if (Object.keys(o.stubs).length) fail("stub area");
+    const prev = orig.ospf ?? {};
+    const ospf = { ...prev, pid: o.pid };
+    if (o.routerId || prev["routerId"] !== void 0) ospf["routerId"] = o.routerId ?? "";
+    ospf["networks"] = o.networks.map((n) => ({ network: n.addr, wildcard: n.wildcard, area: n.area }));
+    d.ospf = ospf;
   }
 
   // src/sim-bridge/events.ts

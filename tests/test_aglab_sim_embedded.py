@@ -187,18 +187,25 @@ class SimEmbeddedTests(unittest.TestCase):
             "Akademi Labber labı",
         )
         self.assertEqual(self.accesses().count("createRuntime"), 1, "lab başına tek çalışma zamanı")
-        # Akademi (eski motor kararındaki lab): yalnız karar
+        # Akademi M4 (L4: Router labı da Labber kararında): aynı küme, lab başına tek çalışma
+        # zamanı. L4'ten sonra eski motor kararında Akademi labı kalmadı (motor tablosu).
         self.reset_accesses()
         page.select_option("#academySelect", "AGL-031")
         page.click("#academyStart")
         if page.locator("#academyReplacePrompt").is_visible():
             page.click("#academyReplaceContinue")
         page.evaluate("academy.check()")
-        self.assertEqual(set(self.accesses()), {"global", "toLabber"}, "Akademi eski motor labı")
+        self.assertEqual(
+            set(self.accesses()),
+            {"global", "toLabber", "createRuntime", "toAglab", "createSession", "VpcsSession"},
+            "Akademi Labber router labı",
+        )
+        self.assertEqual(self.accesses().count("createRuntime"), 1, "lab başına tek çalışma zamanı")
         # Lab: eski motor kararındaki senaryo da karar için köprüye sorulur
+        # (L4: routing senaryoları Labber'da; alt arayüz senaryosu L5'e kadar eski motorda)
         self.reset_accesses()
-        page.evaluate("aglabSharedEngine.load('return-route')")
-        page.evaluate("aglabSharedEngine.reach('PC-01','SRV-01')")
+        page.evaluate("aglabSharedEngine.load('subif-missing')")
+        page.evaluate("aglabSharedEngine.reach('PC-01','PC-02')")
         self.assertEqual(set(self.accesses()), {"global", "toLabber"}, "eski motor senaryosu")
         # Labber kararındaki senaryo: karar + tek kalıcı çalışma zamanı + terminal oturumu
         self.reset_accesses()

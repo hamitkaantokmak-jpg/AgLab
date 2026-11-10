@@ -6,8 +6,10 @@
 //     oracle stpTreeInfo/stpIsBlocked  ⇄  Labber derived.stp
 // - Bağlantı durumu (L2: kopuk kablo, kapalı cihaz, kapalı port/NIC):
 //     oracle topology.linkUp  ⇄  Labber derived.phys[].up (switch ucu) / LabQuery.linkUp (PC)
-// - Statik rota (sentetik router zincirleri; köprü Router'ı desteklemediği için test içi
-//   eşdeğer kurulum): oracle routeLookup  ⇄  Labber routeTable + ilk atlama
+// - Statik rota (L4: sentetik router zincirleri köprüden gerçek Router olarak; AD ve
+//   özyinelemeli next-hop dahil): oracle routeLookup  ⇄  Labber deliver() ilk atlaması
+// - tests/node/test_engine_routing.cjs senaryoları birebir (LPM, AD, özyineleme, döngü,
+//   kısa önek geri dönüşü, kopan bağlantı, eski `route` alanı)
 //
 // Farklar SESSİZCE eşitlenmez: fark türleri sayılır, örnekleriyle sim-parity-node.json'a
 // yazılır ve KNOWN_DIFFS ile karşılaştırılır. Yeni bir fark türü testi düşürür; bilinen
@@ -19,10 +21,7 @@ import { createRequire } from 'node:module'
 import { createRuntime, toLabber } from '../../src/sim-bridge/bridge'
 import type { AglabTopology } from '../../src/sim-bridge/aglab'
 import { crossVlan, egress, vlanExists } from '../../src/sim/engine'
-import { deliver, routeTable } from '../../src/sim/net'
-import { createLab, runScript } from '../../src/sim/index'
-import { ports } from '../../src/sim/util'
-import type { LabDef } from '../../src/sim/types'
+import { deliver, routeOut, routeTable } from '../../src/sim/net'
 import { randomTopology, withHardwareFaults } from './bridge.test'
 import { LabQuery } from '../../src/sim/query'
 
@@ -43,8 +42,6 @@ const KNOWN_DIFFS = new Set([
   // Bir uç trunk, diğer uç access: AğLab access VLAN'ı trunk izinli listesindeyse taşır;
   // Cisco/Labber etiketli çerçeveyi access tarafında düşürür (yalnız native VLAN geçer).
   'vlan-carry-trunk-access-mismatch',
-  // Labber statik rotası yalnız doğrudan bağlı next-hop ile kurulur (özyineleme yok).
-  'route-recursive-next-hop',
   // Native VLAN uyuşmazlığı: oracle'ın STP uygunluk kuralı native'i yok sayar; Labber
   // (ve AğLab'ın ping yolundaki linkCarriesVlan) native VLAN trafiğini geçirmez.
   'vlan-carry-native-mismatch',
@@ -60,8 +57,9 @@ const note = (kind: string, where: string, oracle: unknown, labber: unknown) => 
   bySource[src]![kind] = (bySource[src]![kind] ?? 0) + 1
   if (diffs.filter((d) => d.kind === kind).length < 5) diffs.push({ kind, where, oracle, labber })
 }
-let compared = { links: 0, roots: 0, blocked: 0, routes: 0, topologies: 0, linkStates: 0, linksDown: 0 }
+let compared = { links: 0, roots: 0, blocked: 0, routes: 0, recursive: 0, floating: 0, topologies: 0, linkStates: 0, linksDown: 0 }
 let skippedStp = 0
+/** köprüden geçemeyen (legacy kararlı) rastgele router zinciri sayısı; L4'te 0 olmalı */
 let adRejected = 0
 
 function content(): [string, AglabTopology][] {
@@ -194,36 +192,24 @@ function compareRoutes(seed: number) {
   const n = 2 + r(3)
   const routers: any[] = []
   const links: any[] = []
-  const labDevices: LabDef['devices'] = []
-  const labLinks: LabDef['links'] = []
-  const initialConfig: Record<string, string> = {}
-  const cmds: string[][] = []
   for (let i = 0; i < n; i++) {
     const ifs: Record<string, any> = { 'g0/2': { ip: `10.${100 + i}.0.1`, mask: '255.255.255.0', enabled: true } }
-    cmds[i] = ['ip routing', 'interface gi0/2', 'no switchport', `ip address 10.${100 + i}.0.1 255.255.255.0`, 'exit']
-    if (i > 0) {
-      ifs['g0/0'] = { ip: `172.16.${i}.2`, mask: '255.255.255.252', enabled: true }
-      cmds[i]!.push('interface gi0/0', 'no switchport', `ip address 172.16.${i}.2 255.255.255.252`, 'exit')
-    }
-    if (i < n - 1) {
-      ifs['g0/1'] = { ip: `172.16.${i + 1}.1`, mask: '255.255.255.252', enabled: true }
-      cmds[i]!.push('interface gi0/1', 'no switchport', `ip address 172.16.${i + 1}.1 255.255.255.252`, 'exit')
-    }
-    routers.push({ id: `R${i}`, name: `R${i}`, type: 'Router', enabled: true, interfaces: ifs, staticRoutes: [] })
-    labDevices.push({ id: `R${i}`, kind: 'switch', model: 'WS-C3650-24PS', l3: true, mac: `5254.00${(i + 1).toString(16).padStart(2, '0')}.0000`, ports: ports('Gi0/0-3'), x: 0, y: 0 })
+    if (i > 0) ifs['g0/0'] = { ip: `172.16.${i}.2`, mask: '255.255.255.252', enabled: true }
+    if (i < n - 1) ifs['g0/1'] = { ip: `172.16.${i + 1}.1`, mask: '255.255.255.252', enabled: true }
+    routers.push({ id: `R${i}`, name: `R${i}`, type: 'Router', enabled: true, ports: ['g0/0', 'g0/1', 'g0/2'], interfaces: ifs, staticRoutes: [] })
     // LAN portuna bir PC bağla ki bağlı rota "up" olsun
-    labDevices.push({ id: `H${i}`, kind: 'pc', mac: `0050.0000.00${(i + 1).toString(16).padStart(2, '0')}`, x: 0, y: 0 })
-    labLinks.push({ a: [`H${i}`, 'eth0'], b: [`R${i}`, 'GigabitEthernet0/2'] })
     links.push({ a: `H${i}`, portA: 'eth0', b: `R${i}`, portB: 'g0/2', up: true })
-    routers.push({ id: `H${i}`, name: `H${i}`, type: 'PC', enabled: true, ip: `10.${100 + i}.0.10`, mask: '255.255.255.0' })
-    if (i > 0) {
-      links.push({ a: `R${i - 1}`, portA: 'g0/1', b: `R${i}`, portB: 'g0/0', up: true })
-      labLinks.push({ a: [`R${i - 1}`, 'GigabitEthernet0/1'], b: [`R${i}`, 'GigabitEthernet0/0'] })
-    }
+    routers.push({ id: `H${i}`, name: `H${i}`, type: 'PC', enabled: true, ip: `10.${100 + i}.0.10`, mask: '255.255.255.0', gateway: `10.${100 + i}.0.1` })
+    if (i > 0) links.push({ a: `R${i - 1}`, portA: 'g0/1', b: `R${i}`, portB: 'g0/0', up: true })
   }
   // statik rotalar: doğrudan next-hop, özyinelemeli next-hop, yedek (AD) rota, varsayılan
   for (let i = 0; i < n; i++) {
     const R = routers.find((x) => x.id === `R${i}`)
+    const add = (network: string, mask: string, nextHop: string, distance: number) => {
+      // köprü aynı ağ + next-hop ile yinelenen rotayı reddeder (IOS'ta ikincisi AD'yi değiştirir)
+      if (!R.staticRoutes.some((x: any) => x.network === network && x.mask === mask && x.nextHop === nextHop))
+        R.staticRoutes.push({ network, mask, nextHop, distance })
+    }
     for (let k = r(4); k > 0; k--) {
       const target = r(n)
       if (target === i) continue
@@ -232,62 +218,131 @@ function compareRoutes(seed: number) {
       if (!nh) continue
       const kind = r(4)
       const net = `10.${100 + target}.0.0`
-      if (kind === 0) R.staticRoutes.push({ network: net, mask: '255.255.255.0', nextHop: nh, distance: 1 })
-      else if (kind === 1) R.staticRoutes.push({ network: net, mask: '255.255.0.0', nextHop: nh, distance: 1 })
+      if (kind === 0) add(net, '255.255.255.0', nh, 1)
+      else if (kind === 1) add(net, '255.255.0.0', nh, 1)
       else if (kind === 2) {
         // özyinelemeli: next-hop uzak LAN'daki bir adres (önce ona rota gerekir)
         const far = dir > 0 ? Math.min(n - 1, i + 2) : Math.max(0, i - 2)
-        R.staticRoutes.push({ network: `10.${100 + far}.0.0`, mask: '255.255.255.0', nextHop: nh, distance: 1 })
-        R.staticRoutes.push({ network: net, mask: '255.255.255.0', nextHop: `10.${100 + far}.0.99`, distance: 1 })
+        add(`10.${100 + far}.0.0`, '255.255.255.0', nh, 1)
+        add(net, '255.255.255.0', `10.${100 + far}.0.99`, 1)
       } else {
-        R.staticRoutes.push({ network: net, mask: '255.255.255.0', nextHop: nh, distance: 1 })
+        // yedek (AD 200) rota; birincil yarı yarıya çözümlenemeyen bir next-hop'a gider
+        add(net, '255.255.255.0', r(2) ? nh : `192.0.2.${1 + i}`, 1)
         const other = dir > 0 ? (i > 0 ? `172.16.${i}.1` : null) : i < n - 1 ? `172.16.${i + 1}.2` : null
-        if (other) R.staticRoutes.push({ network: net, mask: '255.255.255.0', nextHop: other, distance: 200 })
+        if (other) add(net, '255.255.255.0', other, 200)
       }
     }
-    // AD > 1 olduğu gibi verilir; Labber bu sözdizimini reddeder (AD desteği yok, L4).
-    for (const s of R.staticRoutes)
-      cmds[i]!.push(`ip route ${s.network} ${s.mask} ${s.nextHop}` + (s.distance > 1 ? ` ${s.distance}` : ''))
   }
-  for (let i = 0; i < n; i++) initialConfig[`R${i}`] = cmds[i]!.join('\n')
-  const pcs: LabDef['initialPcs'] = {}
-  for (let i = 0; i < n; i++) pcs[`H${i}`] = { ip: `10.${100 + i}.0.10`, prefix: 24, gw: `10.${100 + i}.0.1` }
-  const lab: LabDef = {
-    id: 'parity-routes', title: '', summary: '', level: 'İleri', tags: [], brief: [], devices: labDevices, links: labLinks,
-    initialConfig, initialPcs: pcs, objectives: [], solution: {}, view: { w: 1, h: 1 },
-  }
-  // createLab geçersiz ilk yapılandırmada istisna atar; AD satırlarını ayrıca uygula.
-  const adLines: Record<string, string[]> = {}
-  for (const [dev, text] of Object.entries(initialConfig)) {
-    const lines = text.split('\n')
-    adLines[dev] = lines.filter((l) => / \d+$/.test(l) && l.startsWith('ip route'))
-    initialConfig[dev] = lines.filter((l) => !adLines[dev]!.includes(l)).join('\n')
-  }
-  const rt = createLab(lab)
-  for (const [dev, lines] of Object.entries(adLines))
-    for (const line of lines) {
-      const out = runScript(rt, dev, 'configure terminal\n' + line + '\nend')
-      if (out.some((l) => l.startsWith('% Invalid'))) adRejected++
-    }
   const topo = { devices: routers, links }
+  const bridged = toLabber(topo as AglabTopology)
+  if (bridged.report.engineDecision !== 'labber') {
+    adRejected++
+    return
+  }
+  const rt = createRuntime(bridged)
   for (let i = 0; i < n; i++) {
     const R = routers.find((x) => x.id === `R${i}`)
     for (let target = 0; target < n; target++) {
       if (target === i) continue
       const dst = `10.${100 + target}.0.10`
       const ora = routing.routeLookup(topo, R, dst)
-      const table = routeTable(rt.derived, `R${i}`)
       const del = deliver(rt.derived, `R${i}`, dst)
       const labIf = del.hops[0]?.outIf.name ?? null
-      const oraIf = ora.ok ? ({ 'g0/0': 'GigabitEthernet0/0', 'g0/1': 'GigabitEthernet0/1', 'g0/2': 'GigabitEthernet0/2' } as any)[ora.route.iface] : null
+      const oraIf = ora.ok ? CANON[ora.route.iface] : null
       compared.routes++
+      if (ora.ok && ora.route.resolvedVia === 'recursive') compared.recursive++
+      if (ora.ok && (ora.route.distance ?? 1) > 1) compared.floating++
       if (oraIf !== labIf) {
         const kind = ora.ok && ora.route.resolvedVia === 'recursive' ? 'route-recursive-next-hop' : 'route-other'
-        note(kind, `seed ${seed} R${i} → ${dst}`, ora.ok ? `${ora.route.network}/${ora.route.prefix} ${ora.route.iface}` : ora.why, { egress: labIf, table: table.filter((e) => e.code === 'S').map((e) => `${e.net}/${e.prefix} via ${e.nh}`) })
+        note(kind, `seed ${seed} R${i} → ${dst}`, ora.ok ? `${ora.route.network}/${ora.route.prefix} ${ora.route.iface}` : ora.why, { egress: labIf, table: routeTable(rt.derived, `R${i}`).filter((e) => e.code === 'S').map((e) => `${e.net}/${e.prefix} via ${e.nh}`) })
       }
     }
   }
 }
+
+const CANON: Record<string, string> = { 'g0/0': 'GigabitEthernet0/0', 'g0/1': 'GigabitEthernet0/1', 'g0/2': 'GigabitEthernet0/2' }
+
+/**
+ * tests/node/test_engine_routing.cjs'in rota senaryoları: aynı AğLab nesneleri hem oracle'a
+ * hem köprü üzerinden Labber'a verilir; seçilen çıkış arayüzü (ya da "rota yok") aynı olmalı.
+ */
+function oracleLab() {
+  const R1: any = {
+    id: 'r1', name: 'R1', type: 'Router', enabled: true, ports: ['g0/0', 'g0/1', 'g0/2'],
+    interfaces: {
+      'g0/0': { ip: '192.168.1.1', mask: '255.255.255.0', enabled: true },
+      'g0/1': { ip: '10.0.0.1', mask: '255.255.255.252', enabled: true },
+      'g0/2': { ip: '172.16.0.1', mask: '255.255.0.0', enabled: true },
+    },
+    staticRoutes: [],
+  }
+  const R2 = { id: 'r2', name: 'R2', type: 'Router', enabled: true, ports: ['g0/1'], interfaces: { 'g0/1': { ip: '10.0.0.2', mask: '255.255.255.252', enabled: true } } }
+  const SW1 = { id: 's1', name: 'SW1', type: 'Switch', enabled: true, ports: ['fa0/1', 'fa0/2'] }
+  const topo = { devices: [R1, R2, SW1], links: [{ a: 'r1', portA: 'g0/0', b: 's1', portB: 'fa0/1', up: true }, { a: 'r1', portA: 'g0/1', b: 'r2', portB: 'g0/1', up: true }] }
+  return { R1, topo }
+}
+
+const ORACLE_CASES: { name: string; routes: any[]; route?: string; linkDown?: number; dst: string[] }[] = [
+  {
+    // Oracle'daki AD 0 satırı burada yok: oracle onu sessizce yok sayar, köprü reddeder
+    // (motor kararı eski motor; UYUMLULUK_MATRISI "AD 0").
+    name: 'LPM, AD, özyineleme, varsayılan rota',
+    routes: [
+      { network: '0.0.0.0', mask: '0.0.0.0', nextHop: '10.0.0.2' },
+      { network: '8.8.0.0', mask: '255.255.0.0', nextHop: '10.0.0.2', distance: 1 },
+      { network: '8.8.8.0', mask: '255.255.255.0', nextHop: '192.168.1.254', distance: 1 },
+      { network: '9.9.9.0', mask: '255.255.255.0', nextHop: '10.0.0.2', distance: 200 },
+      { network: '9.9.9.0', mask: '255.255.255.0', nextHop: '192.168.1.254', distance: 5 },
+      { network: '7.7.7.0', mask: '255.255.255.0', nextHop: '8.8.1.1' },
+    ],
+    dst: ['8.8.8.8', '8.8.4.4', '9.9.9.9', '7.7.7.7', '6.6.6.6', '192.168.1.50', '1.1.1.1'],
+  },
+  {
+    name: 'birbirine dayanan rotalar ve rota yok',
+    routes: [
+      { network: '5.5.5.0', mask: '255.255.255.0', nextHop: '4.4.4.4' },
+      { network: '4.4.4.0', mask: '255.255.255.0', nextHop: '5.5.5.5' },
+    ],
+    dst: ['5.5.5.1', '4.4.4.1', '1.1.1.1'],
+  },
+  {
+    name: 'uzun önek çözülemezse kısa aday',
+    routes: [
+      { network: '3.3.3.0', mask: '255.255.255.0', nextHop: '2.2.2.2' },
+      { network: '3.3.0.0', mask: '255.255.0.0', nextHop: '10.0.0.2' },
+    ],
+    dst: ['3.3.3.3'],
+  },
+  {
+    name: 'kopan bağlantının next-hop\'u kullanılamaz',
+    routes: [
+      { network: '3.3.3.0', mask: '255.255.255.0', nextHop: '2.2.2.2' },
+      { network: '3.3.0.0', mask: '255.255.0.0', nextHop: '10.0.0.2' },
+    ],
+    linkDown: 1,
+    dst: ['3.3.3.3', '192.168.1.9'],
+  },
+  { name: 'eski route alanı varsayılan rota', routes: [], route: '10.0.0.2', dst: ['4.1.1.1', '10.0.0.2'] },
+]
+
+describe('oracle paritesi: test_engine_routing.cjs senaryoları (L4)', () => {
+  for (const c of ORACLE_CASES)
+    it(c.name, () => {
+      const { R1, topo } = oracleLab()
+      R1.staticRoutes = c.routes
+      if (c.route) R1.route = c.route
+      if (c.linkDown !== undefined) topo.links[c.linkDown]!.up = false
+      const bridged = toLabber(topo as AglabTopology)
+      expect(bridged.report.engineDecision, JSON.stringify(bridged.report.reasons)).toBe('labber')
+      const rt = createRuntime(bridged)
+      for (const dst of c.dst) {
+        const ora = routing.routeLookup(topo, R1, dst)
+          // oracle yalnız rota seçer (ARP'a bakmaz): Labber'ın rota seçimi (çıkış arayüzü)
+        const labIf = routeOut(rt.derived, 'r1', dst)?.ifname ?? null
+        expect([dst, labIf], JSON.stringify(routeTable(rt.derived, 'r1'))).toEqual([dst, ora.ok ? CANON[ora.route.iface] : null])
+      }
+    })
+})
 
 describe('oracle paritesi', () => {
   it('VLAN taşıma, STP ve statik rota farkları yalnızca bilinen türlerde', () => {
@@ -295,7 +350,7 @@ describe('oracle paritesi', () => {
     for (let seed = 1; seed <= 300; seed++) compareL2(`loop-${seed}`, loopTopology(seed))
     for (let seed = 1; seed <= 300; seed++) compareL2(`loop-hw-${seed}`, withHardwareFaults(loopTopology(seed), seed))
     for (let seed = 1; seed <= 300; seed++) compareRoutes(seed)
-    const result = { compared, skippedStpVlans: skippedStp, labberRejectedAdRoutes: adRejected, counts, bySource, examples: diffs, known: [...KNOWN_DIFFS] }
+    const result = { compared, skippedStpVlans: skippedStp, bridgeRejectedRouteTopologies: adRejected, counts, bySource, examples: diffs, known: [...KNOWN_DIFFS] }
     const out = process.env.AGLAB_TEST_ARTIFACT_DIR
     if (out) {
       mkdirSync(out, { recursive: true })
@@ -306,6 +361,10 @@ describe('oracle paritesi', () => {
     expect(bySource['content']).toEqual({})
     expect(compared.topologies).toBeGreaterThan(300)
     expect(compared.routes).toBeGreaterThan(500)
+    // L4: rastgele zincirlerin hepsi köprüden geçer; özyinelemeli ve yedek (AD) rotalar gerçekten sınanır
+    expect(adRejected).toBe(0)
+    expect(compared.recursive).toBeGreaterThan(50)
+    expect(compared.floating).toBeGreaterThan(10)
     // bağlantı durumu hem açık hem kapalı örneklerle karşılaştırılmış olmalı
     expect(compared.linksDown).toBeGreaterThan(200)
     expect(compared.linkStates - compared.linksDown).toBeGreaterThan(1000)

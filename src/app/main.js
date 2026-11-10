@@ -10789,6 +10789,9 @@ labLoadExperiment();
     srv.ip = '10.20.0.10';
     srv.mask = '255.255.255.0';
     srv.gateway = '10.20.0.1';
+    // L4: routing senaryolarında sunucu yalnız ICMP hedefidir; DHCP/DNS/HTTP servisleri
+    // senaryoda kullanılmaz ve Labber'da modellenmez (L5). Servissiz sunucu Labber'da bir uçtur.
+    srv.services = {};
     for (const sw of [sw1, sw2]) {
       sw.vlans = [1, 10, 20];
       Object.entries(sw.interfaces).forEach(([n, i]) => {

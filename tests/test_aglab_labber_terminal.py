@@ -199,8 +199,48 @@ class LabberTerminalTests(unittest.TestCase):
         out = self.type("show startup-config | include access vlan 10")
         self.assertTrue(any("switchport access vlan 10" in line for line in out), out)
 
+    def test_router_terminal_and_static_routes_on_labber(self):
+        """L4: routing senaryosunda router terminali Labber IOS'udur; başarısız ve başarılı
+        iletim, AD'li statik rota ve running-config türetilmiş durumdan doğrulanır."""
+        self.load("floating-static")
+        self.assertTrue(self.page.evaluate("aglabLabberSession.active()"))
+        self.assertFalse(self.goal())
+        self.device("R1")
+        self.assertEqual(self.prompt(), "R1>")
+        self.type("enable")
+        # çözümlenemeyen AD 1 rotası tabloda yok; switch komutu routerda yok
+        out = self.type("show ip route 10.20.0.10")
+        self.assertIn("% Network not in table", out)
+        self.type("configure terminal")
+        out = self.type("vlan 10")
+        self.assertTrue(any("Invalid input" in line for line in out), out)
+        self.type("ip route 10.20.0.0 255.255.255.0 10.0.0.2 5")
+        self.type("end")
+        out = self.type("show ip route 10.20.0.10")
+        self.assertIn('  Known via "static", distance 5, metric 0', out)
+        out = self.type("show running-config | include ip route")
+        self.assertIn("ip route 10.20.0.0 255.255.255.0 10.0.0.2 5", out)
+        self.assertTrue(self.goal())
+        view = self.page.evaluate("aglabSharedEngine.view()")
+        r1 = next(d for d in view["devices"] if d["name"] == "R1")
+        self.assertIn(
+            {"network": "10.20.0.0", "mask": "255.255.255.0", "nextHop": "10.0.0.2", "distance": 5},
+            r1["staticRoutes"],
+        )
+        # PC terminali VPCS: ping başarılı, sonra R2 dönüş rotası silinince başarısız
+        self.device("PC-01")
+        out = self.type("ping 10.20.0.10")
+        self.assertTrue(any("bytes from 10.20.0.10" in line for line in out), out)
+        self.device("R2")
+        self.type("enable")
+        self.type("configure terminal")
+        self.type("no ip route 192.168.1.0 255.255.255.0 10.0.0.1")
+        self.type("end")
+        self.assertFalse(self.goal())
+
     def test_legacy_content_keeps_legacy_terminal(self):
-        self.load("return-route")
+        # L4: routing senaryoları Labber'da; alt arayüzlü router-on-a-stick L5'e kadar eski motorda.
+        self.load("subif-missing")
         self.assertFalse(self.page.evaluate("aglabLabberSession.active()"))
         self.device("R1")
         self.type("enable")

@@ -77,8 +77,8 @@ sentetik topolojilerde ortaya çıkıyor. Tarayıcı ping paritesi (124 durum) 0
 | `vlan-carry-trunk-access-mismatch`: bir uç trunk, diğer uç access | Access VLAN trunk'ın izinli listesindeyse taşır | Yalnız native VLAN geçer; etiketli çerçeve access ucunda düşer | **Labber.** 802.1Q davranışı. |
 | `vlan-carry-native-mismatch`: native VLAN uyuşmazlığı | STP uygunluk kuralı native'i yok sayar | Native VLAN trafiği geçmez, `%CDP-4-NATIVE_VLAN_MISMATCH` ve PVID_Inc | **Labber.** Eski motorun ping yolu (`linkCarriesVlan`) zaten Labber gibi davranıyor. |
 | `stp-blocked-link-choice`: aynı sayıda ama farklı bağlantı bloklanıyor | BFS sırasıyla | Gerçek STP (kök maliyeti, köprü/port kimliği) | **Labber.** STP sonucunu soran ölçüt (`stp-loop`) kök switch'i denetler; bloklanan port seçimine bağlı değil. |
-| `route-recursive-next-hop`: özyinelemeli statik next-hop | Destekler | Yalnız doğrudan bağlı next-hop | **Ertelendi (L4).** Router içeriği Labber'a geçmeden eklenecek; o zamana kadar bu içerik eski motorda. |
-| Statik rota AD (`ip route … <AD>`) | Destekler | Söz dizimi reddedilir | **Ertelendi (L4).** Aynı gerekçe. |
+| `route-recursive-next-hop`: özyinelemeli statik next-hop | Destekler | **L4: destekler** (oracle ile aynı kural) | **Kapandı (L4).** Parite birebir; fark türü bilinen farklardan çıkarıldı. |
+| Statik rota AD (`ip route … <AD>`) | Destekler | **L4: destekler** (`StaticRoute.ad`) | **Kapandı (L4).** Floating static ve OSPF (110) ile karşılaştırma oracle ile aynı. |
 | `return-path-own-mask` (PR F, `eth-wrong-mask`): kaynakla hedefin maskeleri farklı (/24 ↔ /25), ağ geçidi yok | Gidiş yolunu bulunca erişimi başarılı sayar | Hedef yanıtı kendi maskesine göre gönderir; .11/.12 kendi ağı dışında kalır, yanıt dönmez (timeout) | **Labber.** Gerçek IPv4 davranışı; dersin öğrettiği arıza budur. Senaryo Labber'da değerlendirilir. |
 | `return-path-duplicate-ip` (PR F, `eth-duplicate-ip`): aynı IP iki cihazda | Hedefin kimliğini adresten bulur, yanıtı doğru cihazdan sayar | ARP'yi yayın alanında tanım sırasında önce gelen cihaz kazanır (LAPTOP); PC-B'nin kaynağına yanıt dönmez | **Labber.** Gerçek ARP davranışı (`%IP-4-DUPADDR`). |
 | Eksik `links[].up` / `device.enabled` alanı | Oracle `linkUp` kapalı sayar; `engine-manager.js` ve borck açık sayar | Açık sayılır (yalnız açık `false` kapalı) | **Labber = ürün davranışı.** İçerikte alanlar her zaman yazılı (0 eksik). |
@@ -86,15 +86,44 @@ sentetik topolojilerde ortaya çıkıyor. Tarayıcı ping paritesi (124 durum) 0
 | Yinelenen IP | Ayrı model yok | Yayın alanında ilk sahip ARP'yi yanıtlar; switch adresi çakışırsa `%IP-4-DUPADDR` | **Labber.** Belirli seçim testlenebilirlik için; gerçekte yarış. |
 
 **Çalışma sırasında motor değişmez.** Labber'da açılan içerik sonradan köprünün
-ifade edemediği bir duruma gelirse (ör. topolojiye router eklenirse) sonuç eski
+ifade edemediği bir duruma gelirse (ör. topolojiye servisleri açık bir sunucu eklenirse; L4 öncesinde router eklemek de bu durumdu) sonuç eski
 motordan alınmaz; "Değerlendirme hatası" gösterilir. Labber ile CLI'nin (L3'e kadar
 eski motor) ping sonucu farklıysa "Motor uyuşmazlığı" gösterilir ve sonuç kabul
 edilmez (`tests/test_aglab_engine_choice.py`).
 
-**Akademi (L2-D2).** Labber kararındaki labda (AGL-001…030) ölçütlerin
+**Akademi (L2-D2, L4).** Labber kararındaki labda ölçütlerin
 `required_capabilities` alanı motorun yetenekleriyle eşleştirilir. Labber yetenekleri:
-`state_adapter` (`toAglab` görünümü), `icmp_probe` (`LabQuery.ping`) ve `answer_input`.
-Kaynak arayüz seçimli probe (`icmp_source_interface`) Labber köprüsünde yok (L4).
+`state_adapter` (`toAglab` görünümü), `icmp_probe` (`LabQuery.ping`), `answer_input` ve
+L4'ten beri `icmp_source_interface` (kaynak arayüzlü ICMP; eski motorla aynı kural:
+kaynak router, arayüz açık ve adresli, hedefin rotası o arayüzden doğrudan bağlı).
 Eksik yetenek isteyen ölçüt `on_unavailable` (`not_evaluated`) olur ve geçti sayılmaz.
 Labber ping'i deterministik olduğundan beş denemelik `icmp-5-v1` politikasında tek
 sonuç beş denemeyi temsil eder. Kaynak JSON'lar ve SHA256 kayıtları değişmedi.
+
+## L4: Router, yönetimsel uzaklık ve özyinelemeli statik rota (Labber kararları)
+
+Akademi M4 (AGL-031…040) ve routing senaryoları (`return-route`, `forward-route`,
+`default-route`, `wrong-prefix`, `unresolved-next-hop`, `lpm-next-hop`, `floating-static`,
+`ospf-area`) Labber kararındadır. Rota seçimi oracle (`src/engine/routing.js`) ile birebir:
+rastgele router zincirleri ve `tests/node/test_engine_routing.cjs` senaryoları
+`tests/sim/parity.test.ts`'de, kabul testlerinin topolojileri (`test_aglab_next_hop`, v11,
+v13, traceroute, icmp) `tests/sim/routing-acceptance.test.ts`'de karşılaştırılır.
+
+| Konu | Eski motor | Labber | Karar |
+|---|---|---|---|
+| Router modeli | `type: Router`, arayüz IP/maske/açık, `staticRoutes`, `route`, `ospf` | `SwitchDef.router`: bütün portlar routed, `ip routing` açık; VLAN/STP/switchport komutları yok | **Labber.** Köprü alanları birebir eşler ve geri yazar (`toAglab`). |
+| AğLab'da kaydı olmayan router portu | Açık sayılır (`enabled !== false`) | Köprü açık eşler; Labber'ın kendi router'ı (lab tanımı) IOS gibi `shutdown` başlar | **Eski motor davranışı korunur** (içerik verisi). |
+| Aynı ağ + next-hop farklı AD ile yeniden girilir | İkinci satır eklenir | IOS gibi AD güncellenir, tek satır kalır | **Labber (IOS).** İçerikte yinelenen satır yok; köprü yineleneni reddeder (eski motor). |
+| `no ip route <ağ> <maske>` (next-hop'suz) | Desteklenmez | Prefix'in bütün rotalarını siler (IOS) | **Labber.** |
+| AD 0 ya da 255'ten büyük AD | Oracle sessizce yok sayar | CLI sözdizimi reddeder; köprü reddeder → eski motor | **Labber.** Sessiz yok sayma yerine açık ret. |
+| Maskeyle hizasız statik rota ağı (ör. 10.20.1.5/24) | Maskelenip kullanılır | IOS `%Inconsistent address and mask`; köprü reddeder → eski motor | **Labber.** İçerikte yok. |
+| Eşit AD'li iki statik rota | İlk satır kullanılır | İlk satır kurulur (oracle ile aynı) | **Oracle'a uyuldu.** Gerçek IOS'taki ECMP yük paylaşımı modellenmedi. |
+| Olmayan hosta ping (son router ARP alamaz) | ICMP Host Unreachable (code 1), traceroute `!H` | Paket düşer: zaman aşımı | **Labber.** Fark yalnız içe aktarılan (eski motor) topolojilerde görülür; routing içeriğinde hedefler vardır. |
+| Rota yokken dönen ICMP | Network Unreachable (code 0), traceroute `!N` | IOS gibi `U`; traceroute `!H` | **Labber (IOS).** |
+| `ping … ttl N` / Time Exceeded, `show ethernet events` | Var | **Desteklenmiyor** | İçe aktarılan topolojiler eski motorda kaldığı için bu araçlar orada çalışır (`test_aglab_icmp_ttl`, `test_aglab_traceroute`). Labber içeriğinde IOS `ping`/`traceroute` vardır. |
+| OSPF teşhis metni (`ospf-area`) | Türkçe neden satırı ("area uyuşmazlığı", "maskesi uyuşmazlığı") | Komşuluk kurulmaz; `%OSPF-4-ERRRCV … mismatched area ID` ve `%OSPF-5-ADJCHG … FULL to DOWN` syslog'u; türetilmiş uyuşmazlık türü (`area`, `subnet`) | **Labber (IOS).** `test_aglab_network_features` türetilmiş durumu sorar. |
+| AğLab OSPF alanları | `pid`, `routerId`, `networks` | Aynı alanlar eşlenir; `passive-interface`, `auto-cost`, stub, `default-information`, arayüz OSPF ayarları ve loopback Labber'da yapılabilir ama AğLab modeline geri yazılamaz | **Açık hata** (`BridgeError`): kayıt/geri yazım sessiz kayıp yerine hata verir. |
+| Routing senaryolarındaki sunucu (`SRV-01`) | Şablonla DHCP/DNS/HTTP servisleri açık | Servissiz sunucu bir uçtur; servisli sunucu L5'e kadar eski motorda | **Senaryoda servisler kapatıldı** (yalnız ICMP hedefi; servisler senaryoda kullanılmıyordu). |
+| Alt arayüz (router-on-a-stick: `subif-missing`, `roas-*`) | Var | **Desteklenmiyor (L5)** | Eski motorda kalır; gerekçe "Alt arayüz / dot1q Labber'da yok (L5)". |
+| Router'da ACL, NAT, DHCP relay, BGP | Var | **Desteklenmiyor (L5)** | Eski motorda kalır (`nat-pat`, `relay-trunk`, `bgp-as`). |
+

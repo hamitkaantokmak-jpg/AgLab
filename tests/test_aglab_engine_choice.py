@@ -19,6 +19,17 @@ from playwright.sync_api import sync_playwright
 
 from aglab_test_support import HTML, ROOT, launch_chromium
 
+L4_SCENARIOS = [
+    "return-route",
+    "forward-route",
+    "default-route",
+    "wrong-prefix",
+    "unresolved-next-hop",
+    "lpm-next-hop",
+    "floating-static",
+    "ospf-area",
+]
+
 
 def labber_ids(decisions):
     return {k for k, v in decisions.items() if v == "labber"}
@@ -94,6 +105,8 @@ class EngineChoiceTests(unittest.TestCase):
         self.assertTrue(
             {r["id"] for r in recipes if r["verify"]["kind"] == "query"} <= labber_ids(expected)
         )
+        # L4: Router, AD ve özyinelemeli statik rota gerektiren senaryolar Labber'da.
+        self.assertTrue(set(L4_SCENARIOS) <= labber_ids(expected), expected)
         for sid, engine in expected.items():
             decision = self.load(sid)
             self.assertEqual(decision["engine"], engine, sid)
@@ -134,12 +147,13 @@ class EngineChoiceTests(unittest.TestCase):
     def test_unsupported_runtime_topology_is_an_error_not_a_fallback(self):
         self.load("access-vlan")
         self.assertFalse(self.page.evaluate("aglabSharedEngine.goal()"))
-        self.page.click('[data-pt-add="Router"]')
+        # L4'ten beri Router Labber'da; servisleri açık sunucu (şablon: DHCP/DNS/HTTP) L5'e kadar yok.
+        self.page.click('[data-pt-add="Server"]')
         error = self.page.evaluate(
             "() => { try { aglabSharedEngine.goal(); return null } catch (e) { return e.message } }"
         )
         self.assertIn("Motor değiştirilmez", error)
-        self.assertIn("Router", error)
+        self.assertIn("Sunucu servisleri", error)
         # karar değişmez, rozet Labber kalır
         self.assertEqual(self.page.evaluate("aglabSharedEngine.engine()")["engine"], "labber")
         target = self.page.evaluate("aglabSharedEngine.target()")
@@ -182,9 +196,10 @@ class EngineChoiceTests(unittest.TestCase):
         self.assertEqual(self.page.evaluate("aglabLabberSession.runtimeId()"), before)
 
     def test_legacy_scenario_keeps_old_engine(self):
-        decision = self.load("return-route")
+        # L4: routing senaryoları Labber'da; alt arayüz (router-on-a-stick) L5'e kadar eski motorda.
+        decision = self.load("subif-missing")
         self.assertEqual(decision["engine"], "legacy")
-        self.assertIn("Router", self.badge())
+        self.assertIn("Alt arayüz", self.badge())
         self.assertFalse(self.page.evaluate("aglabSharedEngine.goal()"))
 
 

@@ -276,7 +276,11 @@ window.aglabSharedEngine = {
   recipes: () => clone(sharedNetworkScenarios),
   validateScenarios: validateSharedScenarios,
   commandBlock: sharedEngineCommandBlock,
-  probe: () => ping(sharedScenario.sourceId, sharedScenario.target),
+  // Senaryo hedefi ping'i yüklü içeriğin motorunda (L4: Labber içeriğinde Labber ping'i).
+  probe: () =>
+    sharedScenario.engine?.engine === 'labber'
+      ? aglabEngineChoice.labberPing(sharedScenario.sourceId, sharedScenario.target)
+      : ping(sharedScenario.sourceId, sharedScenario.target),
   // Yüklü senaryonun motor kararı ({engine, reasons}) ve senaryo hedefinin o motordaki sonucu.
   engine: () => clone(sharedScenario.engine || null),
   target: () => sharedScenario.target,

@@ -45,7 +45,56 @@ function l3Lines(ip: IpAddr | null | undefined, o: L3Opts | undefined, noIpLine:
   return out
 }
 
+/** `ip route` line; the distance is shown only when it is not the default 1. */
+const routeLine = (r: SwitchConfig['routes'][number]) => `ip route ${r.net} ${r.mask} ${r.nh}` + (r.ad && r.ad !== 1 ? ' ' + r.ad : '')
+
+/** Router (L4): no VLAN/VTP/STP sections, routed ports without `no switchport`. */
+function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
+  const o: string[] = []
+  o.push('!', 'version 15.4', 'service timestamps debug datetime msec', 'service timestamps log datetime msec', 'no service password-encryption', '!')
+  o.push('hostname ' + c.hostname, '!', 'boot-start-marker', 'boot-end-marker', '!', 'no aaa new-model')
+  if (!c.ipRouting) o.push('no ip routing')
+  o.push('!', '!')
+  for (const n of Object.keys(c.loopbacks ?? {}).map(Number).sort((a, b) => a - b)) {
+    const l = c.loopbacks![String(n)]!
+    o.push('interface Loopback' + n)
+    if (l.description) o.push(' description ' + l.description)
+    o.push(...l3Lines(l.ip, l.l3, true))
+    if (l.shutdown) o.push(' shutdown')
+    o.push('!')
+  }
+  for (const p of sw.ports) {
+    const ic = c.ifaces[p]!
+    o.push('interface ' + p)
+    if (ic.description) o.push(' description ' + ic.description)
+    o.push(...l3Lines(ic.ip, ic.l3, true))
+    if (ic.shutdown) o.push(' shutdown')
+    o.push('!')
+  }
+  if (c.ospf) o.push(...ospfLines(c))
+  o.push('ip forward-protocol nd', 'no ip http server', '!')
+  for (const r of c.routes) o.push(routeLine(r))
+  o.push('!', 'line con 0', 'line aux 0', 'line vty 0 4', ' login', '!', 'end')
+  return o
+}
+
+function ospfLines(c: SwitchConfig): string[] {
+  const o: string[] = []
+  const r = c.ospf!
+  o.push('router ospf ' + r.pid)
+  if (r.routerId) o.push(' router-id ' + r.routerId)
+  if (r.refBw !== 100) o.push(' auto-cost reference-bandwidth ' + r.refBw)
+  for (const [a, st] of Object.entries(r.stubs).sort((x, y) => Number(x[0]) - Number(y[0]))) o.push(` area ${a} stub${st.noSummary ? ' no-summary' : ''}`)
+  if (r.passiveDefault) o.push(' passive-interface default')
+  for (const p of r.passive) o.push(`${r.passiveDefault ? ' no' : ''} passive-interface ${p}`)
+  for (const n of r.networks) o.push(` network ${n.addr} ${n.wildcard} area ${n.area}`)
+  if (r.defaultOriginate) o.push(' default-information originate' + (r.defaultOriginate.always ? ' always' : ''))
+  o.push('!')
+  return o
+}
+
 export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
+  if (sw.router) return routerRunningConfig(sw, c)
   const o: string[] = []
   o.push('!', 'version 15.2', 'no service pad', 'service timestamps debug datetime msec', 'service timestamps log datetime msec', 'no service password-encryption', '!')
   o.push('hostname ' + c.hostname, '!', 'boot-start-marker', 'boot-end-marker', '!', 'no aaa new-model')
@@ -100,21 +149,10 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
     if (s.shutdown) o.push(' shutdown')
     o.push('!')
   }
-  if (c.ospf) {
-    const r = c.ospf
-    o.push('router ospf ' + r.pid)
-    if (r.routerId) o.push(' router-id ' + r.routerId)
-    if (r.refBw !== 100) o.push(' auto-cost reference-bandwidth ' + r.refBw)
-    for (const [a, st] of Object.entries(r.stubs).sort((x, y) => Number(x[0]) - Number(y[0]))) o.push(` area ${a} stub${st.noSummary ? ' no-summary' : ''}`)
-    if (r.passiveDefault) o.push(' passive-interface default')
-    for (const p of r.passive) o.push(`${r.passiveDefault ? ' no' : ''} passive-interface ${p}`)
-    for (const n of r.networks) o.push(` network ${n.addr} ${n.wildcard} area ${n.area}`)
-    if (r.defaultOriginate) o.push(' default-information originate' + (r.defaultOriginate.always ? ' always' : ''))
-    o.push('!')
-  }
+  if (c.ospf) o.push(...ospfLines(c))
   if (c.defaultGateway) o.push('ip default-gateway ' + c.defaultGateway)
   o.push('ip forward-protocol nd', 'no ip http server', '!')
-  for (const r of c.routes) o.push(`ip route ${r.net} ${r.mask} ${r.nh}`)
+  for (const r of c.routes) o.push(routeLine(r))
   o.push('!', 'line con 0', 'line vty 0 4', ' login', 'line vty 5 15', ' login', '!', 'end')
   return o
 }
@@ -299,7 +337,7 @@ export function showIpRoute(rt: LabRuntime, dev: string, only?: 'O' | 'S' | 'C')
   const d = rt.derived
   const c = rt.running[dev]!
   const sw = rt.topo.devices[dev] as SwitchDef
-  if (!sw.l3 || !c.ipRouting) {
+  if (!(sw.l3 || sw.router) || !c.ipRouting) {
     return [c.defaultGateway ? `Default gateway is ${c.defaultGateway}` : 'Default gateway is not set', '', 'Host               Gateway           Last Use    Total Uses  Interface', 'ICMP redirect cache is empty']
   }
   const o = [
@@ -319,7 +357,7 @@ export function showIpRoute(rt: LabRuntime, dev: string, only?: 'O' | 'S' | 'C')
   const keep = (e: RouteEntry) => !only || (only === 'C' ? e.code === 'C' || e.code === 'L' : e.code.startsWith(only))
   const line = (e: RouteEntry, codeCol: string, width = 9) => {
     const head = `${codeCol.padEnd(width)}${e.net}/${e.prefix}`
-    if (e.code === 'S') return [`${head} [1/0] via ${e.nh}`]
+    if (e.code === 'S') return [`${head} [${e.ad ?? 1}/0] via ${e.nh}`]
     if (e.code === 'C' || e.code === 'L') return [`${head} is directly connected, ${e.ifname}`]
     const paths = e.paths ?? [{ nh: e.nh!, ifname: e.ifname }]
     const pad0 = ' '.repeat(head.length + 1)
@@ -348,15 +386,15 @@ export function showIpRoute(rt: LabRuntime, dev: string, only?: 'O' | 'S' | 'C')
 export function showIpRouteFor(rt: LabRuntime, dev: string, ip: string): string[] {
   const c = rt.running[dev]!
   const sw = rt.topo.devices[dev] as SwitchDef
-  if (!sw.l3 || !c.ipRouting) return ['% Network not in table']
+  if (!(sw.l3 || sw.router) || !c.ipRouting) return ['% Network not in table']
   const dn = ipToInt(ip)!
   let best: RouteEntry | null = null
-  const rank = (e: RouteEntry) => (e.code === 'C' || e.code === 'L' ? 0 : e.code === 'S' ? 1 : 2)
+  // the table holds one entry per prefix (the installed route), so LPM alone decides
   for (const e of routeTable(rt.derived, dev)) {
     if (e.code === 'L') continue
     const m = prefixMaskInt(e.prefix)
     if (((dn & m) >>> 0) !== ((ipToInt(e.net)! & m) >>> 0)) continue
-    if (best && (best.prefix > e.prefix || (best.prefix === e.prefix && rank(best) <= rank(e)))) continue
+    if (best && best.prefix >= e.prefix) continue
     best = e
   }
   if (!best) return ['% Network not in table']
@@ -367,7 +405,7 @@ export function showIpRouteFor(rt: LabRuntime, dev: string, ip: string): string[
     return o
   }
   if (e.code === 'S') {
-    o.push('  Known via "static", distance 1, metric 0' + (e.prefix === 0 ? ', candidate default path' : ''), '  Routing Descriptor Blocks:', `  * ${e.nh}`, '      Route metric is 0, traffic share count is 1')
+    o.push(`  Known via "static", distance ${e.ad ?? 1}, metric 0` + (e.prefix === 0 ? ', candidate default path' : ''), '  Routing Descriptor Blocks:', `  * ${e.nh}`, '      Route metric is 0, traffic share count is 1')
     return o
   }
   const type = e.code === 'O' ? 'intra area' : e.code === 'O IA' ? 'inter area' : 'extern 2, forward metric 1'
@@ -641,7 +679,7 @@ export function showCdp(rt: LabRuntime, dev: string): string[] {
     const ps = d.phys[pk(dev, p)]!
     if (!ps.up || !ps.peer || ps.peerIsPc) continue
     const peer = rt.topo.devices[ps.peer.dev] as SwitchDef
-    const caps = peer.l3 ? 'R S I' : 'S I'
+    const caps = peer.router ? 'R B' : peer.l3 ? 'R S I' : 'S I'
     o.push(pad(rt.hostname(peer.id), 17) + pad(shortIf(p).replace(/^(\w\w)/, '$1 '), 18) + pad('163', 11) + pad(caps, 12) + pad(peer.model.split(' ')[0]!.slice(0, 9), 10) + shortIf(ps.peer.port).replace(/^(\w\w)/, '$1 '))
   }
   const n = o.length - 5

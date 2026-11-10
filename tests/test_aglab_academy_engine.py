@@ -1,8 +1,8 @@
-"""L2-D2: Akademi M1–M3 (AGL-001…030) Labber'da değerlendirilir.
+"""L2-D2 / L4: Akademi M1–M4 (bütün labları) Labber'da değerlendirilir.
 
 * Motor kararı içerikten (başlangıç topolojisi, köprü raporu) gelir, motor tablosuyla aynıdır
   ve rozet olarak görünür; sonuç kutusu da değerlendirme motorunu yazar.
-* Labber lab değişmezi: her M1–M3 labı başlangıçta en az bir ölçütte başarısız, öğretmen
+* Labber lab değişmezi: her lab başlangıçta en az bir ölçütte başarısız, öğretmen
   hedef topolojisi + cevap anahtarıyla bütün ölçütler Labber'da geçer (100/100).
 * `probe.icmp` Labber ping'inden gelir (başarılı ve başarısız iletim), `state.equals`
   Labber görünümünden (toAglab) okunur.
@@ -22,18 +22,22 @@ from aglab_test_support import HTML, ROOT, launch_chromium
 
 # Lab listesi ve modüller sabit yazılmaz: öğrenci JSON'larından türetilir.
 STUDENT_FILES = sorted((ROOT / "academy/student").glob("AGL-*.json"))
-M1_M3 = [
-    p.stem
-    for p in STUDENT_FILES
-    if json.loads(p.read_text(encoding="utf-8"))["module_id"] in ("M1", "M2", "M3")
-]
+MODULES = {p.stem: json.loads(p.read_text(encoding="utf-8"))["module_id"] for p in STUDENT_FILES}
+# L4 ile M4 (router) de Labber'a geçti: Labber kararındaki labların listesi.
+LABBER_LABS = [lid for lid, m in MODULES.items() if m in ("M1", "M2", "M3", "M4")]
+M4 = [lid for lid, m in MODULES.items() if m == "M4"]
 
 # Öğretmen çözümü: hedef topolojinin CLI dışı kısmı (PC adresleri, kablo, güç) + switch'lerde
 # başlangıç yapılandırması üzerine öğretmen reference_commands'ı Labber IOS'unda.
+# Router'larda öğretmen komutları eksiksiz bir yapılandırmadır (her arayüz ve rota yazılır;
+# AGL-036'daki hatalı rotayı silmez, hiç kurmaz): router fabrika durumundan başlar
+# (arayüzler kapalı ve adressiz, rota yok).
 APPLY_TEACHER_CLI = """([init, target, cmds]) => {
   const sw = new Map(init.devices.filter((d) => d.type === 'Switch').map((d) => [d.id, d]));
+  const blank = (r) => ({ ...JSON.parse(JSON.stringify(r)), staticRoutes: [], route: '',
+    interfaces: Object.fromEntries(Object.keys(r.interfaces || {}).map((n) => [n, { enabled: false }])) });
   const hybrid = { ...target, devices: target.devices.map((d) =>
-    sw.has(d.id) ? JSON.parse(JSON.stringify(sw.get(d.id))) : d) };
+    sw.has(d.id) ? JSON.parse(JSON.stringify(sw.get(d.id))) : d.type === 'Router' ? blank(d) : d) };
   const r = AgLabSim.toLabber(hybrid);
   if (r.report.engineDecision !== 'labber') return { reasons: r.report.reasons };
   const rt = AgLabSim.createRuntime(r);
@@ -99,7 +103,7 @@ class AcademyEngineTests(unittest.TestCase):
     def test_decision_matches_map_and_badge(self):
         decisions = map_decisions()
         self.assertEqual(set(decisions), {p.stem for p in STUDENT_FILES})
-        self.assertEqual([k for k, v in decisions.items() if v == "labber"], M1_M3)
+        self.assertEqual([k for k, v in decisions.items() if v == "labber"], LABBER_LABS)
         for lid, engine in decisions.items():
             self.page.select_option("#academySelect", lid)
             badge = self.page.locator("#academyEngineBadge")
@@ -110,8 +114,8 @@ class AcademyEngineTests(unittest.TestCase):
             else:
                 self.assertTrue(text.startswith("Eski motor — nedeni: "), lid)
 
-    def test_m1_m3_fail_first_and_teacher_solution_passes_on_labber(self):
-        for lid in M1_M3:
+    def test_every_lab_fails_first_and_teacher_solution_passes_on_labber(self):
+        for lid in LABBER_LABS:
             student, teacher = lab_json(lid)
             self.start(lid)
             first = self.page.evaluate("academy.check()")
@@ -129,7 +133,7 @@ class AcademyEngineTests(unittest.TestCase):
     def test_teacher_cli_commands_solve_every_labber_lab_without_cli_errors(self):
         """Labber labs.test.ts deseni: başlangıçta başarısız; öğretmen komutları Labber IOS'unda
         hatasız koşar ve sonuç bütün ölçütleri geçirir."""
-        for lid in M1_M3:
+        for lid in LABBER_LABS:
             student, teacher = lab_json(lid)
             self.start(lid)
             self.assertLess(self.page.evaluate("academy.check()")["earned_points"], 100, lid)
@@ -244,20 +248,22 @@ class AcademyEngineTests(unittest.TestCase):
         changed[si] = {**criteria[si], "id": "dhcp", "required_capabilities": ["dhcp_lease"]}
         result = self.page.evaluate("c => academy.evaluate(c, {}, null)", changed)
         rows = {r["id"]: r for r in result["criteria"]}
-        for cid in ("src-if", "dhcp"):
-            self.assertEqual(rows[cid]["status"], "not_evaluated", rows[cid])
-            self.assertIn("Labber motorunda değerlendirilemiyor", rows[cid]["detail"])
+        self.assertEqual(rows["dhcp"]["status"], "not_evaluated", rows["dhcp"])
+        self.assertIn("Labber motorunda değerlendirilemiyor", rows["dhcp"]["detail"])
         self.assertEqual(result["status"], "incomplete")
         self.assertLess(result["coverage"], 1)
-        # Eski motor kararındaki lab kaynak arayüzlü probe'u değerlendirir.
         legacy = self.page.evaluate("c => academy.evaluate(c, {}, null, 'legacy')", changed)
         legacy_rows = {r["id"]: r for r in legacy["criteria"]}
-        self.assertNotEqual(legacy_rows["src-if"]["status"], "not_evaluated")
         self.assertEqual(legacy_rows["dhcp"]["status"], "not_evaluated")
+        # L4: kaynak arayüzlü probe Labber'da da değerlendirilir; eski motorla aynı kural ve
+        # sonuç (PC kaynağı desteklenmez → iki motorda da "hata", "değerlendirilemedi" değil).
+        self.assertEqual(rows["src-if"]["status"], legacy_rows["src-if"]["status"])
+        self.assertEqual(rows["src-if"]["status"], "error", rows["src-if"])
 
     def test_unsupported_runtime_topology_is_error_not_fallback(self):
         self.start("AGL-022")
-        self.page.click('[data-pt-add="Router"]')
+        # L4'ten beri Router Labber'da; servisleri açık sunucu (şablon) L5'e kadar yok.
+        self.page.click('[data-pt-add="Server"]')
         result = self.page.evaluate("academy.check()")
         self.assertEqual(result["engine"], "labber")
         for c in result["criteria"]:
@@ -266,11 +272,38 @@ class AcademyEngineTests(unittest.TestCase):
                 self.assertIn("Motor değiştirilmez", c["detail"])
         self.assertNotEqual(result["status"], "complete")
 
-    def test_legacy_lab_keeps_old_engine(self):
-        self.start("AGL-031")
-        result = self.page.evaluate("academy.check()")
-        self.assertEqual(result["engine"], "legacy")
-        self.assertIn("Değerlendirme motoru: eski motor.", self.page.text_content("#academyResult"))
+    def test_m4_labber_matches_legacy_engine_criteria(self):
+        """L4 oracle paritesi (Akademi M4): aynı ölçütler eski motorla ve Labber'la aynı
+        sonucu verir — başlangıçta, öğretmen hedefinde ve hedeften dönüş rotası silinince
+        (başarısız iletim). Eski motor yolu (academy.evaluate(..., 'legacy')) ayrıca
+        çalışır durumda kalır; Akademi'de eski motor kararında lab kalmadı."""
+        for lid in M4:
+            student, teacher = lab_json(lid)
+            self.start(lid)
+            criteria = student["assessment"]["criteria"]
+            answers = teacher["teacher_solution"]["answer_key"]
+            target = teacher["target_topology"]
+            broken = json.loads(json.dumps(target))
+            for d in broken["devices"]:
+                if d["type"] == "Router":
+                    d["staticRoutes"] = []
+            for name, topo in [("başlangıç", None), ("hedef", target), ("rotasız", broken)]:
+                if topo is not None:
+                    self.page.evaluate("t=>academyEngine.load(t)", topo)
+                both = {
+                    engine: {
+                        r["id"]: r["status"]
+                        for r in self.page.evaluate(
+                            "([c, a, e]) => academy.evaluate(c, a, null, e)",
+                            [criteria, answers, engine],
+                        )["criteria"]
+                    }
+                    for engine in ("labber", "legacy")
+                }
+                self.assertEqual(both["labber"], both["legacy"], (lid, name))
+            # rotasız hedefte uzak LAN'a erişim yok (AGL-031/032/033 doğrudan bağlı)
+            if any(d.get("staticRoutes") for d in target["devices"]):
+                self.assertIn("failed", both["labber"].values(), lid)
 
 
 if __name__ == "__main__":

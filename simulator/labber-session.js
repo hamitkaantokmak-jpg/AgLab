@@ -412,6 +412,8 @@ window.aglabLabberSession = {
     if (!rt.__aglabId) rt.__aglabId = Math.random().toString(36).slice(2);
     return rt.__aglabId;
   },
+  // Testler: kalıcı çalışma zamanının türetilmiş durumu (LabQuery; L4 OSPF/rota denetimleri).
+  query: () => aglabLabber.runtime().query(),
   prompt: (dev) => aglabLabber.prompt(dev),
   setPower: (dev, on) => aglabLabber.setPower(dev, on),
   setLink: (dev, port, up) => aglabLabber.setLink(dev, port, up),

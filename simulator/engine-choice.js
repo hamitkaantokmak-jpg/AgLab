@@ -64,6 +64,29 @@ const aglabEngineChoice = (() => {
     return { ok: r.ok, why, replier: r.replier || null, reason: r.reason || null };
   }
   /**
+   * L4: Akademi kaynak arayüzlü ICMP ölçütü (`icmp_source_interface`). Eski motorla aynı kural
+   * (AgLabRoutingGrading.sourceBinding): kaynak router, arayüz açık ve adresli, hedefin rotası
+   * o arayüzden doğrudan bağlı. Arayüz durumu Labber görünümünden, rota Labber tablosundan
+   * gelir. Bağlama yoksa null; desteklenmeyen istek istisna atar (ölçüt "hata" olur).
+   */
+  function labberSourceBinding(sourceId, name, ip) {
+    const src = labberView().devices.find((d) => d.id === sourceId);
+    const route = runtime().query().routeFor(sourceId, ip);
+    // Labber arayüz adı kanoniktir; AğLab görünümündeki yazımıyla eşlenir.
+    const aglabName = (canon) =>
+      Object.keys(src?.interfaces || {}).find((n) => AgLabSim.canonPort(n) === canon) || canon;
+    const lookup = route
+      ? {
+          ok: true,
+          route: {
+            type: route.code === 'C' ? 'connected' : route.code === 'S' ? 'static' : 'ospf',
+            iface: aglabName(route.ifname),
+          },
+        }
+      : { ok: false };
+    return AgLabRoutingGrading.sourceBinding(src, name, lookup);
+  }
+  /**
    * Durumun Labber üzerinden AğLab görünümü: toAglab(çalışma zamanı, t).
    * Akademi `state_adapter` yeteneği; ifade edilemeyen durum açık hata verir.
    */
@@ -82,6 +105,7 @@ const aglabEngineChoice = (() => {
     badgeText,
     renderBadge,
     labberPing,
+    labberSourceBinding,
     labberStpRoot,
     labberView,
     snapshot,

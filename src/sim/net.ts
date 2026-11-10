@@ -140,7 +140,7 @@ export function allL3Ifs(d: Derived): L3If[] {
 
 export function isRouter(d: Derived, dev: string): boolean {
   const def = d.topo.devices[dev]!
-  return def.kind === 'switch' && !!def.l3 && d.cfgs[dev]!.ipRouting
+  return def.kind === 'switch' && !!(def.l3 || def.router) && d.cfgs[dev]!.ipRouting
 }
 
 export type RouteCode = 'C' | 'S' | 'L' | 'O' | 'O IA' | 'O E2'
@@ -154,11 +154,42 @@ export interface RouteEntry {
   /** OSPF: [110/metric] and all equal-cost paths */
   metric?: number
   paths?: { nh: string; ifname: string }[]
+  /** static: administrative distance (undefined = 1) */
+  ad?: number
+  /** static: directly connected next hop the packet is handed to (recursive resolution) */
+  via?: string
 }
 
-const RANK: Record<RouteCode, number> = { L: 0, C: 0, S: 1, O: 2, 'O IA': 2, 'O E2': 2 }
+const OSPF_AD = 110
 
-/** Routing table of a routing switch (connected + resolvable static). */
+interface Candidate {
+  code: RouteCode
+  net: string
+  prefix: number
+  ad: number
+  /** static route index in the configuration (resolution guard) */
+  idx?: number
+  nh: string | null
+  ifname: string
+  metric?: number
+  paths?: { nh: string; ifname: string }[]
+}
+
+const inPrefix = (ip: string, net: string, prefix: number) => {
+  const m = prefixMaskInt(prefix)
+  return ((ipToInt(ip)! & m) >>> 0) === ((ipToInt(net)! & m) >>> 0)
+}
+
+/**
+ * Routing table of a routing device: connected, then for every prefix the installed route
+ * with the lowest administrative distance (static `ad`, default 1; OSPF 110).
+ *
+ * A static route is installed only if its next hop resolves: directly connected, or
+ * recursively through another route (L4, same rule as the src/engine/routing.js oracle:
+ * longest match first; a candidate that does not resolve is skipped and the next one is
+ * tried; a route never resolves through itself, so mutually dependent routes stay out).
+ * With equal distance the route configured first wins (the oracle does not load-balance).
+ */
 export function routeTable(d: Derived, dev: string): RouteEntry[] {
   const ifs = l3Ifs(d, dev)
   const out: RouteEntry[] = []
@@ -167,18 +198,55 @@ export function routeTable(d: Derived, dev: string): RouteEntry[] {
     out.push({ code: 'C', net: intTo((ipToInt(i.ip)! & m) >>> 0), prefix: i.prefix, nh: null, ifname: i.name })
     if (i.prefix < 32) out.push({ code: 'L', net: i.ip, prefix: 32, nh: null, ifname: i.name })
   }
-  if (isRouter(d, dev)) {
-    const have = (net: string, prefix: number) => out.some((e) => e.net === net && e.prefix === prefix)
-    for (const r of d.cfgs[dev]!.routes) {
-      const outIf = ifs.find((i) => i.node && sameSubnet(i.ip, r.nh, i.prefix))
-      if (!outIf) continue
-      out.push({ code: 'S', net: r.net, prefix: maskToPrefix(r.mask)!, nh: r.nh, ifname: outIf.name })
+  if (!isRouter(d, dev)) return out
+  const connected = out.filter((e) => e.code === 'C' && ifs.find((i) => i.name === e.ifname)?.node)
+  const statics: Candidate[] = d.cfgs[dev]!.routes.flatMap((r, idx) => {
+    const prefix = maskToPrefix(r.mask)
+    return prefix === null ? [] : [{ code: 'S' as const, net: r.net, prefix, ad: r.ad ?? 1, idx, nh: r.nh, ifname: '' }]
+  })
+  const ospf: Candidate[] = (d.ospf[dev]?.routes ?? [])
+    .filter((r) => r.paths.length)
+    .map((r) => ({ code: r.code, net: r.net, prefix: r.prefix, ad: OSPF_AD, nh: r.paths[0]!.nh, ifname: r.paths[0]!.ifname, metric: r.metric, paths: r.paths }))
+
+  // next hop → (outgoing interface, directly connected next hop)
+  type Res = { ifname: string; via: string }
+  const lookupFor = (dst: string, seen: Set<number>): Res | null => {
+    const matches: Candidate[] = [
+      ...connected.filter((c) => inPrefix(dst, c.net, c.prefix)).map((c) => ({ ...c, ad: 0 }) as Candidate),
+      ...statics.filter((c) => !seen.has(c.idx!) && inPrefix(dst, c.net, c.prefix)),
+      ...ospf.filter((c) => inPrefix(dst, c.net, c.prefix)),
+    ].sort((a, b) => b.prefix - a.prefix || a.ad - b.ad || (a.code === 'S' ? 0 : 1) - (b.code === 'S' ? 0 : 1))
+    for (const m of matches) {
+      if (m.code === 'C') return { ifname: m.ifname, via: dst }
+      if (m.code !== 'S') return { ifname: m.ifname, via: m.nh! }
+      const r = resolve(m, seen)
+      if (r) return r
     }
-    for (const r of d.ospf[dev]?.routes ?? []) {
-      // lower administrative distance wins: connected (0), static (1), OSPF (110)
-      if (have(r.net, r.prefix) || !r.paths.length) continue
-      out.push({ code: r.code, net: r.net, prefix: r.prefix, nh: r.paths[0]!.nh, ifname: r.paths[0]!.ifname, metric: r.metric, paths: r.paths })
-    }
+    return null
+  }
+  const resolve = (s: Candidate, seen: Set<number>): Res | null => {
+    const direct = connected.find((c) => inPrefix(s.nh!, c.net, c.prefix))
+    if (direct) return { ifname: direct.ifname, via: s.nh! }
+    return lookupFor(s.nh!, new Set([...seen, s.idx!]))
+  }
+
+  const best = new Map<string, RouteEntry & { rank: number }>()
+  const consider = (e: RouteEntry, rank: number) => {
+    const key = `${e.net}/${e.prefix}`
+    if (out.some((c) => c.code === 'C' && `${c.net}/${c.prefix}` === key)) return
+    const cur = best.get(key)
+    if (!cur || rank < cur.rank) best.set(key, { ...e, rank })
+  }
+  for (const s of statics) {
+    const r = resolve(s, new Set())
+    if (!r) continue
+    // equal distance: static before OSPF, earlier configuration line first (strict <)
+    consider({ code: 'S', net: s.net, prefix: s.prefix, nh: s.nh, ifname: r.ifname, ...(s.ad !== 1 ? { ad: s.ad } : {}), via: r.via }, s.ad * 2)
+  }
+  for (const r of ospf) consider({ code: r.code, net: r.net, prefix: r.prefix, nh: r.nh, ifname: r.ifname, metric: r.metric, paths: r.paths }, r.ad * 2 + 1)
+  for (const e of best.values()) {
+    const { rank: _rank, ...entry } = e
+    out.push(entry)
   }
   return out
 }
@@ -203,19 +271,16 @@ function lookup(d: Derived, dev: string, dst: string): { out: L3If; nh: string }
     const gi = gw ? ifs.find((i) => sameSubnet(i.ip, gw, i.prefix)) : undefined
     return gw && gi ? { out: gi, nh: gw } : null
   }
+  // one installed entry per prefix (connected before anything else): plain LPM
   let best: { e: RouteEntry; out: L3If } | null = null
-  const dn = ipToInt(dst)!
   for (const e of routeTable(d, dev)) {
-    if (e.code === 'L') continue
-    const m = prefixMaskInt(e.prefix)
-    if (((dn & m) >>> 0) !== ((ipToInt(e.net)! & m) >>> 0)) continue
-    if (best && best.e.prefix > e.prefix) continue
-    if (best && best.e.prefix === e.prefix && RANK[best.e.code] <= RANK[e.code]) continue
+    if (e.code === 'L' || !inPrefix(dst, e.net, e.prefix)) continue
+    if (best && best.e.prefix >= e.prefix) continue
     const out = ifs.find((i) => i.name === e.ifname)!
     best = { e, out }
   }
   if (!best) return null
-  return { out: best.out, nh: best.e.code === 'C' ? dst : best.e.nh! }
+  return { out: best.out, nh: best.e.code === 'C' ? dst : (best.e.via ?? best.e.nh!) }
 }
 
 export function owns(d: Derived, dev: string, ip: string): boolean {
@@ -278,6 +343,12 @@ export function deliver(d: Derived, from: string, dst: string): Delivery {
     cur = target.dev
   }
   return { kind: 'timeout', hops }
+}
+
+/** Route choice for dst: outgoing interface and the next hop it is handed to (no ARP). */
+export function routeOut(d: Derived, dev: string, dst: string): { ifname: string; nh: string } | null {
+  const r = lookup(d, dev, dst)
+  return r ? { ifname: r.out.name, nh: r.nh } : null
 }
 
 /** Next hop the device would ARP for to reach dst (dst itself when on-link). */

@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from pathlib import Path
 import unittest
 from playwright.sync_api import sync_playwright, expect
@@ -108,18 +109,30 @@ class CommonEngineTests(unittest.TestCase):
         self.assertFalse(self.probe()["ok"])
 
     def test_03_ospf_reason_routes_mask_and_withdrawal(self):
+        """L4: ospf-area Labber kararında (terminal, hedef ve OSPF Labber'da).
+
+        Eski motorun Türkçe teşhis satırları ("area uyuşmazlığı", "maskesi uyuşmazlığı")
+        yerine aynı arızalar Labber'ın türetilmiş OSPF durumundan (komşuluk uyuşmazlığı
+        türü, FULL komşu, kurulu O rotası) ve IOS biçimli çıktıdan doğrulanır
+        (UYUMLULUK_MATRISI: "OSPF teşhis metni").
+        """
         self.load("ospf-area")
+        self.assertEqual(self.run_js("aglabSharedEngine.engine()")["engine"], "labber")
         self.assertFalse(self.probe()["ok"])
+        self.assertIn("area", self.ospf("R2", "mismatches.map(m=>m.kind)"))
         self.command("R1", ["show ip ospf neighbor"])
-        expect(self.page.locator("#ptTerminal")).to_contain_text("area uyuşmazlığı")
+        self.assertEqual(self.full_rows(), [])
         self.solve("ospf-area")
         self.assertTrue(self.probe()["ok"])
-        routes = self.run_js("aglabSharedEngine.routes('R1')")
+        self.assertEqual(self.ospf("R1", "nbrs.filter(n=>n.state==='FULL').length"), 1)
+        routes = self.run_js(
+            "()=>aglabLabberSession.query().routes(academyEngine.snapshot().devices.find(d=>d.name==='R1').id)"
+        )
         self.assertTrue(
-            any(r["distance"] == 110 and r["network"] == "192.168.20.0" for r in routes), routes
+            any(r["code"] == "O" and r["net"] == "192.168.20.0" for r in routes), routes
         )
         self.command("R1", ["show ip route 192.168.20.20"])
-        expect(self.page.locator("#ptTerminal")).to_contain_text("O 192.168.20.0/24")
+        self.assertIn('Known via "ospf 1", distance 110', self.last_output())
         self.command(
             "R2",
             [
@@ -131,9 +144,28 @@ class CommonEngineTests(unittest.TestCase):
             ],
         )
         self.assertFalse(self.probe()["ok"])
-        self.assertFalse(self.run_js("aglabSharedEngine.routes('R1')"))
+        routes = self.run_js(
+            "()=>aglabLabberSession.query().routes(academyEngine.snapshot().devices.find(d=>d.name==='R1').id)"
+        )
+        self.assertFalse([r for r in routes if r["code"] == "O"], routes)
+        self.assertIn("subnet", self.ospf("R2", "mismatches.map(m=>m.kind)"))
         self.command("R1", ["show ip ospf neighbor"])
-        expect(self.page.locator("#ptTerminal")).to_contain_text("maskesi uyuşmazlığı")
+        self.assertEqual(self.full_rows(), [])
+        # komşuluğun düşüşü R1 konsoluna IOS syslog'u olarak yazılır
+        self.assertIn("from FULL to DOWN", self.last_output())
+
+    def full_rows(self):
+        """`show ip ospf neighbor` tablosunda FULL durumundaki komşu satırları."""
+        return re.findall(r"^\d+\.\d+\.\d+\.\d+\s+\d+\s+FULL.*$", self.last_output(), re.M)
+
+    def ospf(self, name, expr):
+        return self.run_js(
+            "([n,e])=>new Function('s','return s.'+e)(aglabLabberSession.query().ospf(academyEngine.snapshot().devices.find(d=>d.name===n).id))",
+            [name, expr],
+        )
+
+    def last_output(self):
+        return self.page.locator("#ptTerminal").inner_text().split("show ip")[-1]
 
     def test_04_bgp_reciprocal_remote_as_and_ad(self):
         self.load("bgp-as")

@@ -141,7 +141,7 @@ const configPatterns = (def: SwitchDef): P[] => {
     { p: 'no vlan <vlist:ISL VLAN IDs 1-4094>', run: (x, a) => x.deleteVlan(a[2]!) },
     { p: 'interface <if>', run: (x, a) => x.enterIf(a[1]!, a[2]!) },
     { p: 'interface range <LINE:Interface range, e.g. fa0/1 - 4, gi0/1>', run: (x, a) => x.enterRange(a[2]!) },
-    { p: 'no interface <if>', run: (x, a) => x.deleteIf(a[2]!, a[3]!), ifTypes: ['Port-channel', 'Vlan', 'Loopback'] },
+    { p: 'no interface <if>', run: (x, a) => x.deleteIf(a[2]!, a[3]!), ifTypes: def.router ? ['Loopback'] : ['Port-channel', 'Vlan', 'Loopback'] },
     { p: 'spanning-tree mode pvst', run: (x) => void (x.cfg.stpMode = 'pvst') },
     { p: 'spanning-tree mode rapid-pvst', run: (x) => void (x.cfg.stpMode = 'rapid-pvst') },
     { p: 'no spanning-tree mode', run: (x) => void (x.cfg.stpMode = 'pvst') },
@@ -163,7 +163,7 @@ const configPatterns = (def: SwitchDef): P[] => {
     { p: 'errdisable recovery interval <30-86400:timer-interval(sec)>', run: (x, a) => void (x.cfg.errRecoveryInterval = Number(a[3])) },
     { p: 'no errdisable recovery interval', run: (x) => void delete x.cfg.errRecoveryInterval },
   ]
-  if (def.l3) {
+  if (def.l3 || def.router) {
     p.push(
       { p: 'ip routing', run: (x) => void (x.cfg.ipRouting = true) },
       {
@@ -183,15 +183,30 @@ const configPatterns = (def: SwitchDef): P[] => {
       },
       { p: 'ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router\'s address>', run: (x, a) => x.addRoute(a[2]!, a[3]!, a[4]!) },
       {
+        p: 'ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router\'s address> <1-255:Distance metric for this route>',
+        run: (x, a) => x.addRoute(a[2]!, a[3]!, a[4]!, Number(a[5])),
+      },
+      {
+        p: 'no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask>',
+        run: (x, a) => x.removeRoute(a[3]!, a[4]!, null),
+      },
+      {
         p: 'no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router\'s address>',
-        run: (x, a) => {
-          x.cfg.routes = x.cfg.routes.filter((r) => !(r.net === a[3] && r.mask === a[4] && r.nh === a[5]))
-        },
+        run: (x, a) => x.removeRoute(a[3]!, a[4]!, a[5]!),
+      },
+      {
+        p: 'no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router\'s address> <1-255:Distance metric for this route>',
+        run: (x, a) => x.removeRoute(a[3]!, a[4]!, a[5]!),
       },
     )
   }
-  return p
+  // A router has no VLAN database, spanning tree or err-disable recovery (L4).
+  return def.router ? p.filter((x) => !ROUTER_HIDDEN_CONFIG.test(x.p)) : p
 }
+
+const ROUTER_HIDDEN_CONFIG = /^(no )?(vlan|spanning-tree|errdisable) /
+/** Exec commands about L2 switching state that a router does not have. */
+const ROUTER_HIDDEN_SHOW = /^show (vlan|spanning-tree|mac address-table|interfaces (trunk|status|switchport)|interfaces <if> switchport|etherchannel|errdisable|vtp)/
 
 const l3OptPatterns: P[] = [
   { p: 'ip ospf cost <1-65535:Cost>', run: (x, a) => x.eachL3((o) => void (o.ospfCost = Number(a[3]))) },
@@ -267,7 +282,20 @@ const routerPatterns: P[] = [
   },
 ]
 
+/** Router port (always routed): no switchport, STP or channel commands. */
+const routerIfPatterns: P[] = [
+  ...commonSub,
+  { p: 'shutdown', run: (x) => x.eachPhys((c) => void (c.shutdown = true)) },
+  { p: 'no shutdown', run: (x) => x.eachPhys((c) => void (c.shutdown = false)) },
+  { p: 'description <LINE:Up to 240 characters describing this interface>', run: (x, a) => x.eachPhys((c) => void (c.description = a[1]!.slice(0, 240))) },
+  { p: 'no description', run: (x) => x.eachPhys((c) => void (c.description = '')) },
+  { p: 'ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>', run: (x, a) => x.setIp(a[2]!, a[3]!) },
+  { p: 'no ip address', run: (x) => x.eachPhys((c) => void (c.ip = null)) },
+  ...l3OptPatterns,
+]
+
 const l2IfPatterns = (def: SwitchDef): P[] => {
+  if (def.router) return routerIfPatterns
   const p: P[] = [
     ...commonSub,
     { p: 'shutdown', run: (x) => x.eachL2((c) => void (c.shutdown = true)) },
@@ -358,9 +386,10 @@ const trieCache = new WeakMap<SwitchDef, Record<Mode | 'svi', TrieNode<IosSessio
 function tries(def: SwitchDef) {
   let t = trieCache.get(def)
   if (!t) {
+    const exec = (ps: P[]) => (def.router ? ps.filter((x) => !ROUTER_HIDDEN_SHOW.test(x.p)) : ps)
     t = {
-      user: buildTrie(userPatterns),
-      priv: buildTrie(privPatterns),
+      user: buildTrie(exec(userPatterns)),
+      priv: buildTrie(exec(privPatterns)),
       config: buildTrie(configPatterns(def)),
       if: buildTrie(l2IfPatterns(def)),
       svi: buildTrie(sviPatterns),
@@ -622,6 +651,8 @@ export class IosSession {
   private resolveIf(type: string, num: string, argIndex: number, create: boolean): string {
     const name = canonIf(type, num)
     if (!name) throw new InvalidAt(argIndex)
+    // a router has no SVIs or port-channels (L4)
+    if (this.def.router && (name.startsWith('Vlan') || name.startsWith('Port-channel'))) throw new InvalidAt(argIndex)
     if (name.startsWith('Vlan')) {
       const v = Number(num)
       if (!/^\d+$/.test(num) || v < 1 || v > 4094) throw new InvalidAt(argIndex + 1)
@@ -891,11 +922,24 @@ export class IosSession {
     })
   }
 
-  addRoute(net: string, mask: string, nh: string): Out {
+  addRoute(net: string, mask: string, nh: string, ad = 1): Out {
     const len = maskToPrefix(mask)
     if (len === null) return ['%Inconsistent address and mask']
     if (networkOf(net, len) !== net) return ['%Inconsistent address and mask']
-    if (!this.cfg.routes.some((r) => r.net === net && r.mask === mask && r.nh === nh)) this.cfg.routes.push({ net, mask, nh })
+    if (nh === '0.0.0.0' || this.ipIfs().some(([, ip]) => ip.addr === nh)) return ['%Invalid next hop address (it\'s this router)']
+    // IOS: the same prefix + next hop again replaces the distance; a new next hop adds a route
+    const same = this.cfg.routes.find((r) => r.net === net && r.mask === mask && r.nh === nh)
+    if (same) {
+      if (ad === 1) delete same.ad
+      else same.ad = ad
+    } else this.cfg.routes.push(ad === 1 ? { net, mask, nh } : { net, mask, nh, ad })
+  }
+
+  /** `no ip route net mask [nh [ad]]`: without a next hop every route to the prefix goes. */
+  removeRoute(net: string, mask: string, nh: string | null): Out {
+    const before = this.cfg.routes.length
+    this.cfg.routes = this.cfg.routes.filter((r) => !(r.net === net && r.mask === mask && (nh === null || r.nh === nh)))
+    if (this.cfg.routes.length === before) return ['%No matching route to delete']
   }
 
   // ---- spanning tree ----
