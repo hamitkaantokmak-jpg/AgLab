@@ -12,6 +12,14 @@ export interface AglabInterface {
   [key: string]: unknown
 }
 
+export interface AglabStaticRoute {
+  network: string
+  mask: string
+  nextHop: string
+  distance?: number
+  [key: string]: unknown
+}
+
 export interface AglabDevice {
   id: string
   name?: string
@@ -31,6 +39,9 @@ export interface AglabDevice {
   stpPriority?: number
   stpPriorities?: Record<string, number>
   config?: Record<string, unknown>
+  staticRoutes?: AglabStaticRoute[]
+  route?: string
+  services?: Record<string, unknown>
   [key: string]: unknown
 }
 

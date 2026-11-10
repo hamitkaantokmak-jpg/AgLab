@@ -58,10 +58,10 @@ function academyEngineFor(lab) {
   return academyEngineCache[lab.id];
 }
 // Motorun sağladığı yetenekler (ölçütlerdeki required_capabilities ile eşleşir).
-// Labber: state_adapter = toAglab görünümü, icmp_probe = LabQuery.ping. Kaynak arayüz
-// seçimli probe (routing) Labber köprüsünde henüz yok (L4).
+// Labber: state_adapter = toAglab görünümü, icmp_probe = LabQuery.ping, icmp_source_interface
+// = aynı ping + eski motorla aynı kaynak arayüz kuralı (L4, engine-choice.js).
 const ACADEMY_CAPABILITIES = {
-  labber: ['state_adapter', 'icmp_probe', 'answer_input'],
+  labber: ['state_adapter', 'icmp_probe', 'icmp_source_interface', 'answer_input'],
   legacy: ['state_adapter', 'icmp_probe', 'icmp_source_interface', 'answer_input'],
 };
 function academyRequiredCapabilities(c) {
@@ -955,8 +955,22 @@ function acProbe(source, destination, spec = {}, engine = 'legacy') {
   if (engine === 'labber') {
     // Labber deterministik: tek ping beş denemenin hepsini temsil eder. Terminal de aynı
     // çalışma zamanını kullandığından ikinci bir motorla karşılaştırma yapılmaz.
+    let bound = null;
+    if (spec.source_interface) {
+      // Kaynak arayüz hedefin doğrudan bağlı çıkışıdır (kural aşağıdaki eski yol ile aynı);
+      // bu yüzden ping'in kaynak adresi zaten o arayüzün adresidir.
+      bound = aglabEngineChoice.labberSourceBinding(source, spec.source_interface, ip);
+      if (!bound)
+        return Array.from({ length: 5 }, () => ({
+          ok: false,
+          why: 'İstenen kaynak arayüzü kapalı, adresi geçersiz veya bağlı çıkışı yok.',
+        }));
+    }
     const r = aglabEngineChoice.labberPing(source, ip);
-    return Array.from({ length: 5 }, () => ({ ok: r.ok, why: r.why }));
+    const why = bound
+      ? r.why + ' Kaynak arayüzü: ' + bound.interface + ' ' + bound.ip + '.'
+      : r.why;
+    return Array.from({ length: 5 }, () => ({ ok: r.ok, why }));
   }
   let binding = null;
   if (spec.source_interface) {

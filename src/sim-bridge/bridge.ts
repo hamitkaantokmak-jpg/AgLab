@@ -11,9 +11,9 @@
 import AgLabMacAddress from '../../simulator/mac-address.js'
 import { defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED_VLANS } from '../sim/config'
 import { LabRuntime } from '../sim/runtime'
-import type { Hardware, LabDef, PcConfig, PcDef, SwitchConfig, SwitchDef } from '../sim/types'
-import { canonIf, clone, ipToInt, isIp, maskToPrefix, ports as expandPorts, prefixToMask } from '../sim/util'
-import type { AglabDevice, AglabInterface, AglabLink, AglabTopology } from './aglab'
+import type { Hardware, LabDef, OspfConfig, PcConfig, PcDef, StaticRoute, SwitchConfig, SwitchDef } from '../sim/types'
+import { canonIf, clone, ipToInt, isIp, maskToPrefix, networkOf, ports as expandPorts, prefixToMask } from '../sim/util'
+import type { AglabDevice, AglabInterface, AglabLink, AglabStaticRoute, AglabTopology } from './aglab'
 
 export interface UnsupportedItem {
   device: string
@@ -42,6 +42,9 @@ export interface BridgeResult {
 
 export const MODEL_L2 = 'WS-C2960-24TT-L'
 export const MODEL_L3 = 'WS-C3650-24PS'
+export const MODEL_ROUTER = 'ISR4331'
+/** AğLab'ın yeni Router şablonu (src/app/main.js templates.Router.ports). */
+const ROUTER_TEMPLATE_PORTS = ['g0/0', 'g0/1']
 const TEMPLATES: Record<string, string[]> = {
   [MODEL_L2]: ['Fa0/1-24', 'Gi0/1-2'],
   [MODEL_L3]: ['Gi1/0/1-24', 'Gi1/1/1-4'],
@@ -54,18 +57,27 @@ const PC_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'ip', 'mask', 'gate
 const SWITCH_FIELDS = new Set([
   'enabled', 'ports', 'interfaces', 'gateway', 'vlans', 'vlanNames', 'stpPriority', 'stpPriorities', 'ip', 'mask',
 ])
+// L4: Router. `ip`/`mask`/`gateway` cihaz düzeyinde yalnız boş olabilir; `vlan` router için
+// anlamsızdır (PKT dönüştürücüsü 1 yazar) ve opak geçer.
+const ROUTER_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'staticRoutes', 'route', 'ospf', 'ip', 'mask', 'gateway', 'vlan'])
+const ROUTER_IF_FIELDS = new Set(['ip', 'mask', 'enabled'])
+const STATIC_ROUTE_FIELDS = new Set(['network', 'mask', 'nextHop', 'distance'])
+const OSPF_FIELDS = new Set(['pid', 'routerId', 'networks'])
+// Server, servisi yoksa PC gibi bir uçtur (L4); servisler L5.
+const SERVER_FIELDS = new Set([...PC_FIELDS, 'services'])
 const PHYS_FIELDS = new Set(['mode', 'vlan', 'allowed', 'nativeVlan', 'enabled'])
 const SVI_FIELDS = new Set(['ip', 'mask', 'enabled', 'vlan'])
 
 const FEATURE_REASON: Record<string, string> = {
-  staticRoutes: 'Statik rota (router) Labber köprüsünde henüz yok (L4)',
-  route: 'Varsayılan rota (router) Labber köprüsünde henüz yok (L4)',
+  staticRoutes: 'Switch üzerinde statik rota AğLab modelinde yok',
+  route: 'Switch üzerinde varsayılan rota AğLab modelinde yok',
   acls: 'ACL Labber\'da yok (L5)',
   natOverload: 'NAT Labber\'da yok (L5)',
   natTranslations: 'NAT çeviri tablosu Labber\'da yok (L5)',
-  ospf: 'AğLab OSPF modeli köprüde eşlenmiyor (L4)',
+  ospf: 'Switch üzerinde OSPF AğLab modelinde yok',
   bgp: 'BGP Labber\'da yok (L5)',
   services: 'Sunucu servisleri (DHCP/DNS/HTTP) Labber\'da yok (L5)',
+  subinterface: 'Alt arayüz / dot1q Labber\'da yok (L5)',
   startupConfig: 'Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)',
   portSecurity: 'Port security Labber\'da yok (L5)',
   errdisabled: 'Port security err-disable durumu Labber\'da yok (L5)',
@@ -148,6 +160,115 @@ export function toLabber(input: AglabTopology): BridgeResult {
     else usedMacs.set(mac, dev)
   }
 
+  /** AğLab port listesini kanonik adlara çevirir; eşlenemeyen/yinelenen ad reddedilir. */
+  const mapPorts = (id: string, sourcePorts: string[]) => {
+    const portMap: Record<string, string> = {}
+    const canonPorts: string[] = []
+    for (const p of sourcePorts) {
+      const c = canonPort(p)
+      if (!c) {
+        reject(id, p, 'Eşlenemeyen port adı')
+        continue
+      }
+      if (portMap[c] !== undefined) {
+        reject(id, p, `Port ${c} iki kez tanımlı (${portMap[c]})`)
+        continue
+      }
+      portMap[c] = p
+      canonPorts.push(c)
+    }
+    return { portMap, canonPorts }
+  }
+
+  // ---- Router (L4) ----
+  const routerToLabber = (d: AglabDevice, id: string, off: boolean) => {
+    for (const key of ['ip', 'mask', 'gateway'] as const)
+      if (d[key] !== undefined && d[key] !== '') unsupported(id, key, 'Router\'da cihaz düzeyi adres alanı AğLab modelinde yok (arayüz adresleri kullanılır)')
+    const ifaces = d.interfaces ?? {}
+    const subifs = Object.keys(ifaces).filter((n) => n.includes('.'))
+    for (const n of subifs) unsupported(id, `interfaces.${n}`, FEATURE_REASON['subinterface']!)
+    const sourcePorts = d.ports ?? [...new Set([...ROUTER_TEMPLATE_PORTS, ...Object.keys(ifaces).filter((n) => !n.includes('.'))])]
+    const { portMap, canonPorts } = mapPorts(id, sourcePorts)
+    canonByDevice[id] = Object.fromEntries(Object.entries(portMap).map(([c, o]) => [o, c]))
+    report.portNames[id] = portMap
+    const pktModel = typeof d.config?.packetTracerModel === 'string' ? (d.config.packetTracerModel as string) : ''
+    const sw: SwitchDef = {
+      id, kind: 'switch', router: true, l3: true, model: pktModel || MODEL_ROUTER, mac: '0000.0000.0000', ports: canonPorts,
+      x: Number(d.x ?? 0), y: Number(d.y ?? 0), ...(off ? { off: true } : {}),
+    }
+    if (resolveMac) sw.mac = intToDotted((0x02n << 40n) | ((macToInt(resolveMac(d)) & 0xffffffffn) << 8n))
+    claimMac(id, sw.mac)
+    def.devices.push(sw)
+    const cfg = defaultSwitchConfig(sw)
+    cfg.hostname = d.name || id
+    // AğLab'da arayüz kaydı olmayan router portu açık ve adressizdir (eski motor: enabled !== false).
+    for (const c of canonPorts) cfg.ifaces[c]!.shutdown = false
+    for (const [name, iface] of Object.entries(ifaces)) {
+      if (name.includes('.')) continue
+      const c = canonPort(name)
+      if (!c || portMap[c] === undefined) {
+        reject(id, name, c ? 'Arayüz cihazın port listesinde yok' : 'Eşlenemeyen arayüz adı')
+        continue
+      }
+      for (const key of Object.keys(iface))
+        if (!ROUTER_IF_FIELDS.has(key)) unsupported(id, `interfaces.${name}.${key}`, FEATURE_REASON[key] ?? 'Labber\'da karşılığı olmayan router arayüz alanı')
+      const phys = cfg.ifaces[c]!
+      phys.shutdown = iface.enabled === false
+      if (iface.ip) {
+        const pre = iface.mask ? maskToPrefix(iface.mask) : null
+        if (!isIp(iface.ip) || pre === null || pre === 0) reject(id, name, 'Geçersiz router arayüzü IPv4 adresi/maskesi')
+        else phys.ip = { addr: iface.ip, mask: iface.mask! }
+      }
+    }
+    // Statik rotalar: AD (distance) 1-255; yoksa 1. Eski `route` alanı, listede varsayılan
+    // rota yoksa AD 1 varsayılan rotadır (src/engine/routing.js staticRoutes ile aynı kural).
+    const list: AglabStaticRoute[] = Array.isArray(d.staticRoutes) ? d.staticRoutes : []
+    if (d.staticRoutes !== undefined && !Array.isArray(d.staticRoutes)) reject(id, 'staticRoutes', 'Statik rota listesi dizi olmalı')
+    list.forEach((r, i) => {
+      const where = `staticRoutes[${i}]`
+      for (const key of Object.keys(r ?? {}))
+        if (!STATIC_ROUTE_FIELDS.has(key)) unsupported(id, `${where}.${key}`, 'Labber\'da karşılığı olmayan statik rota alanı')
+      const prefix = isIp(r?.mask ?? '') ? maskToPrefix(r.mask) : null
+      const ad = r?.distance === undefined ? 1 : Number(r.distance)
+      if (!isIp(r?.network ?? '') || prefix === null || !isIp(r?.nextHop ?? '')) return reject(id, where, 'Geçersiz statik rota (ağ/maske/next-hop)')
+      if (networkOf(r.network, prefix) !== r.network) return reject(id, where, 'Statik rota ağ adresi maskeyle hizalı değil')
+      if (!Number.isInteger(ad) || ad < 1 || ad > 255) return reject(id, where, 'Statik rota AD 1-255 arasında tam sayı olmalı')
+      if (cfg.routes.some((x) => x.net === r.network && x.mask === r.mask && x.nh === r.nextHop))
+        return reject(id, where, 'Aynı ağ ve next-hop ile yinelenen statik rota')
+      cfg.routes.push(ad === 1 ? { net: r.network, mask: r.mask, nh: r.nextHop } : { net: r.network, mask: r.mask, nh: r.nextHop, ad })
+    })
+    if (d.route !== undefined && d.route !== '') {
+      if (typeof d.route !== 'string' || !isIp(d.route)) reject(id, 'route', 'Geçersiz varsayılan rota next-hop\'u: ' + String(d.route))
+      else if (!cfg.routes.some((x) => x.net === '0.0.0.0' && x.mask === '0.0.0.0')) cfg.routes.push({ net: '0.0.0.0', mask: '0.0.0.0', nh: d.route })
+    }
+    if (d.ospf !== undefined && d.ospf !== null) {
+      const o = d.ospf as Record<string, unknown>
+      for (const key of Object.keys(o))
+        if (!OSPF_FIELDS.has(key)) unsupported(id, `ospf.${key}`, 'Labber\'da karşılığı olmayan AğLab OSPF alanı')
+      const pid = Number(o['pid'] ?? 1)
+      const rid = o['routerId'] ?? null
+      const nets = Array.isArray(o['networks']) ? (o['networks'] as Record<string, unknown>[]) : []
+      if (!Number.isInteger(pid) || pid < 1 || pid > 65535) reject(id, 'ospf.pid', 'Geçersiz OSPF süreç numarası')
+      else if (rid !== null && rid !== '' && !isIp(String(rid))) reject(id, 'ospf.routerId', 'Geçersiz OSPF router-id')
+      else {
+        const ospf: OspfConfig = {
+          pid, routerId: rid ? String(rid) : null, activeRid: rid ? String(rid) : null, networks: [],
+          passiveDefault: false, passive: [], refBw: 100, defaultOriginate: null, stubs: {},
+        }
+        nets.forEach((n, i) => {
+          for (const key of Object.keys(n ?? {}))
+            if (!['network', 'wildcard', 'area'].includes(key)) unsupported(id, `ospf.networks[${i}].${key}`, 'Labber\'da karşılığı olmayan OSPF network alanı')
+          const area = Number(n?.['area'])
+          if (!isIp(String(n?.['network'] ?? '')) || !isIp(String(n?.['wildcard'] ?? '')) || !Number.isInteger(area) || area < 0)
+            reject(id, `ospf.networks[${i}]`, 'Geçersiz OSPF network satırı')
+          else ospf.networks.push({ addr: String(n['network']), wildcard: String(n['wildcard']), area })
+        })
+        cfg.ospf = ospf
+      }
+    }
+    running[id] = cfg
+  }
+
   for (const d of devices) {
     const id = String(d.id)
     if (ids.has(id)) {
@@ -155,9 +276,10 @@ export function toLabber(input: AglabTopology): BridgeResult {
       continue
     }
     ids.add(id)
-    const fields = d.type === 'PC' ? PC_FIELDS : d.type === 'Switch' ? SWITCH_FIELDS : null
+    const fields =
+      d.type === 'PC' ? PC_FIELDS : d.type === 'Server' ? SERVER_FIELDS : d.type === 'Switch' ? SWITCH_FIELDS : d.type === 'Router' ? ROUTER_FIELDS : null
     if (!fields) {
-      unsupported(id, 'type', `${d.type} cihaz tipi Labber köprüsünde yok` + (d.type === 'Router' ? ' (L4)' : ' (L5)'))
+      unsupported(id, 'type', `${d.type} cihaz tipi Labber köprüsünde yok`)
       continue
     }
     for (const key of Object.keys(d))
@@ -166,7 +288,22 @@ export function toLabber(input: AglabTopology): BridgeResult {
     // Güç: yalnız açık `enabled: false` kapalıdır (eksik alan açık sayılır; içerikte hep açık yazılı).
     const off = d.enabled === false
 
-    if (d.type === 'PC') {
+    if (d.type === 'Server') {
+      // Servisi açık sunucu L5'e kadar eski motorda; servissiz sunucu PC gibi bir uçtur.
+      const services = d.services
+      if (services !== undefined && (typeof services !== 'object' || services === null || Array.isArray(services)))
+        reject(id, 'services', 'Servis listesi nesne olmalı')
+      else
+        for (const [name, on] of Object.entries(services ?? {}))
+          if (on) unsupported(id, `services.${name}`, FEATURE_REASON['services']!)
+    }
+
+    if (d.type === 'Router') {
+      routerToLabber(d, id, off)
+      continue
+    }
+
+    if (d.type === 'PC' || d.type === 'Server') {
       const ports = d.ports ?? ['eth0']
       if (ports.length !== 1 || ports[0] !== 'eth0') reject(id, 'ports', 'PC yalnızca tek eth0 portuyla modellenir')
       for (const [name, iface] of Object.entries(d.interfaces ?? {})) {
@@ -208,21 +345,7 @@ export function toLabber(input: AglabTopology): BridgeResult {
     const pktModel = typeof d.config?.packetTracerModel === 'string' ? (d.config.packetTracerModel as string) : ''
     const model = pktModel || (l3 ? MODEL_L3 : MODEL_L2)
     const sourcePorts = d.ports ?? (TEMPLATES[model] ? expandPorts(...TEMPLATES[model]!).map((p) => p) : [])
-    const portMap: Record<string, string> = {}
-    const canonPorts: string[] = []
-    for (const p of sourcePorts) {
-      const c = canonPort(p)
-      if (!c) {
-        reject(id, p, 'Eşlenemeyen port adı')
-        continue
-      }
-      if (portMap[c] !== undefined) {
-        reject(id, p, `Port ${c} iki kez tanımlı (${portMap[c]})`)
-        continue
-      }
-      portMap[c] = p
-      canonPorts.push(c)
-    }
+    const { portMap, canonPorts } = mapPorts(id, sourcePorts)
     if (!d.ports) {
       // Şablon portları kanonik adla gelir; AğLab'da kullanılan yazımı (ör. fa0/1) koru.
       const used = [
@@ -444,10 +567,10 @@ export function toAglab(
   for (const d of out.devices) {
     const id = String(d.id)
     // Güç ve PC NIC'i
-    if (rt.hw && (d.type === 'PC' || d.type === 'Switch') && portNames[id]) {
+    if (rt.hw && ['PC', 'Server', 'Switch', 'Router'].includes(d.type) && portNames[id]) {
       const on = !rt.hw.off.has(id)
       if (d.enabled !== undefined || !on) d.enabled = on
-      if (d.type === 'PC') {
+      if (d.type === 'PC' || d.type === 'Server') {
         const nic = !rt.hw.nicDown.has(id)
         const eth0 = d.interfaces?.['eth0']
         if (eth0?.enabled !== undefined || !nic) {
@@ -456,13 +579,17 @@ export function toAglab(
         }
       }
     }
-    if (d.type === 'PC' && rt.pcs[id]) {
+    if ((d.type === 'PC' || d.type === 'Server') && rt.pcs[id]) {
       const pc = rt.pcs[id]!
       const ip = pc.ip ?? ''
       if (d.ip !== undefined || ip) d.ip = ip
       if (pc.ip !== null && (d.mask !== undefined || pc.ip)) d.mask = prefixToMask(pc.prefix)
       const gw = pc.gw ?? ''
       if (d.gateway !== undefined || gw) d.gateway = gw
+      continue
+    }
+    if (d.type === 'Router' && rt.running[id]) {
+      routerToAglab(d, rt.running[id]!, portNames[id] ?? {}, original.devices.find((x) => String(x.id) === id)!)
       continue
     }
     if (d.type !== 'Switch' || !rt.running[id]) continue
@@ -547,6 +674,72 @@ export function toAglab(
     }
   }
   return out
+}
+
+/**
+ * Router çalışma durumunu AğLab Router alanlarına yazar (L4): ad, arayüz IP/maske/açık,
+ * `staticRoutes` (distance ile), eski `route` alanı ve OSPF (pid, routerId, networks).
+ * AğLab modelinde olmayan durum (loopback, açıklama, arayüz OSPF ayarı, passive-interface,
+ * `no ip routing` …) BridgeError'dur.
+ */
+function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, string>, orig: AglabDevice) {
+  const id = String(d.id)
+  const fail = (what: string) => {
+    throw new BridgeError(`${id}: ${what} AğLab modelinde ifade edilemiyor`)
+  }
+  if (cfg.hostname !== (d.name || id)) d.name = cfg.hostname
+  if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail('Loopback')
+  if (!cfg.ipRouting) fail('no ip routing')
+  if (cfg.defaultGateway) fail('ip default-gateway')
+  d.interfaces = d.interfaces ?? {}
+  for (const [canon, phys] of Object.entries(cfg.ifaces)) {
+    const name = back[canon]
+    if (!name) continue
+    if (phys.description) fail(`${canon} description`)
+    if (phys.l3 && Object.keys(phys.l3).length) fail(`${canon} arayüz OSPF/L3 ayarı`)
+    const prev = d.interfaces[name]
+    if (!prev && !phys.ip && !phys.shutdown) continue
+    const iface: AglabInterface = prev ? { ...prev } : {}
+    if (phys.ip) {
+      iface.ip = phys.ip.addr
+      iface.mask = phys.ip.mask
+    } else if (prev?.ip !== undefined) iface.ip = ''
+    if (prev?.enabled !== undefined || phys.shutdown) iface.enabled = !phys.shutdown
+    d.interfaces[name] = iface
+  }
+  // Eski `route` alanı: köprü onu (listede varsayılan rota yoksa) AD 1 varsayılan rota yaptı.
+  const legacyDefault =
+    typeof orig.route === 'string' && orig.route !== '' &&
+    !(orig.staticRoutes ?? []).some((r) => r.network === '0.0.0.0' && r.mask === '0.0.0.0')
+  let routes: StaticRoute[] = cfg.routes
+  if (legacyDefault) {
+    const i = routes.findIndex((r) => r.net === '0.0.0.0' && r.mask === '0.0.0.0' && r.nh === orig.route && (r.ad ?? 1) === 1)
+    if (i >= 0) routes = routes.filter((_, j) => j !== i)
+    else d.route = ''
+  }
+  // Özgün rota nesnesi aynı kaldıysa olduğu gibi (distance alanı yoksa yine yok) yazılır.
+  const same = (a: AglabStaticRoute, r: StaticRoute) =>
+    a.network === r.net && a.mask === r.mask && a.nextHop === r.nh && Number(a.distance ?? 1) === (r.ad ?? 1)
+  const list = routes.map((r) => {
+    const kept = (orig.staticRoutes ?? []).find((a) => same(a, r))
+    return kept ? clone(kept) : { network: r.net, mask: r.mask, nextHop: r.nh, distance: r.ad ?? 1 }
+  })
+  if (d.staticRoutes !== undefined || list.length) d.staticRoutes = list
+  // OSPF
+  const o = cfg.ospf
+  if (!o) {
+    if (d.ospf !== undefined && d.ospf !== null) delete d.ospf
+    return
+  }
+  if (o.passiveDefault || o.passive.length) fail('passive-interface')
+  if (o.refBw !== 100) fail('auto-cost reference-bandwidth')
+  if (o.defaultOriginate) fail('default-information originate')
+  if (Object.keys(o.stubs).length) fail('stub area')
+  const prev = (orig.ospf ?? {}) as Record<string, unknown>
+  const ospf: Record<string, unknown> = { ...prev, pid: o.pid }
+  if (o.routerId || prev['routerId'] !== undefined) ospf['routerId'] = o.routerId ?? ''
+  ospf['networks'] = o.networks.map((n) => ({ network: n.addr, wildcard: n.wildcard, area: n.area }))
+  d.ospf = ospf
 }
 
 /** IPv4 → tam sayı (yardımcı; testlerde kullanılır). */

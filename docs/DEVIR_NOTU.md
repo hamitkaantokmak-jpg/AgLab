@@ -1,4 +1,4 @@
-# Devir notu — Labber entegrasyonu (L3 sonu → L4)
+# Devir notu — Labber entegrasyonu (L4 → L5)
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
@@ -16,12 +16,17 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L2-D2 Akademi M1–M3 Labber'da | #57 | birleşti |
 | L3-a terminal → IosSession/VpcsSession, tek kalıcı LabRuntime | #59 | birleşti |
 | F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | #60 | birleşti |
-| E Labber'ın 13 labı (kaynak #61) | #62 | açık (birleşmeyi bekliyor) |
-| L3-b Simulation Mode olay adaptörü | #63 (taban #62) | açık (birleşmeyi bekliyor) |
+| E Labber'ın 13 labı (kaynak #61) | #62 | birleşti |
+| L3-b Simulation Mode olay adaptörü | #63 | birleşti |
+| L4 Router, AD, özyinelemeli statik rota; Akademi M4 + routing senaryoları | dal `claude/l4-router-routing` | PR açık (birleşmeyi bekliyor) |
 
-**L3 tamam, sıradaki: L4 (Router, AD, özyinelemeli statik rota).** Plan:
-`YENIDEN_YAPILANMA.md` L3 tablosu sıra 2–3 ve L4 "Aşamalar" satırı L4 (Akademi M4,
-routing senaryoları).
+**L4 PR'ı açık, sıradaki: L5** (alt arayüz/router-on-a-stick, DHCP/Server servisleri,
+ACL, NAT, port security; PKT IOS metin yolu). Plan: `YENIDEN_YAPILANMA.md` L3 tablosu
+sıra 4–8 ve "Aşamalar" L5 satırı. Bugün eski motorda kalan içerik ve gerekçeleri
+`LAB_MOTOR_HARITASI.md` özet tablosunda (hepsi L5).
+
+Not: birleşen dallar (`claude/e-labber-labs`, `claude/l3b-simulation-adapter`) oturumdan
+silinemedi (GitHub proxy'si dal silmeye izin vermiyor, 403); depo arayüzünden silinmeli.
 
 ## Bugünkü mimari (kısaca)
 
@@ -52,8 +57,10 @@ routing senaryoları).
   - Kalıcılık: tarayıcı kaydı yalnız AğLab JSON'udur; sayfa yenilenince Labber içeriği
     kayıtlı JSON'dan yeniden başlar (running = startup). running/startup ayrımının
     kaydı L7'de.
-- Akademi: `ACADEMY_CAPABILITIES` (labber: `state_adapter`, `icmp_probe`, `answer_input`);
-  eksik yetenek → `on_unavailable` (`not_evaluated`).
+- Akademi: `ACADEMY_CAPABILITIES` (labber: `state_adapter`, `icmp_probe`,
+  `icmp_source_interface` (L4), `answer_input`); eksik yetenek → `on_unavailable`
+  (`not_evaluated`). L4'ten beri 40 labın hepsi Labber kararında; eski motor değerlendirme
+  yolu (`academy.evaluate(..., 'legacy')`) M4 paritesi için test edilir.
 - `tests/test_aglab_sim_embedded.py`: ürünün AgLabSim'e hangi API ile dokunduğunu her akışta
   tam küme olarak denetler (L3-a: `createSession`, `VpcsSession`/`IosSession` eklendi;
   içerik başına tek `createRuntime`).
@@ -166,6 +173,54 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
   (Labber senaryosu: başarısız ve başarılı), `test_aglab_simulation_mode` (AGL-001/005
   yakalaması `labber` kökenli, kablolar tuvalde eşleşir).
 
+## L4 — Router, AD, özyinelemeli statik rota (yapıldı, PR açık)
+
+- **Labber çekirdeği** (`src/sim`):
+  - `SwitchDef.router` (types.ts): bütün portlar routed, varsayılanı `shutdown` (IOS),
+    `ip routing` açık, VLAN DB/SVI/STP yok (`config.ts defaultSwitchConfig`). `l3`
+    denetimleri `l3 || router` (net.ts `isRouter`, ospf.ts, show.ts).
+  - CLI (`cli/ios.ts`): router'da `vlan`/`spanning-tree`/`errdisable`, switchport arayüz
+    komutları, `interface vlan|port-channel` ve L2 `show` komutları yok
+    (`ROUTER_HIDDEN_*`); router arayüzü: `shutdown`, `description`, `ip address`, OSPF
+    arayüz ayarları. `ip route … <1-255>` (AD; aynı ağ + next-hop AD'yi günceller),
+    `no ip route ağ maske [nh [ad]]` (`%No matching route to delete`), kendi adresine
+    next-hop reddedilir. running-config router biçiminde (`routerRunningConfig`), AD ≠ 1
+    yazılır; `show ip route` `[AD/0]`, `show ip route A.B.C.D` "distance N".
+  - `net.ts routeTable`: prefix başına en düşük AD kurulur (bağlı 0, statik `ad`, OSPF 110;
+    eşitlikte statik, sonra yapılandırma sırası). Statik rota next-hop'u doğrudan bağlı
+    değilse oracle kuralıyla özyinelemeli çözülür (en uzun eşleşme, çözülemeyen aday
+    atlanır, rota kendisi üzerinden çözülmez); çözülemeyen rota kurulmaz. `RouteEntry.via`
+    paketin verildiği doğrudan bağlı next-hop. `routeOut(d, dev, dst)` ve
+    `LabQuery.routeFor(dev, dst)` rota seçimini (ARP'sız) döndürür.
+- **Köprü** (`src/sim-bridge/bridge.ts`): `Router` → `router: true` (model PKT'den ya da
+  `ISR4331`, port listesi yoksa AğLab şablonu `g0/0, g0/1` + arayüz adları); arayüz
+  `ip/mask/enabled` (kaydı olmayan port açık, eski motor gibi); `staticRoutes`
+  (`distance` → `ad`, geçersiz/hizasız/yinelenen/AD 0 reddedilir); `route` (listede
+  varsayılan yoksa AD 1 varsayılan rota); `ospf{pid, routerId, networks}`. Alt arayüz,
+  router ACL/NAT/relay ve diğer OSPF alanları `unsupported` (L5). `Server` servissizse PC gibi
+  uç; açık servis `unsupported`. `toAglab` router'ı geri yazar (özgün rota nesnesi aynıysa
+  aynen; yeni rota `distance` ile); geri yazılamayan durum (loopback, açıklama, arayüz OSPF
+  ayarı, passive-interface, `no ip routing` …) `BridgeError`.
+- **Ürün**: routing senaryolarında `SRV-01` servissiz (yalnız ICMP hedefi; `main.js`).
+  `aglabSharedEngine.probe()` Labber içeriğinde Labber ping'i. Akademi kaynak arayüzlü
+  ICMP (`engine-choice.js labberSourceBinding`, eski motorla aynı `sourceBinding` kuralı).
+  `aglabLabberSession.query()` test kancası.
+- **Testler**: `tests/sim/router.test.ts` (router, AD, LPM, özyineleme, döngü, `no ip route`,
+  OSPF ile AD, area uyuşmazlığı); `parity.test.ts` statik rota paritesi gerçek Router
+  üzerinden (fark 0; `route-recursive-next-hop` bilinen farklardan çıktı) ve
+  `test_engine_routing.cjs` senaryoları; `routing-acceptance.test.ts` kabul testlerinin
+  (next_hop, v11, v13, traceroute, icmp) topolojileri Labber'da aynı sonuç. Playwright:
+  Akademi testleri bütün labları kapsar (`test_aglab_academy_engine` M4 eski motor/Labber
+  ölçüt paritesi), `test_aglab_labber_terminal` router terminali, `test_aglab_network_features`
+  ospf-area Labber durumundan.
+- **Desteklenmeyen / farklı** (UYUMLULUK_MATRISI "L4"): `ping … ttl`/Time Exceeded ve
+  `show ethernet events` Labber'da yok (içe aktarılan topolojiler eski motorda kaldığı için
+  kabul testleri orada çalışır); olmayan hosta Host Unreachable yerine zaman aşımı; eşit
+  AD'li statiklerde ECMP yok (oracle gibi ilk satır).
+- **İçe aktarma** (`importTopology`) hâlâ eski motordadır: Labber oturumu yalnız Sorun Çöz
+  senaryosu, Akademi labı ve Labber labında kurulur. İçe aktarılan topolojinin Labber'a
+  alınması L5'teki PKT IOS metin yoluyla birlikte ele alınmalı.
+
 ## Kurallar hatırlatması
 
 - Sayıları sabit yazma (lab/senaryo sayısı) — ilgili JSON'dan türet (#56 bu yüzden üç testi
@@ -173,5 +228,5 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
 - `roas-*` senaryolarına ve `src/data/courses.json` / `course-details.json`'a dokunma (#56).
 - `simulator/network-scenarios.json` Prettier ile biçimlendirilmez (#56 ile çakışma riski);
   yalnız hedef satırı düzenle.
-- Kapsam dışı: Router/AD/özyineleme (L4), alt arayüz/DHCP/ACL/NAT/port security (L5), eski
-  metin senaryoları (L6), kalıcılık ve eski motorun kaldırılması (L7).
+- Kapsam dışı (L4 sonrası): alt arayüz/DHCP/ACL/NAT/port security (L5), eski metin
+  senaryoları (L6), kalıcılık ve eski motorun kaldırılması (L7).

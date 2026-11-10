@@ -182,7 +182,8 @@ with sync_playwright() as pw:
     page.select_option("#academySelect", "AGL-040")
     academy_action(page, "#academyStart")
     for device, commands in [
-        ("PC2", ["ip default-gateway 192.168.20.1"]),
+        # L4: AGL-040 Labber kararında; PC terminali VPCS'dir (`ip <adres> <maske> <ağ geçidi>`).
+        ("PC2", ["ip 192.168.20.20 255.255.255.0 192.168.20.1"]),
         ("R3", ["enable", "configure terminal", "interface g0/1", "no shutdown", "end"]),
         (
             "R2",

@@ -34,16 +34,16 @@ Bu tablo gerçek öğrenci JSON içeriklerinden üretilir. Yapısal adaylık, ak
 | AGL-028 | Tek trunk kesintisinin etki alanı | 6/5 | Mevcut | **Labber** — ölçütler Labber'da | Sınırlı aday; unused trunk portları da reddedilir | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `fdcf2e3db673eaac5031ca060cfcee3dc46b078e94bfc2ef1d46003e0a863369` |
 | AGL-029 | Yayın alanları ve native VLAN farkındalığı | 6/5 | Mevcut | **Labber** — ölçütler Labber'da | Sınırlı aday; unused trunk portları da reddedilir | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `a2376624e1064ba58023f45209efec12b6d9a532cdc11868f3bcd6e51a697f42` |
 | AGL-030 | VLAN mini projesi: iki bölümlü ofis | 6/5 | Mevcut | **Labber** — ölçütler Labber'da | Sınırlı aday; unused trunk portları da reddedilir | Başlangıç şeması kabul edilir; native görev testi yok | Gerekmez | `6d36e30ff2ce99fc2c0b12679e905073f024f5db5b74317fd2f888d68d53e6d4` |
-| AGL-031 | Router ile iki doğrudan bağlı ağı birleştirme | 5/4 | Mevcut | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `a69e3d1b0f1a79abc2785c77cc5c7ab0bd4fd0058b5aad654a753f6b9ace0039` |
-| AGL-032 | Varsayılan ağ geçidi hatalarını düzeltme | 5/4 | Mevcut | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `9d437f3674c8bd108c173c35f6a00d78a550166becaa14b970e09624950704f0` |
-| AGL-033 | İki router arasında /30 transit bağlantısı | 6/5 | Mevcut | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `442a6ba1f9f1466e71f3306d952a0153663855546fc8b220e424b3fae73b7aaf` |
-| AGL-034 | İlk çift yönlü statik rota | 6/5 | Mevcut | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç/çözüm native CI geçti (a1d6382; kanıt aşağıda) | `bc6918b6f4e7aeb58dbd3ce1216c59899623b8aee0cc79899702460c26dc1e93` |
-| AGL-035 | Eksik dönüş rotasını bulma | 6/5 | Mevcut | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç/çözüm native CI geçti (a1d6382; kanıt aşağıda) | `c4ceabce947230e958186d3ca082b4818b784681e8bab6b8b77543b24a7f6725` |
-| AGL-036 | Yanlış sonraki atlamayı düzeltme | 6/5 | Mevcut | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `8a6f8334a5e01cf724172794acfb20b7efb55541d93868a5b139a4fad8272828` |
-| AGL-037 | Varsayılan statik rota: şube çıkışı | 6/5 | Mevcut | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `1fae02e246bf24574c7e562c061c18e993c5ef5a261c0633da0f1cc4aa8001e6` |
-| AGL-038 | En uzun önek eşleşmesini okuma | 6/5 | Mevcut | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `acfea8e43de40c1e0a2a74ec566d6b0155cbac8794651c42bb4c750152580571` |
-| AGL-039 | Üç routerla temel çok atlamalı statik routing | 7/6 | Mevcut | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `e2e2c268fce97c32d6ef641cbab7673d55f6b11efac0a78dd56ebfbcadf2569b` |
-| AGL-040 | Bitirme laboratuvarı: iki şube, üç bağımsız hata | 7/6 | Mevcut | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `1fcdeb4db6775ccb3db7fe2f512e056d6910f5289f7cb5b4f4bbdecf9e75c3a8` |
+| AGL-031 | Router ile iki doğrudan bağlı ağı birleştirme | 5/4 | Mevcut | **Labber** — ölçütler Labber'da | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `a69e3d1b0f1a79abc2785c77cc5c7ab0bd4fd0058b5aad654a753f6b9ace0039` |
+| AGL-032 | Varsayılan ağ geçidi hatalarını düzeltme | 5/4 | Mevcut | **Labber** — ölçütler Labber'da | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `9d437f3674c8bd108c173c35f6a00d78a550166becaa14b970e09624950704f0` |
+| AGL-033 | İki router arasında /30 transit bağlantısı | 6/5 | Mevcut | **Labber** — ölçütler Labber'da | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `442a6ba1f9f1466e71f3306d952a0153663855546fc8b220e424b3fae73b7aaf` |
+| AGL-034 | İlk çift yönlü statik rota | 6/5 | Mevcut | **Labber** — ölçütler Labber'da | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç/çözüm native CI geçti (a1d6382; kanıt aşağıda) | `bc6918b6f4e7aeb58dbd3ce1216c59899623b8aee0cc79899702460c26dc1e93` |
+| AGL-035 | Eksik dönüş rotasını bulma | 6/5 | Mevcut | **Labber** — ölçütler Labber'da | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç/çözüm native CI geçti (a1d6382; kanıt aşağıda) | `c4ceabce947230e958186d3ca082b4818b784681e8bab6b8b77543b24a7f6725` |
+| AGL-036 | Yanlış sonraki atlamayı düzeltme | 6/5 | Mevcut | **Labber** — ölçütler Labber'da | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `8a6f8334a5e01cf724172794acfb20b7efb55541d93868a5b139a4fad8272828` |
+| AGL-037 | Varsayılan statik rota: şube çıkışı | 6/5 | Mevcut | **Labber** — ölçütler Labber'da | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `1fae02e246bf24574c7e562c061c18e993c5ef5a261c0633da0f1cc4aa8001e6` |
+| AGL-038 | En uzun önek eşleşmesini okuma | 6/5 | Mevcut | **Labber** — ölçütler Labber'da | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `acfea8e43de40c1e0a2a74ec566d6b0155cbac8794651c42bb4c750152580571` |
+| AGL-039 | Üç routerla temel çok atlamalı statik routing | 7/6 | Mevcut | **Labber** — ölçütler Labber'da | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `e2e2c268fce97c32d6ef641cbab7673d55f6b11efac0a78dd56ebfbcadf2569b` |
+| AGL-040 | Bitirme laboratuvarı: iki şube, üç bağımsız hata | 7/6 | Mevcut | **Labber** — ölçütler Labber'da | Yok (routing) | L2 dönüştürücü değil; FRR yoluna bakınız | Başlangıç şeması kabul; native görev testi yok | `1fcdeb4db6775ccb3db7fe2f512e056d6910f5289f7cb5b4f4bbdecf9e75c3a8` |
 
 ## Ortak motor senaryoları (Sorun Çöz)
 
@@ -51,33 +51,33 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 
 | Senaryo | Başlık | Labber köprüsü (L1) |
 |---|---|---|
-| `subif-missing` | Alt arayüz eksik · router-on-a-stick | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
-| `ospf-area` | OSPF area uyuşmazlığı | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
-| `bgp-as` | BGP remote-AS uyuşmazlığı | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
+| `subif-missing` | Alt arayüz eksik · router-on-a-stick | Eski motor: Alt arayüz / dot1q Labber'da yok (L5) |
+| `ospf-area` | OSPF area uyuşmazlığı | **Labber** |
+| `bgp-as` | BGP remote-AS uyuşmazlığı | Eski motor: BGP Labber'da yok (L5) |
 | `port-security` | Port-security ihlali | Eski motor: Port security Labber'da yok (L5) |
-| `return-route` | return-route | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4); Server cihaz tipi Labber köprüsünde yok (L5) |
-| `forward-route` | forward-route | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4); Server cihaz tipi Labber köprüsünde yok (L5) |
-| `default-route` | default-route | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4); Server cihaz tipi Labber köprüsünde yok (L5) |
-| `wrong-prefix` | wrong-prefix | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4); Server cihaz tipi Labber köprüsünde yok (L5) |
-| `unresolved-next-hop` | unresolved-next-hop | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4); Server cihaz tipi Labber köprüsünde yok (L5) |
-| `lpm-next-hop` | lpm-next-hop | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4); Server cihaz tipi Labber köprüsünde yok (L5) |
-| `floating-static` | floating-static | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4); Server cihaz tipi Labber köprüsünde yok (L5) |
+| `return-route` | return-route | **Labber** |
+| `forward-route` | forward-route | **Labber** |
+| `default-route` | default-route | **Labber** |
+| `wrong-prefix` | wrong-prefix | **Labber** |
+| `unresolved-next-hop` | unresolved-next-hop | **Labber** |
+| `lpm-next-hop` | lpm-next-hop | **Labber** |
+| `floating-static` | floating-static | **Labber** |
 | `access-vlan` | access-vlan | **Labber** |
 | `trunk-allowed` | trunk-allowed | **Labber** |
 | `native-vlan` | native-vlan | **Labber** |
-| `nat-pat` | nat-pat | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4); Server cihaz tipi Labber köprüsünde yok (L5) |
-| `relay-trunk` | relay-trunk | Eski motor: DHCP istemci kirası Labber'da yok (L5); Router cihaz tipi Labber köprüsünde yok (L4); Server cihaz tipi Labber köprüsünde yok (L5) |
+| `nat-pat` | nat-pat | Eski motor: ACL Labber'da yok (L5); NAT Labber'da yok (L5); NAT çeviri tablosu Labber'da yok (L5); Sunucu servisleri (DHCP/DNS/HTTP) Labber'da yok (L5) |
+| `relay-trunk` | relay-trunk | Eski motor: DHCP istemci kirası Labber'da yok (L5); DHCP relay Labber'da yok (L5); Sunucu servisleri (DHCP/DNS/HTTP) Labber'da yok (L5) |
 | `stp-loop` | stp-loop | **Labber** |
 | `vlan-wrong-access` | VLAN · Yeni muhasebe PC'si kimseyi görmüyor | **Labber** |
 | `vlan-uplink-not-trunk` | Trunk · Katlar arası hiçbir şey çalışmıyor | **Labber** |
 | `vlan-allowed-overwritten` | Trunk · Misafir ağı eklendi, muhasebe koptu | **Labber** |
 | `vlan-missing-on-switch` | VLAN · Satış diğer kattaki satışçılara ulaşamıyor | **Labber** |
 | `vlan-two-faults` | VLAN + trunk · İki hata birden | **Labber** |
-| `roas-wrong-tag` | Router-on-a-stick · Satış yazıcıya ulaşamıyor | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
-| `roas-switch-port-access` | Router-on-a-stick · Yalnız bir VLAN dışarı çıkabiliyor | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
-| `roas-pc-gateway` | Gateway · Yeni PC yalnız kendi bölümünü görüyor | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
-| `roas-physical-shutdown` | Router-on-a-stick · Alt arayüzler yapılandırılmış ama hiçbiri çalışmıyor | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
-| `roas-two-faults` | Router-on-a-stick · İki hata birden | Eski motor: Router cihaz tipi Labber köprüsünde yok (L4) |
+| `roas-wrong-tag` | Router-on-a-stick · Satış yazıcıya ulaşamıyor | Eski motor: Alt arayüz / dot1q Labber'da yok (L5) |
+| `roas-switch-port-access` | Router-on-a-stick · Yalnız bir VLAN dışarı çıkabiliyor | Eski motor: Alt arayüz / dot1q Labber'da yok (L5) |
+| `roas-pc-gateway` | Gateway · Yeni PC yalnız kendi bölümünü görüyor | Eski motor: Alt arayüz / dot1q Labber'da yok (L5) |
+| `roas-physical-shutdown` | Router-on-a-stick · Alt arayüzler yapılandırılmış ama hiçbiri çalışmıyor | Eski motor: Alt arayüz / dot1q Labber'da yok (L5) |
+| `roas-two-faults` | Router-on-a-stick · İki hata birden | Eski motor: Alt arayüz / dot1q Labber'da yok (L5) |
 | `mgmt-unsaved-lost` | Cihaz yönetimi · Gece kesintiden sonra switch'e ulaşılamıyor | **Labber** |
 | `mgmt-reload-revert` | Cihaz yönetimi · Kaydedilmemiş hatalı değişikliği geri al | **Labber** |
 | `mgmt-saved-fault` | Cihaz yönetimi · Yeniden başlatma hatayı düzeltmiyor | **Labber** |
@@ -120,20 +120,28 @@ ekranda gösterir. `labber` kararındaki ortak senaryonun başarı ölçütü (L
 Akademi labının ölçütleri (L2-D2: `probe.icmp` → LabQuery.ping, `state.equals` →
 toAglab görünümü) Labber'da değerlendirilir.
 L3-a'dan beri Labber kararındaki içerikte terminal de Labber'dadır (tek kalıcı
-çalışma zamanı). Eski motor kararı aşağıdaki gerekçelerden en az birine dayanır.
+çalışma zamanı). L4'ten beri Router (routed portlar), statik rotada yönetimsel
+uzaklık ve özyinelemeli next-hop, AğLab OSPF alanları (pid, routerId, networks) ve
+servissiz sunucu (uç) da Labber'dadır; kaynak arayüzlü ICMP ölçütü Labber'da
+değerlendirilir. Eski motor kararı aşağıdaki gerekçelerden en az birine dayanır.
 
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
-| Akademi labları | 30 | 10 | 40 |
-| Ortak senaryolar | 19 | 18 | 37 |
+| Akademi labları | 40 | 0 | 40 |
+| Ortak senaryolar | 27 | 10 | 37 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 62 | 28 | 90 |
+| Toplam | 80 | 10 | 90 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
-| Router cihaz tipi Labber köprüsünde yok (L4) | 27 |
-| Server cihaz tipi Labber köprüsünde yok (L5) | 9 |
+| Alt arayüz / dot1q Labber'da yok (L5) | 6 |
+| Sunucu servisleri (DHCP/DNS/HTTP) Labber'da yok (L5) | 2 |
+| ACL Labber'da yok (L5) | 1 |
+| BGP Labber'da yok (L5) | 1 |
 | DHCP istemci kirası Labber'da yok (L5) | 1 |
+| DHCP relay Labber'da yok (L5) | 1 |
+| NAT Labber'da yok (L5) | 1 |
+| NAT çeviri tablosu Labber'da yok (L5) | 1 |
 | Port security Labber'da yok (L5) | 1 |
 
 ACL/NAT için security_smoke ayrı native operatör örnekleridir; mevcut 40 görevin ACL/NAT alanlarını dönüştürdüğü veya native doğruladığı iddia edilmez. ACL 28 ve SNAT/PAT 21 native kontrolü [CI 42205155584 / 6f651fe](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42205155584) güvenlik işlerinde geçti; görev aktarımı sayılmaz.

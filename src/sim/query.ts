@@ -1,10 +1,10 @@
 // Read-only helpers for lab objectives. Objectives look at derived behaviour, never config text.
 
 import { egress, portForwards, vlanExists, type Derived, type LPort } from './engine'
-import { macTable, ping, pcNode, routeTable, type MacEntry, type PingResult } from './net'
+import { macTable, ping, pcNode, routeTable, type MacEntry, type PingResult, type RouteEntry } from './net'
 import type { SwitchConfig } from './types'
 import { pk } from './topology'
-import { canonIf, normalizeMac } from './util'
+import { canonIf, ipToInt, normalizeMac, prefixMaskInt } from './util'
 
 export class LabQuery {
   constructor(
@@ -73,6 +73,23 @@ export class LabQuery {
   /** Installed route for exactly net/prefix. */
   route(dev: string, net: string, prefix: number) {
     return routeTable(this.d, dev).find((e) => e.net === net && e.prefix === prefix)
+  }
+
+  /**
+   * Route the device would use for dst (longest match over the installed table), or null.
+   * L4: Akademi kaynak arayüzlü ICMP ölçütü bunu eski motorun routeLookup'ı gibi kullanır.
+   */
+  routeFor(dev: string, dst: string): RouteEntry | null {
+    const n = ipToInt(dst)
+    if (n === null) return null
+    let best: RouteEntry | null = null
+    for (const e of routeTable(this.d, dev)) {
+      if (e.code === 'L') continue
+      const m = prefixMaskInt(e.prefix)
+      if (((n & m) >>> 0) !== ((ipToInt(e.net)! & m) >>> 0)) continue
+      if (!best || e.prefix > best.prefix) best = e
+    }
+    return best
   }
 
   errDisabled(dev: string, port: string): boolean {

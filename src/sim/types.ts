@@ -84,6 +84,8 @@ export interface StaticRoute {
   net: string
   mask: string
   nh: string
+  /** administrative distance (`ip route … <1-255>`); undefined = 1 */
+  ad?: number
 }
 
 export interface SwitchConfig {
@@ -131,6 +133,11 @@ export interface SwitchDef {
   ports: string[]
   /** multilayer switch: supports `ip routing` */
   l3?: boolean
+  /**
+   * Router (ISR-style, L4): every port is a routed port, `ip routing` is on by default and
+   * there is no VLAN database, STP or switchport configuration. Implies `l3`.
+   */
+  router?: boolean
   /** trunk needs `switchport trunk encapsulation dot1q` first (Catalyst 3560 style) */
   needsEncap?: boolean
   /** powered off at lab start */

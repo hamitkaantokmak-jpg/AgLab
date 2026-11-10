@@ -110,7 +110,7 @@ export function candidateRid(d: Derived, dev: string): string | null {
 export function ospfRunning(d: Derived, dev: string): boolean {
   const def = d.topo.devices[dev]
   const c = d.cfgs[dev]
-  return def?.kind === 'switch' && !!def.l3 && !!c?.ipRouting && !!c.ospf && !d.hw.off.has(dev)
+  return def?.kind === 'switch' && !!(def.l3 || def.router) && !!c?.ipRouting && !!c.ospf && !d.hw.off.has(dev)
 }
 
 interface IfCfgRef {

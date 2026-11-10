@@ -25,6 +25,22 @@ export function defaultSvi(vlan: number): SviConfig {
 
 export function defaultSwitchConfig(def: SwitchDef): SwitchConfig {
   const ifaces: Record<string, PhysIfConfig> = {}
+  if (def.router) {
+    // IOS router: routed ports, administratively down until `no shutdown`; routing on.
+    for (const p of def.ports) ifaces[p] = { ...defaultPhys(), routed: true, ip: null, shutdown: true }
+    return {
+      hostname: 'Router',
+      vlans: {},
+      ifaces,
+      pos: {},
+      svis: {},
+      stpMode: 'pvst',
+      stpPriority: {},
+      ipRouting: true,
+      routes: [],
+      defaultGateway: null,
+    }
+  }
   for (const p of def.ports) ifaces[p] = defaultPhys()
   return {
     hostname: 'Switch',
