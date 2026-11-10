@@ -124,6 +124,26 @@ v13, traceroute, icmp) `tests/sim/routing-acceptance.test.ts`'de karşılaştır
 | OSPF teşhis metni (`ospf-area`) | Türkçe neden satırı ("area uyuşmazlığı", "maskesi uyuşmazlığı") | Komşuluk kurulmaz; `%OSPF-4-ERRRCV … mismatched area ID` ve `%OSPF-5-ADJCHG … FULL to DOWN` syslog'u; türetilmiş uyuşmazlık türü (`area`, `subnet`) | **Labber (IOS).** `test_aglab_network_features` türetilmiş durumu sorar. |
 | AğLab OSPF alanları | `pid`, `routerId`, `networks` | Aynı alanlar eşlenir; `passive-interface`, `auto-cost`, stub, `default-information`, arayüz OSPF ayarları ve loopback Labber'da yapılabilir ama AğLab modeline geri yazılamaz | **Açık hata** (`BridgeError`): kayıt/geri yazım sessiz kayıp yerine hata verir. |
 | Routing senaryolarındaki sunucu (`SRV-01`) | Şablonla DHCP/DNS/HTTP servisleri açık | Servissiz sunucu bir uçtur; servisli sunucu L5'e kadar eski motorda | **Senaryoda servisler kapatıldı** (yalnız ICMP hedefi; servisler senaryoda kullanılmıyordu). |
-| Alt arayüz (router-on-a-stick: `subif-missing`, `roas-*`) | Var | **Desteklenmiyor (L5)** | Eski motorda kalır; gerekçe "Alt arayüz / dot1q Labber'da yok (L5)". |
+| Alt arayüz (router-on-a-stick: `subif-missing`, `roas-*`) | Var | **L5-a: destekleniyor** | Labber kararında; aşağıdaki "L5-a" bölümü. |
 | Router'da ACL, NAT, DHCP relay, BGP | Var | **Desteklenmiyor (L5)** | Eski motorda kalır (`nat-pat`, `relay-trunk`, `bgp-as`). |
+
+## L5-a: router alt arayüzü / 802.1Q (Labber kararları)
+
+`subif-missing` ve router-on-a-stick senaryoları (`roas-*`) Labber kararındadır. Oracle
+paritesi: `tests/node/test_engine_routing.cjs` dot1q vakaları `tests/sim/parity.test.ts`'de
+birebir; tarayıcı ping paritesi (`test_aglab_sim_parity`) bu içerikte de fark göstermez;
+`test_aglab_next_hop`'un rastgele alt arayüz numaralı adımı `routing-acceptance.test.ts`'de
+Labber'da aynı sonucu verir.
+
+| Konu | Eski motor | Labber | Karar |
+|---|---|---|---|
+| Model | `interfaces["g0/0.N"]{ip, mask, enabled, parent, vlan, encapsulation: "dot1q"}` | `SwitchConfig.subifs["GigabitEthernet0/0.N"]{parent, vlan, native, shutdown, ip}`; routed port üzerinde etiket başına ayrı segment | **Köprü iki yönde birebir.** Eski CLI'nin boş `encapsulation: ''` (yapılandırılmamış) biçimi korunur. |
+| `encapsulation dot1Q N native` | Yok ("Native VLAN bu modelde desteklenmiyor") | Var: alt arayüz etiketsiz çerçeveyi alır/gönderir | **Labber.** AğLab modelinde ifade edilemez: `toAglab` `BridgeError` verir (kayıt sessiz kaybolmaz). |
+| `encapsulation` olmadan IP'li alt arayüz | Sessizce etkisiz | CLI IOS gibi reddeder; köprü içeriği reddeder → eski motor | **Labber (IOS).** İçerikte yok. |
+| Aynı fiziksel portta aynı VLAN iki alt arayüzde | Denetlenmez | IOS gibi reddedilir (CLI ve köprü) | **Labber (IOS).** |
+| Üst arayüzün kaydı yok / `enabled` alanı yazılmamış | Alt arayüz etkin değil | Kaydı olmayan router portu açık (L4 kuralı) → alt arayüz etkin | **Bilinen fark.** İçerikte üst arayüz kaydı hep `enabled` ile yazılı (0 örnek). |
+| Access porta etiketli çerçeve (`roas-switch-port-access`) | Router'ın VLAN 10 çerçevesi access VLAN 10 portundan geçer; senaryo metni "VLAN 10 PC'leri gateway'e ulaşıyor" der | 802.1Q: access port etiketli çerçeveyi düşürür; VLAN 10 PC'leri de gateway'e ulaşamaz | **Labber.** Senaryonun ölçütü (PC-01 → PC-02, aynı VLAN erişimi PC-01 → PC-03) etkilenmez; belirti metni eski motora göre yazılmış (tarif satırına dokunulmadı, ayrı içerik düzeltmesi). |
+| Alt arayüzde OSPF / açıklama | — | Labber'da yapılabilir | AğLab modelinde yok → `BridgeError`. Alt arayüzler OSPF'e katılmaz (modellenmedi). |
+| `show interfaces Gi0/0.N` | — | **Desteklenmiyor** (`show ip interface brief` ve running-config alt arayüzü gösterir) | — |
+| PC çözüm komutu (`roas-pc-gateway`, `roas-two-faults`) | `ip default-gateway 192.168.20.1` (AğLab PC komutu) | PC terminali VPCS: `ip 192.168.20.12 255.255.255.0 192.168.20.1` | **Tarif çözüm satırı VPCS sözdizimine çevrildi** (Labber kararıyla PC terminali VPCS olduğu için zorunlu; L3-a'daki AGL-013 değişikliğiyle aynı). İpucu metinlerindeki `ipconfig` VPCS'te `show ip`'tir (içerik düzeltmesi ayrıca). |
 

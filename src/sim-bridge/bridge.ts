@@ -11,7 +11,7 @@
 import AgLabMacAddress from '../../simulator/mac-address.js'
 import { defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED_VLANS } from '../sim/config'
 import { LabRuntime } from '../sim/runtime'
-import type { Hardware, LabDef, OspfConfig, PcConfig, PcDef, StaticRoute, SwitchConfig, SwitchDef } from '../sim/types'
+import type { Hardware, LabDef, OspfConfig, PcConfig, PcDef, StaticRoute, SubIfConfig, SwitchConfig, SwitchDef } from '../sim/types'
 import { canonIf, clone, ipToInt, isIp, maskToPrefix, networkOf, ports as expandPorts, prefixToMask } from '../sim/util'
 import type { AglabDevice, AglabInterface, AglabLink, AglabStaticRoute, AglabTopology } from './aglab'
 
@@ -61,6 +61,9 @@ const SWITCH_FIELDS = new Set([
 // anlamsızdır (PKT dönüştürücüsü 1 yazar) ve opak geçer.
 const ROUTER_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'staticRoutes', 'route', 'ospf', 'ip', 'mask', 'gateway', 'vlan'])
 const ROUTER_IF_FIELDS = new Set(['ip', 'mask', 'enabled'])
+// L5-a: router alt arayüzü (`g0/0.10`). Eski CLI yeni alt arayüzü `encapsulation: ''`, `vlan: 1`
+// ile kurar: boş encapsulation "henüz yapılandırılmadı" demektir (eski motorda da etkin değil).
+const SUBIF_FIELDS = new Set(['ip', 'mask', 'enabled', 'parent', 'vlan', 'encapsulation'])
 const STATIC_ROUTE_FIELDS = new Set(['network', 'mask', 'nextHop', 'distance'])
 const OSPF_FIELDS = new Set(['pid', 'routerId', 'networks'])
 // Server, servisi yoksa PC gibi bir uçtur (L4); servisler L5.
@@ -77,12 +80,11 @@ const FEATURE_REASON: Record<string, string> = {
   ospf: 'Switch üzerinde OSPF AğLab modelinde yok',
   bgp: 'BGP Labber\'da yok (L5)',
   services: 'Sunucu servisleri (DHCP/DNS/HTTP) Labber\'da yok (L5)',
-  subinterface: 'Alt arayüz / dot1q Labber\'da yok (L5)',
   startupConfig: 'Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)',
   portSecurity: 'Port security Labber\'da yok (L5)',
   errdisabled: 'Port security err-disable durumu Labber\'da yok (L5)',
-  encapsulation: 'Alt arayüz / dot1q Labber\'da yok (L5)',
-  parent: 'Alt arayüz Labber\'da yok (L5)',
+  encapsulation: 'Alt arayüz alanı (encapsulation) yalnız router alt arayüzünde (g0/0.N) eşlenir',
+  parent: 'Alt arayüz alanı (parent) yalnız router alt arayüzünde (g0/0.N) eşlenir',
   aclIn: 'ACL Labber\'da yok (L5)',
   aclOut: 'ACL Labber\'da yok (L5)',
   natRole: 'NAT Labber\'da yok (L5)',
@@ -185,8 +187,6 @@ export function toLabber(input: AglabTopology): BridgeResult {
     for (const key of ['ip', 'mask', 'gateway'] as const)
       if (d[key] !== undefined && d[key] !== '') unsupported(id, key, 'Router\'da cihaz düzeyi adres alanı AğLab modelinde yok (arayüz adresleri kullanılır)')
     const ifaces = d.interfaces ?? {}
-    const subifs = Object.keys(ifaces).filter((n) => n.includes('.'))
-    for (const n of subifs) unsupported(id, `interfaces.${n}`, FEATURE_REASON['subinterface']!)
     const sourcePorts = d.ports ?? [...new Set([...ROUTER_TEMPLATE_PORTS, ...Object.keys(ifaces).filter((n) => !n.includes('.'))])]
     const { portMap, canonPorts } = mapPorts(id, sourcePorts)
     canonByDevice[id] = Object.fromEntries(Object.entries(portMap).map(([c, o]) => [o, c]))
@@ -219,6 +219,45 @@ export function toLabber(input: AglabTopology): BridgeResult {
         if (!isIp(iface.ip) || pre === null || pre === 0) reject(id, name, 'Geçersiz router arayüzü IPv4 adresi/maskesi')
         else phys.ip = { addr: iface.ip, mask: iface.mask! }
       }
+    }
+    // L5-a: alt arayüzler (`<fiziksel>.<n>`, 802.1Q)
+    for (const [name, iface] of Object.entries(ifaces)) {
+      if (!name.includes('.')) continue
+      const dot = name.indexOf('.')
+      const physName = name.slice(0, dot)
+      const sub = name.slice(dot + 1)
+      const parent = canonPort(physName)
+      if (!parent || portMap[parent] === undefined || !/^\d+$/.test(sub) || Number(sub) < 1 || Number(sub) > 4294967295) {
+        reject(id, name, 'Alt arayüzün fiziksel portu cihazda yok ya da numarası geçersiz')
+        continue
+      }
+      for (const key of Object.keys(iface))
+        if (!SUBIF_FIELDS.has(key)) unsupported(id, `interfaces.${name}.${key}`, FEATURE_REASON[key] ?? 'Labber\'da karşılığı olmayan alt arayüz alanı')
+      if (iface.parent !== undefined && canonPort(String(iface.parent)) !== parent) {
+        reject(id, `${name}.parent`, 'Alt arayüzün parent alanı adıyla uyuşmuyor')
+        continue
+      }
+      let vlan: number | null = null
+      if (iface.encapsulation !== undefined && iface.encapsulation !== '') {
+        const v = vlanId(iface.vlan)
+        if (iface.encapsulation !== 'dot1q') reject(id, `${name}.encapsulation`, 'Yalnız 802.1Q (dot1q) alt arayüzü modellenir')
+        else if (v === null) reject(id, `${name}.vlan`, 'Geçersiz 802.1Q VLAN kimliği')
+        else vlan = v
+      }
+      const key = `${parent}.${Number(sub)}`
+      const subs = (cfg.subifs ??= {})
+      if (vlan !== null && Object.values(subs).some((x) => x.parent === parent && x.vlan === vlan)) {
+        reject(id, name, `Aynı fiziksel portta VLAN ${vlan} iki alt arayüzde`)
+        continue
+      }
+      let ip: SubIfConfig['ip'] = null
+      if (iface.ip) {
+        const pre = iface.mask ? maskToPrefix(iface.mask) : null
+        if (!isIp(iface.ip) || pre === null || pre === 0) reject(id, name, 'Geçersiz alt arayüz IPv4 adresi/maskesi')
+        else if (vlan === null) reject(id, name, 'encapsulation dot1q olmadan alt arayüz IP adresi (IOS kabul etmez)')
+        else ip = { addr: iface.ip, mask: iface.mask! }
+      }
+      subs[key] = { parent, vlan, native: false, shutdown: iface.enabled === false, description: '', ip }
     }
     // Statik rotalar: AD (distance) 1-255; yoksa 1. Eski `route` alanı, listede varsayılan
     // rota yoksa AD 1 varsayılan rotadır (src/engine/routing.js staticRoutes ile aynı kural).
@@ -707,6 +746,34 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
     if (prev?.enabled !== undefined || phys.shutdown) iface.enabled = !phys.shutdown
     d.interfaces[name] = iface
   }
+  // L5-a: alt arayüzler. AğLab adı: fiziksel portun AğLab yazımı + '.N'. Native alt arayüz,
+  // açıklama ve arayüz OSPF ayarı AğLab modelinde yok → BridgeError.
+  const subNames = new Set<string>()
+  for (const [canon, si] of Object.entries(cfg.subifs ?? {})) {
+    const physName = back[si.parent]
+    if (!physName) fail(`${canon} fiziksel portu`)
+    const name = physName + canon.slice(canon.indexOf('.'))
+    subNames.add(name)
+    if (si.native) fail(`${canon} encapsulation dot1Q ${si.vlan} native`)
+    if (si.description) fail(`${canon} description`)
+    if (si.l3 && Object.keys(si.l3).length) fail(`${canon} arayüz OSPF/L3 ayarı`)
+    const prev = d.interfaces[name]
+    const iface: AglabInterface = prev ? { ...prev } : { ip: '', mask: '255.255.255.0', enabled: true, vlan: 1, encapsulation: '', parent: physName }
+    // yalnız özgünde olan ya da varsayılandan farklı alanlar yazılır (gidiş-dönüş birebir)
+    if (si.ip || 'ip' in iface) iface.ip = si.ip?.addr ?? ''
+    if (si.ip) iface.mask = si.ip.mask
+    if (si.shutdown || 'enabled' in iface) iface.enabled = !si.shutdown
+    if (si.vlan === null) {
+      if ('encapsulation' in iface) iface.encapsulation = ''
+    } else {
+      iface.encapsulation = 'dot1q'
+      iface.vlan = si.vlan
+    }
+    if (prev?.parent !== undefined || !prev) iface.parent = physName
+    d.interfaces[name] = iface
+  }
+  // CLI ile silinen alt arayüz (`no interface Gi0/0.N`) AğLab görünümünden de çıkar
+  for (const name of Object.keys(d.interfaces)) if (name.includes('.') && !subNames.has(name)) delete d.interfaces[name]
   // Eski `route` alanı: köprü onu (listede varsayılan rota yoksa) AD 1 varsayılan rota yaptı.
   const legacyDefault =
     typeof orig.route === 'string' && orig.route !== '' &&

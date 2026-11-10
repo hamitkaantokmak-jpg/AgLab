@@ -72,6 +72,7 @@ export const HELP: Record<string, string> = {
   nonegotiate: 'Device will not engage in negotiation protocol on this interface',
   encapsulation: 'Set trunking encapsulation when interface is in trunking mode',
   dot1q: 'Interface uses only 802.1q trunking encapsulation when trunking',
+  dot1Q: 'IEEE 802.1Q Virtual LAN',
   'channel-group': 'Etherchannel/port bundling configuration',
   active: 'Enable LACP unconditionally',
   passive: 'Enable LACP only if a LACP device is detected',

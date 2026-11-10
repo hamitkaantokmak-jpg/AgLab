@@ -161,6 +161,73 @@ describe('köprü: Router (L4)', () => {
   })
 })
 
+/** PC10 (VLAN 10) ve PC20 (VLAN 20) — SW1 — trunk — R1 g0/0 (router-on-a-stick). */
+function roas(): AglabTopology {
+  const r1 = router({
+    'g0/0': { ip: '', mask: '255.255.255.0', enabled: true },
+    'g0/0.10': { ip: '192.168.10.1', mask: '255.255.255.0', enabled: true, parent: 'g0/0', vlan: 10, encapsulation: 'dot1q' },
+  }, 'r1')
+  const access = (vlan: number) => ({ mode: 'access', vlan, allowed: [1], nativeVlan: 1, enabled: true })
+  return {
+    app: 'AgLab', version: 23,
+    devices: [
+      { id: 'pc10', name: 'PC10', type: 'PC', x: 0, y: 0, enabled: true, ip: '192.168.10.10', mask: '255.255.255.0', gateway: '192.168.10.1', ports: ['eth0'], interfaces: { eth0: { enabled: true } } },
+      { id: 'pc20', name: 'PC20', type: 'PC', x: 0, y: 0, enabled: true, ip: '192.168.20.20', mask: '255.255.255.0', gateway: '192.168.20.1', ports: ['eth0'], interfaces: { eth0: { enabled: true } } },
+      { id: 'sw1', name: 'SW1', type: 'Switch', x: 0, y: 0, enabled: true, ports: ['fa0/1', 'fa0/2', 'gi0/1'], vlans: [1, 10, 20],
+        interfaces: { 'fa0/1': access(10), 'fa0/2': access(20), 'gi0/1': { mode: 'trunk', vlan: 1, allowed: [10, 20], nativeVlan: 1, enabled: true } } },
+      r1,
+    ],
+    links: [
+      { a: 'pc10', portA: 'eth0', b: 'sw1', portB: 'fa0/1', up: true },
+      { a: 'pc20', portA: 'eth0', b: 'sw1', portB: 'fa0/2', up: true },
+      { a: 'sw1', portA: 'gi0/1', b: 'r1', portB: 'g0/0', up: true },
+    ],
+  }
+}
+
+describe('köprü: alt arayüz (L5-a)', () => {
+  it('alt arayüz SubIfConfig\'e eşlenir; gidiş-dönüş birebir (yapılandırılmamış alt arayüz dahil)', () => {
+    const t = roas()
+    t.devices[3]!.interfaces!['g0/0.30'] = { ip: '', mask: '255.255.255.0', enabled: true, vlan: 1, encapsulation: '', parent: 'g0/0' }
+    const r = toLabber(t)
+    expect(r.report.engineDecision, JSON.stringify(r.report)).toBe('labber')
+    expect(r.running['r1']!.subifs).toEqual({
+      'GigabitEthernet0/0.10': { parent: 'GigabitEthernet0/0', vlan: 10, native: false, shutdown: false, description: '', ip: { addr: '192.168.10.1', mask: '255.255.255.0' } },
+      'GigabitEthernet0/0.30': { parent: 'GigabitEthernet0/0', vlan: null, native: false, shutdown: false, description: '', ip: null },
+    })
+    expect(roundTrip(t)).toEqual(t)
+  })
+
+  it('eksik alt arayüz CLI ile eklenince VLAN\'lar arası erişim gelir ve JSON\'a eski CLI biçiminde yazılır', () => {
+    const t = roas()
+    const rt = createRuntime(toLabber(t))
+    const q = () => new LabQuery(rt.derived, rt.startup)
+    expect(q().ping('pc10', '192.168.20.20').ok).toBe(false)
+    const out = runScript(rt, 'r1', 'configure terminal\ninterface g0/0.20\nencapsulation dot1Q 20\nip address 192.168.20.1 255.255.255.0\nend')
+    expect(out.filter((l) => /^% /.test(l))).toEqual([])
+    expect(q().ping('pc10', '192.168.20.20').ok).toBe(true)
+    expect(toAglab(rt, t).devices[3]!.interfaces!['g0/0.20']).toEqual({ ip: '192.168.20.1', mask: '255.255.255.0', enabled: true, vlan: 20, encapsulation: 'dot1q', parent: 'g0/0' })
+  })
+
+  it('etiket, kapatma ve silme geri yazılır', () => {
+    const t = roas()
+    const rt = createRuntime(toLabber(t))
+    runScript(rt, 'r1', 'configure terminal\ninterface g0/0.10\nencapsulation dot1Q 30\nshutdown\nend')
+    expect(toAglab(rt, t).devices[3]!.interfaces!['g0/0.10']).toEqual({ ip: '192.168.10.1', mask: '255.255.255.0', enabled: false, parent: 'g0/0', vlan: 30, encapsulation: 'dot1q' })
+    runScript(rt, 'r1', 'configure terminal\nno interface g0/0.10\nend')
+    expect(Object.keys(toAglab(rt, t).devices[3]!.interfaces!)).toEqual(['g0/0'])
+  })
+
+  it('AğLab modelinde olmayan alt arayüz durumu açık hata verir (native, açıklama, OSPF ayarı)', () => {
+    for (const script of ['interface g0/0.99\nencapsulation dot1Q 99 native', 'interface g0/0.10\ndescription muhasebe', 'interface g0/0.10\nip ospf cost 5']) {
+      const rt = createRuntime(toLabber(roas()))
+      const out = runScript(rt, 'r1', 'configure terminal\n' + script + '\nend')
+      expect(out.filter((l) => /^% /.test(l)), script).toEqual([])
+      expect(() => toAglab(rt, roas()), script).toThrow(BridgeError)
+    }
+  })
+})
+
 describe('köprü: gerçek içerik', () => {
   for (const [id, t] of content()) {
     const decision = toLabber(t).report.engineDecision
@@ -382,7 +449,8 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
   const cases: [string, (t: AglabTopology) => void, RegExp][] = [
     // L4: Router ve servissiz Server desteklenir (bkz. "köprü: Router (L4)"); bu türlerin
     // L5'e kalan alanları raporlanır.
-    ['router alt arayüzü', (t) => t.devices.push(router({ 'g0/0.10': { ip: '10.0.10.1', mask: '255.255.255.0', encapsulation: 'dot1q', vlan: 10 } })), /Alt arayüz/],
+    // L5-a: alt arayüz desteklenir (bkz. "köprü: alt arayüz (L5-a)"); üzerindeki L5 alanları raporlanır
+    ['alt arayüzde DHCP relay', (t) => t.devices.push(router({ 'g0/0': { enabled: true }, 'g0/0.10': { ip: '10.0.10.1', mask: '255.255.255.0', parent: 'g0/0', encapsulation: 'dot1q', vlan: 10, helperAddress: '10.0.0.9' } })), /DHCP relay/],
     ['router ACL', (t) => t.devices.push(router({ 'g0/0': { ip: '10.0.0.1', mask: '255.255.255.0', aclIn: '1' } })), /ACL/],
     ['servisi açık Server', (t) => t.devices.push({ id: 's1', name: 'S1', type: 'Server', ports: ['eth0'], services: { http: true } }), /servisleri/],
     ['bilinmeyen cihaz tipi', (t) => t.devices.push({ id: 'c1', name: 'C1', type: 'Cloud', ports: [] }), /Cloud cihaz tipi/],
@@ -424,6 +492,12 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
     ['statik rota AD 0', (t) => t.devices.push({ ...router({}), staticRoutes: [{ network: '10.0.0.0', mask: '255.0.0.0', nextHop: '1.1.1.1', distance: 0 }] }), /AD 1-255/],
     ['yinelenen statik rota', (t) => t.devices.push({ ...router({}), staticRoutes: [{ network: '10.0.0.0', mask: '255.0.0.0', nextHop: '1.1.1.1' }, { network: '10.0.0.0', mask: '255.0.0.0', nextHop: '1.1.1.1', distance: 9 }] }), /yinelenen/],
     ['geçersiz router arayüz maskesi', (t) => t.devices.push(router({ 'g0/0': { ip: '10.0.0.1', mask: '255.0.255.0' } })), /router arayüzü/],
+    ['alt arayüzün portu yok', (t) => t.devices.push(router({ 'g0/7.10': { encapsulation: 'dot1q', vlan: 10 } })), /fiziksel portu/],
+    ['alt arayüz parent uyuşmuyor', (t) => t.devices.push(router({ 'g0/0.10': { parent: 'g0/1', encapsulation: 'dot1q', vlan: 10 } })), /parent/],
+    ['alt arayüzde ISL', (t) => t.devices.push(router({ 'g0/0.10': { encapsulation: 'isl', vlan: 10 } })), /802\.1Q/],
+    ['alt arayüzde geçersiz VLAN', (t) => t.devices.push(router({ 'g0/0.10': { encapsulation: 'dot1q', vlan: 5000 } })), /VLAN kimliği/],
+    ['aynı VLAN iki alt arayüzde', (t) => t.devices.push(router({ 'g0/0.10': { encapsulation: 'dot1q', vlan: 10 }, 'g0/0.11': { encapsulation: 'dot1q', vlan: 10 } })), /iki alt arayüzde/],
+    ['encapsulation olmadan alt arayüz IP', (t) => t.devices.push(router({ 'g0/0.10': { ip: '10.0.10.1', mask: '255.255.255.0', encapsulation: '', vlan: 1 } })), /encapsulation dot1q olmadan/],
   ]
   for (const [name, mutate, reason] of rejects)
     it(`${name} → rejected, motor legacy`, () => {

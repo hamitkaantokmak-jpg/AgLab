@@ -11,14 +11,28 @@ export interface Node {
 }
 const nk = (n: Node) => `${n.dev}|${n.vlan}`
 
-/** A routed port is its own segment; encoded as a negative pseudo-VLAN. */
-export function routedNode(d: Derived, dev: string, port: string): Node {
+/**
+ * A routed port is its own segment; encoded as a negative pseudo-VLAN. L5-a: 802.1Q
+ * frames on a routed port (router subinterfaces) are separate segments of the same wire:
+ * -(tag * ROUTED_TAG + port index + 1); tag 0 = untagged (the physical interface or a
+ * `native` subinterface).
+ */
+const ROUTED_TAG = 1000
+export function routedNode(d: Derived, dev: string, port: string, tag = 0): Node {
   const sw = d.topo.devices[dev] as SwitchDef
-  return { dev, vlan: -(sw.ports.indexOf(port) + 1) }
+  return { dev, vlan: -(tag * ROUTED_TAG + sw.ports.indexOf(port) + 1) }
 }
 export function routedPortOf(d: Derived, n: Node): string | null {
   if (n.vlan >= 0) return null
-  return (d.topo.devices[n.dev] as SwitchDef).ports[-n.vlan - 1] ?? null
+  return (d.topo.devices[n.dev] as SwitchDef).ports[((-n.vlan) % ROUTED_TAG) - 1] ?? null
+}
+/** 802.1Q tag of a routed-port segment (0 = untagged); null for a switch VLAN node. */
+export function routedTagOf(n: Node): number | null {
+  return n.vlan >= 0 ? null : Math.floor(-n.vlan / ROUTED_TAG)
+}
+/** VLAN shown for a segment: the switch VLAN or the routed-port tag (0 = untagged). */
+export function nodeVlan(n: Node): number {
+  return n.vlan >= 0 ? n.vlan : routedTagOf(n)!
 }
 
 export interface L3If {
@@ -50,12 +64,15 @@ export function l2Domain(d: Derived, start: Node): Domain {
     const rport = routedPortOf(d, n)
     if (rport) {
       // routed port: untagged frames straight to whatever is on the other end
+      // routed port: the frame (untagged, or 802.1Q-tagged by a subinterface) goes straight
+      // to whatever is on the other end
+      const tag = routedTagOf(n)!
       const lp = d.lportByName[pk(n.dev, rport)]
       const p = lp?.active ? peerOf(d, lp) : null
       if (!p || !p.active) continue
-      if (p.routed) add(routedNode(d, p.dev, p.name), n, lp!.name, p.name)
+      if (p.routed) add(routedNode(d, p.dev, p.name, tag), n, lp!.name, p.name)
       else {
-        const v2 = ingress(d, p, 'u', 0)
+        const v2 = ingress(d, p, tag ? 't' : 'u', tag)
         if (v2 !== null && portForwards(d, p.dev, p, v2)) add({ dev: p.dev, vlan: v2 }, n, lp!.name, p.name)
       }
       continue
@@ -65,7 +82,9 @@ export function l2Domain(d: Derived, start: Node): Domain {
       const p = peerOf(d, lp)
       if (!p) continue
       if (p.routed) {
-        if (p.active && egress(d, lp, n.vlan) === 'u') add(routedNode(d, p.dev, p.name), n, lp.name, p.name)
+        // untagged → the router's physical/native segment; tagged → its 802.1Q segment
+        const tag = p.active ? egress(d, lp, n.vlan) : null
+        if (tag) add(routedNode(d, p.dev, p.name, tag === 'u' ? 0 : n.vlan), n, lp.name, p.name)
         continue
       }
       const v2 = crossVlan(d, lp, n.vlan)
@@ -118,6 +137,14 @@ export function l3Ifs(d: Derived, dev: string): L3If[] {
     const lp = d.lportByName[pk(dev, port)]
     if (!lp?.active) continue
     out.push({ dev, kind: 'routed', name: port, ip: c.ip.addr, prefix: maskToPrefix(c.ip.mask)!, mac: macAdd(sw.mac, sw.ports.indexOf(port) + 1), node: routedNode(d, dev, port) })
+  }
+  // L5-a: router subinterfaces (`interface Gi0/0.N`, `encapsulation dot1Q N [native]`); they
+  // share the parent's MAC and are up only while the parent port is up
+  for (const [name, si] of Object.entries(cfg.subifs ?? {})) {
+    if (si.shutdown || !si.ip || si.vlan === null) continue
+    const lp = d.lportByName[pk(dev, si.parent)]
+    if (!lp?.active) continue
+    out.push({ dev, kind: 'routed', name, ip: si.ip.addr, prefix: maskToPrefix(si.ip.mask)!, mac: macAdd(sw.mac, sw.ports.indexOf(si.parent) + 1), node: routedNode(d, dev, si.parent, si.native ? 0 : si.vlan) })
   }
   for (const [n, l] of Object.entries(cfg.loopbacks ?? {})) {
     if (l.shutdown || !l.ip) continue

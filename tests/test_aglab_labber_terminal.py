@@ -239,8 +239,8 @@ class LabberTerminalTests(unittest.TestCase):
         self.assertFalse(self.goal())
 
     def test_legacy_content_keeps_legacy_terminal(self):
-        # L4: routing senaryoları Labber'da; alt arayüzlü router-on-a-stick L5'e kadar eski motorda.
-        self.load("subif-missing")
+        # L5-a'dan beri router-on-a-stick Labber'da; NAT/ACL'li senaryo L5'in kalanına kadar eski motorda.
+        self.load("nat-pat")
         self.assertFalse(self.page.evaluate("aglabLabberSession.active()"))
         self.device("R1")
         self.type("enable")

@@ -12,7 +12,7 @@
 //   yalnız L3 atlamalarından oluşur (`l2: false`).
 // - Simulation Mode deterministik bir yeniden oynatmadır; zamanlama modellenmez.
 
-import { deliver, l2Domain, l3Ifs, ping, sourceIp, type Hop, type L3If, type Node } from '../sim/net'
+import { deliver, l2Domain, l3Ifs, nodeVlan, ping, sourceIp, type Hop, type L3If, type Node } from '../sim/net'
 import type { LabRuntime } from '../sim/runtime'
 import { pk } from '../sim/topology'
 
@@ -101,7 +101,7 @@ function l2Path(rt: LabRuntime, a: L3If, b: L3If): Step[] | null {
     if (!link) return null
     const fwd = link.a[0] === c.from && d.lportOfPhys[pk(link.a[0], link.a[1])]?.name === c.out
     const [x, y] = fwd ? [link.a, link.b] : [link.b, link.a]
-    steps.push({ from: x[0], out: x[1], to: y[0], in: y[1], vlan: Math.max(c.to.vlan, 0) })
+    steps.push({ from: x[0], out: x[1], to: y[0], in: y[1], vlan: nodeVlan(c.to) })
   }
   // PC uçları: PC ↔ erişim portu kablosu
   for (const [ifc, atStart] of [
@@ -111,7 +111,7 @@ function l2Path(rt: LabRuntime, a: L3If, b: L3If): Step[] | null {
     if (ifc.kind !== 'pc') continue
     const at = rt.topo.pcAttach[ifc.dev]
     if (!at || !rt.cableIntact(ifc.dev, 'eth0')) return null
-    const vlan = Math.max(ifc.node!.vlan, 0)
+    const vlan = nodeVlan(ifc.node!)
     if (atStart) steps.unshift({ from: ifc.dev, out: 'eth0', to: at.dev, in: at.port, vlan })
     else steps.push({ from: at.dev, out: at.port, to: ifc.dev, in: 'eth0', vlan })
   }
@@ -156,7 +156,7 @@ export function pingTrace(
         kind,
         sourceMac: colon(hop.outIf.mac),
         destinationMac: colon(target?.mac ?? ''),
-        vlan: Math.max(hop.outIf.node?.vlan ?? 0, 0),
+        vlan: hop.outIf.node ? nodeVlan(hop.outIf.node) : 0,
         etherType: '0x0800',
         arp: null,
         ipv4: { sourceIp: srcIp, destinationIp: dstIp, ttl, protocol: 1 },

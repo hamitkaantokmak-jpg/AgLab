@@ -57,6 +57,20 @@ export interface SviConfig {
   l3?: L3Opts
 }
 
+/** L5-a: router subinterface (`interface GigabitEthernet0/0.N`). */
+export interface SubIfConfig {
+  /** canonical physical parent port */
+  parent: string
+  /** `encapsulation dot1Q <vlan>`; null until configured (IOS refuses `ip address` before it) */
+  vlan: number | null
+  /** `encapsulation dot1Q <vlan> native`: the subinterface sends and receives untagged */
+  native: boolean
+  shutdown: boolean
+  description: string
+  ip: IpAddr | null
+  l3?: L3Opts
+}
+
 export interface LoopbackConfig {
   shutdown: boolean
   description: string
@@ -105,6 +119,8 @@ export interface SwitchConfig {
   routes: StaticRoute[]
   defaultGateway: string | null
   loopbacks?: Record<string, LoopbackConfig>
+  /** L5-a, routers only: full subinterface name (e.g. GigabitEthernet0/0.10) -> config */
+  subifs?: Record<string, SubIfConfig>
   ospf?: OspfConfig | null
   /** `spanning-tree portfast bpduguard default` */
   bpduguardDefault?: boolean

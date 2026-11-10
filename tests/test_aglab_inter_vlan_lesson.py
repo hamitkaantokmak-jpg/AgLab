@@ -75,6 +75,9 @@ class InterVlanLessonScenarioTests(unittest.TestCase):
         for scenario in LESSON_SCENARIOS:
             with self.subTest(scenario=scenario):
                 self.load(scenario)
+                # L5-a: router-on-a-stick senaryoları Labber kararında; hedef Labber'dan gelir
+                self.assertEqual(self.js("aglabSharedEngine.engine()")["engine"], "labber")
+                self.assertFalse(self.js("aglabSharedEngine.goal()"))
                 self.assertFalse(
                     self.reachable("PC-01", "PC-02"), "arıza VLAN'lar arası erişimi kesmeli"
                 )
@@ -83,6 +86,7 @@ class InterVlanLessonScenarioTests(unittest.TestCase):
                 )
                 for block in self.recipe(scenario)["solution"]:
                     self.run_block(block)
+                self.assertTrue(self.js("aglabSharedEngine.goal()"))
                 self.assertTrue(self.reachable("PC-01", "PC-02"), "çözüm erişimi açmalı")
                 self.assertTrue(self.reachable("PC-02", "PC-03"), "dönüş yönü de çalışmalı")
 
@@ -94,6 +98,7 @@ class InterVlanLessonScenarioTests(unittest.TestCase):
                 self.load("roas-two-faults")
                 self.run_block(only)
                 self.assertFalse(self.reachable("PC-01", "PC-02"), "tek düzeltme yeterli olmamalı")
+                self.assertFalse(self.js("aglabSharedEngine.goal()"))
 
 
 class InterVlanLessonContentTests(unittest.TestCase):

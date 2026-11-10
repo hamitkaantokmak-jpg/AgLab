@@ -1,4 +1,4 @@
-# Devir notu — Labber entegrasyonu (L4 → L5)
+# Devir notu — Labber entegrasyonu (L5-a → L5 kalanı)
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
@@ -18,15 +18,18 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | F bekleyen ders senaryoları (Konu #11, Konu #3) → Sorun Çöz | #60 | birleşti |
 | E Labber'ın 13 labı (kaynak #61) | #62 | birleşti |
 | L3-b Simulation Mode olay adaptörü | #63 | birleşti |
-| L4 Router, AD, özyinelemeli statik rota; Akademi M4 + routing senaryoları | #64 | açık (birleşmeyi bekliyor) |
+| L4 Router, AD, özyinelemeli statik rota; Akademi M4 + routing senaryoları | #64 | birleşti |
+| AGL-036 öğretmen çözümü (`no ip route`), öğretmen CLI testi gerçek başlangıçtan | #65 | açık (birleşmeyi bekliyor) |
+| L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | açık (birleşmeyi bekliyor) |
 
-**L4 PR'ı açık, sıradaki: L5** (alt arayüz/router-on-a-stick, DHCP/Server servisleri,
-ACL, NAT, port security; PKT IOS metin yolu). Plan: `YENIDEN_YAPILANMA.md` L3 tablosu
-sıra 4–8 ve "Aşamalar" L5 satırı. Bugün eski motorda kalan içerik ve gerekçeleri
-`LAB_MOTOR_HARITASI.md` özet tablosunda (hepsi L5).
+**Sıradaki: L5'in kalanı** (L3 tablosu sıra 5–8: DHCP/Server servisleri + relay, ACL,
+NAT, port security; PKT IOS metin yolu). Bugün eski motorda kalan içerik ve gerekçeleri
+`LAB_MOTOR_HARITASI.md` özet tablosunda (hepsi bu kalemler: `nat-pat`, `relay-trunk`,
+`bgp-as`, `port-security`). #65 ve L5-a birbirinden bağımsız (farklı dosyalar; çakışma yok).
 
-Not: birleşen dallar (`claude/e-labber-labs`, `claude/l3b-simulation-adapter`) oturumdan
-silinemedi (GitHub proxy'si dal silmeye izin vermiyor, 403); depo arayüzünden silinmeli.
+Not: birleşen dallar (`claude/e-labber-labs`, `claude/l3b-simulation-adapter`,
+`claude/l4-router-routing`) oturumdan silinemedi (GitHub proxy'si dal silmeyi reddediyor);
+depo arayüzünden silinmeli.
 
 ## Bugünkü mimari (kısaca)
 
@@ -173,7 +176,7 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
   (Labber senaryosu: başarısız ve başarılı), `test_aglab_simulation_mode` (AGL-001/005
   yakalaması `labber` kökenli, kablolar tuvalde eşleşir).
 
-## L4 — Router, AD, özyinelemeli statik rota (yapıldı, PR açık)
+## L4 — Router, AD, özyinelemeli statik rota (#64, birleşti)
 
 - **Labber çekirdeği** (`src/sim`):
   - `SwitchDef.router` (types.ts): bütün portlar routed, varsayılanı `shutdown` (IOS),
@@ -221,6 +224,40 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
   senaryosu, Akademi labı ve Labber labında kurulur. İçe aktarılan topolojinin Labber'a
   alınması L5'teki PKT IOS metin yoluyla birlikte ele alınmalı.
 
+## L5-a — router alt arayüzü / 802.1Q (yapıldı, PR açık)
+
+- **Labber** (`src/sim`):
+  - `SwitchConfig.subifs` (yalnız router): `{parent, vlan, native, shutdown, description,
+    ip, l3?}`, anahtar tam ad (`GigabitEthernet0/0.10`).
+  - Veri yolu (`net.ts`): routed port segmenti etiket başına ayrı düğüm
+    (`routedNode(d, dev, port, tag)`, `vlan = -(tag*1000 + port + 1)`; etiket 0 = etiketsiz
+    fiziksel/native). Router→switch: etiketli çerçeve switch portunda `ingress(…, 't', tag)`;
+    switch→router: `egress` 'u' → etiket 0, 't' → VLAN etiketi. Alt arayüz üst port açık ve
+    bağlıyken L3 arayüzüdür (üst portun MAC'i). `routedTagOf`, `nodeVlan` yardımcıları;
+    Simulation Mode izi (`events.ts`) etiketi gösterir.
+  - CLI: `interface Gi0/0.N` (yalnız router, var olan fiziksel port), `encapsulation dot1Q N
+    [native]` (aynı portta aynı VID / ikinci native reddedilir), `ip address` (önce
+    encapsulation; IOS mesajı), `shutdown`, `description`, `no interface Gi0/0.N`;
+    running-config ve `show ip interface brief` alt arayüzü gösterir. Parser `ifnum` `.N`
+    kabul eder (yer kararı oturumda).
+- **Köprü**: AğLab `g0/0.N{ip, mask, enabled, parent, vlan, encapsulation}` iki yönde; eski
+  CLI'nin `encapsulation: ''` (yapılandırılmamış) biçimi korunur, CLI ile silinen alt arayüz
+  görünümden de çıkar. Native, açıklama, alt arayüz OSPF ayarı → `BridgeError`. Geçersiz port,
+  uyuşmayan `parent`, ISL, geçersiz VLAN, yinelenen VID, encapsulation'sız IP → `rejected`.
+- **Ürün**: kodla kurulan senaryolar yüklenirken önceki Labber oturumu kapatılır
+  (`loadSharedScenarioContent` → `aglabLabber.stop()`); `roas-pc-gateway` ve
+  `roas-two-faults` çözümündeki PC-02 komutu VPCS sözdizimine çevrildi (yalnız o satırlar).
+  `aglabSharedEngine.reach` bilerek eski motor ping'i kalır (tarayıcı paritesinin oracle'ı).
+- **Testler**: `tests/sim/subif.test.ts` (eksik/yanlış etiket, üst port kapalı, access port,
+  native, IOS kuralları, silme, Simulation Mode izi), `bridge.test.ts` "alt arayüz (L5-a)",
+  `parity.test.ts` dot1q oracle vakaları, `routing-acceptance.test.ts` next_hop alt arayüz
+  adımı Labber'da; Playwright: `test_aglab_inter_vlan_lesson` Labber kararı + hedefi,
+  eski motor örnekleri `nat-pat`'a taşındı.
+- **Açık içerik notları** (UYUMLULUK_MATRISI "L5-a"): `roas-switch-port-access` belirti metni
+  ("VLAN 10 PC'leri gateway'e ulaşıyor") eski motora göre; Labber'da access port etiketli
+  çerçeveyi düşürür. roas ipuçlarındaki `ipconfig` VPCS'te `show ip`. Tarif satırlarına
+  dokunma kuralı nedeniyle düzeltilmedi.
+
 ## Kurallar hatırlatması
 
 - Sayıları sabit yazma (lab/senaryo sayısı) — ilgili JSON'dan türet (#56 bu yüzden üç testi
@@ -228,5 +265,5 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
 - `roas-*` senaryolarına ve `src/data/courses.json` / `course-details.json`'a dokunma (#56).
 - `simulator/network-scenarios.json` Prettier ile biçimlendirilmez (#56 ile çakışma riski);
   yalnız hedef satırı düzenle.
-- Kapsam dışı (L4 sonrası): alt arayüz/DHCP/ACL/NAT/port security (L5), eski metin
+- Kapsam dışı (L5-a sonrası): DHCP/ACL/NAT/port security (L5 kalanı), eski metin
   senaryoları (L6), kalıcılık ve eski motorun kaldırılması (L7).

@@ -70,12 +70,27 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
     o.push(...l3Lines(ic.ip, ic.l3, true))
     if (ic.shutdown) o.push(' shutdown')
     o.push('!')
+    for (const [name, si] of subifsOf(c, p)) {
+      o.push('interface ' + name)
+      if (si.description) o.push(' description ' + si.description)
+      if (si.vlan !== null) o.push(` encapsulation dot1Q ${si.vlan}${si.native ? ' native' : ''}`)
+      o.push(...l3Lines(si.ip, si.l3, true))
+      if (si.shutdown) o.push(' shutdown')
+      o.push('!')
+    }
   }
   if (c.ospf) o.push(...ospfLines(c))
   o.push('ip forward-protocol nd', 'no ip http server', '!')
   for (const r of c.routes) o.push(routeLine(r))
   o.push('!', 'line con 0', 'line aux 0', 'line vty 0 4', ' login', '!', 'end')
   return o
+}
+
+/** Subinterfaces of one parent port, in numeric order (L5-a). */
+export function subifsOf(c: SwitchConfig, parent: string): [string, NonNullable<SwitchConfig['subifs']>[string]][] {
+  return Object.entries(c.subifs ?? {})
+    .filter(([, s]) => s.parent === parent)
+    .sort((a, b) => Number(a[0].split('.')[1]) - Number(b[0].split('.')[1]))
 }
 
 function ospfLines(c: SwitchConfig): string[] {
@@ -323,6 +338,11 @@ export function showIpIntBrief(rt: LabRuntime, dev: string): string[] {
     const proto = ps.up && ps.ec?.flag !== 's' ? 'up' : 'down'
     const ip = c.ifaces[p]!.routed ? (c.ifaces[p]!.ip?.addr ?? 'unassigned') : 'unassigned'
     o.push(row(p, ip, ps.adminDown ? 'administratively down' : ps.up ? 'up' : 'down', proto))
+    // L5-a: a subinterface follows its parent; its own shutdown shows as administratively down
+    for (const [name, si] of subifsOf(c, p)) {
+      const up = !si.shutdown && ps.up
+      o.push(row(name, si.ip?.addr ?? 'unassigned', si.shutdown ? 'administratively down' : up ? 'up' : 'down', up ? 'up' : 'down'))
+    }
   }
   for (const [n, l] of Object.entries(c.loopbacks ?? {}).sort((a, b) => Number(a[0]) - Number(b[0])))
     o.push(row('Loopback' + n, l.ip?.addr ?? 'unassigned', l.shutdown ? 'administratively down' : 'up', l.shutdown ? 'down' : 'up'))

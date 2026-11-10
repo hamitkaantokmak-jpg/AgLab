@@ -202,10 +202,10 @@ class SimEmbeddedTests(unittest.TestCase):
         )
         self.assertEqual(self.accesses().count("createRuntime"), 1, "lab başına tek çalışma zamanı")
         # Lab: eski motor kararındaki senaryo da karar için köprüye sorulur
-        # (L4: routing senaryoları Labber'da; alt arayüz senaryosu L5'e kadar eski motorda)
+        # (L5-a: alt arayüz senaryoları da Labber'da; NAT/ACL senaryosu L5'in kalanına kadar eski motorda)
         self.reset_accesses()
-        page.evaluate("aglabSharedEngine.load('subif-missing')")
-        page.evaluate("aglabSharedEngine.reach('PC-01','PC-02')")
+        page.evaluate("aglabSharedEngine.load('nat-pat')")
+        page.evaluate("aglabSharedEngine.reach('PC-01','WEB-PUBLIC')")
         self.assertEqual(set(self.accesses()), {"global", "toLabber"}, "eski motor senaryosu")
         # Labber kararındaki senaryo: karar + tek kalıcı çalışma zamanı + terminal oturumu
         self.reset_accesses()

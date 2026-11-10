@@ -3,7 +3,7 @@
 import { defaultSvi, defaultSwitchConfig, defaultVlanName, pickL2, RESERVED_VLANS } from '../config'
 import { arpMac, deliver, l3Ifs, ping } from '../net'
 import type { LabRuntime } from '../runtime'
-import type { ChannelMode, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, SwitchConfig, SwitchDef } from '../types'
+import type { ChannelMode, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { canonIf, clone, ifNum, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
@@ -141,7 +141,12 @@ const configPatterns = (def: SwitchDef): P[] => {
     { p: 'no vlan <vlist:ISL VLAN IDs 1-4094>', run: (x, a) => x.deleteVlan(a[2]!) },
     { p: 'interface <if>', run: (x, a) => x.enterIf(a[1]!, a[2]!) },
     { p: 'interface range <LINE:Interface range, e.g. fa0/1 - 4, gi0/1>', run: (x, a) => x.enterRange(a[2]!) },
-    { p: 'no interface <if>', run: (x, a) => x.deleteIf(a[2]!, a[3]!), ifTypes: def.router ? ['Loopback'] : ['Port-channel', 'Vlan', 'Loopback'] },
+    {
+      p: 'no interface <if>',
+      run: (x, a) => x.deleteIf(a[2]!, a[3]!),
+      // router: loopback or a subinterface (`no interface Gi0/0.10`)
+      ifTypes: def.router ? ['Loopback', 'FastEthernet', 'GigabitEthernet'] : ['Port-channel', 'Vlan', 'Loopback'],
+    },
     { p: 'spanning-tree mode pvst', run: (x) => void (x.cfg.stpMode = 'pvst') },
     { p: 'spanning-tree mode rapid-pvst', run: (x) => void (x.cfg.stpMode = 'rapid-pvst') },
     { p: 'no spanning-tree mode', run: (x) => void (x.cfg.stpMode = 'pvst') },
@@ -294,6 +299,21 @@ const routerIfPatterns: P[] = [
   ...l3OptPatterns,
 ]
 
+/** L5-a: router subinterface (`interface Gi0/0.N`). */
+const subIfPatterns: P[] = [
+  ...commonSub,
+  { p: 'encapsulation dot1Q <1-4094:IEEE 802.1Q VLAN ID>', run: (x, a) => x.encapsulation(Number(a[2]), false) },
+  { p: 'encapsulation dot1Q <1-4094:IEEE 802.1Q VLAN ID> native', run: (x, a) => x.encapsulation(Number(a[2]), true) },
+  { p: 'no encapsulation dot1Q', run: (x) => x.eachSub((c) => Object.assign(c, { vlan: null, native: false, ip: null })) },
+  { p: 'shutdown', run: (x) => x.eachSub((c) => void (c.shutdown = true)) },
+  { p: 'no shutdown', run: (x) => x.eachSub((c) => void (c.shutdown = false)) },
+  { p: 'description <LINE:Up to 240 characters describing this interface>', run: (x, a) => x.eachSub((c) => void (c.description = a[1]!.slice(0, 240))) },
+  { p: 'no description', run: (x) => x.eachSub((c) => void (c.description = '')) },
+  { p: 'ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>', run: (x, a) => x.setIp(a[2]!, a[3]!) },
+  { p: 'no ip address', run: (x) => x.eachSub((c) => void (c.ip = null)) },
+  ...l3OptPatterns,
+]
+
 const l2IfPatterns = (def: SwitchDef): P[] => {
   if (def.router) return routerIfPatterns
   const p: P[] = [
@@ -382,7 +402,7 @@ const vlanPatterns: P[] = [
 ]
 
 // tries are built once per switch definition
-const trieCache = new WeakMap<SwitchDef, Record<Mode | 'svi', TrieNode<IosSession>>>()
+const trieCache = new WeakMap<SwitchDef, Record<Mode | 'svi' | 'subif', TrieNode<IosSession>>>()
 function tries(def: SwitchDef) {
   let t = trieCache.get(def)
   if (!t) {
@@ -393,6 +413,7 @@ function tries(def: SwitchDef) {
       config: buildTrie(configPatterns(def)),
       if: buildTrie(l2IfPatterns(def)),
       svi: buildTrie(sviPatterns),
+      subif: buildTrie(subIfPatterns),
       vlan: buildTrie(vlanPatterns),
       router: buildTrie(routerPatterns),
     }
@@ -450,6 +471,7 @@ export class IosSession {
   private trie(): TrieNode<IosSession> {
     const t = tries(this.def)
     if (this.mode === 'if' && (this.ifs[0]?.startsWith('Vlan') || this.ifs[0]?.startsWith('Loopback'))) return t.svi
+    if (this.mode === 'if' && this.ifs[0]?.includes('.')) return t.subif
     return t[this.mode]
   }
 
@@ -653,6 +675,17 @@ export class IosSession {
     if (!name) throw new InvalidAt(argIndex)
     // a router has no SVIs or port-channels (L4)
     if (this.def.router && (name.startsWith('Vlan') || name.startsWith('Port-channel'))) throw new InvalidAt(argIndex)
+    // L5-a: subinterface Gi0/0.N — routers only, on an existing physical port
+    if (name.includes('.')) {
+      const [parent, sub] = [name.slice(0, name.indexOf('.')), name.slice(name.indexOf('.') + 1)]
+      if (!this.def.router || !this.cfg.ifaces[parent] || !/^\d+$/.test(sub) || Number(sub) < 1 || Number(sub) > 4294967295)
+        throw new InvalidAt(argIndex + 1)
+      const full = parent + '.' + Number(sub)
+      const subs = (this.cfg.subifs ??= {})
+      if (create && !subs[full]) subs[full] = { parent, vlan: null, native: false, shutdown: false, description: '', ip: null }
+      if (!subs[full]) throw new InvalidAt(argIndex + 1)
+      return full
+    }
     if (name.startsWith('Vlan')) {
       const v = Number(num)
       if (!/^\d+$/.test(num) || v < 1 || v > 4094) throw new InvalidAt(argIndex + 1)
@@ -720,6 +753,11 @@ export class IosSession {
       delete this.cfg.svis[num]
     } else if (name.startsWith('Loopback')) {
       delete this.cfg.loopbacks?.[ifNum(name)]
+    } else if (name.includes('.')) {
+      delete this.cfg.subifs?.[name]
+    } else if (this.def.router) {
+      // a router's physical port cannot be deleted
+      return ['% Removal of physical interfaces is not permitted']
     } else {
       delete this.cfg.pos[num]
       for (const c of Object.values(this.cfg.ifaces)) if (c.channel?.id === Number(num)) c.channel = null
@@ -752,8 +790,34 @@ export class IosSession {
   }
 
   /** L3 options of the selected interfaces; physical ports must be routed. */
+  /** L5-a: subinterface under the cursor. */
+  eachSub(fn: (c: SubIfConfig) => void): Out {
+    for (const name of this.ifs) {
+      const c = this.cfg.subifs?.[name]
+      if (c) fn(c)
+    }
+  }
+
+  /** `encapsulation dot1Q <vlan> [native]`: one VLAN per subinterface and per parent. */
+  encapsulation(vlan: number, native: boolean): Out {
+    const name = this.ifs[0]!
+    const me = this.cfg.subifs![name]!
+    for (const [other, c] of Object.entries(this.cfg.subifs ?? {})) {
+      if (other === name || c.parent !== me.parent) continue
+      if (c.vlan === vlan)
+        return [`% Configuration of multiple subinterfaces of the same main interface with the same VID (${vlan}) is not permitted.`, `This VID is already configured on ${other}.`]
+      if (native && c.native) return [`% Native VLAN is already configured on ${other}.`]
+    }
+    me.vlan = vlan
+    me.native = native
+  }
+
   eachL3(fn: (o: L3Opts) => void): Out {
     for (const name of this.ifs) {
+      if (name.includes('.')) {
+        this.eachSub((c) => fn((c.l3 ??= {})))
+        return
+      }
       if (name.startsWith('Vlan') || name.startsWith('Loopback')) {
         this.eachSvi((s) => fn((s.l3 ??= {})))
         return
@@ -846,6 +910,7 @@ export class IosSession {
     for (const [v, s] of Object.entries(this.cfg.svis)) if (s.ip) out.push(['Vlan' + v, s.ip])
     for (const [p, c] of Object.entries(this.cfg.ifaces)) if (c.routed && c.ip) out.push([p, c.ip])
     for (const [n, l] of Object.entries(this.cfg.loopbacks ?? {})) if (l.ip) out.push(['Loopback' + n, l.ip])
+    for (const [n, c] of Object.entries(this.cfg.subifs ?? {})) if (c.ip) out.push([n, c.ip])
     return out
   }
 
@@ -863,7 +928,16 @@ export class IosSession {
       if (networkOf(ip.addr, l) === networkOf(addr, l)) return [`% ${networkOf(addr, len)} overlaps with ${other}`]
     }
     if (name.startsWith('Vlan') || name.startsWith('Loopback')) this.eachSvi((s) => void (s.ip = { addr, mask }))
-    else {
+    else if (name.includes('.')) {
+      const c = this.cfg.subifs![name]!
+      if (c.vlan === null)
+        return [
+          '% Configuring IP routing on a LAN subinterface is only allowed if that',
+          'subinterface is already configured as part of an IEEE 802.10, IEEE 802.1Q,',
+          'or ISL vLAN.',
+        ]
+      c.ip = { addr, mask }
+    } else {
       const c = this.cfg.ifaces[name]!
       if (!c.routed) return ['% IP addresses may not be configured on L2 links.']
       c.ip = { addr, mask }
@@ -1105,6 +1179,8 @@ export class IosSession {
 
   showOneIf(a: string[], sw: boolean): string[] {
     const name = this.resolveIf(a[2]!, a[3]!, 2, false)
+    // `show interfaces` detail for subinterfaces is not modelled (show ip interface brief is)
+    if (name.includes('.')) throw new InvalidAt(3)
     if (name.startsWith('Port-channel') && !this.cfg.pos[ifNum(name)]) throw new InvalidAt(3)
     if (name.startsWith('Vlan') && !this.cfg.svis[ifNum(name)]) throw new InvalidAt(3)
     return sw ? show.showIntSwitchport(this.rt, this.dev, name) : show.showInterface(this.rt, this.dev, name)

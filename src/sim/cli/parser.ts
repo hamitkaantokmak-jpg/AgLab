@@ -118,14 +118,15 @@ function paramOk(p: Param, t: string): boolean {
     case 'line':
       return true
     case 'ifnum':
-      return /^\d+(\/\d+)*$/.test(t)
+      // L5-a: optional `.N` subinterface number (the session decides where it is allowed)
+      return /^\d+(\/\d+)*(\.\d+)?$/.test(t)
   }
 }
 
 /** Split 'gi0/1' into 'gi' + '0/1' when the node expects an interface type. */
 function splitIf<C>(node: TrieNode<C>, toks: Tok[], i: number) {
   const t = toks[i]!
-  const m = /^([A-Za-z][A-Za-z-]*?)(\d[\d/]*)$/.exec(t.text)
+  const m = /^([A-Za-z][A-Za-z-]*?)(\d[\d/]*(?:\.\d+)?)$/.exec(t.text)
   if (!m) return
   const hasIf = [...node.kws.entries()].some(([k, n]) => n.ifTypes && k.toLowerCase().startsWith(m[1]!.toLowerCase()))
   if (!hasIf) return

@@ -196,10 +196,10 @@ class EngineChoiceTests(unittest.TestCase):
         self.assertEqual(self.page.evaluate("aglabLabberSession.runtimeId()"), before)
 
     def test_legacy_scenario_keeps_old_engine(self):
-        # L4: routing senaryoları Labber'da; alt arayüz (router-on-a-stick) L5'e kadar eski motorda.
-        decision = self.load("subif-missing")
+        # L5-a'dan beri alt arayüz (router-on-a-stick) Labber'da; NAT/ACL L5'in kalanına kadar eski motorda.
+        decision = self.load("nat-pat")
         self.assertEqual(decision["engine"], "legacy")
-        self.assertIn("Alt arayüz", self.badge())
+        self.assertIn("NAT", self.badge())
         self.assertFalse(self.page.evaluate("aglabSharedEngine.goal()"))
 
 

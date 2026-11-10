@@ -291,6 +291,8 @@ window.aglabSharedEngine = {
   reach: (source, target) => {
     const src = devices.find((d) => d.name === source),
       dst = devices.find((d) => d.name === target);
+    // Eski motorun ping'i (görünüm üzerinde); tests/test_aglab_sim_parity.py bunu Labber'la
+    // karşılaştıran oracle olarak kullanır.
     return !!(src && dst && ping(src.id, dst.ip).ok);
   },
   routes: (id) => clone(dynamicRoutes(get(id) || devices.find((d) => d.name === id))),
