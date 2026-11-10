@@ -21,7 +21,7 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L4 Router, AD, özyinelemeli statik rota; Akademi M4 + routing senaryoları | #64 | birleşti |
 | AGL-036 öğretmen çözümü (`no ip route`), öğretmen CLI testi gerçek başlangıçtan | #65 | birleşti |
 | L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | birleşti |
-| CI tetikleme: push yalnız main, dal başına `concurrency` | #PRNUM | açık (birleşmeyi bekliyor) |
+| CI tetikleme: push yalnız main, dal başına `concurrency` | #67 | açık (birleşmeyi bekliyor) |
 
 **Sıradaki: L5'in kalanı** (L3 tablosu sıra 5–8: DHCP/Server servisleri + relay, ACL,
 NAT, port security; PKT IOS metin yolu). Bugün eski motorda kalan içerik ve gerekçeleri
