@@ -748,13 +748,20 @@ var AgLabSim = (() => {
 
   // src/sim/net.ts
   var nk = (n) => `${n.dev}|${n.vlan}`;
-  function routedNode(d, dev, port) {
+  var ROUTED_TAG = 1e3;
+  function routedNode(d, dev, port, tag = 0) {
     const sw = d.topo.devices[dev];
-    return { dev, vlan: -(sw.ports.indexOf(port) + 1) };
+    return { dev, vlan: -(tag * ROUTED_TAG + sw.ports.indexOf(port) + 1) };
   }
   function routedPortOf(d, n) {
     if (n.vlan >= 0) return null;
-    return d.topo.devices[n.dev].ports[-n.vlan - 1] ?? null;
+    return d.topo.devices[n.dev].ports[-n.vlan % ROUTED_TAG - 1] ?? null;
+  }
+  function routedTagOf(n) {
+    return n.vlan >= 0 ? null : Math.floor(-n.vlan / ROUTED_TAG);
+  }
+  function nodeVlan(n) {
+    return n.vlan >= 0 ? n.vlan : routedTagOf(n);
   }
   function l2Domain(d, start) {
     const nodes = /* @__PURE__ */ new Map();
@@ -769,12 +776,13 @@ var AgLabSim = (() => {
       const n = queue.shift();
       const rport = routedPortOf(d, n);
       if (rport) {
+        const tag = routedTagOf(n);
         const lp = d.lportByName[pk(n.dev, rport)];
         const p = lp?.active ? peerOf(d, lp) : null;
         if (!p || !p.active) continue;
-        if (p.routed) add(routedNode(d, p.dev, p.name), n, lp.name, p.name);
+        if (p.routed) add(routedNode(d, p.dev, p.name, tag), n, lp.name, p.name);
         else {
-          const v2 = ingress(d, p, "u", 0);
+          const v2 = ingress(d, p, tag ? "t" : "u", tag);
           if (v2 !== null && portForwards(d, p.dev, p, v2)) add({ dev: p.dev, vlan: v2 }, n, lp.name, p.name);
         }
         continue;
@@ -784,7 +792,8 @@ var AgLabSim = (() => {
         const p = peerOf(d, lp);
         if (!p) continue;
         if (p.routed) {
-          if (p.active && egress(d, lp, n.vlan) === "u") add(routedNode(d, p.dev, p.name), n, lp.name, p.name);
+          const tag = p.active ? egress(d, lp, n.vlan) : null;
+          if (tag) add(routedNode(d, p.dev, p.name, tag === "u" ? 0 : n.vlan), n, lp.name, p.name);
           continue;
         }
         const v2 = crossVlan(d, lp, n.vlan);
@@ -832,6 +841,12 @@ var AgLabSim = (() => {
       const lp = d.lportByName[pk(dev, port)];
       if (!lp?.active) continue;
       out.push({ dev, kind: "routed", name: port, ip: c.ip.addr, prefix: maskToPrefix(c.ip.mask), mac: macAdd(sw.mac, sw.ports.indexOf(port) + 1), node: routedNode(d, dev, port) });
+    }
+    for (const [name, si] of Object.entries(cfg.subifs ?? {})) {
+      if (si.shutdown || !si.ip || si.vlan === null) continue;
+      const lp = d.lportByName[pk(dev, si.parent)];
+      if (!lp?.active) continue;
+      out.push({ dev, kind: "routed", name, ip: si.ip.addr, prefix: maskToPrefix(si.ip.mask), mac: macAdd(sw.mac, sw.ports.indexOf(si.parent) + 1), node: routedNode(d, dev, si.parent, si.native ? 0 : si.vlan) });
     }
     for (const [n, l] of Object.entries(cfg.loopbacks ?? {})) {
       if (l.shutdown || !l.ip) continue;
@@ -1135,6 +1150,7 @@ var AgLabSim = (() => {
     nonegotiate: "Device will not engage in negotiation protocol on this interface",
     encapsulation: "Set trunking encapsulation when interface is in trunking mode",
     dot1q: "Interface uses only 802.1q trunking encapsulation when trunking",
+    dot1Q: "IEEE 802.1Q Virtual LAN",
     "channel-group": "Etherchannel/port bundling configuration",
     active: "Enable LACP unconditionally",
     passive: "Enable LACP only if a LACP device is detected",
@@ -1259,12 +1275,12 @@ var AgLabSim = (() => {
       case "line":
         return true;
       case "ifnum":
-        return /^\d+(\/\d+)*$/.test(t);
+        return /^\d+(\/\d+)*(\.\d+)?$/.test(t);
     }
   }
   function splitIf(node, toks, i) {
     const t = toks[i];
-    const m = /^([A-Za-z][A-Za-z-]*?)(\d[\d/]*)$/.exec(t.text);
+    const m = /^([A-Za-z][A-Za-z-]*?)(\d[\d/]*(?:\.\d+)?)$/.exec(t.text);
     if (!m) return;
     const hasIf = [...node.kws.entries()].some(([k, n]) => n.ifTypes && k.toLowerCase().startsWith(m[1].toLowerCase()));
     if (!hasIf) return;
@@ -1436,12 +1452,23 @@ var AgLabSim = (() => {
       o.push(...l3Lines(ic.ip, ic.l3, true));
       if (ic.shutdown) o.push(" shutdown");
       o.push("!");
+      for (const [name, si] of subifsOf(c, p)) {
+        o.push("interface " + name);
+        if (si.description) o.push(" description " + si.description);
+        if (si.vlan !== null) o.push(` encapsulation dot1Q ${si.vlan}${si.native ? " native" : ""}`);
+        o.push(...l3Lines(si.ip, si.l3, true));
+        if (si.shutdown) o.push(" shutdown");
+        o.push("!");
+      }
     }
     if (c.ospf) o.push(...ospfLines(c));
     o.push("ip forward-protocol nd", "no ip http server", "!");
     for (const r of c.routes) o.push(routeLine(r));
     o.push("!", "line con 0", "line aux 0", "line vty 0 4", " login", "!", "end");
     return o;
+  }
+  function subifsOf(c, parent) {
+    return Object.entries(c.subifs ?? {}).filter(([, s]) => s.parent === parent).sort((a, b) => Number(a[0].split(".")[1]) - Number(b[0].split(".")[1]));
   }
   function ospfLines(c) {
     const o = [];
@@ -1666,6 +1693,10 @@ var AgLabSim = (() => {
       const proto = ps.up && ps.ec?.flag !== "s" ? "up" : "down";
       const ip = c.ifaces[p].routed ? c.ifaces[p].ip?.addr ?? "unassigned" : "unassigned";
       o.push(row(p, ip, ps.adminDown ? "administratively down" : ps.up ? "up" : "down", proto));
+      for (const [name, si] of subifsOf(c, p)) {
+        const up = !si.shutdown && ps.up;
+        o.push(row(name, si.ip?.addr ?? "unassigned", si.shutdown ? "administratively down" : up ? "up" : "down", up ? "up" : "down"));
+      }
     }
     for (const [n, l] of Object.entries(c.loopbacks ?? {}).sort((a, b) => Number(a[0]) - Number(b[0])))
       o.push(row("Loopback" + n, l.ip?.addr ?? "unassigned", l.shutdown ? "administratively down" : "up", l.shutdown ? "down" : "up"));
@@ -2194,7 +2225,12 @@ var AgLabSim = (() => {
       { p: "no vlan <vlist:ISL VLAN IDs 1-4094>", run: (x, a) => x.deleteVlan(a[2]) },
       { p: "interface <if>", run: (x, a) => x.enterIf(a[1], a[2]) },
       { p: "interface range <LINE:Interface range, e.g. fa0/1 - 4, gi0/1>", run: (x, a) => x.enterRange(a[2]) },
-      { p: "no interface <if>", run: (x, a) => x.deleteIf(a[2], a[3]), ifTypes: def.router ? ["Loopback"] : ["Port-channel", "Vlan", "Loopback"] },
+      {
+        p: "no interface <if>",
+        run: (x, a) => x.deleteIf(a[2], a[3]),
+        // router: loopback or a subinterface (`no interface Gi0/0.10`)
+        ifTypes: def.router ? ["Loopback", "FastEthernet", "GigabitEthernet"] : ["Port-channel", "Vlan", "Loopback"]
+      },
       { p: "spanning-tree mode pvst", run: (x) => void (x.cfg.stpMode = "pvst") },
       { p: "spanning-tree mode rapid-pvst", run: (x) => void (x.cfg.stpMode = "rapid-pvst") },
       { p: "no spanning-tree mode", run: (x) => void (x.cfg.stpMode = "pvst") },
@@ -2340,6 +2376,19 @@ var AgLabSim = (() => {
     { p: "no ip address", run: (x) => x.eachPhys((c) => void (c.ip = null)) },
     ...l3OptPatterns
   ];
+  var subIfPatterns = [
+    ...commonSub,
+    { p: "encapsulation dot1Q <1-4094:IEEE 802.1Q VLAN ID>", run: (x, a) => x.encapsulation(Number(a[2]), false) },
+    { p: "encapsulation dot1Q <1-4094:IEEE 802.1Q VLAN ID> native", run: (x, a) => x.encapsulation(Number(a[2]), true) },
+    { p: "no encapsulation dot1Q", run: (x) => x.eachSub((c) => Object.assign(c, { vlan: null, native: false, ip: null })) },
+    { p: "shutdown", run: (x) => x.eachSub((c) => void (c.shutdown = true)) },
+    { p: "no shutdown", run: (x) => x.eachSub((c) => void (c.shutdown = false)) },
+    { p: "description <LINE:Up to 240 characters describing this interface>", run: (x, a) => x.eachSub((c) => void (c.description = a[1].slice(0, 240))) },
+    { p: "no description", run: (x) => x.eachSub((c) => void (c.description = "")) },
+    { p: "ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>", run: (x, a) => x.setIp(a[2], a[3]) },
+    { p: "no ip address", run: (x) => x.eachSub((c) => void (c.ip = null)) },
+    ...l3OptPatterns
+  ];
   var l2IfPatterns = (def) => {
     if (def.router) return routerIfPatterns;
     const p = [
@@ -2433,6 +2482,7 @@ var AgLabSim = (() => {
         config: buildTrie(configPatterns(def)),
         if: buildTrie(l2IfPatterns(def)),
         svi: buildTrie(sviPatterns),
+        subif: buildTrie(subIfPatterns),
         vlan: buildTrie(vlanPatterns),
         router: buildTrie(routerPatterns)
       };
@@ -2482,6 +2532,7 @@ var AgLabSim = (() => {
     trie() {
       const t = tries(this.def);
       if (this.mode === "if" && (this.ifs[0]?.startsWith("Vlan") || this.ifs[0]?.startsWith("Loopback"))) return t.svi;
+      if (this.mode === "if" && this.ifs[0]?.includes(".")) return t.subif;
       return t[this.mode];
     }
     /** Run one line; returns output lines. */
@@ -2656,10 +2707,20 @@ var AgLabSim = (() => {
     }
     // ---- interfaces ----
     resolveIf(type, num, argIndex, create) {
-      var _a;
+      var _a, _b;
       const name = canonIf(type, num);
       if (!name) throw new InvalidAt(argIndex);
       if (this.def.router && (name.startsWith("Vlan") || name.startsWith("Port-channel"))) throw new InvalidAt(argIndex);
+      if (name.includes(".")) {
+        const [parent, sub] = [name.slice(0, name.indexOf(".")), name.slice(name.indexOf(".") + 1)];
+        if (!this.def.router || !this.cfg.ifaces[parent] || !/^\d+$/.test(sub) || Number(sub) < 1 || Number(sub) > 4294967295)
+          throw new InvalidAt(argIndex + 1);
+        const full = parent + "." + Number(sub);
+        const subs = (_a = this.cfg).subifs ?? (_a.subifs = {});
+        if (create && !subs[full]) subs[full] = { parent, vlan: null, native: false, shutdown: false, description: "", ip: null };
+        if (!subs[full]) throw new InvalidAt(argIndex + 1);
+        return full;
+      }
       if (name.startsWith("Vlan")) {
         const v = Number(num);
         if (!/^\d+$/.test(num) || v < 1 || v > 4094) throw new InvalidAt(argIndex + 1);
@@ -2669,7 +2730,7 @@ var AgLabSim = (() => {
       if (name.startsWith("Loopback")) {
         const n = Number(num);
         if (!/^\d+$/.test(num) || n > 2147483647) throw new InvalidAt(argIndex + 1);
-        const lbs = (_a = this.cfg).loopbacks ?? (_a.loopbacks = {});
+        const lbs = (_b = this.cfg).loopbacks ?? (_b.loopbacks = {});
         if (create && !lbs[String(n)]) lbs[String(n)] = { shutdown: false, description: "", ip: null };
         if (!create && !lbs[String(n)]) throw new InvalidAt(argIndex + 1);
         return "Loopback" + n;
@@ -2721,6 +2782,10 @@ var AgLabSim = (() => {
         delete this.cfg.svis[num];
       } else if (name.startsWith("Loopback")) {
         delete this.cfg.loopbacks?.[ifNum(name)];
+      } else if (name.includes(".")) {
+        delete this.cfg.subifs?.[name];
+      } else if (this.def.router) {
+        return ["% Removal of physical interfaces is not permitted"];
       } else {
         delete this.cfg.pos[num];
         for (const c of Object.values(this.cfg.ifaces)) if (c.channel?.id === Number(num)) c.channel = null;
@@ -2750,8 +2815,32 @@ var AgLabSim = (() => {
       }
     }
     /** L3 options of the selected interfaces; physical ports must be routed. */
+    /** L5-a: subinterface under the cursor. */
+    eachSub(fn) {
+      for (const name of this.ifs) {
+        const c = this.cfg.subifs?.[name];
+        if (c) fn(c);
+      }
+    }
+    /** `encapsulation dot1Q <vlan> [native]`: one VLAN per subinterface and per parent. */
+    encapsulation(vlan, native) {
+      const name = this.ifs[0];
+      const me = this.cfg.subifs[name];
+      for (const [other, c] of Object.entries(this.cfg.subifs ?? {})) {
+        if (other === name || c.parent !== me.parent) continue;
+        if (c.vlan === vlan)
+          return [`% Configuration of multiple subinterfaces of the same main interface with the same VID (${vlan}) is not permitted.`, `This VID is already configured on ${other}.`];
+        if (native && c.native) return [`% Native VLAN is already configured on ${other}.`];
+      }
+      me.vlan = vlan;
+      me.native = native;
+    }
     eachL3(fn) {
       for (const name of this.ifs) {
+        if (name.includes(".")) {
+          this.eachSub((c2) => fn(c2.l3 ?? (c2.l3 = {})));
+          return;
+        }
         if (name.startsWith("Vlan") || name.startsWith("Loopback")) {
           this.eachSvi((s) => fn(s.l3 ?? (s.l3 = {})));
           return;
@@ -2835,6 +2924,7 @@ var AgLabSim = (() => {
       for (const [v, s] of Object.entries(this.cfg.svis)) if (s.ip) out.push(["Vlan" + v, s.ip]);
       for (const [p, c] of Object.entries(this.cfg.ifaces)) if (c.routed && c.ip) out.push([p, c.ip]);
       for (const [n, l] of Object.entries(this.cfg.loopbacks ?? {})) if (l.ip) out.push(["Loopback" + n, l.ip]);
+      for (const [n, c] of Object.entries(this.cfg.subifs ?? {})) if (c.ip) out.push([n, c.ip]);
       return out;
     }
     setIp(addr, mask) {
@@ -2851,7 +2941,16 @@ var AgLabSim = (() => {
         if (networkOf(ip.addr, l) === networkOf(addr, l)) return [`% ${networkOf(addr, len)} overlaps with ${other}`];
       }
       if (name.startsWith("Vlan") || name.startsWith("Loopback")) this.eachSvi((s) => void (s.ip = { addr, mask }));
-      else {
+      else if (name.includes(".")) {
+        const c = this.cfg.subifs[name];
+        if (c.vlan === null)
+          return [
+            "% Configuring IP routing on a LAN subinterface is only allowed if that",
+            "subinterface is already configured as part of an IEEE 802.10, IEEE 802.1Q,",
+            "or ISL vLAN."
+          ];
+        c.ip = { addr, mask };
+      } else {
         const c = this.cfg.ifaces[name];
         if (!c.routed) return ["% IP addresses may not be configured on L2 links."];
         c.ip = { addr, mask };
@@ -3065,6 +3164,7 @@ var AgLabSim = (() => {
     }
     showOneIf(a, sw) {
       const name = this.resolveIf(a[2], a[3], 2, false);
+      if (name.includes(".")) throw new InvalidAt(3);
       if (name.startsWith("Port-channel") && !this.cfg.pos[ifNum(name)]) throw new InvalidAt(3);
       if (name.startsWith("Vlan") && !this.cfg.svis[ifNum(name)]) throw new InvalidAt(3);
       return sw ? showIntSwitchport(this.rt, this.dev, name) : showInterface(this.rt, this.dev, name);
@@ -6179,6 +6279,7 @@ write memory`
   ]);
   var ROUTER_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "staticRoutes", "route", "ospf", "ip", "mask", "gateway", "vlan"]);
   var ROUTER_IF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled"]);
+  var SUBIF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "parent", "vlan", "encapsulation"]);
   var STATIC_ROUTE_FIELDS = /* @__PURE__ */ new Set(["network", "mask", "nextHop", "distance"]);
   var OSPF_FIELDS = /* @__PURE__ */ new Set(["pid", "routerId", "networks"]);
   var SERVER_FIELDS = /* @__PURE__ */ new Set([...PC_FIELDS, "services"]);
@@ -6193,12 +6294,11 @@ write memory`
     ospf: "Switch üzerinde OSPF AğLab modelinde yok",
     bgp: "BGP Labber'da yok (L5)",
     services: "Sunucu servisleri (DHCP/DNS/HTTP) Labber'da yok (L5)",
-    subinterface: "Alt arayüz / dot1q Labber'da yok (L5)",
     startupConfig: "Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)",
     portSecurity: "Port security Labber'da yok (L5)",
     errdisabled: "Port security err-disable durumu Labber'da yok (L5)",
-    encapsulation: "Alt arayüz / dot1q Labber'da yok (L5)",
-    parent: "Alt arayüz Labber'da yok (L5)",
+    encapsulation: "Alt arayüz alanı (encapsulation) yalnız router alt arayüzünde (g0/0.N) eşlenir",
+    parent: "Alt arayüz alanı (parent) yalnız router alt arayüzünde (g0/0.N) eşlenir",
     aclIn: "ACL Labber'da yok (L5)",
     aclOut: "ACL Labber'da yok (L5)",
     natRole: "NAT Labber'da yok (L5)",
@@ -6290,8 +6390,6 @@ write memory`
       for (const key of ["ip", "mask", "gateway"])
         if (d[key] !== void 0 && d[key] !== "") unsupported(id, key, "Router'da cihaz düzeyi adres alanı AğLab modelinde yok (arayüz adresleri kullanılır)");
       const ifaces = d.interfaces ?? {};
-      const subifs = Object.keys(ifaces).filter((n) => n.includes("."));
-      for (const n of subifs) unsupported(id, `interfaces.${n}`, FEATURE_REASON["subinterface"]);
       const sourcePorts = d.ports ?? [.../* @__PURE__ */ new Set([...ROUTER_TEMPLATE_PORTS, ...Object.keys(ifaces).filter((n) => !n.includes("."))])];
       const { portMap, canonPorts } = mapPorts(id, sourcePorts);
       canonByDevice[id] = Object.fromEntries(Object.entries(portMap).map(([c, o]) => [o, c]));
@@ -6331,6 +6429,44 @@ write memory`
           if (!isIp(iface.ip) || pre === null || pre === 0) reject(id, name, "Geçersiz router arayüzü IPv4 adresi/maskesi");
           else phys.ip = { addr: iface.ip, mask: iface.mask };
         }
+      }
+      for (const [name, iface] of Object.entries(ifaces)) {
+        if (!name.includes(".")) continue;
+        const dot = name.indexOf(".");
+        const physName = name.slice(0, dot);
+        const sub = name.slice(dot + 1);
+        const parent = canonPort(physName);
+        if (!parent || portMap[parent] === void 0 || !/^\d+$/.test(sub) || Number(sub) < 1 || Number(sub) > 4294967295) {
+          reject(id, name, "Alt arayüzün fiziksel portu cihazda yok ya da numarası geçersiz");
+          continue;
+        }
+        for (const key2 of Object.keys(iface))
+          if (!SUBIF_FIELDS.has(key2)) unsupported(id, `interfaces.${name}.${key2}`, FEATURE_REASON[key2] ?? "Labber'da karşılığı olmayan alt arayüz alanı");
+        if (iface.parent !== void 0 && canonPort(String(iface.parent)) !== parent) {
+          reject(id, `${name}.parent`, "Alt arayüzün parent alanı adıyla uyuşmuyor");
+          continue;
+        }
+        let vlan = null;
+        if (iface.encapsulation !== void 0 && iface.encapsulation !== "") {
+          const v = vlanId(iface.vlan);
+          if (iface.encapsulation !== "dot1q") reject(id, `${name}.encapsulation`, "Yalnız 802.1Q (dot1q) alt arayüzü modellenir");
+          else if (v === null) reject(id, `${name}.vlan`, "Geçersiz 802.1Q VLAN kimliği");
+          else vlan = v;
+        }
+        const key = `${parent}.${Number(sub)}`;
+        const subs = cfg.subifs ?? (cfg.subifs = {});
+        if (vlan !== null && Object.values(subs).some((x) => x.parent === parent && x.vlan === vlan)) {
+          reject(id, name, `Aynı fiziksel portta VLAN ${vlan} iki alt arayüzde`);
+          continue;
+        }
+        let ip = null;
+        if (iface.ip) {
+          const pre = iface.mask ? maskToPrefix(iface.mask) : null;
+          if (!isIp(iface.ip) || pre === null || pre === 0) reject(id, name, "Geçersiz alt arayüz IPv4 adresi/maskesi");
+          else if (vlan === null) reject(id, name, "encapsulation dot1q olmadan alt arayüz IP adresi (IOS kabul etmez)");
+          else ip = { addr: iface.ip, mask: iface.mask };
+        }
+        subs[key] = { parent, vlan, native: false, shutdown: iface.enabled === false, description: "", ip };
       }
       const list = Array.isArray(d.staticRoutes) ? d.staticRoutes : [];
       if (d.staticRoutes !== void 0 && !Array.isArray(d.staticRoutes)) reject(id, "staticRoutes", "Statik rota listesi dizi olmalı");
@@ -6785,6 +6921,30 @@ write memory`
       if (prev2?.enabled !== void 0 || phys.shutdown) iface.enabled = !phys.shutdown;
       d.interfaces[name] = iface;
     }
+    const subNames = /* @__PURE__ */ new Set();
+    for (const [canon, si] of Object.entries(cfg.subifs ?? {})) {
+      const physName = back[si.parent];
+      if (!physName) fail(`${canon} fiziksel portu`);
+      const name = physName + canon.slice(canon.indexOf("."));
+      subNames.add(name);
+      if (si.native) fail(`${canon} encapsulation dot1Q ${si.vlan} native`);
+      if (si.description) fail(`${canon} description`);
+      if (si.l3 && Object.keys(si.l3).length) fail(`${canon} arayüz OSPF/L3 ayarı`);
+      const prev2 = d.interfaces[name];
+      const iface = prev2 ? { ...prev2 } : { ip: "", mask: "255.255.255.0", enabled: true, vlan: 1, encapsulation: "", parent: physName };
+      if (si.ip || "ip" in iface) iface.ip = si.ip?.addr ?? "";
+      if (si.ip) iface.mask = si.ip.mask;
+      if (si.shutdown || "enabled" in iface) iface.enabled = !si.shutdown;
+      if (si.vlan === null) {
+        if ("encapsulation" in iface) iface.encapsulation = "";
+      } else {
+        iface.encapsulation = "dot1q";
+        iface.vlan = si.vlan;
+      }
+      if (prev2?.parent !== void 0 || !prev2) iface.parent = physName;
+      d.interfaces[name] = iface;
+    }
+    for (const name of Object.keys(d.interfaces)) if (name.includes(".") && !subNames.has(name)) delete d.interfaces[name];
     const legacyDefault = typeof orig.route === "string" && orig.route !== "" && !(orig.staticRoutes ?? []).some((r) => r.network === "0.0.0.0" && r.mask === "0.0.0.0");
     let routes = cfg.routes;
     if (legacyDefault) {
@@ -6846,7 +7006,7 @@ write memory`
       if (!link) return null;
       const fwd = link.a[0] === c.from && d.lportOfPhys[pk(link.a[0], link.a[1])]?.name === c.out;
       const [x, y] = fwd ? [link.a, link.b] : [link.b, link.a];
-      steps.push({ from: x[0], out: x[1], to: y[0], in: y[1], vlan: Math.max(c.to.vlan, 0) });
+      steps.push({ from: x[0], out: x[1], to: y[0], in: y[1], vlan: nodeVlan(c.to) });
     }
     for (const [ifc, atStart] of [
       [a, true],
@@ -6855,7 +7015,7 @@ write memory`
       if (ifc.kind !== "pc") continue;
       const at = rt.topo.pcAttach[ifc.dev];
       if (!at || !rt.cableIntact(ifc.dev, "eth0")) return null;
-      const vlan = Math.max(ifc.node.vlan, 0);
+      const vlan = nodeVlan(ifc.node);
       if (atStart) steps.unshift({ from: ifc.dev, out: "eth0", to: at.dev, in: at.port, vlan });
       else steps.push({ from: at.dev, out: at.port, to: ifc.dev, in: "eth0", vlan });
     }
@@ -6883,7 +7043,7 @@ write memory`
           kind,
           sourceMac: colon(hop.outIf.mac),
           destinationMac: colon(target?.mac ?? ""),
-          vlan: Math.max(hop.outIf.node?.vlan ?? 0, 0),
+          vlan: hop.outIf.node ? nodeVlan(hop.outIf.node) : 0,
           etherType: "0x0800",
           arp: null,
           ipv4: { sourceIp: srcIp, destinationIp: dstIp, ttl, protocol: 1 },

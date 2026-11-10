@@ -10731,6 +10731,9 @@ labLoadExperiment();
     sharedScenarioDecideEngine();
   }
   function loadSharedScenarioContent(key) {
+    // Önceki içeriğin Labber oturumu yeni senaryo kurulurken (kodla kurulanlar importTopology
+    // kullanmaz) uzlaştırılmaya çalışılmasın; motor kararı yüklemeden sonra verilir.
+    aglabLabber.stop();
     if (loadNetworkScenario(key)) return;
     if (key === 'stp-loop') {
       loadSharedStpScenario();

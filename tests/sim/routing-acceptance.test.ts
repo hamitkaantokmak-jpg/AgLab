@@ -1,7 +1,7 @@
-// L4 kabul paritesi: L4'ün kabul testleri (tests/test_aglab_next_hop.py, v11, v13,
+// L4/L5-a kabul paritesi: L4'ün kabul testleri (tests/test_aglab_next_hop.py, v11, v13,
 // traceroute, icmp_unreachable) içe aktarılan topolojilerde eski motoru sınar. Aynı
 // topolojiler burada köprüden Labber'a verilir ve iletim sonucu (başarılı/başarısız) aynı
-// beklenir. L5'e kalan parçalar (ACL, alt arayüz) köprüde eski motor kararı alır; o
+// beklenir. L5'e kalan parçalar (ACL) köprüde eski motor kararı alır; o
 // adımlar burada kararın "legacy" olduğu doğrulanarak geçilir. Eski motorla bilerek
 // ayrışan ICMP ayrıntıları ayrı blokta, gerekçesiyle (UYUMLULUK_MATRISI) sınanır.
 import { describe, expect, it } from 'vitest'
@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { createRuntime, toLabber } from '../../src/sim-bridge/bridge'
 import type { AglabDevice, AglabTopology } from '../../src/sim-bridge/aglab'
 import { deliver, routeTable } from '../../src/sim/net'
+import { runScript } from '../../src/sim/index'
 
 const ROOT = join(__dirname, '..', '..')
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
@@ -102,10 +103,21 @@ describe('kabul paritesi: test_aglab_next_hop.py (Labber)', () => {
     expect([ok(gateway, 'd1', '10.0.0.2'), ok(gateway, 'd1', '192.168.1.1')]).toEqual([false, true])
     dev(gateway, 'd1').gateway = '10.0.0.2'
     expect(ok(gateway, 'd1', '10.0.0.2')).toBe(false)
-    // alt arayüz adımı L5: köprü eski motora bırakır
+    // L5-a: alt arayüz numarası 802.1Q VLAN'ı ya da fiziksel giriş portu değildir
+    // (test_aglab_next_hop.py "arbitrary dot1Q subinterface IDs" adımı, Labber'da)
     const tagged = clone(good)
-    dev(tagged, 'd3').interfaces!['g0/1.5000'] = { ip: '10.0.0.1', mask: '255.255.255.0', enabled: true, parent: 'g0/1', encapsulation: 'dot1q', vlan: 77 }
-    expect(toLabber(tagged).report.engineDecision).toBe('legacy')
+    for (const [id, physical, logical, ip] of [['d3', 'g0/1', 'g0/1.5000', '10.0.0.1'], ['d4', 'g0/0', 'g0/0.9000', '10.0.0.2'], ['d5', 'g0/0', 'g0/0.12345', '10.0.0.3']] as const) {
+      ;(dev(tagged, id).interfaces![physical] as Record<string, unknown>)['ip'] = ''
+      dev(tagged, id).interfaces![logical] = { ip, mask: '255.255.255.0', enabled: true, parent: physical, encapsulation: 'dot1q', vlan: 77 }
+    }
+    for (const i of Object.values(dev(tagged, 'd6').interfaces!)) Object.assign(i, { mode: 'trunk', nativeVlan: 1 })
+    expect(ok(tagged)).toBe(true)
+    dev(tagged, 'd3').staticRoutes = [route('192.168.2.0', '10.0.0.3')]
+    expect(ok(tagged)).toBe(false)
+    // CLI'de rota düzeltilince akış geri gelir
+    const rt = runtime(tagged)
+    runScript(rt, 'd3', 'configure terminal\nno ip route 192.168.2.0 255.255.255.0 10.0.0.3\nip route 192.168.2.0 255.255.255.0 10.0.0.2\nend')
+    expect(rt.query().ping('d1', '192.168.2.2').ok).toBe(true)
     const origin = clone(good)
     dev(origin, 'd4').staticRoutes = []
     expect([ok(origin, 'd3'), ok(origin)]).toEqual([true, false])

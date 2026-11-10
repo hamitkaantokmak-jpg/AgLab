@@ -325,6 +325,46 @@ const ORACLE_CASES: { name: string; routes: any[]; route?: string; linkDown?: nu
   { name: 'eski route alanı varsayılan rota', routes: [], route: '10.0.0.2', dst: ['4.1.1.1', '10.0.0.2'] },
 ]
 
+describe('oracle paritesi: dot1q alt arayüzleri (L5-a, test_engine_routing.cjs)', () => {
+  const withSub = (extra: Record<string, any> = {}) => {
+    const { R1, topo } = oracleLab()
+    R1.interfaces['g0/0.10'] = { ip: '10.10.0.1', mask: '255.255.255.0', parent: 'g0/0', encapsulation: 'dot1q', vlan: 10, enabled: true, ...extra }
+    return { R1, topo }
+  }
+  const both = (R1: any, topo: any, dst: string) => {
+    const ora = routing.routeLookup(topo, R1, dst)
+    const bridged = toLabber(topo as AglabTopology)
+    expect(bridged.report.engineDecision, JSON.stringify(bridged.report.reasons)).toBe('labber')
+    const lab = routeOut(createRuntime(bridged).derived, 'r1', dst)?.ifname ?? null
+    return { oracle: ora.ok ? ora.route.iface : null, labber: lab }
+  }
+  it('alt arayüzün bağlı ağı alt arayüzden çıkar', () => {
+    const { R1, topo } = withSub()
+    expect(both(R1, topo, '10.10.0.9')).toEqual({ oracle: 'g0/0.10', labber: 'GigabitEthernet0/0.10' })
+  })
+  it('üst arayüz kapalıysa alt arayüz de kapalı', () => {
+    const { R1, topo } = withSub()
+    R1.interfaces['g0/0'].enabled = false
+    expect(both(R1, topo, '10.10.0.9')).toEqual({ oracle: null, labber: null })
+  })
+  it('alt arayüzün kendi enabled:false\'u yalnız onu kapatır', () => {
+    const { R1, topo } = withSub({ enabled: false })
+    expect(both(R1, topo, '10.10.0.9')).toEqual({ oracle: null, labber: null })
+    expect(both(R1, topo, '192.168.1.9')).toEqual({ oracle: 'g0/0', labber: 'GigabitEthernet0/0' })
+  })
+  it('kablosu kopuk üst arayüzün alt arayüzü bağlı rota üretmez', () => {
+    const { R1, topo } = withSub()
+    topo.links[0]!.up = false
+    expect(both(R1, topo, '10.10.0.9')).toEqual({ oracle: null, labber: null })
+  })
+  it('encapsulation olmadan IP\'li alt arayüz: oracle sessizce etkisiz sayar, köprü reddeder (IOS kabul etmez)', () => {
+    const { R1, topo } = oracleLab()
+    R1.interfaces['g0/0.20'] = { ip: '10.20.0.1', mask: '255.255.255.0', parent: 'g0/0' }
+    expect(routing.routeLookup(topo, R1, '10.20.0.9').ok).toBe(false)
+    expect(toLabber(topo as AglabTopology).report.engineDecision).toBe('legacy')
+  })
+})
+
 describe('oracle paritesi: test_engine_routing.cjs senaryoları (L4)', () => {
   for (const c of ORACLE_CASES)
     it(c.name, () => {

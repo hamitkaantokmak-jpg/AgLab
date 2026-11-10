@@ -51,7 +51,7 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 
 | Senaryo | Başlık | Labber köprüsü (L1) |
 |---|---|---|
-| `subif-missing` | Alt arayüz eksik · router-on-a-stick | Eski motor: Alt arayüz / dot1q Labber'da yok (L5) |
+| `subif-missing` | Alt arayüz eksik · router-on-a-stick | **Labber** |
 | `ospf-area` | OSPF area uyuşmazlığı | **Labber** |
 | `bgp-as` | BGP remote-AS uyuşmazlığı | Eski motor: BGP Labber'da yok (L5) |
 | `port-security` | Port-security ihlali | Eski motor: Port security Labber'da yok (L5) |
@@ -73,11 +73,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `vlan-allowed-overwritten` | Trunk · Misafir ağı eklendi, muhasebe koptu | **Labber** |
 | `vlan-missing-on-switch` | VLAN · Satış diğer kattaki satışçılara ulaşamıyor | **Labber** |
 | `vlan-two-faults` | VLAN + trunk · İki hata birden | **Labber** |
-| `roas-wrong-tag` | Router-on-a-stick · Satış yazıcıya ulaşamıyor | Eski motor: Alt arayüz / dot1q Labber'da yok (L5) |
-| `roas-switch-port-access` | Router-on-a-stick · Yalnız bir VLAN dışarı çıkabiliyor | Eski motor: Alt arayüz / dot1q Labber'da yok (L5) |
-| `roas-pc-gateway` | Gateway · Yeni PC yalnız kendi bölümünü görüyor | Eski motor: Alt arayüz / dot1q Labber'da yok (L5) |
-| `roas-physical-shutdown` | Router-on-a-stick · Alt arayüzler yapılandırılmış ama hiçbiri çalışmıyor | Eski motor: Alt arayüz / dot1q Labber'da yok (L5) |
-| `roas-two-faults` | Router-on-a-stick · İki hata birden | Eski motor: Alt arayüz / dot1q Labber'da yok (L5) |
+| `roas-wrong-tag` | Router-on-a-stick · Satış yazıcıya ulaşamıyor | **Labber** |
+| `roas-switch-port-access` | Router-on-a-stick · Yalnız bir VLAN dışarı çıkabiliyor | **Labber** |
+| `roas-pc-gateway` | Gateway · Yeni PC yalnız kendi bölümünü görüyor | **Labber** |
+| `roas-physical-shutdown` | Router-on-a-stick · Alt arayüzler yapılandırılmış ama hiçbiri çalışmıyor | **Labber** |
+| `roas-two-faults` | Router-on-a-stick · İki hata birden | **Labber** |
 | `mgmt-unsaved-lost` | Cihaz yönetimi · Gece kesintiden sonra switch'e ulaşılamıyor | **Labber** |
 | `mgmt-reload-revert` | Cihaz yönetimi · Kaydedilmemiş hatalı değişikliği geri al | **Labber** |
 | `mgmt-saved-fault` | Cihaz yönetimi · Yeniden başlatma hatayı düzeltmiyor | **Labber** |
@@ -123,18 +123,18 @@ L3-a'dan beri Labber kararındaki içerikte terminal de Labber'dadır (tek kalı
 çalışma zamanı). L4'ten beri Router (routed portlar), statik rotada yönetimsel
 uzaklık ve özyinelemeli next-hop, AğLab OSPF alanları (pid, routerId, networks) ve
 servissiz sunucu (uç) da Labber'dadır; kaynak arayüzlü ICMP ölçütü Labber'da
-değerlendirilir. Eski motor kararı aşağıdaki gerekçelerden en az birine dayanır.
+değerlendirilir. L5-a'dan beri router alt arayüzü (802.1Q, router-on-a-stick)
+da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine dayanır.
 
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 27 | 10 | 37 |
+| Ortak senaryolar | 33 | 4 | 37 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 80 | 10 | 90 |
+| Toplam | 86 | 4 | 90 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
-| Alt arayüz / dot1q Labber'da yok (L5) | 6 |
 | Sunucu servisleri (DHCP/DNS/HTTP) Labber'da yok (L5) | 2 |
 | ACL Labber'da yok (L5) | 1 |
 | BGP Labber'da yok (L5) | 1 |
