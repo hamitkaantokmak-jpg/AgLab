@@ -22,7 +22,7 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | AGL-036 öğretmen çözümü (`no ip route`), öğretmen CLI testi gerçek başlangıçtan | #65 | birleşti |
 | L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | birleşti |
 | CI tetikleme: push yalnız main, dal başına `concurrency` | #67 | açık (birleşmeyi bekliyor) |
-| L5-b DHCP/DNS; `relay-trunk` | #PRNUM | açık (birleşmeyi bekliyor; dalı #67'nin dalından) |
+| L5-b DHCP/DNS; `relay-trunk` | #68 | açık (birleşmeyi bekliyor; dalı #67'nin dalından) |
 
 **Sıradaki: L5-c ACL** (sonra L5-d NAT/PAT, L5-e port security, L5-f CDP/LLDP). Dal zinciri:
 CI tetikleme (#67) → L5-b (`claude/l5b-dhcp-dns`) → L5-c → L5-d → L5-e → L5-f; her biri ayrı
