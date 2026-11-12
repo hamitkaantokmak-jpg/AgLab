@@ -2186,6 +2186,19 @@ var AgLabSim = (() => {
     return out;
   }
   var routeLine = (r) => `ip route ${r.net} ${r.mask} ${r.nh}` + (r.ad && r.ad !== 1 ? " " + r.ad : "");
+  function discoveryGlobalLines(c) {
+    const o = [];
+    if (c.cdpRun === false) o.push("!", "no cdp run");
+    if (c.lldpRun) o.push("!", "lldp run");
+    return o;
+  }
+  function discoveryIfLines(c) {
+    const o = [];
+    if (c.cdp === false) o.push(" no cdp enable");
+    if (c.lldpTx === false) o.push(" no lldp transmit");
+    if (c.lldpRx === false) o.push(" no lldp receive");
+    return o;
+  }
   function routerRunningConfig(sw, c) {
     const o = [];
     o.push("!", "version 15.4", "service timestamps debug datetime msec", "service timestamps log datetime msec", "no service password-encryption", "!");
@@ -2206,7 +2219,7 @@ var AgLabSim = (() => {
       if (ic.description) o.push(" description " + ic.description);
       o.push(...l3Lines(ic.ip, ic.l3, true));
       if (ic.shutdown) o.push(" shutdown");
-      o.push("!");
+      o.push(...discoveryIfLines(ic), "!");
       for (const [name, si] of subifsOf(c, p)) {
         o.push("interface " + name);
         if (si.description) o.push(" description " + si.description);
@@ -2219,7 +2232,7 @@ var AgLabSim = (() => {
     if (c.ospf) o.push(...ospfLines(c));
     o.push("ip forward-protocol nd", "no ip http server", "!");
     for (const r of c.routes) o.push(routeLine(r));
-    o.push("!", "line con 0", "line aux 0", "line vty 0 4", " login", "!", "end");
+    o.push(...discoveryGlobalLines(c), "!", "line con 0", "line aux 0", "line vty 0 4", " login", "!", "end");
     return o;
   }
   function dhcpLines(c) {
@@ -2297,7 +2310,7 @@ var AgLabSim = (() => {
         if (ic.bpduguard !== void 0) o.push(` spanning-tree bpduguard ${ic.bpduguard ? "enable" : "disable"}`);
         if (ic.channel) o.push(` channel-group ${ic.channel.id} mode ${ic.channel.mode}`);
       }
-      o.push("!");
+      o.push(...discoveryIfLines(ic), "!");
     }
     for (const v of Object.keys(c.svis).map(Number).sort((a, b) => a - b)) {
       const s = c.svis[String(v)];
@@ -2311,7 +2324,7 @@ var AgLabSim = (() => {
     if (c.defaultGateway) o.push("ip default-gateway " + c.defaultGateway);
     o.push("ip forward-protocol nd", "no ip http server", "!");
     for (const r of c.routes) o.push(routeLine(r));
-    o.push("!", "line con 0", "line vty 0 4", " login", "line vty 5 15", " login", "!", "end");
+    o.push(...discoveryGlobalLines(c), "!", "line con 0", "line vty 0 4", " login", "line vty 5 15", " login", "!", "end");
     return o;
   }
   function showRun(rt, dev, which) {
@@ -2769,27 +2782,6 @@ var AgLabSim = (() => {
     o.push(`Total Mac Addresses for this criterion: ${shown.length}`);
     return o;
   }
-  function showCdp(rt, dev) {
-    const d = rt.derived;
-    const sw = rt.topo.devices[dev];
-    const o = [
-      "Capability Codes: R - Router, T - Trans Bridge, B - Source Route Bridge",
-      "                  S - Switch, H - Host, I - IGMP, r - Repeater, P - Phone,",
-      "                  D - Remote, C - CVTA, M - Two-port Mac Relay",
-      "",
-      "Device ID        Local Intrfce     Holdtme    Capability  Platform  Port ID"
-    ];
-    for (const p of sw.ports) {
-      const ps = d.phys[pk(dev, p)];
-      if (!ps.up || !ps.peer || ps.peerIsPc) continue;
-      const peer = rt.topo.devices[ps.peer.dev];
-      const caps = peer.router ? "R B" : peer.l3 ? "R S I" : "S I";
-      o.push(pad(rt.hostname(peer.id), 17) + pad(shortIf(p).replace(/^(\w\w)/, "$1 "), 18) + pad("163", 11) + pad(caps, 12) + pad(peer.model.split(" ")[0].slice(0, 9), 10) + shortIf(ps.peer.port).replace(/^(\w\w)/, "$1 "));
-    }
-    const n = o.length - 5;
-    o.push("", `Total cdp entries displayed : ${n}`);
-    return o;
-  }
   function showVersion(rt, dev) {
     const sw = rt.topo.devices[dev];
     const fa = sw.ports.filter((p) => p.startsWith("Fast")).length;
@@ -2908,6 +2900,184 @@ var AgLabSim = (() => {
     return out;
   }
 
+  // src/sim/discovery.ts
+  var CDP_HOLDTIME = 180;
+  var LLDP_HOLDTIME = 120;
+  var cdpOn = (c) => c.cdpRun !== false;
+  var lldpOn = (c) => c.lldpRun === true;
+  var cdpPort = (c) => !!c && c.cdp !== false;
+  var lldpTx = (c) => !!c && c.lldpTx !== false;
+  var lldpRx = (c) => !!c && c.lldpRx !== false;
+  function upLinks(d, dev) {
+    const sw = d.topo.devices[dev];
+    if (!sw || sw.kind !== "switch" || d.hw.off.has(dev)) return [];
+    const out = [];
+    for (const port of sw.ports) {
+      const ps = d.phys[pk(dev, port)];
+      if (!ps?.up || !ps.peer || ps.peerIsPc) continue;
+      out.push({ port, dev: ps.peer.dev, peerPort: ps.peer.port });
+    }
+    return out;
+  }
+  function cdpNeighbors(d, dev) {
+    const me = d.cfgs[dev];
+    if (!me || !cdpOn(me)) return [];
+    return upLinks(d, dev).filter((n) => {
+      const peer = d.cfgs[n.dev];
+      return cdpPort(me.ifaces[n.port]) && cdpOn(peer) && cdpPort(peer.ifaces[n.peerPort]);
+    });
+  }
+  function lldpNeighbors(d, dev) {
+    const me = d.cfgs[dev];
+    if (!me || !lldpOn(me)) return [];
+    return upLinks(d, dev).filter((n) => {
+      const peer = d.cfgs[n.dev];
+      return lldpRx(me.ifaces[n.port]) && lldpOn(peer) && lldpTx(peer.ifaces[n.peerPort]);
+    });
+  }
+  function cdpBetween(d, dev, port, peerDev, peerPort) {
+    const a = d.cfgs[dev], b = d.cfgs[peerDev];
+    if (!a || !b || !cdpOn(a) || !cdpOn(b)) return false;
+    const phys = (c, p) => c.ifaces[p] ? cdpPort(c.ifaces[p]) : true;
+    return phys(a, port) && phys(b, peerPort);
+  }
+  function cdpIf(name) {
+    const m = /^([A-Za-z]+?)(?:Ethernet|-channel)?(\d.*)$/.exec(name);
+    if (!m) return name;
+    return m[1].slice(0, 3) + " " + m[2];
+  }
+  function cdpCaps(sw) {
+    return sw.router ? "R I" : sw.l3 ? "R S I" : "S I";
+  }
+  function cdpCapWords(sw) {
+    return sw.router ? "Router IGMP" : sw.l3 ? "Router Switch IGMP" : "Switch IGMP";
+  }
+  function lldpCaps(sw) {
+    return sw.router ? "R" : sw.l3 ? "B,R" : "B";
+  }
+  function mgmtIp(rt, dev, port) {
+    const ifs = l3Ifs(rt.derived, dev);
+    return ifs.find((i) => i.name === port)?.ip ?? ifs.find((i) => i.kind === "svi")?.ip ?? null;
+  }
+  function versionLine(sw) {
+    return sw.router ? `Cisco IOS Software, ISR Software (${sw.model}), Version 15.4(3)M (Labber Simulated), RELEASE SOFTWARE` : `Cisco IOS Software, ${sw.model} Software (Labber Simulated), Version 15.2(7)E, RELEASE SOFTWARE`;
+  }
+  var CDP_HEADER = [
+    "Capability Codes: R - Router, T - Trans Bridge, B - Source Route Bridge",
+    "                  S - Switch, H - Host, I - IGMP, r - Repeater, P - Phone,",
+    "                  D - Remote, C - CVTA, M - Two-port Mac Relay",
+    ""
+  ];
+  function showCdpNeighbors(rt, dev, detail) {
+    if (!cdpOn(rt.running[dev])) return ["% CDP is not enabled"];
+    const ns = cdpNeighbors(rt.derived, dev);
+    if (detail) {
+      const o2 = [];
+      for (const n of ns) {
+        const peer = rt.topo.devices[n.dev];
+        const ip = mgmtIp(rt, n.dev, n.peerPort);
+        o2.push(
+          "-------------------------",
+          `Device ID: ${rt.hostname(n.dev)}`,
+          "Entry address(es): ",
+          ...ip ? [`  IP address: ${ip}`] : [],
+          `Platform: cisco ${peer.model},  Capabilities: ${cdpCapWords(peer)} `,
+          `Interface: ${n.port},  Port ID (outgoing port): ${n.peerPort}`,
+          `Holdtime : ${CDP_HOLDTIME} sec`,
+          "",
+          "Version :",
+          versionLine(peer),
+          "Technical Support: http://www.cisco.com/techsupport",
+          "",
+          "advertisement version: 2",
+          "Duplex: full",
+          "Management address(es): ",
+          ...ip ? [`  IP address: ${ip}`] : [],
+          ""
+        );
+      }
+      o2.push("", `Total cdp entries displayed : ${ns.length}`);
+      return o2;
+    }
+    const o = [...CDP_HEADER, "Device ID        Local Intrfce     Holdtme    Capability  Platform  Port ID"];
+    for (const n of ns) {
+      const peer = rt.topo.devices[n.dev];
+      o.push(pad(rt.hostname(n.dev), 17) + pad(cdpIf(n.port), 18) + pad(CDP_HOLDTIME, 11) + pad(cdpCaps(peer), 12) + pad(peer.model.slice(0, 9), 10) + cdpIf(n.peerPort));
+    }
+    o.push("", `Total cdp entries displayed : ${ns.length}`);
+    return o;
+  }
+  function showCdpInterface(rt, dev, only) {
+    const c = rt.running[dev];
+    if (!cdpOn(c)) return ["% CDP is not enabled"];
+    const sw = rt.topo.devices[dev];
+    const o = [];
+    let up = 0;
+    let total = 0;
+    for (const port of sw.ports) {
+      if (only && port !== only) continue;
+      if (!cdpPort(c.ifaces[port])) continue;
+      const ps = rt.derived.phys[pk(dev, port)];
+      total++;
+      if (ps.up) up++;
+      o.push(
+        `${port} is ${ps.adminDown ? "administratively down" : ps.up ? "up" : "down"}, line protocol is ${ps.up ? "up" : "down"}`,
+        "  Encapsulation ARPA",
+        "  Sending CDP packets every 60 seconds",
+        `  Holdtime is ${CDP_HOLDTIME} seconds`
+      );
+    }
+    if (!only) o.push("", ` cdp enabled interfaces : ${total}`, ` interfaces up          : ${up}`, ` interfaces down        : ${total - up}`);
+    return o;
+  }
+  function showLldpNeighbors(rt, dev, detail) {
+    if (!lldpOn(rt.running[dev])) return ["% LLDP is not enabled"];
+    const ns = lldpNeighbors(rt.derived, dev);
+    if (detail) {
+      const o2 = [];
+      for (const n of ns) {
+        const peer = rt.topo.devices[n.dev];
+        const ip = mgmtIp(rt, n.dev, n.peerPort);
+        const caps = lldpCaps(peer);
+        o2.push(
+          "------------------------------------------------",
+          `Local Intf: ${shortIf(n.port)}`,
+          `Chassis id: ${peer.mac}`,
+          `Port id: ${shortIf(n.peerPort)}`,
+          `Port Description: ${n.peerPort}`,
+          `System Name: ${rt.hostname(n.dev)}`,
+          "",
+          "System Description: ",
+          versionLine(peer),
+          "Technical Support: http://www.cisco.com/techsupport",
+          "",
+          `Time remaining: ${LLDP_HOLDTIME} seconds`,
+          `System Capabilities: ${caps}`,
+          `Enabled Capabilities: ${caps}`,
+          "Management Addresses:",
+          ...ip ? [`    IP: ${ip}`] : ["    - not advertised"],
+          "Auto Negotiation - supported, enabled",
+          ""
+        );
+      }
+      o2.push("", `Total entries displayed: ${ns.length}`);
+      return o2;
+    }
+    const o = [
+      "Capability codes:",
+      "    (R) Router, (B) Bridge, (T) Telephone, (C) DOCSIS Cable Device",
+      "    (W) WLAN Access Point, (P) Repeater, (S) Station, (O) Other",
+      "",
+      "Device ID           Local Intf     Hold-time  Capability      Port ID"
+    ];
+    for (const n of ns) {
+      const peer = rt.topo.devices[n.dev];
+      o.push(pad(rt.hostname(n.dev).slice(0, 19), 20) + pad(shortIf(n.port), 15) + pad(LLDP_HOLDTIME, 11) + pad(lldpCaps(peer), 16) + shortIf(n.peerPort));
+    }
+    o.push("", `Total entries displayed: ${ns.length}`);
+    return o;
+  }
+
   // src/sim/cli/ios.ts
   var CliError = class {
     constructor(lines) {
@@ -2952,7 +3122,12 @@ var AgLabSim = (() => {
       { p: "show etherchannel summary", run: (x) => showEtherchannelSummary(x.rt, x.dev) },
       { p: "show mac address-table", run: (x) => showMac(x.rt, x.dev) },
       { p: "show mac address-table address <H.H.H:48 bit mac address>", run: (x, a) => showMac(x.rt, x.dev, normalizeMac(a[4])) },
-      { p: "show cdp neighbors", run: (x) => showCdp(x.rt, x.dev) },
+      { p: "show cdp neighbors", run: (x) => showCdpNeighbors(x.rt, x.dev, false) },
+      { p: "show cdp neighbors detail", run: (x) => showCdpNeighbors(x.rt, x.dev, true) },
+      { p: "show cdp interface", run: (x) => showCdpInterface(x.rt, x.dev) },
+      { p: "show cdp interface <if>", run: (x, a) => showCdpInterface(x.rt, x.dev, x.physName(a[3], a[4], 3)), ifTypes: ["FastEthernet", "GigabitEthernet"] },
+      { p: "show lldp neighbors", run: (x) => showLldpNeighbors(x.rt, x.dev, false) },
+      { p: "show lldp neighbors detail", run: (x) => showLldpNeighbors(x.rt, x.dev, true) },
       { p: "show history", run: (x) => x.history.slice(-20).map((h) => "  " + h) },
       // L5-b: DHCP server
       { p: "show ip dhcp binding", run: (x) => showDhcpBinding(x.rt, x.dev) },
@@ -3070,6 +3245,11 @@ var AgLabSim = (() => {
       { p: "no ip dhcp excluded-address <A.B.C.D:Low IP address> <A.B.C.D:High IP address>", run: (x, a) => x.dhcpExclude(a[4], a[5], false) },
       { p: "no ip domain-lookup", run: () => {
       } },
+      // L5-f: CDP (IOS: varsayılan açık), LLDP (varsayılan kapalı)
+      { p: "cdp run", run: (x) => void delete x.cfg.cdpRun },
+      { p: "no cdp run", run: (x) => void (x.cfg.cdpRun = false) },
+      { p: "lldp run", run: (x) => void (x.cfg.lldpRun = true) },
+      { p: "no lldp run", run: (x) => void delete x.cfg.lldpRun },
       { p: "ip domain-lookup", run: () => {
       } },
       { p: "spanning-tree portfast bpduguard default", run: (x) => void (x.cfg.bpduguardDefault = true) },
@@ -3208,6 +3388,14 @@ var AgLabSim = (() => {
       }
     }
   ];
+  var discoveryIfPatterns = [
+    { p: "cdp enable", run: (x) => x.eachPhys((c) => void delete c.cdp) },
+    { p: "no cdp enable", run: (x) => x.eachPhys((c) => void (c.cdp = false)) },
+    { p: "lldp transmit", run: (x) => x.eachPhys((c) => void delete c.lldpTx) },
+    { p: "no lldp transmit", run: (x) => x.eachPhys((c) => void (c.lldpTx = false)) },
+    { p: "lldp receive", run: (x) => x.eachPhys((c) => void delete c.lldpRx) },
+    { p: "no lldp receive", run: (x) => x.eachPhys((c) => void (c.lldpRx = false)) }
+  ];
   var routerIfPatterns = [
     ...commonSub,
     { p: "shutdown", run: (x) => x.eachPhys((c) => void (c.shutdown = true)) },
@@ -3216,7 +3404,8 @@ var AgLabSim = (() => {
     { p: "no description", run: (x) => x.eachPhys((c) => void (c.description = "")) },
     { p: "ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>", run: (x, a) => x.setIp(a[2], a[3]) },
     { p: "no ip address", run: (x) => x.eachPhys((c) => void (c.ip = null)) },
-    ...l3OptPatterns
+    ...l3OptPatterns,
+    ...discoveryIfPatterns
   ];
   var subIfPatterns = [
     ...commonSub,
@@ -3274,7 +3463,8 @@ var AgLabSim = (() => {
       { p: "channel-group <1-48:Channel group number> mode passive", run: (x, a) => x.channelGroup(Number(a[1]), "passive") },
       { p: "channel-group <1-48:Channel group number> mode desirable", run: (x, a) => x.channelGroup(Number(a[1]), "desirable") },
       { p: "channel-group <1-48:Channel group number> mode auto", run: (x, a) => x.channelGroup(Number(a[1]), "auto") },
-      { p: "no channel-group", run: (x) => x.noChannelGroup() }
+      { p: "no channel-group", run: (x) => x.noChannelGroup() },
+      ...discoveryIfPatterns
     ];
     if (def.l3) {
       p.push(
@@ -3606,6 +3796,12 @@ var AgLabSim = (() => {
       base2.shutdown = false;
       base2.description = "";
       return base2;
+    }
+    /** A physical port of this device (show commands); anything else is invalid input. */
+    physName(type, num, argIndex) {
+      const name = canonIf(type, num);
+      if (!name || !this.cfg.ifaces[name]) throw new InvalidAt(argIndex + 1);
+      return name;
     }
     enterIf(type, num) {
       const name = this.resolveIf(type, num, 1, true);
@@ -5275,6 +5471,7 @@ var AgLabSim = (() => {
       const oldMm = new Set(a.nativeMismatch.map(mm));
       for (const m of b.nativeMismatch) {
         if (oldMm.has(mm(m))) continue;
+        if (!cdpBetween(b, m.dev, m.port, m.peerDev, m.peerPort)) continue;
         this.log(
           m.dev,
           `%CDP-4-NATIVE_VLAN_MISMATCH: Native VLAN mismatch discovered on ${m.port} (${m.native}), with ${this.hostname(m.peerDev)} ${m.peerPort} (${m.peerNative}).`
@@ -23417,6 +23614,16 @@ const aglabLabber = (() => {
       const fits =
         !saved || Object.keys(rt.running[id].ifaces).every((p) => p in (saved.ifaces || {}));
       if (fits) rt.startup[id] = clone(saved);
+    }
+    // L5-f: CDP/LLDP ayarlarının AğLab modelinde karşılığı yok; çalışma zamanı durumu olarak
+    // yeni çalışma zamanına taşınır (BridgeError değildir).
+    for (const [id, cfg] of Object.entries(rt.running)) {
+      const prev = old.running[id];
+      if (!prev) continue;
+      for (const key of ['cdpRun', 'lldpRun']) if (key in prev) cfg[key] = prev[key];
+      for (const [port, c] of Object.entries(cfg.ifaces))
+        for (const key of ['cdp', 'lldpTx', 'lldpRx'])
+          if (prev.ifaces[port] && key in prev.ifaces[port]) c[key] = prev.ifaces[port][key];
     }
     for (const k2 of old.errdis) if (rt.topo.devices[k2.split('|')[0]]) rt.errdis.add(k2);
     for (const m of old.seen) rt.seen.add(m);

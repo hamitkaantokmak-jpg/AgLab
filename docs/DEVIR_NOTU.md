@@ -1,4 +1,4 @@
-# Devir notu — Labber entegrasyonu (L5-b → L5 kalanı)
+# Devir notu — Labber entegrasyonu (L5-f → L5-e → L5-c → L5-d)
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
@@ -21,15 +21,16 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L4 Router, AD, özyinelemeli statik rota; Akademi M4 + routing senaryoları | #64 | birleşti |
 | AGL-036 öğretmen çözümü (`no ip route`), öğretmen CLI testi gerçek başlangıçtan | #65 | birleşti |
 | L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | birleşti |
-| CI tetikleme: push yalnız main, dal başına `concurrency` | #67 | açık (birleşmeyi bekliyor) |
-| L5-b DHCP/DNS; `relay-trunk` | #68 | açık (birleşmeyi bekliyor; dalı #67'nin dalından) |
+| CI tetikleme: push yalnız main, dal başına `concurrency` | #67 | birleşti |
+| L5-b DHCP/DNS; `relay-trunk` | #68 | birleşti (aynı işi yapan #69 kapatıldı) |
+| L5-f CDP/LLDP | #70 (main'den) | açık (birleşmeyi bekliyor) |
 
-**Sıradaki: L5-c ACL** (sonra L5-d NAT/PAT, L5-e port security, L5-f CDP/LLDP). Dal zinciri:
-CI tetikleme (#67) → L5-b (`claude/l5b-dhcp-dns`) → L5-c → L5-d → L5-e → L5-f; her biri ayrı
-PR, bir öncekinin dalından, hiçbiri birleştirilmez; bir PR'ın CI'ı kırmızıysa sonrakine
-geçilmez. Bugün eski motorda kalan içerik: `nat-pat` (ACL, NAT, HTTP servisi), `bgp-as`,
-`port-security` (`LAB_MOTOR_HARITASI.md` özet tablosu). Kapsam dışı: BGP, PKT IOS metin yolu,
-içe aktarmanın Labber'a geçmesi, arayüz değişikliği, Canlı Lab.
+**Sıradaki (kullanıcı talimatı, sırayla):** L5-e port security → L5-c ACL → L5-d NAT/PAT.
+Dal zinciri: L5-f (main'den) → L5-e → L5-c → L5-d; her biri ayrı PR, bir öncekinin dalından,
+hiçbiri birleştirilmez. CI sonucunu kullanıcı denetler (oturum CI'ı beklemez). Bugün eski
+motorda kalan içerik: `nat-pat` (ACL, NAT, HTTP servisi), `bgp-as`, `port-security`
+(`LAB_MOTOR_HARITASI.md` özet tablosu). Kapsam dışı: BGP, PKT IOS metin yolu, içe aktarmanın
+Labber'a geçmesi, arayüz değişikliği, Canlı Lab, DHCP snooping, DAI.
 
 Kalan PR'ların kapsamı (kullanıcı talimatı):
 - **L5-c ACL:** standart ve genişletilmiş, numaralı ve isimli ACL; `ip access-group in/out`;
@@ -44,9 +45,7 @@ Kalan PR'ların kapsamı (kullanıcı talimatı):
   `show port-security interface`; `port-security` senaryosu Labber'a geçer. Oracle:
   `simulator/port-security.js` + `tests/node/test_port_security.cjs`; Labber'ın err-disable
   altyapısı (`rt.errdis`) yeniden kullanılır.
-- **L5-f CDP/LLDP:** CDP varsayılan açık, LLDP kapalı; `lldp run`, `cdp run`, arayüz bazında
-  kapatma; `show cdp neighbors [detail]`, `show lldp neighbors [detail]`; komşu tablosu kablo
-  ve güç değişikliğiyle güncellenir. Müfredat #12 (bkz. `MUFREDAT.md`) pratiği bu PR'la açılır.
+- **L5-f CDP/LLDP:** yapıldı (aşağıdaki bölüm).
 
 CI (`aglab-ci.yml`): `push` yalnız `main`'de tetiklenir, PR'lar `pull_request` ile koşar;
 `concurrency` aynı dalın süren eski koşusunu iptal eder. `real-lab-live.yml` değişmedi.
@@ -322,6 +321,25 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
   ve başarılı durumlar, eski motorla parite fark 0, kayıt).
 - **Kararlar / doğrulanmayanlar**: `UYUMLULUK_MATRISI.md` "L5-b" (çakışma denetimi, kira
   süresi, `show ip dhcp pool` ayrıntıları, hata metinleri "doğrulanmadı").
+
+## L5-f — CDP/LLDP (yapıldı, PR açık)
+
+- **Labber**: `src/sim/discovery.ts` — komşular türetilmiş durumdan anında: fiziksel link up
+  (kablo, güç, shutdown, err-disable), karşı uç PC değil, CDP için iki cihazda `cdp run` ve iki
+  portta `cdp enable`; LLDP için iki cihazda `lldp run`, karşı portta `lldp transmit`, yerel
+  portta `lldp receive`. Ayarlar: `SwitchConfig.cdpRun` (undefined = açık), `lldpRun`
+  (undefined = kapalı), `PhysIfConfig.cdp/lldpTx/lldpRx` (undefined = açık). running-config
+  yalnız varsayılandan farkı yazar (`no cdp run`, `lldp run`, ` no cdp enable`, …).
+  `show cdp neighbors [detail]`, `show cdp interface [<if>]`, `show lldp neighbors [detail]`;
+  Holdtime sabit (CDP 180, LLDP 120). `%CDP-4-NATIVE_VLAN_MISMATCH` yalnız iki uçta CDP
+  açıkken yazılır (`cdpBetween`).
+- **Köprü**: AğLab modelinde karşılığı yok; `toAglab` bu alanları yok sayar (BridgeError değil).
+  Düzenleyici değişikliğinde (`reconcile`) eski çalışma zamanından taşınır; sayfa yenilenince
+  kayıtlı AğLab JSON'undan başlanır ve varsayılana döner (UYUMLULUK_MATRISI "L5-f").
+- **Testler**: `tests/sim/discovery.test.ts` (IOS sütunları, detail, kablo/güç/shutdown ile
+  düşme, `no cdp enable`, `no cdp run`, native VLAN syslog'u, LLDP kapalı/tek uç/iki uç,
+  transmit/receive yönü); `test_aglab_labber_terminal` terminalden `show cdp neighbors`.
+  Eski motorda CDP/LLDP yok: parite karşılaştırması yok (fark 0).
 
 ## Kurallar hatırlatması
 

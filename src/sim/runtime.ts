@@ -1,5 +1,6 @@
 // Lab runtime: owns configs, recomputes derived state, emits syslog on state changes.
 
+import { cdpBetween } from './discovery'
 import { defaultSwitchConfig } from './config'
 import { apipaFor, dhcpDiscover, isApipa, type DhcpResult } from './dhcp'
 import { bpduViolations, type Derived } from './engine'
@@ -440,6 +441,7 @@ export class LabRuntime {
     const oldMm = new Set(a.nativeMismatch.map(mm))
     for (const m of b.nativeMismatch) {
       if (oldMm.has(mm(m))) continue
+      if (!cdpBetween(b, m.dev, m.port, m.peerDev, m.peerPort)) continue
       this.log(
         m.dev,
         `%CDP-4-NATIVE_VLAN_MISMATCH: Native VLAN mismatch discovered on ${m.port} (${m.native}), with ${this.hostname(m.peerDev)} ${m.peerPort} (${m.peerNative}).`,

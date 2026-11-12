@@ -171,6 +171,16 @@ const aglabLabber = (() => {
         !saved || Object.keys(rt.running[id].ifaces).every((p) => p in (saved.ifaces || {}));
       if (fits) rt.startup[id] = clone(saved);
     }
+    // L5-f: CDP/LLDP ayarlarının AğLab modelinde karşılığı yok; çalışma zamanı durumu olarak
+    // yeni çalışma zamanına taşınır (BridgeError değildir).
+    for (const [id, cfg] of Object.entries(rt.running)) {
+      const prev = old.running[id];
+      if (!prev) continue;
+      for (const key of ['cdpRun', 'lldpRun']) if (key in prev) cfg[key] = prev[key];
+      for (const [port, c] of Object.entries(cfg.ifaces))
+        for (const key of ['cdp', 'lldpTx', 'lldpRx'])
+          if (prev.ifaces[port] && key in prev.ifaces[port]) c[key] = prev.ifaces[port][key];
+    }
     for (const k2 of old.errdis) if (rt.topo.devices[k2.split('|')[0]]) rt.errdis.add(k2);
     for (const m of old.seen) rt.seen.add(m);
     for (const a of old.arp) if (rt.topo.devices[a.split('>')[0]]) rt.arp.add(a);

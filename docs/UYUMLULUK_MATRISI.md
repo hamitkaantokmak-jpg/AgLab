@@ -173,3 +173,23 @@ ile karşılaştırır. Akademi lablarının hiçbiri DHCP/DNS kullanmaz (40 lab
 | Sunucu yanıt vermezse | PC'nin adresi değişmez | Link-local adresi olan PC'nin durumu değişmez; olmayan PC kendine MAC'ten türetilen `169.254.x.y/16` atar, ağ geçidi boşalır, önceki kirası düşer | **Labber (Windows APIPA davranışı).** Gerçek VPCS link-local adres atamaz; çıktıdaki `Autoconfiguration IPv4 address …` satırı AğLab'a özgüdür. Başarısız yenilemede eski kiranın hemen düşmesi sadeleştirmedir (gerçekte süre dolana kadar kalır). |
 | `nslookup <ad>` | Topolojideki herhangi bir DNS sunucusunu kullanır; bilinmeyen ad için `93.184.216.34` döndürür | PC'nin DNS sunucusu (`ip dns A.B.C.D` ya da kiradan) erişilebilir ve DNS servisi açık olmalı; adlar lab cihazlarının adlarıdır; bilinmeyen ad `Non-existent domain` | **Labber.** Eski motorun sabit yanıtı "desteklenmeyeni çalışıyormuş gibi gösterme" ilkesine aykırıydı. Çıktı Windows `nslookup` biçimindedir; kayıt türleri, özyineleme ve elle DNS kaydı modellenmez. |
 | Sunucu terminali | `service dhcp\|dns\|http on\|off`, `show services`, `show ip dhcp binding` | Aynı komutlar (HTTP hariç) + `show dns` | **HTTP servisi Labber'da yok:** açık HTTP servisi olan sunucu eski motor kararıdır (`nat-pat`; L5-d'de ele alınır). `relay-trunk` sunucusunda yalnız DHCP açık bırakıldı (şablonun DNS/HTTP servisleri senaryoda kullanılmıyordu). |
+
+## L5-f: CDP ve LLDP (Labber)
+
+Eski motorda CDP/LLDP yoktur; karşılaştırılacak eski davranış yok. Sorun Çöz/Akademi
+içeriğinin motor kararı değişmez.
+
+| Konu | Labber | Not |
+|---|---|---|
+| Varsayılanlar | CDP açık (`cdp run`), LLDP kapalı; arayüzde CDP ve LLDP gönderme/alma açık | IOS varsayılanı. |
+| Komşu tablosu | Kablo, güç, shutdown, err-disable ve cdp/lldp ayarı değişince **anında** güncellenir | **Holdtime simüle edilmez**: gerçek IOS'ta komşu holdtime (CDP 180 s, LLDP 120 s) dolana kadar tabloda kalır. `Holdtme`/`Hold-time` sütunu yapılandırılmış süreyi gösterir, geri saymaz. |
+| PC'ler | CDP/LLDP göndermez | VPCS davranışı. |
+| `no cdp enable` | Port CDP göndermez ve almaz; komşu iki yönde de görünmez | IOS. |
+| `no lldp transmit` / `no lldp receive` | Yönlü: göndermeyen portun karşısı onu görmez; almayan port komşuyu görmez | IOS. |
+| `%CDP-4-NATIVE_VLAN_MISMATCH` | Yalnız iki uçta CDP açıkken | IOS'ta bu ileti CDP'den gelir; uyuşmazlık trafiği yine keser. |
+| Yetenek ve platform | Switch `S I`, L3 switch `R S I`, router `R I`; LLDP `B`, `B,R`, `R` | **Doğrulanmadı**: platforma göre gerçek yetenek listesi (ör. ISR'lerde `R B S I`). |
+| `show cdp neighbors detail` | Device ID, IP adresi (routed portun adresi, yoksa ilk SVI), platform, arayüzler, holdtime, IOS sürümü, duplex | **Doğrulanmadı**: `Native VLAN`, `VTP Management Domain`, `Peer Source_Port` gibi platforma bağlı satırlar yok; sürüm metni simüle. |
+| `show lldp neighbors detail` | Chassis id, Port id, System Name/Description, capabilities, yönetim adresi | **Doğrulanmadı**: TLV ayrıntıları (Auto Negotiation, Vlan ID, Media Attachment) kısaltılmış. |
+| Kalıcılık | Ayarlar çalışma zamanı durumudur; AğLab JSON'unda alan yok | Düzenleyici değişikliğinde taşınır; sayfa yenilenince varsayılana döner (BridgeError verilmez). |
+| **Desteklenmiyor** | `show cdp`, `show cdp entry`, `show cdp traffic`, `cdp timer`, `cdp holdtime`, `lldp timer`, `lldp holdtime`, `show lldp`, `show lldp interface`, `show lldp traffic` | Komut `% Invalid input` verir. |
+
