@@ -13,7 +13,7 @@ import { defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED
 import { LabRuntime } from '../sim/runtime'
 import { isApipa } from '../sim/dhcp'
 import type { DhcpPool, Hardware, L3Opts, LabDef, OspfConfig, PcConfig, PcDef, StaticRoute, SubIfConfig, SwitchConfig, SwitchDef } from '../sim/types'
-import { canonIf, clone, ipToInt, isIp, maskToPrefix, networkOf, ports as expandPorts, prefixToMask } from '../sim/util'
+import { canonIf, clone, ipToInt, isIp, maskToPrefix, networkOf, normalizeMac, ports as expandPorts, prefixToMask } from '../sim/util'
 import type { AglabDevice, AglabInterface, AglabLink, AglabStaticRoute, AglabTopology } from './aglab'
 
 export interface UnsupportedItem {
@@ -39,6 +39,8 @@ export interface BridgeResult {
   running: Record<string, SwitchConfig>
   pcs: Record<string, PcConfig>
   report: BridgeReport
+  /** L5-e: err-disabled ports ('dev|canonical port') from AğLab `errdisabled` (psecure-violation) */
+  errdis?: string[]
 }
 
 export const MODEL_L2 = 'WS-C2960-24TT-L'
@@ -72,7 +74,11 @@ const STATIC_ROUTE_FIELDS = new Set(['network', 'mask', 'nextHop', 'distance'])
 const OSPF_FIELDS = new Set(['pid', 'routerId', 'networks'])
 // Server: PC gibi bir uç; L5-b'den beri DHCP ve DNS servisleri modellenir (HTTP L5-d'ye kadar yok).
 const SERVER_FIELDS = new Set([...PC_FIELDS, 'services'])
-const PHYS_FIELDS = new Set(['mode', 'vlan', 'allowed', 'nativeVlan', 'enabled'])
+// L5-e: `portSecurity {enabled, max, violation, macs}` ve `errdisabled` (port security ihlali)
+const PHYS_FIELDS = new Set(['mode', 'vlan', 'allowed', 'nativeVlan', 'enabled', 'portSecurity', 'errdisabled'])
+const PS_FIELDS = ['enabled', 'max', 'violation', 'macs']
+/** AğLab MAC yazımı (`02:00:00:00:00:fe`) ⇄ Labber (`0200.0000.00fe`). */
+const colonMac = (dotted: string) => dotted.replace(/\./g, '').match(/../g)!.join(':')
 const SVI_FIELDS = new Set(['ip', 'mask', 'enabled', 'vlan'])
 
 const FEATURE_REASON: Record<string, string> = {
@@ -158,6 +164,7 @@ export function toLabber(input: AglabTopology): BridgeResult {
   const pcs: Record<string, PcConfig> = {}
   const canonByDevice: Record<string, Record<string, string>> = {}
   const usedMacs = new Map<string, string>()
+  const errdis: string[] = []
   const ids = new Set<string>()
 
   const claimMac = (dev: string, mac: string) => {
@@ -575,6 +582,29 @@ export function toLabber(input: AglabTopology): BridgeResult {
       if (allowed.some((x) => x === null)) reject(id, `${name}.allowed`, 'Geçersiz izinli VLAN listesi')
       else phys.allowed = [...new Set(allowed as number[])].sort(sortNum)
       if (mode === 'trunk' && sw.needsEncap) phys.encapDot1q = true
+      // L5-e: port security (eski motor kuralları: max 1-1024, violation, geçerli tekil MAC'ler)
+      if (iface.portSecurity !== undefined) {
+        const ps = iface.portSecurity as Record<string, unknown>
+        const macs = Array.isArray(ps?.['macs']) ? (ps['macs'] as unknown[]).map((m) => (typeof m === 'string' ? normalizeMac(m) : null)) : null
+        const max = ps?.['max']
+        if (
+          !ps || typeof ps !== 'object' || Object.keys(ps).some((k) => !PS_FIELDS.includes(k)) || typeof ps['enabled'] !== 'boolean' ||
+          !Number.isInteger(max) || (max as number) < 1 || (max as number) > 1024 ||
+          !['shutdown', 'restrict', 'protect'].includes(String(ps['violation'])) ||
+          !macs || macs.some((m) => !m || m === '0000.0000.0000' || parseInt(m.slice(0, 2), 16) % 2 === 1) ||
+          new Set(macs).size !== macs.length || macs.length > (max as number)
+        ) reject(id, `${name}.portSecurity`, 'Geçersiz portSecurity yapılandırması')
+        else if (ps['enabled'] && mode !== 'access') reject(id, `${name}.portSecurity`, 'Port security yalnız access portta (IOS)')
+        else
+          phys.portSecurity = {
+            enabled: ps['enabled'] as boolean, max: max as number, violation: ps['violation'] as 'shutdown' | 'restrict' | 'protect',
+            sticky: false, macs: macs as string[], stickyMacs: [],
+          }
+      }
+      if (iface.errdisabled !== undefined) {
+        if (typeof iface.errdisabled !== 'boolean') reject(id, `${name}.errdisabled`, 'errdisabled true/false olmalı')
+        else if (iface.errdisabled) errdis.push(`${id}|${c}`)
+      }
       cfg.ifaces[c] = phys
     }
     // AğLab'da arayüz kaydı olmayan port: access, VLAN 1 (Labber varsayılanı dynamic-auto).
@@ -628,7 +658,7 @@ export function toLabber(input: AglabTopology): BridgeResult {
   for (const r of report.rejected) reasons.add('Reddedildi: ' + r.reason)
   report.reasons = [...reasons].sort()
   report.engineDecision = report.unsupported.length || report.rejected.length ? 'legacy' : 'labber'
-  return { def, running, pcs, report }
+  return { def, running, pcs, report, ...(errdis.length ? { errdis } : {}) }
 }
 
 /** Köprü sonucundan bir LabRuntime kurar (yapılandırma köprüden gelir, IOS betiği çalışmaz). */
@@ -636,6 +666,10 @@ export function createRuntime(result: BridgeResult): LabRuntime {
   return new LabRuntime(result.def, (rt) => {
     for (const [id, cfg] of Object.entries(result.running)) rt.running[id] = clone(cfg)
     for (const [id, pc] of Object.entries(result.pcs)) rt.pcs[id] = clone(pc)
+    for (const k of result.errdis ?? []) {
+      rt.errdis.add(k)
+      rt.errCause.set(k, 'psecure-violation')
+    }
   })
 }
 
@@ -648,7 +682,7 @@ export class BridgeError extends Error {}
  * AğLab modelinde ifade edilemeyen bir Labber durumu açık bir BridgeError ile durur.
  */
 export function toAglab(
-  rt: { running: Record<string, SwitchConfig>; pcs: Record<string, PcConfig>; hw?: Hardware; def?: LabDef },
+  rt: { running: Record<string, SwitchConfig>; pcs: Record<string, PcConfig>; hw?: Hardware; def?: LabDef; errdis?: Set<string> },
   original: AglabTopology,
 ): AglabTopology {
   const out = clone(original) as AglabTopology
@@ -771,6 +805,7 @@ export function toAglab(
       if (phys.nonegotiate) fail(`${canon} nonegotiate`)
       if (phys.description) fail(`${canon} description`)
       if (phys.bpduguard !== undefined) fail(`${canon} bpduguard`)
+      if (phys.portSecurity?.sticky || phys.portSecurity?.stickyMacs.length) fail(`${canon} port-security mac-address sticky`)
       if (phys.l3 || phys.ip) fail(`${canon} L3 ayarı`)
       const prev = d.interfaces[name]
       const def = defaultPhys()
@@ -784,6 +819,17 @@ export function toAglab(
       put('allowed', phys.allowed, [])
       put('nativeVlan', phys.nativeVlan, def.nativeVlan)
       put('enabled', !phys.shutdown, true)
+      // L5-e: yapılandırılmış güvenli MAC'ler (dinamik öğrenilenler yazılmaz; IOS gibi kalıcı değil)
+      const ps = phys.portSecurity
+      if (ps) {
+        const old = (prev?.['portSecurity'] ?? {}) as { macs?: string[] }
+        const macs = ps.macs.map((m) => old.macs?.find((x) => normalizeMac(x) === m) ?? colonMac(m))
+        iface['portSecurity'] = { enabled: ps.enabled, max: ps.max, violation: ps.violation, macs }
+      } else if (prev && 'portSecurity' in prev) delete iface['portSecurity']
+      if (rt.errdis) {
+        const on = rt.errdis.has(`${id}|${canon}`)
+        if ((prev && 'errdisabled' in prev) || on) iface['errdisabled'] = on
+      }
       if (prev || Object.keys(iface).length) d.interfaces[name] = iface
     }
     for (const [v, svi] of Object.entries(cfg.svis)) {

@@ -54,7 +54,7 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `subif-missing` | Alt arayüz eksik · router-on-a-stick | **Labber** |
 | `ospf-area` | OSPF area uyuşmazlığı | **Labber** |
 | `bgp-as` | BGP remote-AS uyuşmazlığı | Eski motor: BGP Labber'da yok (L5) |
-| `port-security` | Port-security ihlali | Eski motor: Port security Labber'da yok (L5) |
+| `port-security` | Port-security ihlali | **Labber** |
 | `return-route` | return-route | **Labber** |
 | `forward-route` | forward-route | **Labber** |
 | `default-route` | default-route | **Labber** |
@@ -129,9 +129,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 34 | 3 | 37 |
+| Ortak senaryolar | 35 | 2 | 37 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 87 | 3 | 90 |
+| Toplam | 88 | 2 | 90 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
@@ -139,7 +139,6 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | BGP Labber'da yok (L5) | 1 |
 | NAT Labber'da yok (L5) | 1 |
 | NAT çeviri tablosu Labber'da yok (L5) | 1 |
-| Port security Labber'da yok (L5) | 1 |
 | Sunucu servisleri içinde HTTP Labber'da yok (L5) | 1 |
 
 ACL/NAT için security_smoke ayrı native operatör örnekleridir; mevcut 40 görevin ACL/NAT alanlarını dönüştürdüğü veya native doğruladığı iddia edilmez. ACL 28 ve SNAT/PAT 21 native kontrolü [CI 42205155584 / 6f651fe](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42205155584) güvenlik işlerinde geçti; görev aktarımı sayılmaz.

@@ -5,6 +5,7 @@ import { allows, bpduGuardOn, egress, portForwards, vlanExists, type LPort } fro
 import { macTable, routeTable, type RouteEntry } from '../net'
 import type { OspfIf } from '../ospf'
 import type { LabRuntime } from '../runtime'
+import { psConfigLines } from '../portsec'
 import { pk } from '../topology'
 import type { IpAddr, L2IfConfig, L3Opts, PhysIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { formatVlanList, ifType, intToIp, ipToInt, macAdd, maskToPrefix, pad, padL, prefixMaskInt, shortIf } from '../util'
@@ -181,7 +182,11 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
       o.push(' no switchport', ...l3Lines(ic.ip, ic.l3, true))
       if (ic.shutdown) o.push(' shutdown')
     } else {
-      o.push('interface ' + p, ...l2Lines(ic, !!sw.needsEncap))
+      // IOS order: switchport lines, port-security lines, then shutdown / spanning-tree
+      const l2 = l2Lines(ic, !!sw.needsEncap)
+      const at = l2.findIndex((l) => l === ' shutdown' || l.startsWith(' spanning-tree'))
+      l2.splice(at < 0 ? l2.length : at, 0, ...psConfigLines(ic.portSecurity))
+      o.push('interface ' + p, ...l2)
       if (ic.bpduguard !== undefined) o.push(` spanning-tree bpduguard ${ic.bpduguard ? 'enable' : 'disable'}`)
       if (ic.channel) o.push(` channel-group ${ic.channel.id} mode ${ic.channel.mode}`)
     }
@@ -607,7 +612,7 @@ export function showErrDisabled(rt: LabRuntime, dev: string): string[] {
   const o = ['', 'Port      Name               Status       Reason               Err-disabled Vlans']
   for (const p of sw.ports) {
     if (!d.phys[pk(dev, p)]?.errDisabled) continue
-    o.push(pad(shortIf(p), 10) + pad(rt.running[dev]!.ifaces[p]!.description.slice(0, 18), 19) + pad('err-disabled', 13) + 'bpduguard')
+    o.push(pad(shortIf(p), 10) + pad(rt.running[dev]!.ifaces[p]!.description.slice(0, 18), 19) + pad('err-disabled', 13) + (rt.errCause.get(pk(dev, p)) ?? 'bpduguard'))
   }
   return o
 }

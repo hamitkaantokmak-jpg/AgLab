@@ -13,7 +13,8 @@ function sharedEngineCommandBlock(name, commands) {
   updateInspector();
   for (const raw of commands) {
     const before = $p('ptTerminal').childElementCount;
-    command(raw.replaceAll('$SOURCE_MAC', macOf(get(sharedScenario.sourceId))));
+    // IOS MAC yazımı (H.H.H); eski motor da kabul eder
+    command(raw.replaceAll('$SOURCE_MAC', macFmt(macOf(get(sharedScenario.sourceId)))));
     const errors = [...$p('ptTerminal').children]
       .slice(before)
       .filter((e) => e.classList.contains('outerr'));
@@ -59,7 +60,7 @@ function loadNetworkScenario(key) {
     pre.textContent =
       block.device +
       '\n' +
-      block.commands.map((c) => c.replaceAll('$SOURCE_MAC', macOf(source))).join('\n');
+      block.commands.map((c) => c.replaceAll('$SOURCE_MAC', macFmt(macOf(source)))).join('\n');
     hints.append(pre);
   }
   panel.append(hints);
@@ -284,10 +285,14 @@ window.aglabSharedEngine = {
   validateScenarios: validateSharedScenarios,
   commandBlock: sharedEngineCommandBlock,
   // Senaryo hedefi ping'i yüklü içeriğin motorunda (L4: Labber içeriğinde Labber ping'i).
-  probe: () =>
-    sharedScenario.engine?.engine === 'labber'
-      ? aglabEngineChoice.labberPing(sharedScenario.sourceId, sharedScenario.target)
-      : ping(sharedScenario.sourceId, sharedScenario.target),
+  // L5-e: Labber içeriğinde kaynak PC gerçekten gönderir (öğrencinin ping'i gibi): port
+  // security öğrenir ya da ihlali uygular; sonuç Labber ping'idir.
+  probe: () => {
+    if (sharedScenario.engine?.engine !== 'labber')
+      return ping(sharedScenario.sourceId, sharedScenario.target);
+    if (get(sharedScenario.sourceId)?.type === 'PC') aglabLabber.hostSends(sharedScenario.sourceId);
+    return aglabEngineChoice.labberPing(sharedScenario.sourceId, sharedScenario.target);
+  },
   // Yüklü senaryonun motor kararı ({engine, reasons}) ve senaryo hedefinin o motordaki sonucu.
   engine: () => clone(sharedScenario.engine || null),
   target: () => sharedScenario.target,

@@ -213,6 +213,7 @@ class CommonEngineTests(unittest.TestCase):
         self.assertFalse(self.run_js("aglabSharedEngine.routes('R1')"))
 
     def test_05_port_security_modes_and_recovery(self):
+        """L5-e: port-security Labber kararında; probe() kaynak PC'nin gerçek trafiğidir."""
         for mode in ["shutdown", "restrict", "protect"]:
             with self.subTest(mode=mode):
                 self.load("port-security")
@@ -232,11 +233,17 @@ class CommonEngineTests(unittest.TestCase):
                 )
                 self.assertEqual(bool(state.get("errdisabled")), mode == "shutdown")
                 if mode == "shutdown":
-                    self.assertTrue(
-                        self.run_js(
-                            "(()=>{try{aglabSharedEngine.commandBlock('SW-01',['enable','configure terminal','interface fa0/1','no shutdown']);return false}catch(e){return true}})()"
-                        )
+                    # L5-e (Labber, IOS): err-disabled portta tek başına `no shutdown` hata
+                    # vermez ama portu kurtarmaz; önce shutdown gerekir. Eski motor burada hata
+                    # satırı yazıyordu (UYUMLULUK_MATRISI "L5-e").
+                    self.command(
+                        "SW-01", ["enable", "configure terminal", "interface fa0/1", "no shutdown"]
                     )
+                    state = self.run_js(
+                        "academyEngine.snapshot().devices.find(d=>d.name==='SW-01').interfaces['fa0/1']"
+                    )
+                    self.assertTrue(state.get("errdisabled"))
+                    self.assertFalse(self.probe()["ok"])
                 self.solve("port-security")
                 self.assertTrue(self.probe()["ok"])
         self.load("port-security")

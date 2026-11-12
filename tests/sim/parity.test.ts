@@ -21,7 +21,7 @@ import { createRequire } from 'node:module'
 import { createRuntime, toLabber } from '../../src/sim-bridge/bridge'
 import type { AglabTopology } from '../../src/sim-bridge/aglab'
 import { crossVlan, egress, vlanExists } from '../../src/sim/engine'
-import { deliver, routeOut, routeTable } from '../../src/sim/net'
+import { deliver, pcNode, routeOut, routeTable } from '../../src/sim/net'
 import { randomTopology, withHardwareFaults } from './bridge.test'
 import { LabQuery } from '../../src/sim/query'
 
@@ -324,6 +324,62 @@ const ORACLE_CASES: { name: string; routes: any[]; route?: string; linkDown?: nu
   },
   { name: 'eski route alanı varsayılan rota', routes: [], route: '10.0.0.2', dst: ['4.1.1.1', '10.0.0.2'] },
 ]
+
+// ---- L5-e: port security (simulator/port-security.js portSecurityAllows) ----
+function legacyPortSecurity() {
+  const vm = require_('node:vm')
+  const events: string[] = []
+  const ctx: Record<string, unknown> = { WeakMap, WeakSet, Set, Object, Number, String, parseInt, macOf: (x: { mac: string }) => x.mac, saveTopology: () => {}, ethernetEvent: (e: string) => events.push(e) }
+  vm.createContext(ctx)
+  vm.runInContext(readFileSync(join(ROOT, 'simulator/port-security.js'), 'utf8'), ctx)
+  return (sw: unknown, port: string, mac: string) => {
+    Object.assign(ctx, { __sw: sw, __src: { mac } })
+    return vm.runInContext(`portSecurityAllows(__sw, ${JSON.stringify(port)}, __src)`, ctx) as boolean
+  }
+}
+
+describe('oracle paritesi: port security (L5-e, port-security.js)', () => {
+  // Bilinen fark: protect modunda eski motor ihlal sayacını artırır; IOS (Labber) saymaz.
+  it('ilk çerçeve kararı, err-disable ve sayaç rastgele yapılandırmalarda eski motorla aynı', () => {
+    const allows = legacyPortSecurity()
+    const pool = ['02:00:00:00:00:01', '02:00:00:00:00:02', '02:00:00:00:00:03', '02:00:00:00:00:04']
+    let denied = 0
+    let admitted = 0
+    for (let seed = 1; seed <= 200; seed++) {
+      const r = rng(seed)
+      const max = 1 + r(3)
+      const macs = pool.filter(() => r(3) === 0).slice(0, max)
+      const violation = (['shutdown', 'restrict', 'protect'] as const)[r(3)]!
+      const hostMac = pool[r(pool.length)]!
+      const ps = { enabled: true, max, violation, macs }
+      // eski motor
+      const legacyIf: Record<string, unknown> = { mode: 'access', vlan: 1, enabled: true, portSecurity: JSON.parse(JSON.stringify(ps)) }
+      const legacyOk = allows({ id: 'sw', interfaces: { 'fa0/1': legacyIf } }, 'fa0/1', hostMac)
+      const legacyErr = legacyIf['errdisabled'] === true
+      // Labber (köprü)
+      const t: AglabTopology = {
+        devices: [
+          { id: 'pc', name: 'PC', type: 'PC', enabled: true, ip: '10.0.0.1', mask: '255.255.255.0', mac: hostMac, ports: ['eth0'] },
+          { id: 'sw', name: 'SW', type: 'Switch', enabled: true, ports: ['fa0/1'], vlans: [1], interfaces: { 'fa0/1': { mode: 'access', vlan: 1, enabled: true, portSecurity: ps } } },
+        ],
+        links: [{ a: 'pc', portA: 'eth0', b: 'sw', portB: 'fa0/1', up: true }],
+      }
+      const bridged = toLabber(t)
+      expect(bridged.report.engineDecision, `seed ${seed} ${JSON.stringify(bridged.report.reasons)}`).toBe('labber')
+      const rt = createRuntime(bridged)
+      const labOk = pcNode(rt.derived, 'pc') !== null
+      rt.hostSends('pc')
+      const labErr = rt.errdis.has('sw|FastEthernet0/1')
+      const labCount = rt.psViolations.get('sw|FastEthernet0/1') ?? 0
+      const legacyCount = legacyOk ? 0 : violation === 'protect' ? 0 : 1
+      expect([labOk, labErr, labCount], `seed ${seed} ${JSON.stringify(ps)} ${hostMac}`).toEqual([legacyOk, legacyErr, legacyCount])
+      if (legacyOk) admitted++
+      else denied++
+    }
+    expect(admitted).toBeGreaterThan(20)
+    expect(denied).toBeGreaterThan(20)
+  })
+})
 
 describe('oracle paritesi: dot1q alt arayüzleri (L5-a, test_engine_routing.cjs)', () => {
   const withSub = (extra: Record<string, any> = {}) => {

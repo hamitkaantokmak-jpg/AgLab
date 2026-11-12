@@ -67,7 +67,24 @@ export interface DhcpBinding {
   expires: string
 }
 
+/** L5-e: `switchport port-security …` on an access port. */
+export interface PortSecurityConfig {
+  /** `switchport port-security` (the other lines may be configured while it is off) */
+  enabled: boolean
+  /** `maximum N` (default 1) */
+  max: number
+  violation: 'shutdown' | 'restrict' | 'protect'
+  /** `mac-address sticky`: learned addresses become sticky (written to running-config) */
+  sticky: boolean
+  /** `mac-address H.H.H` (SecureConfigured), canonical dotted */
+  macs: string[]
+  /** sticky addresses (SecureSticky), canonical dotted */
+  stickyMacs: string[]
+}
+
 export interface PhysIfConfig extends L2IfConfig {
+  /** L5-e: port security (access ports only) */
+  portSecurity?: PortSecurityConfig
   /** L5-f: `no cdp enable` → false (undefined = CDP on the port) */
   cdp?: boolean
   /** L5-f: `no lldp transmit` / `no lldp receive` → false (undefined = on) */

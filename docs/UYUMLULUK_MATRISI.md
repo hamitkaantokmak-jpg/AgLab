@@ -193,3 +193,25 @@ içeriğinin motor kararı değişmez.
 | Kalıcılık | Ayarlar çalışma zamanı durumudur; AğLab JSON'unda alan yok | Düzenleyici değişikliğinde taşınır; sayfa yenilenince varsayılana döner (BridgeError verilmez). |
 | **Desteklenmiyor** | `show cdp`, `show cdp entry`, `show cdp traffic`, `cdp timer`, `cdp holdtime`, `lldp timer`, `lldp holdtime`, `show lldp`, `show lldp interface`, `show lldp traffic` | Komut `% Invalid input` verir. |
 
+## L5-e: Port security (Labber kararları)
+
+`port-security` senaryosu Labber kararındadır. Oracle paritesi: `tests/sim/parity.test.ts`
+200 rastgele yapılandırmada (maximum, yapılandırılmış MAC'ler, ihlal modu, kaynak MAC) ilk
+çerçeve kararını ve err-disable sonucunu `simulator/port-security.js` `portSecurityAllows` ile
+karşılaştırır (fark 0; sayaç için aşağıdaki karar).
+
+| Konu | Eski motor | Labber | Karar |
+|---|---|---|---|
+| Model | `portSecurity {enabled, max, violation, macs}`, `errdisabled` | `PhysIfConfig.portSecurity {enabled, max, violation, sticky, macs, stickyMacs}`; err-disable `rt.errdis` (neden `psecure-violation`) | **Köprü iki yönde.** AğLab `macs` → yapılandırılmış (SecureConfigured) adresler; özgün MAC yazımı korunur. |
+| Öğrenilen adresler | Kalıcı olarak `macs` listesine yazılır | IOS: dinamik güvenli adres (SecureDynamic) yalnız çalışma zamanında; port düşünce silinir; `mac-address sticky` ile running-config'e yazılır | **Labber (IOS).** Dinamik adresler AğLab JSON'una yazılmaz. |
+| `sticky` | Yok | Var | AğLab modelinde yok → `toAglab` `BridgeError` (kayıt sessiz kaybolmaz). |
+| İhlal | İlk çerçevede: shutdown → err-disabled, restrict/protect → düşür | Aynı; shutdown ve restrict `%PORT_SECURITY-2-PSECURE_VIOLATION` (+ shutdown'da `%PM-4-ERR_DISABLE`) | **Labber (IOS).** |
+| İhlal sayacı | protect dahil her ihlalde artar | IOS: protect saymaz; restrict her denemede (gönderim komutu başına; IOS çerçeve başına sayar), shutdown bir kez | **Labber (IOS).** Parite testinde beklenen değer IOS'a göre. |
+| İhlalin tetiklenmesi | Her ping hesabı (değerlendirme dahil) | Uç trafik gönderdiğinde (VPCS `ping`, `trace`, `ip dhcp`); değerlendirme ping'i (LabQuery) salt okunurdur ama ihlaldeki uç ağa çıkamaz | **Labber.** Senaryo testi `probe()` Labber'da öğrencinin ping'i gibi gerçek trafik üretir. |
+| Err-disabled portta tek `no shutdown` | Hata satırı ("önce shutdown") | IOS: hata yok, port err-disabled kalır; `shutdown` → `no shutdown` kurtarır | **Labber (IOS).** `test_aglab_network_features` test_05 buna göre. |
+| Dinamik/trunk portta `switchport port-security …` | — | `Command rejected: Fa0/1 is a dynamic port.` / `… is a trunk port.` | IOS metni. |
+| `maximum` aralığı | 1–1024 | CLI `<1-8192>`; köprü eski sınırı (1–1024) uygular | **Doğrulanmadı:** platforma göre üst sınır. |
+| Port güvenliği açıkken porta trunk yapmak | — | Kabul edilir, güvenlik etkisiz olur (yalnız access portta uygulanır) | **Doğrulanmadı:** bazı IOS sürümleri reddeder. |
+| Arkasında switch olan güvenli port | Bütün kaynak MAC'ler sayılır | Yalnız doğrudan bağlı uç denetlenir | **Sınır.** İçerikte güvenli port hep uca bağlı. |
+| **Desteklenmiyor** | — | `switchport port-security aging …`, `errdisable recovery cause psecure-violation`, `show port-security interface X address`, `clear port-security` | Komut `% Invalid input` verir. |
+

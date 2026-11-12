@@ -1,8 +1,9 @@
 // L2 reachability and L3 forwarding on top of the derived state.
 
 import { crossVlan, egress, ingress, peerOf, portForwards, type Derived, type DupIp, type LPort } from './engine'
+import { psAdmits } from './portsec'
 import { pk } from './topology'
-import type { SwitchDef } from './types'
+import type { PcDef, SwitchDef } from './types'
 import { ifType, ipToInt, macAdd, maskToPrefix, prefixMaskInt, sameSubnet } from './util'
 
 export interface Node {
@@ -104,6 +105,8 @@ export function pcNode(d: Derived, pc: string): Node | null {
   if (!at) return null
   const lp = d.lportOfPhys[pk(at.dev, at.port)]
   if (!lp || !lp.active) return null
+  // L5-e: port security drops every frame of a violating source MAC at the ingress port
+  if (!psAdmits(d, at.dev, at.port, (d.topo.devices[pc] as PcDef).mac)) return null
   if (lp.routed) return routedNode(d, at.dev, at.port)
   const v = ingress(d, lp, 'u', 0)
   if (v === null || !portForwards(d, at.dev, lp, v)) return null

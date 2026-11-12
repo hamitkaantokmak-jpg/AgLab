@@ -3,11 +3,12 @@
 import { defaultSvi, defaultSwitchConfig, defaultVlanName, pickL2, RESERVED_VLANS } from '../config'
 import { arpMac, deliver, l3Ifs, ping } from '../net'
 import type { LabRuntime } from '../runtime'
-import type { ChannelMode, DhcpPool, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
+import type { ChannelMode, DhcpPool, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { canonIf, clone, ifNum, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
 import * as disc from '../discovery'
+import * as psec from '../portsec'
 
 export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp'
 
@@ -63,6 +64,9 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show cdp interface <if>', run: (x, a) => disc.showCdpInterface(x.rt, x.dev, x.physName(a[3]!, a[4]!, 3)), ifTypes: ['FastEthernet', 'GigabitEthernet'] },
     { p: 'show lldp neighbors', run: (x) => disc.showLldpNeighbors(x.rt, x.dev, false) },
     { p: 'show lldp neighbors detail', run: (x) => disc.showLldpNeighbors(x.rt, x.dev, true) },
+    { p: 'show port-security', run: (x) => psec.showPortSecurity(x.rt, x.dev) },
+    { p: 'show port-security address', run: (x) => psec.showPortSecurityAddress(x.rt, x.dev) },
+    { p: 'show port-security interface <if>', run: (x, a) => psec.showPortSecurityInterface(x.rt, x.dev, x.physName(a[3]!, a[4]!, 3)), ifTypes: ['FastEthernet', 'GigabitEthernet'] },
     { p: 'show history', run: (x) => x.history.slice(-20).map((h) => '  ' + h) },
     // L5-b: DHCP server
     { p: 'show ip dhcp binding', run: (x) => show.showDhcpBinding(x.rt, x.dev) },
@@ -238,7 +242,7 @@ const configPatterns = (def: SwitchDef): P[] => {
 
 const ROUTER_HIDDEN_CONFIG = /^(no )?(vlan|spanning-tree|errdisable) /
 /** Exec commands about L2 switching state that a router does not have. */
-const ROUTER_HIDDEN_SHOW = /^show (vlan|spanning-tree|mac address-table|interfaces (trunk|status|switchport)|interfaces <if> switchport|etherchannel|errdisable|vtp)/
+const ROUTER_HIDDEN_SHOW = /^show (vlan|spanning-tree|mac address-table|interfaces (trunk|status|switchport)|interfaces <if> switchport|etherchannel|errdisable|vtp|port-security)/
 
 const l3OptPatterns: P[] = [
   { p: 'ip ospf cost <1-65535:Cost>', run: (x, a) => x.eachL3((o) => void (o.ospfCost = Number(a[3]))) },
@@ -416,6 +420,21 @@ const l2IfPatterns = (def: SwitchDef): P[] => {
     { p: 'channel-group <1-48:Channel group number> mode auto', run: (x, a) => x.channelGroup(Number(a[1]), 'auto') },
     { p: 'no channel-group', run: (x) => x.noChannelGroup() },
     ...discoveryIfPatterns,
+    // L5-e: port security (access ports)
+    { p: 'switchport port-security', run: (x) => x.portSec((ps) => void (ps.enabled = true)) },
+    { p: 'no switchport port-security', run: (x) => x.portSec((ps) => void (ps.enabled = false)) },
+    { p: 'switchport port-security maximum <1-8192:Maximum addresses>', run: (x, a) => x.portSecMax(Number(a[3])) },
+    { p: 'no switchport port-security maximum', run: (x) => x.portSecMax(1) },
+    { p: 'switchport port-security violation shutdown', run: (x) => x.portSec((ps) => void (ps.violation = 'shutdown')) },
+    { p: 'switchport port-security violation restrict', run: (x) => x.portSec((ps) => void (ps.violation = 'restrict')) },
+    { p: 'switchport port-security violation protect', run: (x) => x.portSec((ps) => void (ps.violation = 'protect')) },
+    { p: 'no switchport port-security violation', run: (x) => x.portSec((ps) => void (ps.violation = 'shutdown')) },
+    { p: 'switchport port-security mac-address <H.H.H:48 bit mac address>', run: (x, a) => x.portSecMac(a[3]!, false, true) },
+    { p: 'no switchport port-security mac-address <H.H.H:48 bit mac address>', run: (x, a) => x.portSecMac(a[4]!, false, false) },
+    { p: 'switchport port-security mac-address sticky', run: (x) => x.portSecSticky(true) },
+    { p: 'no switchport port-security mac-address sticky', run: (x) => x.portSecSticky(false) },
+    { p: 'switchport port-security mac-address sticky <H.H.H:48 bit mac address>', run: (x, a) => x.portSecMac(a[4]!, true, true) },
+    { p: 'no switchport port-security mac-address sticky <H.H.H:48 bit mac address>', run: (x, a) => x.portSecMac(a[5]!, true, false) },
   ]
   if (def.l3) {
     p.push(
@@ -791,6 +810,63 @@ export class IosSession {
     base.shutdown = false
     base.description = ''
     return base
+  }
+
+  // ---- L5-e: port security ----
+
+  /** Apply to the selected ports; IOS rejects port security on trunk and dynamic ports. */
+  portSec(fn: (ps: PortSecurityConfig, name: string) => Out): Out {
+    const out: string[] = []
+    for (const name of this.ifs) {
+      const c = this.cfg.ifaces[name]
+      if (!c) continue
+      if (c.mode !== 'access') throw new CliError([`Command rejected: ${name} is a ${c.mode === 'trunk' ? 'trunk' : 'dynamic'} port.`])
+      const r = fn((c.portSecurity ??= psec.defaultPortSecurity()), name)
+      if (r) out.push(...r)
+    }
+    return out.length ? out : undefined
+  }
+
+  portSecMax(n: number): Out {
+    return this.portSec((ps, name) => {
+      const dyn = this.rt.psDynamic.get(`${this.dev}|${name}`) ?? []
+      if (n < psec.secureCount(ps, dyn)) return ['Maximum is less than number of currently secured mac-addresses.']
+      ps.max = n
+    })
+  }
+
+  portSecMac(raw: string, sticky: boolean, add: boolean): Out {
+    const mac = normalizeMac(raw)
+    if (!mac || parseInt(mac.slice(0, 2), 16) % 2 === 1) return ['% Invalid MAC address']
+    return this.portSec((ps, name) => {
+      const list = sticky ? ps.stickyMacs : ps.macs
+      if (!add) {
+        const i = list.indexOf(mac)
+        if (i >= 0) list.splice(i, 1)
+        return
+      }
+      if (ps.macs.includes(mac) || ps.stickyMacs.includes(mac)) return
+      if (ps.macs.length + ps.stickyMacs.length >= ps.max)
+        return [`Total secure mac-addresses on interface ${name} has reached maximum limit.`]
+      if (sticky) ps.sticky = true
+      list.push(mac)
+    })
+  }
+
+  /** `mac-address sticky`: dynamic addresses become sticky; `no …` turns sticky ones dynamic. */
+  portSecSticky(on: boolean): Out {
+    return this.portSec((ps, name) => {
+      const key = `${this.dev}|${name}`
+      if (on) {
+        ps.sticky = true
+        ps.stickyMacs.push(...(this.rt.psDynamic.get(key) ?? []))
+        this.rt.psDynamic.delete(key)
+      } else {
+        ps.sticky = false
+        this.rt.psDynamic.set(key, [...(this.rt.psDynamic.get(key) ?? []), ...ps.stickyMacs])
+        ps.stickyMacs = []
+      }
+    })
   }
 
   /** A physical port of this device (show commands); anything else is invalid input. */
