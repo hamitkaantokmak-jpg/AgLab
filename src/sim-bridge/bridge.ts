@@ -11,7 +11,8 @@
 import AgLabMacAddress from '../../simulator/mac-address.js'
 import { defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED_VLANS } from '../sim/config'
 import { LabRuntime } from '../sim/runtime'
-import type { Hardware, LabDef, OspfConfig, PcConfig, PcDef, StaticRoute, SubIfConfig, SwitchConfig, SwitchDef } from '../sim/types'
+import { isApipa } from '../sim/dhcp'
+import type { DhcpPool, Hardware, L3Opts, LabDef, OspfConfig, PcConfig, PcDef, StaticRoute, SubIfConfig, SwitchConfig, SwitchDef } from '../sim/types'
 import { canonIf, clone, ipToInt, isIp, maskToPrefix, networkOf, ports as expandPorts, prefixToMask } from '../sim/util'
 import type { AglabDevice, AglabInterface, AglabLink, AglabStaticRoute, AglabTopology } from './aglab'
 
@@ -53,20 +54,23 @@ const TEMPLATES: Record<string, string[]> = {
 // Opak (arayüz/meta) alanlar: Labber'a gitmez, toAglab'da özgün değeriyle kalır.
 const TOP_OPAQUE = new Set(['app', 'version', 'nextId', 'selected', 'importReport', 'sourceArchive'])
 const DEVICE_OPAQUE = new Set(['id', 'name', 'type', 'x', 'y', 'w', 'h', 'mode', 'config', 'selected'])
-const PC_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'ip', 'mask', 'gateway', 'mac', 'vlan'])
+// L5-b: `dhcpLease` (adres DHCP'den alındı) ve `dns` (DNS sunucusu) PC/Server alanlarıdır.
+const PC_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'ip', 'mask', 'gateway', 'mac', 'vlan', 'dhcpLease', 'dns'])
 const SWITCH_FIELDS = new Set([
   'enabled', 'ports', 'interfaces', 'gateway', 'vlans', 'vlanNames', 'stpPriority', 'stpPriorities', 'ip', 'mask',
 ])
 // L4: Router. `ip`/`mask`/`gateway` cihaz düzeyinde yalnız boş olabilir; `vlan` router için
 // anlamsızdır (PKT dönüştürücüsü 1 yazar) ve opak geçer.
-const ROUTER_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'staticRoutes', 'route', 'ospf', 'ip', 'mask', 'gateway', 'vlan'])
-const ROUTER_IF_FIELDS = new Set(['ip', 'mask', 'enabled'])
+// L5-b: `dhcpPools` / `dhcpExcluded` (IOS DHCP sunucusu) ve arayüzde `helperAddress` (relay).
+const ROUTER_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'staticRoutes', 'route', 'ospf', 'ip', 'mask', 'gateway', 'vlan', 'dhcpPools', 'dhcpExcluded'])
+const ROUTER_IF_FIELDS = new Set(['ip', 'mask', 'enabled', 'helperAddress'])
+const DHCP_POOL_FIELDS = new Set(['name', 'network', 'mask', 'defaultRouter', 'dnsServer'])
 // L5-a: router alt arayüzü (`g0/0.10`). Eski CLI yeni alt arayüzü `encapsulation: ''`, `vlan: 1`
 // ile kurar: boş encapsulation "henüz yapılandırılmadı" demektir (eski motorda da etkin değil).
-const SUBIF_FIELDS = new Set(['ip', 'mask', 'enabled', 'parent', 'vlan', 'encapsulation'])
+const SUBIF_FIELDS = new Set(['ip', 'mask', 'enabled', 'parent', 'vlan', 'encapsulation', 'helperAddress'])
 const STATIC_ROUTE_FIELDS = new Set(['network', 'mask', 'nextHop', 'distance'])
 const OSPF_FIELDS = new Set(['pid', 'routerId', 'networks'])
-// Server, servisi yoksa PC gibi bir uçtur (L4); servisler L5.
+// Server: PC gibi bir uç; L5-b'den beri DHCP ve DNS servisleri modellenir (HTTP L5-d'ye kadar yok).
 const SERVER_FIELDS = new Set([...PC_FIELDS, 'services'])
 const PHYS_FIELDS = new Set(['mode', 'vlan', 'allowed', 'nativeVlan', 'enabled'])
 const SVI_FIELDS = new Set(['ip', 'mask', 'enabled', 'vlan'])
@@ -79,7 +83,8 @@ const FEATURE_REASON: Record<string, string> = {
   natTranslations: 'NAT çeviri tablosu Labber\'da yok (L5)',
   ospf: 'Switch üzerinde OSPF AğLab modelinde yok',
   bgp: 'BGP Labber\'da yok (L5)',
-  services: 'Sunucu servisleri (DHCP/DNS/HTTP) Labber\'da yok (L5)',
+  services: 'Sunucu servisleri yalnız Server cihazında modellenir',
+  http: 'Sunucu servisleri içinde HTTP Labber\'da yok (L5)',
   startupConfig: 'Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)',
   portSecurity: 'Port security Labber\'da yok (L5)',
   errdisabled: 'Port security err-disable durumu Labber\'da yok (L5)',
@@ -88,8 +93,7 @@ const FEATURE_REASON: Record<string, string> = {
   aclIn: 'ACL Labber\'da yok (L5)',
   aclOut: 'ACL Labber\'da yok (L5)',
   natRole: 'NAT Labber\'da yok (L5)',
-  helperAddress: 'DHCP relay Labber\'da yok (L5)',
-  dhcpLease: 'DHCP istemci kirası Labber\'da yok (L5)',
+  helperAddress: 'DHCP relay (helperAddress) yalnız router arayüzünde ve alt arayüzünde eşlenir',
 }
 
 const sortNum = (a: number, b: number) => a - b
@@ -182,6 +186,17 @@ export function toLabber(input: AglabTopology): BridgeResult {
     return { portMap, canonPorts }
   }
 
+  /** L5-b: `helperAddress` (tek adres) → `ip helper-address`; geçersizse reddedilir. */
+  const helperOf = (id: string, name: string, iface: AglabInterface): string[] | null => {
+    const h = iface['helperAddress']
+    if (h === undefined || h === '') return null
+    if (typeof h !== 'string' || !isIp(h)) {
+      reject(id, `${name}.helperAddress`, 'Geçersiz helper-address')
+      return null
+    }
+    return [h]
+  }
+
   // ---- Router (L4) ----
   const routerToLabber = (d: AglabDevice, id: string, off: boolean) => {
     for (const key of ['ip', 'mask', 'gateway'] as const)
@@ -219,6 +234,8 @@ export function toLabber(input: AglabTopology): BridgeResult {
         if (!isIp(iface.ip) || pre === null || pre === 0) reject(id, name, 'Geçersiz router arayüzü IPv4 adresi/maskesi')
         else phys.ip = { addr: iface.ip, mask: iface.mask! }
       }
+      const helpers = helperOf(id, name, iface)
+      if (helpers) phys.l3 = { ...(phys.l3 ?? {}), helpers }
     }
     // L5-a: alt arayüzler (`<fiziksel>.<n>`, 802.1Q)
     for (const [name, iface] of Object.entries(ifaces)) {
@@ -258,6 +275,49 @@ export function toLabber(input: AglabTopology): BridgeResult {
         else ip = { addr: iface.ip, mask: iface.mask! }
       }
       subs[key] = { parent, vlan, native: false, shutdown: iface.enabled === false, description: '', ip }
+      const helpers = helperOf(id, name, iface)
+      if (helpers) subs[key]!.l3 = { helpers }
+    }
+    // L5-b: IOS DHCP sunucusu (`ip dhcp pool`, `ip dhcp excluded-address`)
+    if (d.dhcpPools !== undefined) {
+      if (!Array.isArray(d.dhcpPools)) reject(id, 'dhcpPools', 'DHCP havuz listesi dizi olmalı')
+      else
+        (d.dhcpPools as Record<string, unknown>[]).forEach((pool, i) => {
+          const where = `dhcpPools[${i}]`
+          for (const key of Object.keys(pool ?? {}))
+            if (!DHCP_POOL_FIELDS.has(key)) unsupported(id, `${where}.${key}`, 'Labber\'da karşılığı olmayan DHCP havuz alanı')
+          const name = pool?.['name']
+          if (typeof name !== 'string' || !name || /\s/.test(name)) return reject(id, where, 'DHCP havuz adı boşluksuz bir metin olmalı')
+          if (cfg.dhcpPools?.[name]) return reject(id, where, 'Aynı adla yinelenen DHCP havuzu')
+          const out: DhcpPool = { net: null, defaultRouter: null, dns: null }
+          const network = pool['network'] ?? ''
+          if (network !== '') {
+            const pre = isIp(String(pool['mask'] ?? '')) ? maskToPrefix(String(pool['mask'])) : null
+            if (!isIp(String(network)) || pre === null || pre < 1 || pre > 30 || networkOf(String(network), pre) !== network)
+              return reject(id, where, 'Geçersiz DHCP havuz ağı (ağ adresi/maske)')
+            out.net = { addr: String(network), mask: String(pool['mask']) }
+          }
+          for (const [key, field] of [['defaultRouter', 'defaultRouter'], ['dnsServer', 'dns']] as const) {
+            const v = pool[key] ?? ''
+            if (v === '') continue
+            if (!isIp(String(v))) return reject(id, `${where}.${key}`, 'Geçersiz IPv4 adresi')
+            out[field] = String(v)
+          }
+          ;(cfg.dhcpPools ??= {})[name] = out
+        })
+    }
+    if (d.dhcpExcluded !== undefined) {
+      if (!Array.isArray(d.dhcpExcluded)) reject(id, 'dhcpExcluded', 'DHCP dışlanan adres listesi dizi olmalı')
+      else
+        (d.dhcpExcluded as Record<string, unknown>[]).forEach((r, i) => {
+          const where = `dhcpExcluded[${i}]`
+          for (const key of Object.keys(r ?? {}))
+            if (key !== 'start' && key !== 'end') unsupported(id, `${where}.${key}`, 'Labber\'da karşılığı olmayan DHCP dışlama alanı')
+          const lo = String(r?.['start'] ?? '')
+          const hi = String(r?.['end'] ?? lo)
+          if (!isIp(lo) || !isIp(hi) || ipToInt(hi)! < ipToInt(lo)!) return reject(id, where, 'Geçersiz DHCP dışlanan adres aralığı')
+          ;(cfg.dhcpExcluded ??= []).push({ lo, hi })
+        })
     }
     // Statik rotalar: AD (distance) 1-255; yoksa 1. Eski `route` alanı, listede varsayılan
     // rota yoksa AD 1 varsayılan rotadır (src/engine/routing.js staticRoutes ile aynı kural).
@@ -328,13 +388,16 @@ export function toLabber(input: AglabTopology): BridgeResult {
     const off = d.enabled === false
 
     if (d.type === 'Server') {
-      // Servisi açık sunucu L5'e kadar eski motorda; servissiz sunucu PC gibi bir uçtur.
+      // L5-b: DHCP ve DNS servisleri modellenir; açık HTTP servisi eski motorda kalır.
       const services = d.services
       if (services !== undefined && (typeof services !== 'object' || services === null || Array.isArray(services)))
         reject(id, 'services', 'Servis listesi nesne olmalı')
       else
-        for (const [name, on] of Object.entries(services ?? {}))
-          if (on) unsupported(id, `services.${name}`, FEATURE_REASON['services']!)
+        for (const [name, on] of Object.entries(services ?? {})) {
+          if (typeof on !== 'boolean') reject(id, `services.${name}`, 'Servis durumu true/false olmalı')
+          else if (name !== 'dhcp' && name !== 'dns' && on)
+            unsupported(id, `services.${name}`, name === 'http' ? FEATURE_REASON['http']! : 'Bilinmeyen sunucu servisleri Labber\'da yok: ' + name)
+        }
     }
 
     if (d.type === 'Router') {
@@ -363,10 +426,24 @@ export function toLabber(input: AglabTopology): BridgeResult {
         prefix: prefix ?? 24,
         gw: d.gateway && isIp(d.gateway) ? d.gateway : null,
       }
+      // L5-b: DHCP istemci durumu, DNS sunucusu ve sunucu servisleri
+      if (d.dhcpLease !== undefined && typeof d.dhcpLease !== 'boolean') reject(id, 'dhcpLease', 'dhcpLease true/false olmalı')
+      else if (d.dhcpLease) pcs[id]!.dhcp = true
+      if (d.dns !== undefined && d.dns !== '') {
+        if (typeof d.dns !== 'string' || !isIp(d.dns)) reject(id, 'dns', 'Geçersiz DNS sunucusu adresi: ' + String(d.dns))
+        else pcs[id]!.dns = d.dns
+      }
+      if (d.type === 'Server') {
+        const sv = (d.services ?? {}) as Record<string, unknown>
+        if (sv['dhcp'] === true || sv['dns'] === true)
+          pcs[id]!.services = { ...(sv['dhcp'] === true ? { dhcp: true } : {}), ...(sv['dns'] === true ? { dns: true } : {}) }
+      }
       const mac = resolveMac ? intToDotted(macToInt(resolveMac(d))) : '0000.0000.0000'
       claimMac(id, mac)
       const pc: PcDef = {
         id, kind: 'pc', mac, x: Number(d.x ?? 0), y: Number(d.y ?? 0),
+        ...(d.name ? { name: d.name } : {}),
+        ...(d.type === 'Server' ? { server: true } : {}),
         ...(off ? { off: true } : {}),
         ...(d.interfaces?.['eth0']?.enabled === false ? { nicDown: true } : {}),
       }
@@ -625,6 +702,20 @@ export function toAglab(
       if (pc.ip !== null && (d.mask !== undefined || pc.ip)) d.mask = prefixToMask(pc.prefix)
       const gw = pc.gw ?? ''
       if (d.gateway !== undefined || gw) d.gateway = gw
+      // L5-b: kira (DHCP'den alınmış, link-local olmayan adres), DNS sunucusu, servisler
+      const lease = !!pc.dhcp && !!pc.ip && !isApipa(pc.ip)
+      if (d.dhcpLease !== undefined || lease) d.dhcpLease = lease
+      const dns = pc.dns ?? ''
+      if (d.dns !== undefined || dns) d.dns = dns
+      if (d.type === 'Server') {
+        const prev = (d.services ?? {}) as Record<string, unknown>
+        const next: Record<string, unknown> = { ...prev }
+        for (const k of ['dhcp', 'dns'] as const) {
+          const on = !!pc.services?.[k]
+          if (k in prev || on) next[k] = on
+        }
+        if (d.services !== undefined || Object.keys(next).length) d.services = next
+      }
       continue
     }
     if (d.type === 'Router' && rt.running[id]) {
@@ -645,6 +736,7 @@ export function toAglab(
     if (cfg.stpMode !== 'pvst') fail('spanning-tree mode ' + cfg.stpMode)
     if (cfg.bpduguardDefault) fail('spanning-tree portfast bpduguard default')
     if (cfg.errRecoveryBpdu || cfg.errRecoveryInterval !== undefined) fail('errdisable recovery')
+    if (Object.keys(cfg.dhcpPools ?? {}).length || cfg.dhcpExcluded?.length) fail('switch üzerinde DHCP sunucusu')
     const gw = cfg.defaultGateway ?? ''
     if (d.gateway !== undefined || gw) d.gateway = gw
     // VLAN'lar
@@ -735,15 +827,17 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
     const name = back[canon]
     if (!name) continue
     if (phys.description) fail(`${canon} description`)
-    if (phys.l3 && Object.keys(phys.l3).length) fail(`${canon} arayüz OSPF/L3 ayarı`)
+    const helper = helperBack(phys.l3, canon, fail)
     const prev = d.interfaces[name]
-    if (!prev && !phys.ip && !phys.shutdown) continue
+    if (!prev && !phys.ip && !phys.shutdown && !helper) continue
     const iface: AglabInterface = prev ? { ...prev } : {}
     if (phys.ip) {
       iface.ip = phys.ip.addr
       iface.mask = phys.ip.mask
     } else if (prev?.ip !== undefined) iface.ip = ''
     if (prev?.enabled !== undefined || phys.shutdown) iface.enabled = !phys.shutdown
+    if (helper) iface['helperAddress'] = helper
+    else if (iface['helperAddress'] !== '') delete iface['helperAddress']
     d.interfaces[name] = iface
   }
   // L5-a: alt arayüzler. AğLab adı: fiziksel portun AğLab yazımı + '.N'. Native alt arayüz,
@@ -756,7 +850,7 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
     subNames.add(name)
     if (si.native) fail(`${canon} encapsulation dot1Q ${si.vlan} native`)
     if (si.description) fail(`${canon} description`)
-    if (si.l3 && Object.keys(si.l3).length) fail(`${canon} arayüz OSPF/L3 ayarı`)
+    const helper = helperBack(si.l3, canon, fail)
     const prev = d.interfaces[name]
     const iface: AglabInterface = prev ? { ...prev } : { ip: '', mask: '255.255.255.0', enabled: true, vlan: 1, encapsulation: '', parent: physName }
     // yalnız özgünde olan ya da varsayılandan farklı alanlar yazılır (gidiş-dönüş birebir)
@@ -770,10 +864,29 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
       iface.vlan = si.vlan
     }
     if (prev?.parent !== undefined || !prev) iface.parent = physName
+    if (helper) iface['helperAddress'] = helper
+    else if (iface['helperAddress'] !== '') delete iface['helperAddress']
     d.interfaces[name] = iface
   }
   // CLI ile silinen alt arayüz (`no interface Gi0/0.N`) AğLab görünümünden de çıkar
   for (const name of Object.keys(d.interfaces)) if (name.includes('.') && !subNames.has(name)) delete d.interfaces[name]
+  // L5-b: DHCP sunucusu. Özgün havuz nesnesi aynı kaldıysa olduğu gibi yazılır.
+  const pools = Object.entries(cfg.dhcpPools ?? {}).map(([name, p]) => {
+    const next: Record<string, unknown> = { name, network: p.net?.addr ?? '', mask: p.net?.mask ?? '' }
+    if (p.defaultRouter) next['defaultRouter'] = p.defaultRouter
+    if (p.dns) next['dnsServer'] = p.dns
+    const kept = ((orig.dhcpPools ?? []) as Record<string, unknown>[]).find(
+      (a) => a['name'] === name && (a['network'] ?? '') === next['network'] && (a['mask'] ?? '') === next['mask'] &&
+        (a['defaultRouter'] ?? '') === (p.defaultRouter ?? '') && (a['dnsServer'] ?? '') === (p.dns ?? ''),
+    )
+    return kept ? clone(kept) : next
+  })
+  if (d.dhcpPools !== undefined || pools.length) d.dhcpPools = pools
+  const excluded = (cfg.dhcpExcluded ?? []).map((r) => {
+    const kept = ((orig.dhcpExcluded ?? []) as Record<string, unknown>[]).find((a) => a['start'] === r.lo && String(a['end'] ?? a['start']) === r.hi)
+    return kept ? clone(kept) : { start: r.lo, end: r.hi }
+  })
+  if (d.dhcpExcluded !== undefined || excluded.length) d.dhcpExcluded = excluded
   // Eski `route` alanı: köprü onu (listede varsayılan rota yoksa) AD 1 varsayılan rota yaptı.
   const legacyDefault =
     typeof orig.route === 'string' && orig.route !== '' &&
@@ -807,6 +920,18 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
   if (o.routerId || prev['routerId'] !== undefined) ospf['routerId'] = o.routerId ?? ''
   ospf['networks'] = o.networks.map((n) => ({ network: n.addr, wildcard: n.wildcard, area: n.area }))
   d.ospf = ospf
+}
+
+/**
+ * L5-b: arayüz L3 ayarlarından AğLab `helperAddress` değeri. AğLab modeli arayüz başına tek
+ * helper tutar; birden çok helper ve diğer L3/OSPF ayarları ifade edilemez.
+ */
+function helperBack(l3: L3Opts | undefined, canon: string, fail: (what: string) => never): string | null {
+  if (!l3) return null
+  const { helpers, ...rest } = l3
+  if (Object.keys(rest).length) fail(`${canon} arayüz OSPF/L3 ayarı`)
+  if (helpers && helpers.length > 1) fail(`${canon} üzerinde birden çok ip helper-address`)
+  return helpers?.[0] ?? null
 }
 
 /** IPv4 → tam sayı (yardımcı; testlerde kullanılır). */

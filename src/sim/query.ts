@@ -1,8 +1,9 @@
 // Read-only helpers for lab objectives. Objectives look at derived behaviour, never config text.
 
 import { egress, portForwards, vlanExists, type Derived, type LPort } from './engine'
+import { dnsLookup, isApipa, type DnsResult } from './dhcp'
 import { macTable, ping, pcNode, routeTable, type MacEntry, type PingResult, type RouteEntry } from './net'
-import type { SwitchConfig } from './types'
+import type { DhcpBinding, SwitchConfig } from './types'
 import { pk } from './topology'
 import { canonIf, ipToInt, normalizeMac, prefixMaskInt } from './util'
 
@@ -12,7 +13,26 @@ export class LabQuery {
     private startup: Record<string, SwitchConfig | null> = {},
     /** MACs that sent or answered traffic; empty = nothing learned yet (see LabRuntime.query()) */
     private learned: Set<string> = new Set(),
+    /** L5-b: DHCP leases (see LabRuntime.query()) */
+    private leases: DhcpBinding[] = [],
   ) {}
+
+  /** L5-b: the lease the PC currently uses ({server, pool, ip, …}), or null. */
+  dhcpLease(pc: string): DhcpBinding | null {
+    const c = this.d.pcs[pc]
+    if (!c?.dhcp || !c.ip || isApipa(c.ip)) return null
+    return this.leases.find((b) => b.client === pc && b.ip === c.ip) ?? null
+  }
+
+  /** L5-b: leases a DHCP server (router, switch or lab server) handed out. */
+  dhcpBindings(server: string): DhcpBinding[] {
+    return this.leases.filter((b) => b.server === server)
+  }
+
+  /** L5-b: DNS lookup from a PC through its configured DNS server. */
+  dnsLookup(pc: string, name: string): DnsResult {
+    return dnsLookup(this.d, pc, name)
+  }
 
   /** Dynamic MAC address table of a switch (learned addresses only). */
   macTable(dev: string): MacEntry[] {

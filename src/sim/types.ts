@@ -37,6 +37,34 @@ export interface L3Opts {
   mtu?: number
   /** `bandwidth` in kbit/s */
   bandwidth?: number
+  /** L5-b: `ip helper-address` list (DHCP relay), in configuration order */
+  helpers?: string[]
+}
+
+/** L5-b: `ip dhcp pool <name>` on a router or multilayer switch. */
+export interface DhcpPool {
+  /** `network A.B.C.D mask`; null until configured (the pool serves nothing) */
+  net: IpAddr | null
+  /** `default-router` */
+  defaultRouter: string | null
+  /** `dns-server` */
+  dns: string | null
+}
+
+/** L5-b: a DHCP lease handed out by a server (runtime state, not configuration). */
+export interface DhcpBinding {
+  /** device that leased the address (router/switch or server) */
+  server: string
+  /** address the server answered from (the helper address when relayed) */
+  serverIp: string
+  /** pool name on an IOS device; '' for a server's implicit pool */
+  pool: string
+  ip: string
+  /** client device and its MAC */
+  client: string
+  mac: string
+  /** lease expiration as printed by `show ip dhcp binding` */
+  expires: string
 }
 
 export interface PhysIfConfig extends L2IfConfig {
@@ -128,12 +156,22 @@ export interface SwitchConfig {
   errRecoveryBpdu?: boolean
   /** `errdisable recovery interval` (seconds) */
   errRecoveryInterval?: number
+  /** L5-b: `ip dhcp pool <name>` (configuration order) */
+  dhcpPools?: Record<string, DhcpPool>
+  /** L5-b: `ip dhcp excluded-address low [high]` */
+  dhcpExcluded?: { lo: string; hi: string }[]
 }
 
 export interface PcConfig {
   ip: string | null
   prefix: number
   gw: string | null
+  /** L5-b: the address was requested from DHCP (`ip dhcp`); with an APIPA address: no lease */
+  dhcp?: boolean
+  /** L5-b: DNS server (`ip dns`, or handed out by DHCP) */
+  dns?: string | null
+  /** L5-b: services of a server (PcDef.server): DHCP (implicit pool) and DNS (lab host names) */
+  services?: { dhcp?: boolean; dns?: boolean }
 }
 
 // ---- Lab definition (authored by lab writers) ----
@@ -166,6 +204,10 @@ export interface PcDef {
   id: string
   kind: 'pc'
   mac: string
+  /** L5-b: host name (DNS, prompt); the id when missing */
+  name?: string
+  /** L5-b: a server: may run the DHCP and DNS services (PcConfig.services) */
+  server?: boolean
   /** powered off at lab start */
   off?: boolean
   /** NIC disabled at lab start */

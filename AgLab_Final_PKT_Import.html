@@ -1740,6 +1740,15 @@ var AgLabSim = (() => {
     ospf: "Open Shortest Path First (OSPF)",
     "router-id": "router-id for this OSPF process",
     network: "Enable routing on an IP network",
+    // L5-b: DHCP server and relay
+    dhcp: "Configure DHCP server and relay parameters",
+    pool: "Configure DHCP address pools",
+    "excluded-address": "Prevent DHCP from assigning certain addresses",
+    "helper-address": "Specify a destination address for UDP broadcasts",
+    binding: "DHCP address bindings",
+    "default-router": "Default routers",
+    "dns-server": "DNS servers",
+    "*": "Clear all automatic bindings",
     area: "OSPF area parameters",
     stub: "Specify a stub area",
     "no-summary": "Do not send summary LSA into stub area",
@@ -1973,6 +1982,177 @@ var AgLabSim = (() => {
     return line.slice(0, last.start) + kws[0] + " ";
   }
 
+  // src/sim/dhcp.ts
+  var isApipa = (ip) => sameSubnet(ip, "169.254.0.0", 16);
+  function apipaFor(mac) {
+    const hex = mac.replace(/\./g, "");
+    const b5 = parseInt(hex.slice(8, 10), 16);
+    const b6 = parseInt(hex.slice(10, 12), 16);
+    return `169.254.${1 + b5 % 254}.${b6}`;
+  }
+  var nk2 = (n) => `${n.dev}|${n.vlan}`;
+  function l3OptsOf(cfg, name) {
+    if (name.startsWith("Vlan")) return cfg.svis[ifNum(name)]?.l3;
+    if (name.startsWith("Loopback")) return cfg.loopbacks?.[ifNum(name)]?.l3;
+    if (name.includes(".")) return cfg.subifs?.[name]?.l3;
+    return cfg.ifaces[name]?.l3;
+  }
+  function helpersOf(cfg, name) {
+    return l3OptsOf(cfg, name)?.helpers ?? [];
+  }
+  function poolFor(cfg, addr) {
+    let best = null;
+    for (const [name, pool] of Object.entries(cfg.dhcpPools ?? {})) {
+      if (!pool.net) continue;
+      const prefix = maskToPrefix(pool.net.mask);
+      if (prefix === null || !sameSubnet(pool.net.addr, addr, prefix)) continue;
+      if (!best || prefix > best.prefix) best = { name, pool, prefix };
+    }
+    return best;
+  }
+  function configuredIps(d, except) {
+    const out = /* @__PURE__ */ new Set();
+    const add = (ip) => {
+      const n = ip ? ipToInt(ip) : null;
+      if (n !== null) out.add(n);
+    };
+    for (const [id, pc] of Object.entries(d.pcs)) if (id !== except) add(pc.ip);
+    for (const [id, cfg] of Object.entries(d.cfgs)) {
+      if (id === except) continue;
+      for (const c of Object.values(cfg.ifaces)) add(c.ip?.addr);
+      for (const s of Object.values(cfg.svis)) add(s.ip?.addr);
+      for (const s of Object.values(cfg.subifs ?? {})) add(s.ip?.addr);
+      for (const l of Object.values(cfg.loopbacks ?? {})) add(l.ip?.addr);
+    }
+    return out;
+  }
+  function poolRange(cfg, pool) {
+    if (!pool.net) return null;
+    const prefix = maskToPrefix(pool.net.mask);
+    if (prefix === null || prefix > 30) return null;
+    const net = (ipToInt(pool.net.addr) & prefixMaskInt(prefix)) >>> 0;
+    const size = 2 ** (32 - prefix);
+    const ranges = (cfg.dhcpExcluded ?? []).map((r) => [ipToInt(r.lo), ipToInt(r.hi)]);
+    return { first: net + 1, last: net + size - 2, excluded: (n) => ranges.some(([lo, hi]) => n >= lo && n <= hi) };
+  }
+  function allocateIos(d, cfg, server, pool, client, mac, bindings) {
+    const range = poolRange(cfg, pool);
+    if (!range) return null;
+    const inUse = configuredIps(d, client);
+    const leased = new Map(bindings.filter((b) => b.server === server).map((b) => [ipToInt(b.ip), b.mac]));
+    const free = (n) => !range.excluded(n) && !inUse.has(n) && (leased.get(n) ?? mac) === mac;
+    const mine = bindings.find((b) => b.server === server && b.mac === mac);
+    const prev = mine ? ipToInt(mine.ip) : null;
+    if (prev !== null && prev >= range.first && prev <= range.last && free(prev)) return intToIp(prev);
+    for (let n = range.first; n <= range.last; n++) if (free(n)) return intToIp(n);
+    return null;
+  }
+  function allocateServer(d, network, prefix, gw, serverIp, client) {
+    if (prefix < 1 || prefix >= 31) return "invalid";
+    const net = (ipToInt(network) & prefixMaskInt(prefix)) >>> 0;
+    const broadcast = net + 2 ** (32 - prefix) - 1;
+    const taken = configuredIps(d, client);
+    for (const ip of [gw, serverIp]) if (ip) taken.add(ipToInt(ip));
+    const start = Math.min(100, Math.max(1, broadcast - net - 1));
+    const offsets = [...Array.from({ length: 4096 }, (_, i) => start + i), ...Array.from({ length: Math.max(0, start - 1) }, (_, i) => i + 1)];
+    for (const off of offsets) {
+      const n = net + off;
+      if (n >= broadcast) continue;
+      if (!taken.has(n)) return intToIp(n);
+    }
+    return null;
+  }
+  function isDhcpServerPc(d, dev) {
+    const def = d.topo.devices[dev];
+    return !!def && def.kind === "pc" && !!def.server && !!d.pcs[dev]?.services?.dhcp && !d.hw.off.has(dev);
+  }
+  function dhcpDiscover(d, pc, bindings) {
+    const def = d.topo.devices[pc];
+    const node = def && !d.hw.off.has(pc) ? pcNode(d, pc) : null;
+    if (!def || !node) return { ok: false, reason: "nolink" };
+    const dom = l2Domain(d, node);
+    const onLink = allL3Ifs(d).filter((i) => i.dev !== pc && i.node && dom.nodes.has(nk2(i.node)));
+    let fail = { ok: false, reason: "noserver" };
+    const offerFrom = (server, via, giaddr, giPrefix, relay) => {
+      const sdef = d.topo.devices[server];
+      if (sdef.kind === "switch") {
+        const cfg = d.cfgs[server];
+        if (!Object.keys(cfg.dhcpPools ?? {}).length) return null;
+        const p = poolFor(cfg, giaddr);
+        if (!p) return { ok: false, reason: "nopool", server };
+        const ip2 = allocateIos(d, cfg, server, p.pool, pc, def.mac, bindings);
+        if (!ip2) return { ok: false, reason: "exhausted", server };
+        const serverIp = via?.ip ?? l3Ifs(d, server).find((i) => i.node)?.ip ?? giaddr;
+        return { ok: true, server, serverIp, pool: p.name, relay, ip: ip2, prefix: p.prefix, gw: p.pool.defaultRouter, dns: p.pool.dns };
+      }
+      if (!isDhcpServerPc(d, server)) return null;
+      const sc = d.pcs[server];
+      if (!sc.ip) return null;
+      const network = relay ? giaddr : sc.ip;
+      const prefix = relay ? giPrefix : sc.prefix;
+      const gw = relay ? giaddr : sc.gw;
+      const ip = allocateServer(d, network, prefix, gw, sc.ip, pc);
+      if (ip === "invalid") return { ok: false, reason: "nopool", server };
+      if (!ip) return { ok: false, reason: "exhausted", server };
+      return { ok: true, server, serverIp: sc.ip, pool: "", relay, ip, prefix, gw, dns: sc.services?.dns ? sc.ip : null };
+    };
+    for (const i of onLink) {
+      const r = offerFrom(i.dev, i, i.ip, i.prefix, null);
+      if (!r) continue;
+      if (r.ok) return r;
+      fail = r;
+    }
+    for (const i of onLink) {
+      if (d.topo.devices[i.dev].kind !== "switch") continue;
+      for (const helper of helpersOf(d.cfgs[i.dev], i.name)) {
+        const relayInfo = { dev: i.dev, ifname: i.name, helper };
+        if (l3Ifs(d, i.dev).some((x) => x.ip === helper)) continue;
+        const fwd = deliver(d, i.dev, helper);
+        const target = fwd.kind === "ok" ? fwd.hops[fwd.hops.length - 1]?.dev : void 0;
+        if (!target) {
+          fail = { ok: false, reason: "relay-unreachable", relay: relayInfo };
+          continue;
+        }
+        const back = deliver(d, target, i.ip);
+        if (back.kind !== "ok" || (back.hops[back.hops.length - 1]?.dev ?? target) !== i.dev) {
+          fail = { ok: false, reason: "relay-unreachable", relay: relayInfo, server: target };
+          continue;
+        }
+        const r = offerFrom(target, null, i.ip, i.prefix, { dev: i.dev, ifname: i.name, giaddr: i.ip });
+        if (!r) {
+          fail = { ok: false, reason: "relay-noserver", relay: relayInfo, server: target };
+          continue;
+        }
+        if (r.ok) return r.server === target ? { ...r, serverIp: helper } : r;
+        fail = { ...r, relay: relayInfo };
+      }
+    }
+    return fail;
+  }
+  function dnsRecords(d) {
+    const out = [];
+    for (const dev of d.topo.lab.devices) {
+      if (dev.kind === "pc") {
+        const ip = d.pcs[dev.id]?.ip;
+        if (ip) out.push({ name: dev.name ?? dev.id, address: ip });
+      } else {
+        const first = l3Ifs(d, dev.id)[0];
+        if (first) out.push({ name: d.cfgs[dev.id].hostname, address: first.ip });
+      }
+    }
+    return out;
+  }
+  function dnsLookup(d, pc, name) {
+    const server = d.pcs[pc]?.dns;
+    if (!server) return { ok: false, reason: "noserver" };
+    const r = ping(d, pc, server);
+    const target = r.ok ? r.replier : void 0;
+    const tdef = target ? d.topo.devices[target] : void 0;
+    if (!target || !tdef || tdef.kind !== "pc" || !tdef.server || !d.pcs[target]?.services?.dns) return { ok: false, reason: "timeout", server };
+    const rec = dnsRecords(d).find((x) => x.name.toLowerCase() === name.toLowerCase());
+    return rec ? { ok: true, server, name: rec.name, address: rec.address } : { ok: false, reason: "nxdomain", server };
+  }
+
   // src/sim/cli/show.ts
   var sortIfs = (sw, names) => [...names].sort((a, b) => sw.ports.indexOf(a) - sw.ports.indexOf(b));
   var modeLine = (c) => c.mode === "access" ? "access" : c.mode === "trunk" ? "trunk" : c.mode === "dynamic-desirable" ? "dynamic desirable" : null;
@@ -1995,6 +2175,7 @@ var AgLabSim = (() => {
     if (o?.bandwidth) out.push(" bandwidth " + o.bandwidth);
     if (ip) out.push(` ip address ${ip.addr} ${ip.mask}`);
     else if (noIpLine) out.push(" no ip address");
+    for (const h of o?.helpers ?? []) out.push(" ip helper-address " + h);
     if (o?.mtu) out.push(" ip mtu " + o.mtu);
     if (o?.ospfNet) out.push(" ip ospf network " + o.ospfNet);
     if (o?.ospfHello) out.push(" ip ospf hello-interval " + o.ospfHello);
@@ -2010,7 +2191,7 @@ var AgLabSim = (() => {
     o.push("!", "version 15.4", "service timestamps debug datetime msec", "service timestamps log datetime msec", "no service password-encryption", "!");
     o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", "no aaa new-model");
     if (!c.ipRouting) o.push("no ip routing");
-    o.push("!", "!");
+    o.push("!", ...dhcpLines(c), "!");
     for (const n of Object.keys(c.loopbacks ?? {}).map(Number).sort((a, b) => a - b)) {
       const l = c.loopbacks[String(n)];
       o.push("interface Loopback" + n);
@@ -2041,6 +2222,18 @@ var AgLabSim = (() => {
     o.push("!", "line con 0", "line aux 0", "line vty 0 4", " login", "!", "end");
     return o;
   }
+  function dhcpLines(c) {
+    const o = [];
+    for (const r of c.dhcpExcluded ?? []) o.push("ip dhcp excluded-address " + r.lo + (r.hi !== r.lo ? " " + r.hi : ""));
+    for (const [name, p] of Object.entries(c.dhcpPools ?? {})) {
+      o.push("!", "ip dhcp pool " + name);
+      if (p.net) o.push(` network ${p.net.addr} ${p.net.mask}`);
+      if (p.defaultRouter) o.push(" default-router " + p.defaultRouter);
+      if (p.dns) o.push(" dns-server " + p.dns);
+    }
+    if (o.length) o.push("!");
+    return o;
+  }
   function subifsOf(c, parent) {
     return Object.entries(c.subifs ?? {}).filter(([, s]) => s.parent === parent).sort((a, b) => Number(a[0].split(".")[1]) - Number(b[0].split(".")[1]));
   }
@@ -2065,7 +2258,7 @@ var AgLabSim = (() => {
     o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", "no aaa new-model");
     o.push("system mtu routing 1500");
     if (c.ipRouting) o.push("ip routing");
-    o.push("!", "!", "vtp mode transparent", "!");
+    o.push("!", ...dhcpLines(c), "!", "vtp mode transparent", "!");
     o.push("spanning-tree mode " + c.stpMode, "spanning-tree extend system-id");
     const byPrio = /* @__PURE__ */ new Map();
     for (const [v, p] of Object.entries(c.stpPriority)) byPrio.set(p, [...byPrio.get(p) ?? [], Number(v)]);
@@ -2671,6 +2864,49 @@ var AgLabSim = (() => {
     else if (ps?.ec) out.push(`  Member of Port-channel${ps.ec.id} (${ps.ec.flag})`);
     return out;
   }
+  var dhcpClientId = (mac) => ("01" + mac.replace(/\./g, "")).match(/.{1,4}/g).join(".");
+  function showDhcpBinding(rt, dev) {
+    const out = [
+      "Bindings from all pools not associated with VRF:",
+      "IP address          Client-ID/              Lease expiration        Type",
+      "                    Hardware address/",
+      "                    User name"
+    ];
+    const rows = rt.dhcp.filter((b) => b.server === dev).sort((a, b) => ipToInt(a.ip) - ipToInt(b.ip));
+    for (const b of rows) out.push(b.ip.padEnd(20) + dhcpClientId(b.mac).padEnd(24) + b.expires.padEnd(24) + "Automatic");
+    return out;
+  }
+  function showDhcpPool(rt, dev, only) {
+    const cfg = rt.running[dev];
+    const pools = Object.entries(cfg.dhcpPools ?? {}).filter(([n]) => only === void 0 || n === only);
+    if (only !== void 0 && !pools.length) return [`% Pool ${only} not found`];
+    const out = [];
+    for (const [name, p] of pools) {
+      const range = poolRange(cfg, p);
+      const leased = rt.dhcp.filter((b) => b.server === dev && b.pool === name);
+      const taken = new Set(leased.map((b) => ipToInt(b.ip)));
+      let index = null;
+      if (range) {
+        for (let n = range.first; n <= range.last && index === null; n++) if (!range.excluded(n) && !taken.has(n)) index = n;
+      }
+      out.push(
+        `Pool ${name} :`,
+        " Utilization mark (high/low)    : 100 / 0",
+        " Subnet size (first/next)       : 0 / 0 ",
+        ` Total addresses                : ${range ? range.last - range.first + 1 : 0}`,
+        ` Leased addresses               : ${leased.length}`,
+        " Pending event                  : none",
+        ` ${range ? 1 : 0} subnet${range ? " is" : "s are"} currently in the pool :`
+      );
+      if (range)
+        out.push(
+          " Current index        IP address range                    Leased addresses",
+          " " + (index === null ? "0.0.0.0" : intToIp(index)).padEnd(21) + intToIp(range.first).padEnd(17) + "- " + intToIp(range.last).padEnd(18) + leased.length
+        );
+      out.push("");
+    }
+    return out;
+  }
 
   // src/sim/cli/ios.ts
   var CliError = class {
@@ -2717,7 +2953,11 @@ var AgLabSim = (() => {
       { p: "show mac address-table", run: (x) => showMac(x.rt, x.dev) },
       { p: "show mac address-table address <H.H.H:48 bit mac address>", run: (x, a) => showMac(x.rt, x.dev, normalizeMac(a[4])) },
       { p: "show cdp neighbors", run: (x) => showCdp(x.rt, x.dev) },
-      { p: "show history", run: (x) => x.history.slice(-20).map((h) => "  " + h) }
+      { p: "show history", run: (x) => x.history.slice(-20).map((h) => "  " + h) },
+      // L5-b: DHCP server
+      { p: "show ip dhcp binding", run: (x) => showDhcpBinding(x.rt, x.dev) },
+      { p: "show ip dhcp pool", run: (x) => showDhcpPool(x.rt, x.dev) },
+      { p: "show ip dhcp pool <WORD:Pool name>", run: (x, a) => showDhcpPool(x.rt, x.dev, a[4]) }
     ];
     if (privOnly) {
       s.push(
@@ -2778,6 +3018,11 @@ var AgLabSim = (() => {
         for (const k of [...x.rt.arpIncomplete]) if (k.startsWith(x.dev + ">")) x.rt.arpIncomplete.delete(k);
       }
     },
+    { p: "clear ip dhcp binding *", run: (x) => void x.rt.dhcpClear(x.dev) },
+    {
+      p: "clear ip dhcp binding <A.B.C.D:IP address of the binding>",
+      run: (x, a) => x.rt.dhcpClear(x.dev, a[4]) ? [] : [`% Binding ${a[4]} not found`]
+    },
     ...showPatterns(true)
   ];
   var commonSub = [
@@ -2816,6 +3061,13 @@ var AgLabSim = (() => {
       { p: "no spanning-tree vlan <vlist:VLAN range, example: 1,3-5,7,9-11> root", run: (x, a) => x.stpClear(a[3]) },
       { p: "ip default-gateway <A.B.C.D:IP address of default gateway>", run: (x, a) => void (x.cfg.defaultGateway = a[2]) },
       { p: "no ip default-gateway", run: (x) => void (x.cfg.defaultGateway = null) },
+      // L5-b: DHCP server
+      { p: "ip dhcp pool <WORD:Pool name>", run: (x, a) => x.enterPool(a[3]) },
+      { p: "no ip dhcp pool <WORD:Pool name>", run: (x, a) => x.deletePool(a[4]) },
+      { p: "ip dhcp excluded-address <A.B.C.D:Low IP address>", run: (x, a) => x.dhcpExclude(a[3], a[3], true) },
+      { p: "ip dhcp excluded-address <A.B.C.D:Low IP address> <A.B.C.D:High IP address>", run: (x, a) => x.dhcpExclude(a[3], a[4], true) },
+      { p: "no ip dhcp excluded-address <A.B.C.D:Low IP address>", run: (x, a) => x.dhcpExclude(a[4], a[4], false) },
+      { p: "no ip dhcp excluded-address <A.B.C.D:Low IP address> <A.B.C.D:High IP address>", run: (x, a) => x.dhcpExclude(a[4], a[5], false) },
       { p: "no ip domain-lookup", run: () => {
       } },
       { p: "ip domain-lookup", run: () => {
@@ -2885,7 +3137,23 @@ var AgLabSim = (() => {
     { p: "ip mtu <68-1500:MTU (bytes)>", run: (x, a) => x.eachL3((o) => void (o.mtu = Number(a[2]))) },
     { p: "no ip mtu", run: (x) => x.eachL3((o) => void delete o.mtu) },
     { p: "bandwidth <1-10000000:Bandwidth in kilobits>", run: (x, a) => x.eachL3((o) => void (o.bandwidth = Number(a[1]))) },
-    { p: "no bandwidth", run: (x) => x.eachL3((o) => void delete o.bandwidth) }
+    { p: "no bandwidth", run: (x) => x.eachL3((o) => void delete o.bandwidth) },
+    // L5-b: DHCP relay
+    {
+      p: "ip helper-address <A.B.C.D:IP destination address>",
+      run: (x, a) => x.eachL3((o) => {
+        const h = o.helpers ?? (o.helpers = []);
+        if (!h.includes(a[2])) h.push(a[2]);
+      })
+    },
+    {
+      p: "no ip helper-address <A.B.C.D:IP destination address>",
+      run: (x, a) => x.eachL3((o) => {
+        o.helpers = (o.helpers ?? []).filter((h) => h !== a[3]);
+        if (!o.helpers.length) delete o.helpers;
+      })
+    },
+    { p: "no ip helper-address", run: (x) => x.eachL3((o) => void delete o.helpers) }
   ];
   var routerPatterns = [
     ...[
@@ -3040,6 +3308,16 @@ var AgLabSim = (() => {
     { p: "no ip address", run: (x) => x.eachSvi((s) => void (s.ip = null)) },
     ...l3OptPatterns
   ];
+  var dhcpPoolPatterns = [
+    ...commonSub,
+    { p: "network <A.B.C.D:Network number in dotted-decimal notation> <A.B.C.D:Network mask>", run: (x, a) => x.poolNetwork(a[1], a[2]) },
+    { p: "network <A.B.C.D:Network number in dotted-decimal notation> <WORD:Network mask or prefix length (/nn)>", run: (x, a) => x.poolNetwork(a[1], a[2]) },
+    { p: "no network", run: (x) => void (x.poolCfg.net = null) },
+    { p: "default-router <A.B.C.D:Router's IP address>", run: (x, a) => void (x.poolCfg.defaultRouter = a[1]) },
+    { p: "no default-router", run: (x) => void (x.poolCfg.defaultRouter = null) },
+    { p: "dns-server <A.B.C.D:Server's IP address>", run: (x, a) => void (x.poolCfg.dns = a[1]) },
+    { p: "no dns-server", run: (x) => void (x.poolCfg.dns = null) }
+  ];
   var vlanPatterns = [
     ...commonSub,
     { p: "name <WORD:The ascii name for the VLAN>", run: (x, a) => x.vlanName(a[1]) },
@@ -3058,7 +3336,8 @@ var AgLabSim = (() => {
         svi: buildTrie(sviPatterns),
         subif: buildTrie(subIfPatterns),
         vlan: buildTrie(vlanPatterns),
-        router: buildTrie(routerPatterns)
+        router: buildTrie(routerPatterns),
+        dhcp: buildTrie(dhcpPoolPatterns)
       };
       trieCache.set(def, t);
     }
@@ -3072,6 +3351,8 @@ var AgLabSim = (() => {
       __publicField(this, "ifs", []);
       __publicField(this, "range", false);
       __publicField(this, "vlanIds", []);
+      /** L5-b: pool under `ip dhcp pool <name>` */
+      __publicField(this, "pool", "");
       __publicField(this, "history", []);
       __publicField(this, "pending", null);
       __publicField(this, "starts", []);
@@ -3098,10 +3379,12 @@ var AgLabSim = (() => {
           return h + "(config-vlan)#";
         case "router":
           return h + "(config-router)#";
+        case "dhcp":
+          return h + "(dhcp-config)#";
       }
     }
     get inConfig() {
-      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router";
+      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp";
     }
     trie() {
       const t = tries(this.def);
@@ -3144,7 +3427,7 @@ var AgLabSim = (() => {
     }
     run(cmd) {
       let r = parse(this.trie(), cmd);
-      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router") && r.err !== "empty") {
+      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp") && r.err !== "empty") {
         const g = parse(tries(this.def).config, cmd);
         if (g.ok) {
           this.mode = "config";
@@ -3530,6 +3813,50 @@ var AgLabSim = (() => {
         c.ip = { addr, mask };
       }
     }
+    // ---- DHCP server (L5-b) ----
+    get poolCfg() {
+      return this.cfg.dhcpPools[this.pool];
+    }
+    enterPool(name) {
+      var _a;
+      const pools = (_a = this.cfg).dhcpPools ?? (_a.dhcpPools = {});
+      if (!pools[name]) pools[name] = { net: null, defaultRouter: null, dns: null };
+      this.pool = name;
+      this.mode = "dhcp";
+    }
+    deletePool(name) {
+      if (!this.cfg.dhcpPools?.[name]) return [`% Pool ${name} not found`];
+      delete this.cfg.dhcpPools[name];
+      if (!Object.keys(this.cfg.dhcpPools).length) delete this.cfg.dhcpPools;
+      this.rt.dhcp = this.rt.dhcp.filter((b) => b.server !== this.dev || b.pool !== name);
+      this.rt.commit();
+    }
+    /** `network A.B.C.D mask|/len`: stored as the network address; one pool per network. */
+    poolNetwork(addr, maskOrLen) {
+      const len = /^\/\d+$/.test(maskOrLen) ? Number(maskOrLen.slice(1)) : maskToPrefix(maskOrLen);
+      if (len === null || !Number.isInteger(len) || len < 1 || len > 30) throw new InvalidAt(2);
+      const net = networkOf(addr, len);
+      const mask = [24, 16, 8, 0].map((sh) => prefixMaskInt(len) >>> sh & 255).join(".");
+      for (const [other, p] of Object.entries(this.cfg.dhcpPools ?? {}))
+        if (other !== this.pool && p.net && p.net.addr === net && p.net.mask === mask) return [`% A pool already exists for network ${net} / ${mask}`];
+      this.poolCfg.net = { addr: net, mask };
+    }
+    dhcpExclude(lo, hi, add) {
+      var _a;
+      if (ipToInt(hi) < ipToInt(lo)) return ["% Invalid range of IP addresses"];
+      const list = (_a = this.cfg).dhcpExcluded ?? (_a.dhcpExcluded = []);
+      const i = list.findIndex((r) => r.lo === lo && r.hi === hi);
+      if (add) {
+        if (i < 0) list.push({ lo, hi });
+      } else {
+        if (i < 0) {
+          if (!list.length) delete this.cfg.dhcpExcluded;
+          return [`% Range [${lo}, ${hi}] is not in the database.`];
+        }
+        list.splice(i, 1);
+      }
+      if (!list.length) delete this.cfg.dhcpExcluded;
+    }
     // ---- OSPF ----
     get ospf() {
       return this.cfg.ospf;
@@ -3801,11 +4128,21 @@ var AgLabSim = (() => {
     "ip ARG ... [OPTION]      Configure the current VPC's IP settings",
     "  ip <address>/<len> [gateway]",
     "  ip <address> <mask> [gateway]",
+    "  ip dhcp [-r|-x]        Get an address from a DHCP server (-r renew, -x release)",
+    "  ip dns <address>       Set the DNS server (0.0.0.0 clears it)",
     "clear ip                 Clear IP address, mask and gateway",
     "show [arp|ip]            Print the information of the VPC",
     "ping <address>           Ping the network host",
     "trace <address>          Print the path packets take to network host",
+    "nslookup <name>          Ask the DNS server for the address of a host name",
     "help, ?                  Print help",
+    ""
+  ];
+  var SERVER_HELP = [
+    "service dhcp|dns on|off  Start or stop a service of this server",
+    "show services            Print the services and their state",
+    "show ip dhcp binding     Print the addresses this server leased",
+    "show dns                 Print the host names this server resolves",
     ""
   ];
   var VpcsSession = class {
@@ -3824,14 +4161,14 @@ var AgLabSim = (() => {
       return this.name + "> ";
     }
     complete(line) {
-      const cmds = ["ip", "clear", "show", "ping", "trace", "help"];
+      const cmds = ["ip", "clear", "show", "ping", "trace", "nslookup", "help", ...this.def.server ? ["service"] : []];
       const t = line.trim();
       if (!t || t.includes(" ")) return null;
       const m = cmds.filter((c) => c.startsWith(t));
       return m.length === 1 ? m[0] + " " : null;
     }
     help() {
-      return HELP2;
+      return this.def.server ? [...HELP2, ...SERVER_HELP] : HELP2;
     }
     ctrlZ() {
       return [];
@@ -3842,12 +4179,19 @@ var AgLabSim = (() => {
       this.history.push(line);
       const [cmd, ...args] = line.split(/\s+/);
       const c = cmd.toLowerCase();
-      if (c === "?" || c === "help") return HELP2;
+      if (c === "?" || c === "help") return this.help();
+      if (c === "ip" && args[0]?.toLowerCase() === "dhcp") return this.dhcp(args.slice(1));
+      if (c === "dhcp") return this.dhcp(args);
+      if (c === "ip" && args[0]?.toLowerCase() === "dns") return this.setDns(args[1]);
       if (c === "ip") return this.ip(args);
       if (c === "clear" && args[0] === "ip") {
-        this.rt.pcs[this.dev] = { ip: null, prefix: 24, gw: null };
-        this.rt.commit();
+        this.rt.dhcpRelease(this.dev);
         return ["IPv4 address/mask, gateway, DNS, and DHCP cleared"];
+      }
+      if (c === "nslookup") return args[0] ? this.nslookup(args[0]) : ["Incomplete command."];
+      if (this.def.server) {
+        const srv = this.server(c, args);
+        if (srv) return srv;
       }
       if (c === "show" && (!args[0] || args[0] === "ip")) return this.showIp();
       if (c === "show" && args[0] === "arp") return this.showArp();
@@ -3882,18 +4226,74 @@ var AgLabSim = (() => {
       if (!isIp(addr) || prefix < 1 || prefix > 30) return ["Invalid address"];
       if (gw && !isIp(gw)) return ["Invalid gateway"];
       if (gw && !sameSubnet(addr, gw, prefix)) return ["Gateway is not in the same subnet"];
-      this.rt.pcs[this.dev] = { ip: addr, prefix, gw };
+      const old = this.rt.pcs[this.dev];
+      this.rt.pcs[this.dev] = { ip: addr, prefix, gw, ...old.dns ? { dns: old.dns } : {}, ...old.services ? { services: old.services } : {} };
       this.rt.commit();
       return ["Checking for duplicate address...", `${this.name} : ${addr} ${prefixToMask(prefix)}${gw ? " gateway " + gw : ""}`, ""];
     }
+    /** `ip dhcp` (also `dhcp`): -x releases, anything else asks for a (new) lease. */
+    dhcp(args) {
+      const opt = args[0]?.toLowerCase();
+      if (opt && opt !== "-r" && opt !== "-x") return ["Invalid options"];
+      if (opt === "-x") {
+        this.rt.dhcpRelease(this.dev);
+        return [];
+      }
+      const r = this.rt.dhcpRequest(this.dev);
+      const c = this.rt.pcs[this.dev];
+      if (r.ok) return [`DDORA IP ${c.ip}/${c.prefix}` + (c.gw ? ` GW ${c.gw}` : ""), ""];
+      return ["DDD", "Can't find dhcp server", `Autoconfiguration IPv4 address ${c.ip}/${c.prefix} (no DHCP lease)`, ""];
+    }
+    setDns(addr) {
+      if (!addr) return ["Incomplete command."];
+      if (!isIp(addr)) return ["Invalid address"];
+      const c = this.rt.pcs[this.dev];
+      if (addr === "0.0.0.0") delete c.dns;
+      else c.dns = addr;
+      this.rt.commit();
+      return [];
+    }
+    /** Windows-style `nslookup <name>` through the configured DNS server. */
+    nslookup(name) {
+      const r = dnsLookup(this.rt.derived, this.dev, name);
+      if (r.ok) return ["Server:  UnKnown", `Address:  ${r.server}`, "", `Name:    ${r.name}`, `Address:  ${r.address}`, ""];
+      if (r.reason === "noserver") return ["*** Default servers are not available", ""];
+      if (r.reason === "timeout") return ["DNS request timed out.", "    timeout was 2 seconds.", "*** Request to UnKnown timed-out", ""];
+      return ["Server:  UnKnown", `Address:  ${r.server}`, "", `*** UnKnown can't find ${name}: Non-existent domain`, ""];
+    }
+    /** Server-only commands; null when the line is not one of them. */
+    server(c, args) {
+      const cfg = this.rt.pcs[this.dev];
+      const a = args.map((x) => x.toLowerCase());
+      if (c === "service") {
+        if (a[0] !== "dhcp" && a[0] !== "dns" || a[1] !== "on" && a[1] !== "off") return ["Usage: service dhcp|dns on|off"];
+        cfg.services = { ...cfg.services ?? {}, [a[0]]: a[1] === "on" };
+        if (a[0] === "dhcp" && a[1] === "off") this.rt.dhcpClear(this.dev);
+        this.rt.commit();
+        return [`${a[0].toUpperCase()} service is ${a[1]}`];
+      }
+      if (c !== "show") return null;
+      if (a[0] === "services") return ["Service     Status", ...["dhcp", "dns"].map((k) => k.padEnd(12) + (cfg.services?.[k] ? "on" : "off")), ""];
+      if (a[0] === "ip" && a[1] === "dhcp" && a[2] === "binding") {
+        const rows = this.rt.dhcp.filter((b) => b.server === this.dev);
+        return ["IP address       Hardware address     Lease expiration", ...rows.map((b) => b.ip.padEnd(17) + b.mac.padEnd(21) + b.expires), ""];
+      }
+      if (a[0] === "dns") {
+        if (!cfg.services?.dns) return ["DNS service is off", ""];
+        return ["Name                 Address", ...dnsRecords(this.rt.derived).map((x) => x.name.padEnd(21) + x.address), ""];
+      }
+      return null;
+    }
     showIp() {
       const c = this.rt.pcs[this.dev];
+      const lease = this.rt.dhcpLeaseOf(this.dev);
       return [
         "",
         `NAME        : ${this.name}[1]`,
         `IP/MASK     : ${c.ip ? `${c.ip}/${c.prefix}` : "0.0.0.0/0"}`,
         `GATEWAY     : ${c.gw ?? "0.0.0.0"}`,
-        "DNS         : ",
+        `DNS         : ${c.dns ?? ""}`,
+        ...lease ? [`DHCP SERVER : ${lease.serverIp}`] : c.dhcp && c.ip && isApipa(c.ip) ? ["DHCP SERVER : none (autoconfiguration address)"] : [],
         `MAC         : ${macToColon(this.def.mac)}`,
         "LPORT       : 20000",
         "RHOST:PORT  : 127.0.0.1:30000",
@@ -4054,12 +4454,12 @@ var AgLabSim = (() => {
       }
       return s;
     };
-    const nk3 = (i) => `${i.l3.node.dev}|${i.l3.node.vlan}`;
+    const nk4 = (i) => `${i.l3.node.dev}|${i.l3.node.vlan}`;
     const peersOf = /* @__PURE__ */ new Map();
     const compat = /* @__PURE__ */ new Map();
     for (const a of talkers) {
       const dom = domOf(a);
-      const peers = talkers.filter((b) => b.dev !== a.dev && dom.has(nk3(b)));
+      const peers = talkers.filter((b) => b.dev !== a.dev && dom.has(nk4(b)));
       peersOf.set(a, peers);
       const ok = [];
       for (const b of peers) {
@@ -4318,10 +4718,25 @@ var AgLabSim = (() => {
 
   // src/sim/query.ts
   var LabQuery = class {
-    constructor(d, startup = {}, learned = /* @__PURE__ */ new Set()) {
+    constructor(d, startup = {}, learned = /* @__PURE__ */ new Set(), leases = []) {
       this.d = d;
       this.startup = startup;
       this.learned = learned;
+      this.leases = leases;
+    }
+    /** L5-b: the lease the PC currently uses ({server, pool, ip, …}), or null. */
+    dhcpLease(pc) {
+      const c = this.d.pcs[pc];
+      if (!c?.dhcp || !c.ip || isApipa(c.ip)) return null;
+      return this.leases.find((b) => b.client === pc && b.ip === c.ip) ?? null;
+    }
+    /** L5-b: leases a DHCP server (router, switch or lab server) handed out. */
+    dhcpBindings(server) {
+      return this.leases.filter((b) => b.server === server);
+    }
+    /** L5-b: DNS lookup from a PC through its configured DNS server. */
+    dnsLookup(pc, name) {
+      return dnsLookup(this.d, pc, name);
     }
     /** Dynamic MAC address table of a switch (learned addresses only). */
     macTable(dev) {
@@ -4513,6 +4928,8 @@ var AgLabSim = (() => {
       __publicField(this, "errdis", /* @__PURE__ */ new Set());
       /** cut cables, powered-off devices, disabled PC NICs (see Hardware) */
       __publicField(this, "hw", noHardwareFaults());
+      /** L5-b: DHCP leases handed out by the lab's servers (kept in RAM: lost on reload) */
+      __publicField(this, "dhcp", []);
       __publicField(this, "seq", 0);
       __publicField(this, "t0", Date.now());
       __publicField(this, "listeners", /* @__PURE__ */ new Set());
@@ -4527,6 +4944,7 @@ var AgLabSim = (() => {
       }
       for (const pc of this.topo.pcs) this.pcs[pc.id] = clone(this.def.initialPcs?.[pc.id] ?? { ip: null, prefix: 24, gw: null });
       this.errdis.clear();
+      this.dhcp = [];
       this.hw = noHardwareFaults();
       for (const l of this.def.links)
         if (l.up === false) for (const [dev, port] of [l.a, l.b]) this.hw.cut.add(pk(dev, port));
@@ -4666,7 +5084,58 @@ var AgLabSim = (() => {
     }
     /** Read-only queries on the current state, including learned MAC addresses. */
     query() {
-      return new LabQuery(this.derived, this.startup, this.seen);
+      return new LabQuery(this.derived, this.startup, this.seen, this.dhcp);
+    }
+    /**
+     * L5-b: the PC asks for an address (DHCP DISCOVER … ACK). On success its address, mask,
+     * gateway and DNS server come from the lease. When nothing answers it keeps the
+     * link-local (169.254/16) address it already has, or gives itself one; the gateway is
+     * cleared and an earlier lease of this client is dropped.
+     */
+    dhcpRequest(pc) {
+      const def = this.topo.devices[pc];
+      if (!def || def.kind !== "pc") return { ok: false, reason: "nolink" };
+      const old = this.pcs[pc];
+      const keep = { ...old.services ? { services: old.services } : {} };
+      const r = dhcpDiscover(this.derived, pc, this.dhcp);
+      this.dhcp = this.dhcp.filter((b) => b.client !== pc);
+      if (r.ok) {
+        this.pcs[pc] = { ip: r.ip, prefix: r.prefix, gw: r.gw, dhcp: true, dns: r.dns, ...keep };
+        this.dhcp.push({ server: r.server, serverIp: r.serverIp, pool: r.pool, ip: r.ip, client: pc, mac: def.mac, expires: this.leaseExpiry() });
+        this.seen.add(def.mac);
+      } else {
+        if (old.ip && isApipa(old.ip)) this.pcs[pc] = { ...old, dhcp: true };
+        else this.pcs[pc] = { ip: apipaFor(def.mac), prefix: 16, gw: null, dhcp: true, ...old.dns && !old.dhcp ? { dns: old.dns } : {}, ...keep };
+      }
+      this.commit();
+      return r;
+    }
+    /** L5-b: DHCP release: the client gives its address back and has none. */
+    dhcpRelease(pc) {
+      const old = this.pcs[pc];
+      if (!old) return;
+      this.dhcp = this.dhcp.filter((b) => b.client !== pc);
+      this.pcs[pc] = { ip: null, prefix: 24, gw: null, ...old.services ? { services: old.services } : {} };
+      this.commit();
+    }
+    /** L5-b: lease of this PC that is still in use (address obtained from DHCP), or null. */
+    dhcpLeaseOf(pc) {
+      const c = this.pcs[pc];
+      return c?.dhcp && this.dhcp.find((b) => b.client === pc && b.ip === c.ip) || null;
+    }
+    /** `clear ip dhcp binding *` / reload: the server forgets its leases. */
+    dhcpClear(server, ip) {
+      const before = this.dhcp.length;
+      this.dhcp = this.dhcp.filter((b) => b.server !== server || ip !== void 0 && b.ip !== ip);
+      return before - this.dhcp.length;
+    }
+    /** Default lease is one day: expiration on the lab clock (starts on Mar 1). */
+    leaseExpiry() {
+      const ms = Date.now() - this.t0 + 3723e3;
+      const h = Math.floor(ms / 36e5) % 24;
+      const m = Math.floor(ms / 6e4) % 60;
+      const two = (n) => String(n).padStart(2, "0");
+      return `Mar 02 1993 ${two(h % 12 === 0 ? 12 : h % 12)}:${two(m)} ${h < 12 ? "AM" : "PM"}`;
     }
     /** Cable on this port is plugged in and intact (says nothing about the far device). */
     cableIntact(dev, port) {
@@ -4693,6 +5162,7 @@ var AgLabSim = (() => {
           for (const k of [...this.arp]) if (k.startsWith(dev + ">")) this.arp.delete(k);
           for (const k of [...this.arpIncomplete]) if (k.startsWith(dev + ">")) this.arpIncomplete.delete(k);
         }
+        this.dhcpClear(dev);
       }
       this.commit();
     }
@@ -4742,7 +5212,8 @@ var AgLabSim = (() => {
         arp: [...this.arp],
         arpIncomplete: [...this.arpIncomplete],
         errdis: [...this.errdis],
-        hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] }
+        hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
+        dhcp: clone(this.dhcp)
       };
     }
     load(s) {
@@ -4759,6 +5230,7 @@ var AgLabSim = (() => {
       this.arpIncomplete = new Set(s.arpIncomplete ?? []);
       this.errdis = new Set(s.errdis ?? []);
       if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) };
+      this.dhcp = clone(s.dhcp ?? []);
       this.derived = this.recompute();
       this.emit();
       return true;
@@ -6838,7 +7310,7 @@ write memory`
   };
   var TOP_OPAQUE = /* @__PURE__ */ new Set(["app", "version", "nextId", "selected", "importReport", "sourceArchive"]);
   var DEVICE_OPAQUE = /* @__PURE__ */ new Set(["id", "name", "type", "x", "y", "w", "h", "mode", "config", "selected"]);
-  var PC_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "ip", "mask", "gateway", "mac", "vlan"]);
+  var PC_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "ip", "mask", "gateway", "mac", "vlan", "dhcpLease", "dns"]);
   var SWITCH_FIELDS = /* @__PURE__ */ new Set([
     "enabled",
     "ports",
@@ -6851,9 +7323,10 @@ write memory`
     "ip",
     "mask"
   ]);
-  var ROUTER_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "staticRoutes", "route", "ospf", "ip", "mask", "gateway", "vlan"]);
-  var ROUTER_IF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled"]);
-  var SUBIF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "parent", "vlan", "encapsulation"]);
+  var ROUTER_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "staticRoutes", "route", "ospf", "ip", "mask", "gateway", "vlan", "dhcpPools", "dhcpExcluded"]);
+  var ROUTER_IF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "helperAddress"]);
+  var DHCP_POOL_FIELDS = /* @__PURE__ */ new Set(["name", "network", "mask", "defaultRouter", "dnsServer"]);
+  var SUBIF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "parent", "vlan", "encapsulation", "helperAddress"]);
   var STATIC_ROUTE_FIELDS = /* @__PURE__ */ new Set(["network", "mask", "nextHop", "distance"]);
   var OSPF_FIELDS = /* @__PURE__ */ new Set(["pid", "routerId", "networks"]);
   var SERVER_FIELDS = /* @__PURE__ */ new Set([...PC_FIELDS, "services"]);
@@ -6867,7 +7340,8 @@ write memory`
     natTranslations: "NAT çeviri tablosu Labber'da yok (L5)",
     ospf: "Switch üzerinde OSPF AğLab modelinde yok",
     bgp: "BGP Labber'da yok (L5)",
-    services: "Sunucu servisleri (DHCP/DNS/HTTP) Labber'da yok (L5)",
+    services: "Sunucu servisleri yalnız Server cihazında modellenir",
+    http: "Sunucu servisleri içinde HTTP Labber'da yok (L5)",
     startupConfig: "Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)",
     portSecurity: "Port security Labber'da yok (L5)",
     errdisabled: "Port security err-disable durumu Labber'da yok (L5)",
@@ -6876,8 +7350,7 @@ write memory`
     aclIn: "ACL Labber'da yok (L5)",
     aclOut: "ACL Labber'da yok (L5)",
     natRole: "NAT Labber'da yok (L5)",
-    helperAddress: "DHCP relay Labber'da yok (L5)",
-    dhcpLease: "DHCP istemci kirası Labber'da yok (L5)"
+    helperAddress: "DHCP relay (helperAddress) yalnız router arayüzünde ve alt arayüzünde eşlenir"
   };
   var sortNum = (a, b) => a - b;
   function needsEncapFor(model) {
@@ -6960,6 +7433,15 @@ write memory`
       }
       return { portMap, canonPorts };
     };
+    const helperOf = (id, name, iface) => {
+      const h = iface["helperAddress"];
+      if (h === void 0 || h === "") return null;
+      if (typeof h !== "string" || !isIp(h)) {
+        reject(id, `${name}.helperAddress`, "Geçersiz helper-address");
+        return null;
+      }
+      return [h];
+    };
     const routerToLabber = (d, id, off) => {
       for (const key of ["ip", "mask", "gateway"])
         if (d[key] !== void 0 && d[key] !== "") unsupported(id, key, "Router'da cihaz düzeyi adres alanı AğLab modelinde yok (arayüz adresleri kullanılır)");
@@ -7003,6 +7485,8 @@ write memory`
           if (!isIp(iface.ip) || pre === null || pre === 0) reject(id, name, "Geçersiz router arayüzü IPv4 adresi/maskesi");
           else phys.ip = { addr: iface.ip, mask: iface.mask };
         }
+        const helpers = helperOf(id, name, iface);
+        if (helpers) phys.l3 = { ...phys.l3 ?? {}, helpers };
       }
       for (const [name, iface] of Object.entries(ifaces)) {
         if (!name.includes(".")) continue;
@@ -7041,6 +7525,49 @@ write memory`
           else ip = { addr: iface.ip, mask: iface.mask };
         }
         subs[key] = { parent, vlan, native: false, shutdown: iface.enabled === false, description: "", ip };
+        const helpers = helperOf(id, name, iface);
+        if (helpers) subs[key].l3 = { helpers };
+      }
+      if (d.dhcpPools !== void 0) {
+        if (!Array.isArray(d.dhcpPools)) reject(id, "dhcpPools", "DHCP havuz listesi dizi olmalı");
+        else
+          d.dhcpPools.forEach((pool, i) => {
+            const where = `dhcpPools[${i}]`;
+            for (const key of Object.keys(pool ?? {}))
+              if (!DHCP_POOL_FIELDS.has(key)) unsupported(id, `${where}.${key}`, "Labber'da karşılığı olmayan DHCP havuz alanı");
+            const name = pool?.["name"];
+            if (typeof name !== "string" || !name || /\s/.test(name)) return reject(id, where, "DHCP havuz adı boşluksuz bir metin olmalı");
+            if (cfg.dhcpPools?.[name]) return reject(id, where, "Aynı adla yinelenen DHCP havuzu");
+            const out = { net: null, defaultRouter: null, dns: null };
+            const network = pool["network"] ?? "";
+            if (network !== "") {
+              const pre = isIp(String(pool["mask"] ?? "")) ? maskToPrefix(String(pool["mask"])) : null;
+              if (!isIp(String(network)) || pre === null || pre < 1 || pre > 30 || networkOf(String(network), pre) !== network)
+                return reject(id, where, "Geçersiz DHCP havuz ağı (ağ adresi/maske)");
+              out.net = { addr: String(network), mask: String(pool["mask"]) };
+            }
+            for (const [key, field] of [["defaultRouter", "defaultRouter"], ["dnsServer", "dns"]]) {
+              const v = pool[key] ?? "";
+              if (v === "") continue;
+              if (!isIp(String(v))) return reject(id, `${where}.${key}`, "Geçersiz IPv4 adresi");
+              out[field] = String(v);
+            }
+            ;
+            (cfg.dhcpPools ?? (cfg.dhcpPools = {}))[name] = out;
+          });
+      }
+      if (d.dhcpExcluded !== void 0) {
+        if (!Array.isArray(d.dhcpExcluded)) reject(id, "dhcpExcluded", "DHCP dışlanan adres listesi dizi olmalı");
+        else
+          d.dhcpExcluded.forEach((r, i) => {
+            const where = `dhcpExcluded[${i}]`;
+            for (const key of Object.keys(r ?? {}))
+              if (key !== "start" && key !== "end") unsupported(id, `${where}.${key}`, "Labber'da karşılığı olmayan DHCP dışlama alanı");
+            const lo = String(r?.["start"] ?? "");
+            const hi = String(r?.["end"] ?? lo);
+            if (!isIp(lo) || !isIp(hi) || ipToInt(hi) < ipToInt(lo)) return reject(id, where, "Geçersiz DHCP dışlanan adres aralığı");
+            (cfg.dhcpExcluded ?? (cfg.dhcpExcluded = [])).push({ lo, hi });
+          });
       }
       const list = Array.isArray(d.staticRoutes) ? d.staticRoutes : [];
       if (d.staticRoutes !== void 0 && !Array.isArray(d.staticRoutes)) reject(id, "staticRoutes", "Statik rota listesi dizi olmalı");
@@ -7116,8 +7643,11 @@ write memory`
         if (services !== void 0 && (typeof services !== "object" || services === null || Array.isArray(services)))
           reject(id, "services", "Servis listesi nesne olmalı");
         else
-          for (const [name, on] of Object.entries(services ?? {}))
-            if (on) unsupported(id, `services.${name}`, FEATURE_REASON["services"]);
+          for (const [name, on] of Object.entries(services ?? {})) {
+            if (typeof on !== "boolean") reject(id, `services.${name}`, "Servis durumu true/false olmalı");
+            else if (name !== "dhcp" && name !== "dns" && on)
+              unsupported(id, `services.${name}`, name === "http" ? FEATURE_REASON["http"] : "Bilinmeyen sunucu servisleri Labber'da yok: " + name);
+          }
       }
       if (d.type === "Router") {
         routerToLabber(d, id, off);
@@ -7144,6 +7674,17 @@ write memory`
           prefix: prefix ?? 24,
           gw: d.gateway && isIp(d.gateway) ? d.gateway : null
         };
+        if (d.dhcpLease !== void 0 && typeof d.dhcpLease !== "boolean") reject(id, "dhcpLease", "dhcpLease true/false olmalı");
+        else if (d.dhcpLease) pcs[id].dhcp = true;
+        if (d.dns !== void 0 && d.dns !== "") {
+          if (typeof d.dns !== "string" || !isIp(d.dns)) reject(id, "dns", "Geçersiz DNS sunucusu adresi: " + String(d.dns));
+          else pcs[id].dns = d.dns;
+        }
+        if (d.type === "Server") {
+          const sv = d.services ?? {};
+          if (sv["dhcp"] === true || sv["dns"] === true)
+            pcs[id].services = { ...sv["dhcp"] === true ? { dhcp: true } : {}, ...sv["dns"] === true ? { dns: true } : {} };
+        }
         const mac = resolveMac ? intToDotted(macToInt(resolveMac(d))) : "0000.0000.0000";
         claimMac(id, mac);
         const pc = {
@@ -7152,6 +7693,8 @@ write memory`
           mac,
           x: Number(d.x ?? 0),
           y: Number(d.y ?? 0),
+          ...d.name ? { name: d.name } : {},
+          ...d.type === "Server" ? { server: true } : {},
           ...off ? { off: true } : {},
           ...d.interfaces?.["eth0"]?.enabled === false ? { nicDown: true } : {}
         };
@@ -7384,6 +7927,19 @@ write memory`
         if (pc.ip !== null && (d.mask !== void 0 || pc.ip)) d.mask = prefixToMask(pc.prefix);
         const gw2 = pc.gw ?? "";
         if (d.gateway !== void 0 || gw2) d.gateway = gw2;
+        const lease = !!pc.dhcp && !!pc.ip && !isApipa(pc.ip);
+        if (d.dhcpLease !== void 0 || lease) d.dhcpLease = lease;
+        const dns = pc.dns ?? "";
+        if (d.dns !== void 0 || dns) d.dns = dns;
+        if (d.type === "Server") {
+          const prev = d.services ?? {};
+          const next = { ...prev };
+          for (const k of ["dhcp", "dns"]) {
+            const on = !!pc.services?.[k];
+            if (k in prev || on) next[k] = on;
+          }
+          if (d.services !== void 0 || Object.keys(next).length) d.services = next;
+        }
         continue;
       }
       if (d.type === "Router" && rt.running[id]) {
@@ -7404,6 +7960,7 @@ write memory`
       if (cfg.stpMode !== "pvst") fail("spanning-tree mode " + cfg.stpMode);
       if (cfg.bpduguardDefault) fail("spanning-tree portfast bpduguard default");
       if (cfg.errRecoveryBpdu || cfg.errRecoveryInterval !== void 0) fail("errdisable recovery");
+      if (Object.keys(cfg.dhcpPools ?? {}).length || cfg.dhcpExcluded?.length) fail("switch üzerinde DHCP sunucusu");
       const gw = cfg.defaultGateway ?? "";
       if (d.gateway !== void 0 || gw) d.gateway = gw;
       const hadOne = (original.devices.find((x) => String(x.id) === id)?.vlans ?? [1]).map(Number).includes(1);
@@ -7484,15 +8041,17 @@ write memory`
       const name = back[canon];
       if (!name) continue;
       if (phys.description) fail(`${canon} description`);
-      if (phys.l3 && Object.keys(phys.l3).length) fail(`${canon} arayüz OSPF/L3 ayarı`);
+      const helper = helperBack(phys.l3, canon, fail);
       const prev2 = d.interfaces[name];
-      if (!prev2 && !phys.ip && !phys.shutdown) continue;
+      if (!prev2 && !phys.ip && !phys.shutdown && !helper) continue;
       const iface = prev2 ? { ...prev2 } : {};
       if (phys.ip) {
         iface.ip = phys.ip.addr;
         iface.mask = phys.ip.mask;
       } else if (prev2?.ip !== void 0) iface.ip = "";
       if (prev2?.enabled !== void 0 || phys.shutdown) iface.enabled = !phys.shutdown;
+      if (helper) iface["helperAddress"] = helper;
+      else if (iface["helperAddress"] !== "") delete iface["helperAddress"];
       d.interfaces[name] = iface;
     }
     const subNames = /* @__PURE__ */ new Set();
@@ -7503,7 +8062,7 @@ write memory`
       subNames.add(name);
       if (si.native) fail(`${canon} encapsulation dot1Q ${si.vlan} native`);
       if (si.description) fail(`${canon} description`);
-      if (si.l3 && Object.keys(si.l3).length) fail(`${canon} arayüz OSPF/L3 ayarı`);
+      const helper = helperBack(si.l3, canon, fail);
       const prev2 = d.interfaces[name];
       const iface = prev2 ? { ...prev2 } : { ip: "", mask: "255.255.255.0", enabled: true, vlan: 1, encapsulation: "", parent: physName };
       if (si.ip || "ip" in iface) iface.ip = si.ip?.addr ?? "";
@@ -7516,9 +8075,26 @@ write memory`
         iface.vlan = si.vlan;
       }
       if (prev2?.parent !== void 0 || !prev2) iface.parent = physName;
+      if (helper) iface["helperAddress"] = helper;
+      else if (iface["helperAddress"] !== "") delete iface["helperAddress"];
       d.interfaces[name] = iface;
     }
     for (const name of Object.keys(d.interfaces)) if (name.includes(".") && !subNames.has(name)) delete d.interfaces[name];
+    const pools = Object.entries(cfg.dhcpPools ?? {}).map(([name, p]) => {
+      const next = { name, network: p.net?.addr ?? "", mask: p.net?.mask ?? "" };
+      if (p.defaultRouter) next["defaultRouter"] = p.defaultRouter;
+      if (p.dns) next["dnsServer"] = p.dns;
+      const kept = (orig.dhcpPools ?? []).find(
+        (a) => a["name"] === name && (a["network"] ?? "") === next["network"] && (a["mask"] ?? "") === next["mask"] && (a["defaultRouter"] ?? "") === (p.defaultRouter ?? "") && (a["dnsServer"] ?? "") === (p.dns ?? "")
+      );
+      return kept ? clone(kept) : next;
+    });
+    if (d.dhcpPools !== void 0 || pools.length) d.dhcpPools = pools;
+    const excluded = (cfg.dhcpExcluded ?? []).map((r) => {
+      const kept = (orig.dhcpExcluded ?? []).find((a) => a["start"] === r.lo && String(a["end"] ?? a["start"]) === r.hi);
+      return kept ? clone(kept) : { start: r.lo, end: r.hi };
+    });
+    if (d.dhcpExcluded !== void 0 || excluded.length) d.dhcpExcluded = excluded;
     const legacyDefault = typeof orig.route === "string" && orig.route !== "" && !(orig.staticRoutes ?? []).some((r) => r.network === "0.0.0.0" && r.mask === "0.0.0.0");
     let routes = cfg.routes;
     if (legacyDefault) {
@@ -7547,9 +8123,16 @@ write memory`
     ospf["networks"] = o.networks.map((n) => ({ network: n.addr, wildcard: n.wildcard, area: n.area }));
     d.ospf = ospf;
   }
+  function helperBack(l3, canon, fail) {
+    if (!l3) return null;
+    const { helpers, ...rest } = l3;
+    if (Object.keys(rest).length) fail(`${canon} arayüz OSPF/L3 ayarı`);
+    if (helpers && helpers.length > 1) fail(`${canon} üzerinde birden çok ip helper-address`);
+    return helpers?.[0] ?? null;
+  }
 
   // src/sim-bridge/events.ts
-  var nk2 = (n) => `${n.dev}|${n.vlan}`;
+  var nk3 = (n) => `${n.dev}|${n.vlan}`;
   var colon = (mac) => {
     const h = mac.replace(/[^0-9a-f]/gi, "").toLowerCase();
     return h.length === 12 ? h.match(/../g).join(":") : mac;
@@ -7559,7 +8142,7 @@ write memory`
     if (!a.node || !b.node) return null;
     const dom = l2Domain(d, a.node);
     const chain = [];
-    let cur = dom.nodes.get(nk2(b.node));
+    let cur = dom.nodes.get(nk3(b.node));
     if (!cur) return null;
     while (cur.via) {
       const prev = dom.nodes.get(cur.via.from);
@@ -15322,6 +15905,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
         'natOverload',
         'natTranslations',
         'dhcpLease',
+        // L5-b: Labber içeriğinde PC'nin DNS sunucusu ve router'ın IOS DHCP sunucusu
+        'dns',
+        'dhcpPools',
+        'dhcpExcluded',
         'vlanNames',
         'startupConfig',
         'ospf',
@@ -19079,7 +19666,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
     srv.ip = '10.10.20.2';
     srv.mask = '255.255.255.0';
     srv.gateway = '10.10.20.1';
-    srv.services = { ...(srv.services || {}), dhcp: true };
+    // L5-b: senaryo yalnız DHCP servisini kullanır; şablonun DNS/HTTP servisleri kapalıdır
+    // (HTTP Labber'da modellenmez; açık kalsaydı içerik eski motorda açılırdı).
+    srv.services = { dhcp: true, dns: false, http: false };
     links = [
       { a: pc.id, b: sw1.id, portA: 'eth0', portB: 'fa0/1', up: true },
       { a: sw1.id, b: sw2.id, portA: 'gi0/1', portB: 'gi0/1', up: true },
@@ -19096,7 +19685,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
     saveTopology(true);
     $p('ptTerminal').replaceChildren();
     $p('sharedScenarioInstructions').innerHTML =
-      '<b>Arıza:</b> R1 üzerinde DHCP relay etkin ve DHCP sunucusu açık; ancak SW-01 ile SW-02 arasındaki trunk yalnızca VLAN 20’yi taşıyor. PC-01 APIPA adresinde kalıyor.<br><b>Görev:</b> PC-01’de <code>ipconfig /renew</code> ile başarısızlığı gözle. SW-01 CLI’sinde <code>enable</code> → <code>configure terminal</code> → <code>interface gi0/1</code> → <code>switchport trunk allowed vlan 10,20</code> uygula. PC-01’e dönüp <code>ipconfig /renew</code> ile DHCP adresini doğrula.';
+      '<b>Arıza:</b> R1 üzerinde DHCP relay etkin ve DHCP sunucusu açık; ancak SW-01 ile SW-02 arasındaki trunk yalnızca VLAN 20’yi taşıyor. PC-01 APIPA adresinde kalıyor.<br><b>Görev:</b> PC-01’de <code>ip dhcp</code> ile başarısızlığı gözle. SW-01 CLI’sinde <code>enable</code> → <code>configure terminal</code> → <code>interface gi0/1</code> → <code>switchport trunk allowed vlan 10,20</code> uygula. PC-01’e dönüp <code>ip dhcp</code> ile DHCP adresini al; <code>show ip</code> ile doğrula.';
     sharedStatus(
       'DHCP relay/trunk senaryosu yüklendi. VLAN 10 trunk üzerinde olmadığı için ilk DHCP yenilemesi başarısız olmalı.',
     );
@@ -22945,7 +23534,16 @@ const aglabLabber = (() => {
     if (/ icmp_seq=\d+ timeout$|Destination host unreachable|not reachable$/.test(text))
       return 'outerr';
     if (
-      /^(Bad command|Invalid (address|netmask|gateway)|Cannot resolve|No gateway found)/.test(text)
+      /^(Bad command|Invalid (address|netmask|gateway|options)|Cannot resolve|No gateway found)/.test(
+        text,
+      )
+    )
+      return 'outerr';
+    // L5-b: DHCP istemcisi ve nslookup başarısızlıkları
+    if (
+      /^(Can't find dhcp server|DNS request timed out\.|\*\*\* (Default servers are not available|Request to .* timed-out|.* can't find ))/.test(
+        text,
+      )
     )
       return 'outerr';
     return '';
@@ -24157,7 +24755,7 @@ const sharedNetworkScenarios=[
       {
         "device": "PC-01",
         "commands": [
-          "ipconfig /renew"
+          "ip dhcp"
         ]
       }
     ],
@@ -29409,6 +30007,9 @@ const SHARED_QUERY_FNS = new Set([
   'stpRoot',
   'powered',
   'linkUp',
+  // L5-b
+  'dhcpLease',
+  'dnsLookup',
 ]);
 /**
  * Bir hedef satırı: { fn, args, field?, expected, label? }. Bağımsız değişkenlerde cihaz
@@ -29485,6 +30086,10 @@ function sharedRecipeGoal(row) {
       return aglabEngineChoice.labberStpRoot(row.verify.vlan) === row.verify.root && reached();
     if (row.verify.kind === 'ping') return reached();
     if (row.verify.kind === 'query') return sharedQueryGoal(row).ok;
+    // L5-b: kaynak PC'nin adresi DHCP'den (link-local değil); AğLab görünümünde dhcpLease.
+    if (row.verify.kind === 'dhcp')
+      return !!aglabEngineChoice.labberView().devices.find((d) => d.id === sharedScenario.sourceId)
+        ?.dhcpLease;
     throw new Error('Labber bu doğrulama türünü desteklemiyor: ' + row.verify.kind);
   }
   if (row.verify.kind === 'query')

@@ -3,12 +3,12 @@
 import { defaultSvi, defaultSwitchConfig, defaultVlanName, pickL2, RESERVED_VLANS } from '../config'
 import { arpMac, deliver, l3Ifs, ping } from '../net'
 import type { LabRuntime } from '../runtime'
-import type { ChannelMode, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
+import type { ChannelMode, DhcpPool, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { canonIf, clone, ifNum, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
 
-export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router'
+export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp'
 
 type P = Pattern<IosSession>
 type Out = string[] | void
@@ -58,6 +58,10 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show mac address-table address <H.H.H:48 bit mac address>', run: (x, a) => show.showMac(x.rt, x.dev, normalizeMac(a[4]!)!) },
     { p: 'show cdp neighbors', run: (x) => show.showCdp(x.rt, x.dev) },
     { p: 'show history', run: (x) => x.history.slice(-20).map((h) => '  ' + h) },
+    // L5-b: DHCP server
+    { p: 'show ip dhcp binding', run: (x) => show.showDhcpBinding(x.rt, x.dev) },
+    { p: 'show ip dhcp pool', run: (x) => show.showDhcpPool(x.rt, x.dev) },
+    { p: 'show ip dhcp pool <WORD:Pool name>', run: (x, a) => show.showDhcpPool(x.rt, x.dev, a[4]!) },
   ]
   if (privOnly) {
     s.push(
@@ -118,6 +122,11 @@ const privPatterns: P[] = [
       for (const k of [...x.rt.arpIncomplete]) if (k.startsWith(x.dev + '>')) x.rt.arpIncomplete.delete(k)
     },
   },
+  { p: 'clear ip dhcp binding *', run: (x) => void x.rt.dhcpClear(x.dev) },
+  {
+    p: 'clear ip dhcp binding <A.B.C.D:IP address of the binding>',
+    run: (x, a) => (x.rt.dhcpClear(x.dev, a[4]!) ? [] : [`% Binding ${a[4]} not found`]),
+  },
   ...showPatterns(true),
 ]
 
@@ -158,6 +167,13 @@ const configPatterns = (def: SwitchDef): P[] => {
     { p: 'no spanning-tree vlan <vlist:VLAN range, example: 1,3-5,7,9-11> root', run: (x, a) => x.stpClear(a[3]!) },
     { p: 'ip default-gateway <A.B.C.D:IP address of default gateway>', run: (x, a) => void (x.cfg.defaultGateway = a[2]!) },
     { p: 'no ip default-gateway', run: (x) => void (x.cfg.defaultGateway = null) },
+    // L5-b: DHCP server
+    { p: 'ip dhcp pool <WORD:Pool name>', run: (x, a) => x.enterPool(a[3]!) },
+    { p: 'no ip dhcp pool <WORD:Pool name>', run: (x, a) => x.deletePool(a[4]!) },
+    { p: 'ip dhcp excluded-address <A.B.C.D:Low IP address>', run: (x, a) => x.dhcpExclude(a[3]!, a[3]!, true) },
+    { p: 'ip dhcp excluded-address <A.B.C.D:Low IP address> <A.B.C.D:High IP address>', run: (x, a) => x.dhcpExclude(a[3]!, a[4]!, true) },
+    { p: 'no ip dhcp excluded-address <A.B.C.D:Low IP address>', run: (x, a) => x.dhcpExclude(a[4]!, a[4]!, false) },
+    { p: 'no ip dhcp excluded-address <A.B.C.D:Low IP address> <A.B.C.D:High IP address>', run: (x, a) => x.dhcpExclude(a[4]!, a[5]!, false) },
     { p: 'no ip domain-lookup', run: () => {} },
     { p: 'ip domain-lookup', run: () => {} },
     { p: 'spanning-tree portfast bpduguard default', run: (x) => void (x.cfg.bpduguardDefault = true) },
@@ -231,6 +247,24 @@ const l3OptPatterns: P[] = [
   { p: 'no ip mtu', run: (x) => x.eachL3((o) => void delete o.mtu) },
   { p: 'bandwidth <1-10000000:Bandwidth in kilobits>', run: (x, a) => x.eachL3((o) => void (o.bandwidth = Number(a[1]))) },
   { p: 'no bandwidth', run: (x) => x.eachL3((o) => void delete o.bandwidth) },
+  // L5-b: DHCP relay
+  {
+    p: 'ip helper-address <A.B.C.D:IP destination address>',
+    run: (x, a) =>
+      x.eachL3((o) => {
+        const h = (o.helpers ??= [])
+        if (!h.includes(a[2]!)) h.push(a[2]!)
+      }),
+  },
+  {
+    p: 'no ip helper-address <A.B.C.D:IP destination address>',
+    run: (x, a) =>
+      x.eachL3((o) => {
+        o.helpers = (o.helpers ?? []).filter((h) => h !== a[3])
+        if (!o.helpers.length) delete o.helpers
+      }),
+  },
+  { p: 'no ip helper-address', run: (x) => x.eachL3((o) => void delete o.helpers) },
 ]
 
 const routerPatterns: P[] = [
@@ -395,6 +429,18 @@ const sviPatterns: P[] = [
   ...l3OptPatterns,
 ]
 
+/** L5-b: `ip dhcp pool <name>` sub-mode. */
+const dhcpPoolPatterns: P[] = [
+  ...commonSub,
+  { p: 'network <A.B.C.D:Network number in dotted-decimal notation> <A.B.C.D:Network mask>', run: (x, a) => x.poolNetwork(a[1]!, a[2]!) },
+  { p: 'network <A.B.C.D:Network number in dotted-decimal notation> <WORD:Network mask or prefix length (/nn)>', run: (x, a) => x.poolNetwork(a[1]!, a[2]!) },
+  { p: 'no network', run: (x) => void (x.poolCfg.net = null) },
+  { p: "default-router <A.B.C.D:Router's IP address>", run: (x, a) => void (x.poolCfg.defaultRouter = a[1]!) },
+  { p: 'no default-router', run: (x) => void (x.poolCfg.defaultRouter = null) },
+  { p: "dns-server <A.B.C.D:Server's IP address>", run: (x, a) => void (x.poolCfg.dns = a[1]!) },
+  { p: 'no dns-server', run: (x) => void (x.poolCfg.dns = null) },
+]
+
 const vlanPatterns: P[] = [
   ...commonSub,
   { p: 'name <WORD:The ascii name for the VLAN>', run: (x, a) => x.vlanName(a[1]!) },
@@ -416,6 +462,7 @@ function tries(def: SwitchDef) {
       subif: buildTrie(subIfPatterns),
       vlan: buildTrie(vlanPatterns),
       router: buildTrie(routerPatterns),
+      dhcp: buildTrie(dhcpPoolPatterns),
     }
     trieCache.set(def, t)
   }
@@ -429,6 +476,8 @@ export class IosSession {
   ifs: string[] = []
   range = false
   vlanIds: number[] = []
+  /** L5-b: pool under `ip dhcp pool <name>` */
+  pool = ''
   history: string[] = []
   private pending: { prompt: string; fn: (line: string) => Out } | null = null
   private starts: number[] = []
@@ -461,11 +510,13 @@ export class IosSession {
         return h + '(config-vlan)#'
       case 'router':
         return h + '(config-router)#'
+      case 'dhcp':
+        return h + '(dhcp-config)#'
     }
   }
 
   get inConfig() {
-    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router'
+    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp'
   }
 
   private trie(): TrieNode<IosSession> {
@@ -514,7 +565,7 @@ export class IosSession {
   private run(cmd: string): string[] {
     let r = parse(this.trie(), cmd)
     // in a sub-mode, a global config command drops back to config mode (as IOS does)
-    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router') && r.err !== 'empty') {
+    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp') && r.err !== 'empty') {
       const g = parse(tries(this.def).config, cmd)
       if (g.ok) {
         this.mode = 'config'
@@ -942,6 +993,55 @@ export class IosSession {
       if (!c.routed) return ['% IP addresses may not be configured on L2 links.']
       c.ip = { addr, mask }
     }
+  }
+
+  // ---- DHCP server (L5-b) ----
+
+  get poolCfg(): DhcpPool {
+    return this.cfg.dhcpPools![this.pool]!
+  }
+
+  enterPool(name: string): Out {
+    const pools = (this.cfg.dhcpPools ??= {})
+    if (!pools[name]) pools[name] = { net: null, defaultRouter: null, dns: null }
+    this.pool = name
+    this.mode = 'dhcp'
+  }
+
+  deletePool(name: string): Out {
+    if (!this.cfg.dhcpPools?.[name]) return [`% Pool ${name} not found`]
+    delete this.cfg.dhcpPools[name]
+    if (!Object.keys(this.cfg.dhcpPools).length) delete this.cfg.dhcpPools
+    // the pool's leases go with it
+    this.rt.dhcp = this.rt.dhcp.filter((b) => b.server !== this.dev || b.pool !== name)
+    this.rt.commit()
+  }
+
+  /** `network A.B.C.D mask|/len`: stored as the network address; one pool per network. */
+  poolNetwork(addr: string, maskOrLen: string): Out {
+    const len = /^\/\d+$/.test(maskOrLen) ? Number(maskOrLen.slice(1)) : maskToPrefix(maskOrLen)
+    if (len === null || !Number.isInteger(len) || len < 1 || len > 30) throw new InvalidAt(2)
+    const net = networkOf(addr, len)
+    const mask = [24, 16, 8, 0].map((sh) => (prefixMaskInt(len) >>> sh) & 255).join('.')
+    for (const [other, p] of Object.entries(this.cfg.dhcpPools ?? {}))
+      if (other !== this.pool && p.net && p.net.addr === net && p.net.mask === mask) return [`% A pool already exists for network ${net} / ${mask}`]
+    this.poolCfg.net = { addr: net, mask }
+  }
+
+  dhcpExclude(lo: string, hi: string, add: boolean): Out {
+    if (ipToInt(hi)! < ipToInt(lo)!) return ['% Invalid range of IP addresses']
+    const list = (this.cfg.dhcpExcluded ??= [])
+    const i = list.findIndex((r) => r.lo === lo && r.hi === hi)
+    if (add) {
+      if (i < 0) list.push({ lo, hi })
+    } else {
+      if (i < 0) {
+        if (!list.length) delete this.cfg.dhcpExcluded
+        return [`% Range [${lo}, ${hi}] is not in the database.`]
+      }
+      list.splice(i, 1)
+    }
+    if (!list.length) delete this.cfg.dhcpExcluded
   }
 
   // ---- OSPF ----

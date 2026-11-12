@@ -125,7 +125,8 @@ v13, traceroute, icmp) `tests/sim/routing-acceptance.test.ts`'de karşılaştır
 | AğLab OSPF alanları | `pid`, `routerId`, `networks` | Aynı alanlar eşlenir; `passive-interface`, `auto-cost`, stub, `default-information`, arayüz OSPF ayarları ve loopback Labber'da yapılabilir ama AğLab modeline geri yazılamaz | **Açık hata** (`BridgeError`): kayıt/geri yazım sessiz kayıp yerine hata verir. |
 | Routing senaryolarındaki sunucu (`SRV-01`) | Şablonla DHCP/DNS/HTTP servisleri açık | Servissiz sunucu bir uçtur; servisli sunucu L5'e kadar eski motorda | **Senaryoda servisler kapatıldı** (yalnız ICMP hedefi; servisler senaryoda kullanılmıyordu). |
 | Alt arayüz (router-on-a-stick: `subif-missing`, `roas-*`) | Var | **L5-a: destekleniyor** | Labber kararında; aşağıdaki "L5-a" bölümü. |
-| Router'da ACL, NAT, DHCP relay, BGP | Var | **Desteklenmiyor (L5)** | Eski motorda kalır (`nat-pat`, `relay-trunk`, `bgp-as`). |
+| DHCP sunucusu/relay/istemci, DNS (`relay-trunk`) | Var | **L5-b: destekleniyor** | Labber kararında; aşağıdaki "L5-b" bölümü. |
+| Router'da ACL, NAT, BGP; sunucuda HTTP | Var | **Desteklenmiyor (L5)** | Eski motorda kalır (`nat-pat`, `bgp-as`). |
 
 ## L5-a: router alt arayüzü / 802.1Q (Labber kararları)
 
@@ -147,3 +148,28 @@ Labber'da aynı sonucu verir.
 | `show interfaces Gi0/0.N` | — | **Desteklenmiyor** (`show ip interface brief` ve running-config alt arayüzü gösterir) | — |
 | PC çözüm komutu (`roas-pc-gateway`, `roas-two-faults`) | `ip default-gateway 192.168.20.1` (AğLab PC komutu) | PC terminali VPCS: `ip 192.168.20.12 255.255.255.0 192.168.20.1` | **Tarif çözüm satırı VPCS sözdizimine çevrildi** (Labber kararıyla PC terminali VPCS olduğu için zorunlu; L3-a'daki AGL-013 değişikliğiyle aynı). İpucu metinlerindeki `ipconfig` VPCS'te `show ip`'tir (içerik düzeltmesi ayrıca). |
 
+## L5-b: DHCP ve DNS (Labber kararları)
+
+`relay-trunk` senaryosu Labber kararındadır. Parite: `tests/test_aglab_dhcp_dns.py` aynı
+topolojiyi eski motorda (içe aktarılan topoloji) ve Labber'da aynı çözümle çalıştırır; başlangıç
+(kira yok, durum değişmez) ve çözüm (adres, maske, ağ geçidi, `dhcpLease`) **fark 0**.
+`tests/sim/bridge.test.ts` Labber'ın verdiği adresi `src/engine/dhcp.js allocateLease` oracle'ı
+ile karşılaştırır. Akademi lablarının hiçbiri DHCP/DNS kullanmaz (40 lab zaten Labber'da).
+
+| Konu | Eski motor | Labber | Karar |
+|---|---|---|---|
+| IOS DHCP sunucusu (`ip dhcp pool`, `network`, `default-router`, `dns-server`, `ip dhcp excluded-address`) | Yok (yalnız sunucu servisi) | Var: router ve switch CLI'sinde; `show ip dhcp binding`, `show ip dhcp pool [ad]`, `clear ip dhcp binding *\|A.B.C.D` | **Labber (IOS).** AğLab modeline yeni Router alanları: `dhcpPools[{name, network, mask, defaultRouter?, dnsServer?}]`, `dhcpExcluded[{start, end}]` (köprü iki yönde). Switch üzerinde havuz AğLab modelinde yok → `BridgeError`. |
+| Havuz seçimi ve adres | — | İsteğin geldiği arayüzün (relay'de giaddr) adresini kapsayan havuz; dışlanan aralıklar atlanır; aynı istemci aynı adresi alır; yoksa en düşük boş adres | **Labber (IOS).** |
+| Çakışma denetimi | Topolojideki bütün yapılandırılmış adresler dolu sayılır | Aynı kural (IOS havuzu ve sunucu servisi) | **Oracle'a uyuldu.** Gerçek IOS adresi vermeden önce ping atar (yalnız yanıt veren adres atlanır); kapalı cihazın adresi de dolu sayılır — **doğrulanmadı** (IOS ile birebir değil). |
+| `ip helper-address` (relay) | Router arayüzünde tek adres (`helperAddress`); sunucuya rota aranır | Routed port, alt arayüz ve SVI'da birden çok adres; relay sunucuya ulaşabilmeli **ve** sunucu yanıtı relay arayüzüne (giaddr) döndürebilmeli | **Labber (IOS).** AğLab modeli arayüz başına tek helper tutar: ikinci helper ve SVI'daki helper `BridgeError`. Eski motor dönüş yolunu denetlemiyordu (içerikte fark yok). |
+| Sunucu servisi (`services.dhcp`) | Tek örtük havuz: yerelde sunucunun alt ağı (ağ geçidi = sunucunun ağ geçidi), relay'de relay arayüzünün alt ağı (ağ geçidi = relay adresi); ağın 100. adresinden başlar | Aynı kural (`src/engine/dhcp.js`) | **Oracle'a uyuldu.** Bu bir AğLab kararıdır, gerçek bir DHCP sunucusunun kapsam (scope) yapılandırması modellenmez. |
+| DNS servisi açık sunucunun kirası | DNS adresi verilmez | DNS sunucusu olarak kendi adresini verir | **Labber.** `relay-trunk` sunucusunda DNS kapalı (fark yok). |
+| Kira süresi | Yok | Süre işlemez; `show ip dhcp binding` son kullanma olarak lab saatine göre ertesi günü (`Mar 02 1993 …`) yazar | **Zamanlama modellenmez.** Yenileme/süre dolması yok. Sütun genişlikleri ve `Client-ID` biçimi (01 + MAC) IOS 15 çıktısına göre — **doğrulanmadı**. |
+| `show ip dhcp pool` | Yok | `Total addresses` ağdaki kullanılabilir adres sayısı; `Current index` dışlanmamış ve kiralanmamış ilk adres | **Doğrulanmadı:** gerçek IOS'ta `Current index` sıradaki adaydır (dışlananları atlamadan ilerleyebilir); `Utilization mark`/`Subnet size` satırları sabit yazılır. |
+| Havuz kipi hata metinleri | — | Aynı ağ için ikinci havuz: `% A pool already exists for network …`; ters aralık: `% Invalid range of IP addresses`; olmayan havuz: `% Pool X not found`; geçersiz maske: `% Invalid input` | **Doğrulanmadı** (metinler IOS'a yakın yazıldı; birebir karşılaştırılmadı). `% Range [a, b] is not in the database.` IOS metnidir. |
+| `lease`, `domain-name`, `option`, `host`/`hardware-address`, `service dhcp`, `ip dhcp snooping`, DHCP istemci arayüzü (`ip address dhcp`) | Yok | **Desteklenmiyor** (`% Invalid input`) | — |
+| Kiralar (binding) | PC'nin `dhcpLease` alanı | Çalışma zamanı durumu (RAM): sunucu yeniden başlayınca, `clear ip dhcp binding` ile ve havuz/servis kapatılınca silinir | **Labber (IOS).** Tarayıcı kaydında yalnız PC'nin `dhcpLease`, adresi ve `dns` alanı saklanır; sayfa yenilenince sunucunun binding tablosu boş başlar (kalıcılık L7). |
+| PC istemcisi | `ip dhcp` / `ipconfig /renew` | VPCS: `ip dhcp` (`-r` yenile, `-x` bırak), `dhcp`; `show ip` DNS ve DHCP sunucusunu gösterir | **Tarif çözüm satırı VPCS sözdizimine çevrildi:** `relay-trunk` PC-01 `ipconfig /renew` → `ip dhcp` (PC terminali VPCS olduğu için zorunlu). |
+| Sunucu yanıt vermezse | PC'nin adresi değişmez | Link-local adresi olan PC'nin durumu değişmez; olmayan PC kendine MAC'ten türetilen `169.254.x.y/16` atar, ağ geçidi boşalır, önceki kirası düşer | **Labber (Windows APIPA davranışı).** Gerçek VPCS link-local adres atamaz; çıktıdaki `Autoconfiguration IPv4 address …` satırı AğLab'a özgüdür. Başarısız yenilemede eski kiranın hemen düşmesi sadeleştirmedir (gerçekte süre dolana kadar kalır). |
+| `nslookup <ad>` | Topolojideki herhangi bir DNS sunucusunu kullanır; bilinmeyen ad için `93.184.216.34` döndürür | PC'nin DNS sunucusu (`ip dns A.B.C.D` ya da kiradan) erişilebilir ve DNS servisi açık olmalı; adlar lab cihazlarının adlarıdır; bilinmeyen ad `Non-existent domain` | **Labber.** Eski motorun sabit yanıtı "desteklenmeyeni çalışıyormuş gibi gösterme" ilkesine aykırıydı. Çıktı Windows `nslookup` biçimindedir; kayıt türleri, özyineleme ve elle DNS kaydı modellenmez. |
+| Sunucu terminali | `service dhcp\|dns\|http on\|off`, `show services`, `show ip dhcp binding` | Aynı komutlar (HTTP hariç) + `show dns` | **HTTP servisi Labber'da yok:** açık HTTP servisi olan sunucu eski motor kararıdır (`nat-pat`; L5-d'de ele alınır). `relay-trunk` sunucusunda yalnız DHCP açık bırakıldı (şablonun DNS/HTTP servisleri senaryoda kullanılmıyordu). |

@@ -1,15 +1,17 @@
 // L1 köprü testleri: AğLab JSON ⇄ Labber (toLabber / toAglab / rapor).
 import { describe, expect, it } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import {
   BridgeError, canonPort, createRuntime, MODEL_L2, MODEL_L3, toAglab, toLabber,
 } from '../../src/sim-bridge/bridge'
 import type { AglabTopology } from '../../src/sim-bridge/aglab'
 import { LabQuery } from '../../src/sim/query'
-import { runScript } from '../../src/sim/index'
+import { createSession, runScript } from '../../src/sim/index'
 
 const ROOT = join(__dirname, '..', '..')
+const require_ = createRequire(import.meta.url)
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 
 function content(): [string, AglabTopology][] {
@@ -225,6 +227,139 @@ describe('köprü: alt arayüz (L5-a)', () => {
       expect(out.filter((l) => /^% /.test(l)), script).toEqual([])
       expect(() => toAglab(rt, roas()), script).toThrow(BridgeError)
     }
+  })
+})
+
+/** relay-trunk senaryosunun topolojisi (src/app/main.js loadSharedRelayTrunkScenario ile aynı). */
+function relayTrunk(): AglabTopology {
+  const sw = (id: string, name: string, allowed: number[]) => ({
+    id, name, type: 'Switch', x: 0, y: 0, enabled: true, ports: ['fa0/1', 'fa0/2', 'gi0/1'], vlans: [1, 10, 20],
+    interfaces: {
+      'fa0/1': { mode: 'access', vlan: 10, enabled: true }, 'fa0/2': { mode: 'access', vlan: 10, enabled: true },
+      'gi0/1': { mode: 'trunk', vlan: 1, allowed, nativeVlan: 1, enabled: true },
+    },
+  })
+  const r1 = router({ 'g0/0': { ip: '192.168.1.1', mask: '255.255.255.0', enabled: true, helperAddress: '10.10.20.2' }, 'g0/1': { ip: '10.10.20.1', mask: '255.255.255.0', enabled: true } })
+  return {
+    app: 'AgLab', version: 23,
+    devices: [
+      { id: 'pc', name: 'PC-01', type: 'PC', x: 0, y: 0, enabled: true, ip: '169.254.30.8', mask: '255.255.0.0', gateway: '0.0.0.0', vlan: 10, dhcpLease: false, ports: ['eth0'], interfaces: { eth0: { enabled: true } } },
+      sw('sw1', 'SW-01', [20]), sw('sw2', 'SW-02', [10, 20]), r1,
+      { id: 'srv', name: 'DHCP-SRV', type: 'Server', x: 0, y: 0, enabled: true, ip: '10.10.20.2', mask: '255.255.255.0', gateway: '10.10.20.1', ports: ['eth0'], services: { dhcp: true } },
+    ],
+    links: [
+      { a: 'pc', portA: 'eth0', b: 'sw1', portB: 'fa0/1', up: true },
+      { a: 'sw1', portA: 'gi0/1', b: 'sw2', portB: 'gi0/1', up: true },
+      { a: 'sw2', portA: 'fa0/1', b: 'r1', portB: 'g0/0', up: true },
+      { a: 'r1', portA: 'g0/1', b: 'srv', portB: 'eth0', up: true },
+    ],
+  }
+}
+
+describe('köprü: DHCP/DNS (L5-b)', () => {
+  it('relay-trunk: helperAddress, DHCP servisi ve dhcpLease eşlenir; gidiş-dönüş birebir', () => {
+    const t = relayTrunk()
+    const r = toLabber(t)
+    expect(r.report.engineDecision, JSON.stringify(r.report.reasons)).toBe('labber')
+    expect(r.running['r1']!.ifaces['GigabitEthernet0/0']!.l3).toEqual({ helpers: ['10.10.20.2'] })
+    expect(r.pcs['srv']!.services).toEqual({ dhcp: true })
+    expect(r.def.devices.find((d) => d.id === 'srv')).toMatchObject({ server: true, name: 'DHCP-SRV' })
+    expect(r.pcs['pc']!.dhcp).toBeUndefined()
+    expect(roundTrip(t)).toEqual(t)
+  })
+
+  it('relay-trunk: trunk VLAN 10\'u taşımazken kira gelmez (durum değişmez); düzeltilince eski motorun vereceği adres gelir', () => {
+    const t = relayTrunk()
+    const rt = createRuntime(toLabber(t))
+    expect(rt.dhcpRequest('pc')).toMatchObject({ ok: false, reason: 'noserver' })
+    expect(toAglab(rt, t)).toEqual(t)
+    runScript(rt, 'sw1', 'conf t\ninterface gi0/1\nswitchport trunk allowed vlan 10,20')
+    expect(rt.dhcpRequest('pc').ok).toBe(true)
+    const back = toAglab(rt, t)
+    const pc = back.devices[0]!
+    // oracle: eski motorun adres seçimi (src/engine/dhcp.js allocateLease), aynı topoloji ve relay ağıyla
+    const oracle = require_(join(ROOT, 'src/engine/dhcp.js')).allocateLease(t, t.devices[0], { network: '192.168.1.0', mask: '255.255.255.0', gateway: '192.168.1.1', serverIp: '10.10.20.2' })
+    expect(oracle.ok).toBe(true)
+    expect([pc.ip, pc.mask, pc.gateway, pc.dhcpLease]).toEqual([oracle.ip, '255.255.255.0', '192.168.1.1', true])
+    expect(pc.dns).toBeUndefined()
+    // kiralı durum yeniden yüklenince korunur
+    expect(toLabber(back).pcs['pc']).toEqual({ ip: oracle.ip, prefix: 24, gw: '192.168.1.1', dhcp: true })
+    expect(roundTrip(back)).toEqual(back)
+  })
+
+  it('helper-address CLI ile silinir/eklenir ve JSON\'a yazılır; birden çok helper ifade edilemez', () => {
+    const t = relayTrunk()
+    const rt = createRuntime(toLabber(t))
+    runScript(rt, 'r1', 'conf t\ninterface g0/0\nno ip helper-address\ninterface g0/1\nip helper-address 192.168.1.9')
+    const back = toAglab(rt, t)
+    expect(back.devices[3]!.interfaces!['g0/0']).toEqual({ ip: '192.168.1.1', mask: '255.255.255.0', enabled: true })
+    expect(back.devices[3]!.interfaces!['g0/1']!.helperAddress).toBe('192.168.1.9')
+    runScript(rt, 'r1', 'conf t\ninterface g0/1\nip helper-address 192.168.1.10')
+    expect(() => toAglab(rt, t)).toThrow(/birden çok ip helper-address/)
+  })
+
+  it('router DHCP havuzu ve dışlanan adresler eşlenir; CLI değişikliği JSON\'a yazılır', () => {
+    const t = relayTrunk()
+    const r1 = t.devices[3]!
+    r1.dhcpPools = [{ name: 'LAN', network: '192.168.1.0', mask: '255.255.255.0', defaultRouter: '192.168.1.1', dnsServer: '10.10.20.2' }]
+    r1.dhcpExcluded = [{ start: '192.168.1.1', end: '192.168.1.10' }]
+    const r = toLabber(t)
+    expect(r.report.engineDecision, JSON.stringify(r.report.reasons)).toBe('labber')
+    expect(r.running['r1']!.dhcpPools).toEqual({ LAN: { net: { addr: '192.168.1.0', mask: '255.255.255.0' }, defaultRouter: '192.168.1.1', dns: '10.10.20.2' } })
+    expect(r.running['r1']!.dhcpExcluded).toEqual([{ lo: '192.168.1.1', hi: '192.168.1.10' }])
+    expect(roundTrip(t)).toEqual(t)
+    const rt = createRuntime(r)
+    runScript(rt, 'r1', 'conf t\nip dhcp excluded-address 192.168.1.200\nip dhcp pool GUEST\nnetwork 10.10.20.0 /24\nexit\nip dhcp pool LAN\nno dns-server')
+    const back = toAglab(rt, t).devices[3]!
+    expect(back.dhcpPools).toEqual([{ name: 'LAN', network: '192.168.1.0', mask: '255.255.255.0', defaultRouter: '192.168.1.1' }, { name: 'GUEST', network: '10.10.20.0', mask: '255.255.255.0' }])
+    expect(back.dhcpExcluded).toEqual([{ start: '192.168.1.1', end: '192.168.1.10' }, { start: '192.168.1.200', end: '192.168.1.200' }])
+    runScript(rt, 'r1', 'conf t\nno ip dhcp pool LAN\nno ip dhcp pool GUEST\nno ip dhcp excluded-address 192.168.1.1 192.168.1.10\nno ip dhcp excluded-address 192.168.1.200')
+    const empty = toAglab(rt, t).devices[3]!
+    expect([empty.dhcpPools, empty.dhcpExcluded]).toEqual([[], []])
+  })
+
+  it('sunucu servisleri ve PC DNS adresi iki yönde; servis komutu JSON\'a yazılır', () => {
+    const t = relayTrunk()
+    t.devices[4]!.services = { dhcp: true, dns: false, http: false }
+    t.devices[0]!.dns = '10.10.20.2'
+    const r = toLabber(t)
+    expect(r.report.engineDecision, JSON.stringify(r.report.reasons)).toBe('labber')
+    expect(r.pcs['pc']!.dns).toBe('10.10.20.2')
+    expect(roundTrip(t)).toEqual(t)
+    const rt = createRuntime(r)
+    const srv = createSession(rt, 'srv')
+    srv.exec('service dns on')
+    srv.exec('service dhcp off')
+    expect(toAglab(rt, t).devices[4]!.services).toEqual({ dhcp: false, dns: true, http: false })
+  })
+
+  it('geçersiz ve desteklenmeyen DHCP/DNS içeriği raporlanır; switch üzerinde havuz ifade edilemez', () => {
+    const bad: [string, (t: AglabTopology) => void, RegExp][] = [
+      ['geçersiz helper', (t) => (t.devices[3]!.interfaces!['g0/0']!.helperAddress = 'yok'), /helper-address/],
+      ['hizasız havuz ağı', (t) => (t.devices[3]!.dhcpPools = [{ name: 'A', network: '192.168.1.5', mask: '255.255.255.0' }]), /havuz ağı/],
+      ['yinelenen havuz', (t) => (t.devices[3]!.dhcpPools = [{ name: 'A' }, { name: 'A' }]), /yinelenen DHCP havuzu/],
+      ['ters aralık', (t) => (t.devices[3]!.dhcpExcluded = [{ start: '10.0.0.9', end: '10.0.0.1' }]), /dışlanan adres aralığı/],
+      ['geçersiz DNS', (t) => (t.devices[0]!.dns = 'dns.example'), /DNS sunucusu/],
+      ['servis durumu', (t) => (t.devices[4]!.services = { dhcp: 'on' }), /true\/false/],
+    ]
+    for (const [name, mutate, reason] of bad) {
+      const t = relayTrunk()
+      mutate(t)
+      const r = toLabber(t).report
+      expect(r.engineDecision, name).toBe('legacy')
+      expect(r.rejected.map((x) => x.reason).join('\n'), name).toMatch(reason)
+    }
+    const http = relayTrunk()
+    http.devices[4]!.services = { dhcp: true, http: true }
+    expect(toLabber(http).report.reasons.join()).toMatch(/HTTP/)
+    const pcSvc = relayTrunk()
+    pcSvc.devices[0]!.services = { dhcp: true }
+    expect(toLabber(pcSvc).report.engineDecision).toBe('legacy')
+    // L3 switch üzerinde CLI ile havuz: AğLab modelinde yok → açık hata
+    const t = lan()
+    const rt = createRuntime(toLabber(t))
+    runScript(rt, 'd3', 'conf t\nip dhcp pool X')
+    expect(() => toAglab(rt, t)).toThrow(BridgeError)
   })
 })
 
@@ -450,7 +585,9 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
     // L4: Router ve servissiz Server desteklenir (bkz. "köprü: Router (L4)"); bu türlerin
     // L5'e kalan alanları raporlanır.
     // L5-a: alt arayüz desteklenir (bkz. "köprü: alt arayüz (L5-a)"); üzerindeki L5 alanları raporlanır
-    ['alt arayüzde DHCP relay', (t) => t.devices.push(router({ 'g0/0': { enabled: true }, 'g0/0.10': { ip: '10.0.10.1', mask: '255.255.255.0', parent: 'g0/0', encapsulation: 'dot1q', vlan: 10, helperAddress: '10.0.0.9' } })), /DHCP relay/],
+    // L5-b: router arayüzünde/alt arayüzünde DHCP relay desteklenir (bkz. "köprü: DHCP/DNS (L5-b)");
+    // switch SVI'sinde relay AğLab modelinde yoktur ve raporlanır.
+    ['SVI\'da DHCP relay', (t) => (t.devices[2]!.interfaces!['vlan10'] = { ip: '192.168.10.1', mask: '255.255.255.0', vlan: 10, helperAddress: '10.0.0.9' }), /DHCP relay/],
     ['router ACL', (t) => t.devices.push(router({ 'g0/0': { ip: '10.0.0.1', mask: '255.255.255.0', aclIn: '1' } })), /ACL/],
     ['servisi açık Server', (t) => t.devices.push({ id: 's1', name: 'S1', type: 'Server', ports: ['eth0'], services: { http: true } }), /servisleri/],
     ['bilinmeyen cihaz tipi', (t) => t.devices.push({ id: 'c1', name: 'C1', type: 'Cloud', ports: [] }), /Cloud cihaz tipi/],

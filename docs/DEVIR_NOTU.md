@@ -1,4 +1,4 @@
-# Devir notu — Labber entegrasyonu (L5-a → L5 kalanı)
+# Devir notu — Labber entegrasyonu (L5-b → L5 kalanı)
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
@@ -22,17 +22,42 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | AGL-036 öğretmen çözümü (`no ip route`), öğretmen CLI testi gerçek başlangıçtan | #65 | birleşti |
 | L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | birleşti |
 | CI tetikleme: push yalnız main, dal başına `concurrency` | #67 | açık (birleşmeyi bekliyor) |
+| L5-b DHCP/DNS; `relay-trunk` | #68 | açık (birleşmeyi bekliyor; dalı #67'nin dalından) |
 
-**Sıradaki: L5'in kalanı** (L3 tablosu sıra 5–8: DHCP/Server servisleri + relay, ACL,
-NAT, port security; PKT IOS metin yolu). Bugün eski motorda kalan içerik ve gerekçeleri
-`LAB_MOTOR_HARITASI.md` özet tablosunda (hepsi bu kalemler: `nat-pat`, `relay-trunk`,
-`bgp-as`, `port-security`). Sıra ve dal zinciri: CI tetikleme → L5-b DHCP/DNS → L5-c ACL →
-L5-d NAT/PAT → L5-e port security → L5-f CDP/LLDP; her biri ayrı PR, ilki main'den,
-sonrakiler bir öncekinin dalından. Kapsam dışı: BGP, PKT IOS metin yolu, içe aktarmanın
-Labber'a geçmesi, arayüz değişikliği, Canlı Lab.
+**Sıradaki: L5-c ACL** (sonra L5-d NAT/PAT, L5-e port security, L5-f CDP/LLDP). Dal zinciri:
+CI tetikleme (#67) → L5-b (`claude/l5b-dhcp-dns`) → L5-c → L5-d → L5-e → L5-f; her biri ayrı
+PR, bir öncekinin dalından, hiçbiri birleştirilmez; bir PR'ın CI'ı kırmızıysa sonrakine
+geçilmez. Bugün eski motorda kalan içerik: `nat-pat` (ACL, NAT, HTTP servisi), `bgp-as`,
+`port-security` (`LAB_MOTOR_HARITASI.md` özet tablosu). Kapsam dışı: BGP, PKT IOS metin yolu,
+içe aktarmanın Labber'a geçmesi, arayüz değişikliği, Canlı Lab.
+
+Kalan PR'ların kapsamı (kullanıcı talimatı):
+- **L5-c ACL:** standart ve genişletilmiş, numaralı ve isimli ACL; `ip access-group in/out`;
+  `show access-lists` (eşleşme sayaçlarıyla). Testler: örtük deny, sıra numarası, yön hatası.
+  Oracle: `src/engine/acl.js` (`aclEvaluate`, `aclPathDecision`) + `tests/node/test_engine_stp_acl.cjs`.
+- **L5-d NAT/PAT:** `ip nat inside/outside`, statik NAT, `overload` ile PAT,
+  `show ip nat translations`; `nat-pat` senaryosu Labber'a geçer (sunucusunda HTTP servisi
+  açık: ya servis kapatılır ya da HTTP modellenir). Oracle: `src/engine/nat.js` +
+  `tests/node/test_engine_nat_dhcp.cjs`.
+- **L5-e Port security:** `switchport port-security` (maximum, mac-address sticky, violation
+  shutdown/restrict/protect), err-disabled ve `shutdown`/`no shutdown` ile kurtarma,
+  `show port-security interface`; `port-security` senaryosu Labber'a geçer. Oracle:
+  `simulator/port-security.js` + `tests/node/test_port_security.cjs`; Labber'ın err-disable
+  altyapısı (`rt.errdis`) yeniden kullanılır.
+- **L5-f CDP/LLDP:** CDP varsayılan açık, LLDP kapalı; `lldp run`, `cdp run`, arayüz bazında
+  kapatma; `show cdp neighbors [detail]`, `show lldp neighbors [detail]`; komşu tablosu kablo
+  ve güç değişikliğiyle güncellenir. Müfredat #12 (bkz. `MUFREDAT.md`) pratiği bu PR'la açılır.
 
 CI (`aglab-ci.yml`): `push` yalnız `main`'de tetiklenir, PR'lar `pull_request` ile koşar;
 `concurrency` aynı dalın süren eski koşusunu iptal eder. `real-lab-live.yml` değişmedi.
+
+**Yerel araç notu (bu oturum):** oturumda paket kurulumu kapalıydı; `esbuild 0.25.12` ve
+`vitest` yerelde yoktu. `src/sim.generated.js` yerelde esbuild 0.28.2 ile üretilip sabit
+sürümün çıktı biçimine çevrildi (fark yalnız `__commonJS` yardımcı işlevi ve yapıcı parametre
+özellikleriydi; main'in dosyası birebir yeniden üretildi) ve CI'ın tekrar üretim kontrolüyle
+doğrulandı. Yeni TypeScript kodunda yapıcı parametre özelliği (`constructor(public x)`)
+kullanılmadı. `tests/sim` yerelde küçük bir vitest uyumluluk koşucusuyla, kesin sonuç CI'da
+vitest ile alındı.
 
 Not: birleşen dallar (`claude/e-labber-labs`, `claude/l3b-simulation-adapter`,
 `claude/l4-router-routing`) oturumdan silinemedi (GitHub proxy'si dal silmeyi reddediyor);
@@ -265,6 +290,39 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
   çerçeveyi düşürür. roas ipuçlarındaki `ipconfig` VPCS'te `show ip`. Tarif satırlarına
   dokunma kuralı nedeniyle düzeltilmedi.
 
+## L5-b — DHCP/DNS (yapıldı, PR açık)
+
+- **Labber çekirdeği** (`src/sim`):
+  - `dhcp.ts`: `dhcpDiscover(d, pc, bindings)` (yerel sunucu → relay; başarısızlık nedeni
+    `nolink | noserver | relay-unreachable | relay-noserver | nopool | exhausted`),
+    `poolFor`, `poolRange`, `helpersOf`, `apipaFor`, `isApipa`, `dnsLookup`, `dnsRecords`.
+  - `types.ts`: `SwitchConfig.dhcpPools{ad: {net, defaultRouter, dns}}`, `dhcpExcluded[{lo, hi}]`;
+    `L3Opts.helpers[]` (routed port, alt arayüz, SVI); `PcConfig.dhcp/dns/services{dhcp, dns}`;
+    `PcDef.name/server`; `DhcpBinding`.
+  - `runtime.ts`: kiralar `rt.dhcp` (RAM; `save/load` taşır, reload ve `dhcpClear` siler),
+    `dhcpRequest(pc)`, `dhcpRelease(pc)`, `dhcpLeaseOf(pc)`. Sunucu yanıt vermezse PC'nin
+    link-local adresi korunur, yoksa `169.254.x.y/16` atanır.
+  - CLI: `ip dhcp pool` kipi (`(dhcp-config)#`: `network A.B.C.D mask|/n`, `default-router`,
+    `dns-server`), `ip dhcp excluded-address`, arayüzde `ip helper-address`,
+    `show ip dhcp binding|pool`, `clear ip dhcp binding *|A.B.C.D`; running-config.
+    PC (VPCS): `ip dhcp [-r|-x]`, `ip dns`, `nslookup`; sunucu: `service dhcp|dns on|off`,
+    `show services`, `show ip dhcp binding`, `show dns`.
+  - `query.ts`: `dhcpLease(pc)`, `dhcpBindings(dev)`, `dnsLookup(pc, ad)`.
+- **Köprü**: Router `dhcpPools`, `dhcpExcluded`, arayüz/alt arayüz `helperAddress`; Server
+  `services.dhcp/dns` (açık `http` → `unsupported`); PC `dhcpLease`, `dns`. AğLab modelinde
+  olmayan durum (ikinci helper, SVI helper, switch üzerinde havuz) `BridgeError`.
+- **Ürün**: `main.js` cihaz alanı doğrulaması `dns`, `dhcpPools`, `dhcpExcluded` kabul eder;
+  `relay-trunk` sunucusunda yalnız DHCP servisi açık; tarif çözümü ve görev metni `ip dhcp`.
+  `network-scenarios.js`: Labber'da `verify.kind: "dhcp"` (görünümde `dhcpLease`),
+  `SHARED_QUERY_FNS` += `dhcpLease`, `dnsLookup`. `labber-session.js lineKind`: DHCP/nslookup
+  hata satırları.
+- **Testler**: `tests/sim/dhcp.test.ts` (havuz, dışlama, tükenme, relay yok, yanlış helper,
+  dönüş yolu, servis, DNS, reload); `bridge.test.ts` "köprü: DHCP/DNS (L5-b)" (oracle
+  `allocateLease` ile aynı adres); `tests/test_aglab_dhcp_dns.py` (senaryo Labber'da, başarısız
+  ve başarılı durumlar, eski motorla parite fark 0, kayıt).
+- **Kararlar / doğrulanmayanlar**: `UYUMLULUK_MATRISI.md` "L5-b" (çakışma denetimi, kira
+  süresi, `show ip dhcp pool` ayrıntıları, hata metinleri "doğrulanmadı").
+
 ## Kurallar hatırlatması
 
 - Sayıları sabit yazma (lab/senaryo sayısı) — ilgili JSON'dan türet (#56 bu yüzden üç testi
@@ -272,5 +330,8 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
 - `roas-*` senaryolarına ve `src/data/courses.json` / `course-details.json`'a dokunma (#56).
 - `simulator/network-scenarios.json` Prettier ile biçimlendirilmez (#56 ile çakışma riski);
   yalnız hedef satırı düzenle.
-- Kapsam dışı (L5-a sonrası): DHCP/ACL/NAT/port security (L5 kalanı), eski metin
-  senaryoları (L6), kalıcılık ve eski motorun kaldırılması (L7).
+- Kapsam dışı: BGP (`bgp-as` eski motorda kalır), PKT IOS metin yolu, içe aktarmanın Labber'a
+  geçmesi, arayüz değişikliği, Canlı Lab; eski metin senaryoları (L6), kalıcılık ve eski
+  motorun kaldırılması (L7).
+- `src/sim` içinde yapıcı parametre özelliği (`constructor(public x)`) ekleme: yerel esbuild
+  sürümü ile sabit sürüm bu kalıbı farklı derler (bkz. yerel araç notu).

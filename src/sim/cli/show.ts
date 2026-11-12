@@ -1,12 +1,13 @@
 // IOS-format show output generated from config + derived state.
 
+import { poolRange } from '../dhcp'
 import { allows, bpduGuardOn, egress, portForwards, vlanExists, type LPort } from '../engine'
 import { macTable, routeTable, type RouteEntry } from '../net'
 import type { OspfIf } from '../ospf'
 import type { LabRuntime } from '../runtime'
 import { pk } from '../topology'
 import type { IpAddr, L2IfConfig, L3Opts, SwitchConfig, SwitchDef } from '../types'
-import { formatVlanList, ifType, ipToInt, macAdd, maskToPrefix, pad, padL, prefixMaskInt, shortIf } from '../util'
+import { formatVlanList, ifType, intToIp, ipToInt, macAdd, maskToPrefix, pad, padL, prefixMaskInt, shortIf } from '../util'
 
 const sortIfs = (sw: SwitchDef, names: string[]) =>
   [...names].sort((a, b) => sw.ports.indexOf(a) - sw.ports.indexOf(b))
@@ -35,6 +36,7 @@ function l3Lines(ip: IpAddr | null | undefined, o: L3Opts | undefined, noIpLine:
   if (o?.bandwidth) out.push(' bandwidth ' + o.bandwidth)
   if (ip) out.push(` ip address ${ip.addr} ${ip.mask}`)
   else if (noIpLine) out.push(' no ip address')
+  for (const h of o?.helpers ?? []) out.push(' ip helper-address ' + h)
   if (o?.mtu) out.push(' ip mtu ' + o.mtu)
   if (o?.ospfNet) out.push(' ip ospf network ' + o.ospfNet)
   if (o?.ospfHello) out.push(' ip ospf hello-interval ' + o.ospfHello)
@@ -54,7 +56,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   o.push('!', 'version 15.4', 'service timestamps debug datetime msec', 'service timestamps log datetime msec', 'no service password-encryption', '!')
   o.push('hostname ' + c.hostname, '!', 'boot-start-marker', 'boot-end-marker', '!', 'no aaa new-model')
   if (!c.ipRouting) o.push('no ip routing')
-  o.push('!', '!')
+  o.push('!', ...dhcpLines(c), '!')
   for (const n of Object.keys(c.loopbacks ?? {}).map(Number).sort((a, b) => a - b)) {
     const l = c.loopbacks![String(n)]!
     o.push('interface Loopback' + n)
@@ -83,6 +85,20 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   o.push('ip forward-protocol nd', 'no ip http server', '!')
   for (const r of c.routes) o.push(routeLine(r))
   o.push('!', 'line con 0', 'line aux 0', 'line vty 0 4', ' login', '!', 'end')
+  return o
+}
+
+/** L5-b: `ip dhcp excluded-address` lines, then the pools (IOS order). */
+function dhcpLines(c: SwitchConfig): string[] {
+  const o: string[] = []
+  for (const r of c.dhcpExcluded ?? []) o.push('ip dhcp excluded-address ' + r.lo + (r.hi !== r.lo ? ' ' + r.hi : ''))
+  for (const [name, p] of Object.entries(c.dhcpPools ?? {})) {
+    o.push('!', 'ip dhcp pool ' + name)
+    if (p.net) o.push(` network ${p.net.addr} ${p.net.mask}`)
+    if (p.defaultRouter) o.push(' default-router ' + p.defaultRouter)
+    if (p.dns) o.push(' dns-server ' + p.dns)
+  }
+  if (o.length) o.push('!')
   return o
 }
 
@@ -115,7 +131,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   o.push('hostname ' + c.hostname, '!', 'boot-start-marker', 'boot-end-marker', '!', 'no aaa new-model')
   o.push('system mtu routing 1500')
   if (c.ipRouting) o.push('ip routing')
-  o.push('!', '!', 'vtp mode transparent', '!')
+  o.push('!', ...dhcpLines(c), '!', 'vtp mode transparent', '!')
   o.push('spanning-tree mode ' + c.stpMode, 'spanning-tree extend system-id')
   const byPrio = new Map<number, number[]>()
   for (const [v, p] of Object.entries(c.stpPriority)) byPrio.set(p, [...(byPrio.get(p) ?? []), Number(v)])
@@ -780,5 +796,52 @@ export function showInterface(rt: LabRuntime, dev: string, name: string): string
   out.push(`  MTU 1500 bytes, BW ${speed} Kbit/sec, DLY 100 usec,`, '     reliability 255/255, txload 1/255, rxload 1/255', '  Encapsulation ARPA, loopback not set')
   if (isPo) out.push(`  Members in this channel: ${lp!.members.map(shortIf).join(' ') || 'none'}`)
   else if (ps?.ec) out.push(`  Member of Port-channel${ps.ec.id} (${ps.ec.flag})`)
+  return out
+}
+
+// ---- DHCP server (L5-b) ----
+
+/** IOS client identifier of an Ethernet client: 01 + MAC, in groups of four hex digits. */
+const dhcpClientId = (mac: string) => ('01' + mac.replace(/\./g, '')).match(/.{1,4}/g)!.join('.')
+
+export function showDhcpBinding(rt: LabRuntime, dev: string): string[] {
+  const out = [
+    'Bindings from all pools not associated with VRF:',
+    'IP address          Client-ID/              Lease expiration        Type',
+    '                    Hardware address/',
+    '                    User name',
+  ]
+  const rows = rt.dhcp.filter((b) => b.server === dev).sort((a, b) => ipToInt(a.ip)! - ipToInt(b.ip)!)
+  for (const b of rows) out.push(b.ip.padEnd(20) + dhcpClientId(b.mac).padEnd(24) + b.expires.padEnd(24) + 'Automatic')
+  return out
+}
+
+export function showDhcpPool(rt: LabRuntime, dev: string, only?: string): string[] {
+  const cfg = rt.running[dev]!
+  const pools = Object.entries(cfg.dhcpPools ?? {}).filter(([n]) => only === undefined || n === only)
+  if (only !== undefined && !pools.length) return [`% Pool ${only} not found`]
+  const out: string[] = []
+  for (const [name, p] of pools) {
+    const range = poolRange(cfg, p)
+    const leased = rt.dhcp.filter((b) => b.server === dev && b.pool === name)
+    const taken = new Set(leased.map((b) => ipToInt(b.ip)!))
+    let index: number | null = null
+    if (range) for (let n = range.first; n <= range.last && index === null; n++) if (!range.excluded(n) && !taken.has(n)) index = n
+    out.push(
+      `Pool ${name} :`,
+      ' Utilization mark (high/low)    : 100 / 0',
+      ' Subnet size (first/next)       : 0 / 0 ',
+      ` Total addresses                : ${range ? range.last - range.first + 1 : 0}`,
+      ` Leased addresses               : ${leased.length}`,
+      ' Pending event                  : none',
+      ` ${range ? 1 : 0} subnet${range ? ' is' : 's are'} currently in the pool :`,
+    )
+    if (range)
+      out.push(
+        ' Current index        IP address range                    Leased addresses',
+        ' ' + (index === null ? '0.0.0.0' : intToIp(index)).padEnd(21) + intToIp(range.first).padEnd(17) + '- ' + intToIp(range.last).padEnd(18) + leased.length,
+      )
+    out.push('')
+  }
   return out
 }

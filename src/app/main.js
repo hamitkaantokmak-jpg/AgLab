@@ -7012,6 +7012,10 @@ labLoadExperiment();
         'natOverload',
         'natTranslations',
         'dhcpLease',
+        // L5-b: Labber içeriğinde PC'nin DNS sunucusu ve router'ın IOS DHCP sunucusu
+        'dns',
+        'dhcpPools',
+        'dhcpExcluded',
         'vlanNames',
         'startupConfig',
         'ospf',
@@ -10699,7 +10703,9 @@ labLoadExperiment();
     srv.ip = '10.10.20.2';
     srv.mask = '255.255.255.0';
     srv.gateway = '10.10.20.1';
-    srv.services = { ...(srv.services || {}), dhcp: true };
+    // L5-b: senaryo yalnız DHCP servisini kullanır; şablonun DNS/HTTP servisleri kapalıdır
+    // (HTTP Labber'da modellenmez; açık kalsaydı içerik eski motorda açılırdı).
+    srv.services = { dhcp: true, dns: false, http: false };
     links = [
       { a: pc.id, b: sw1.id, portA: 'eth0', portB: 'fa0/1', up: true },
       { a: sw1.id, b: sw2.id, portA: 'gi0/1', portB: 'gi0/1', up: true },
@@ -10716,7 +10722,7 @@ labLoadExperiment();
     saveTopology(true);
     $p('ptTerminal').replaceChildren();
     $p('sharedScenarioInstructions').innerHTML =
-      '<b>Arıza:</b> R1 üzerinde DHCP relay etkin ve DHCP sunucusu açık; ancak SW-01 ile SW-02 arasındaki trunk yalnızca VLAN 20’yi taşıyor. PC-01 APIPA adresinde kalıyor.<br><b>Görev:</b> PC-01’de <code>ipconfig /renew</code> ile başarısızlığı gözle. SW-01 CLI’sinde <code>enable</code> → <code>configure terminal</code> → <code>interface gi0/1</code> → <code>switchport trunk allowed vlan 10,20</code> uygula. PC-01’e dönüp <code>ipconfig /renew</code> ile DHCP adresini doğrula.';
+      '<b>Arıza:</b> R1 üzerinde DHCP relay etkin ve DHCP sunucusu açık; ancak SW-01 ile SW-02 arasındaki trunk yalnızca VLAN 20’yi taşıyor. PC-01 APIPA adresinde kalıyor.<br><b>Görev:</b> PC-01’de <code>ip dhcp</code> ile başarısızlığı gözle. SW-01 CLI’sinde <code>enable</code> → <code>configure terminal</code> → <code>interface gi0/1</code> → <code>switchport trunk allowed vlan 10,20</code> uygula. PC-01’e dönüp <code>ip dhcp</code> ile DHCP adresini al; <code>show ip</code> ile doğrula.';
     sharedStatus(
       'DHCP relay/trunk senaryosu yüklendi. VLAN 10 trunk üzerinde olmadığı için ilk DHCP yenilemesi başarısız olmalı.',
     );
