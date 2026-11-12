@@ -68,10 +68,13 @@ describe('kabul paritesi: test_aglab_next_hop.py (Labber)', () => {
     expect(ok(reverse)).toBe(false)
     dev(reverse, 'd5').staticRoutes = [route('192.168.1.0', '10.0.0.1')]
     expect(ok(reverse)).toBe(true)
-    // ACL adımı (dönüş yolundaki R3) L5: köprü bu topolojiyi eski motora bırakır
+    // L5-c: yalnız dönüş yolundaki R3'te ACL asimetrik yanıtı keser (Labber'da)
     const acl = clone(reverse)
+    dev(acl, 'd5').acls = [{ id: 101, action: 'deny', protocol: 'icmp', srcType: 'any', src: '', dstType: 'any', dst: '' }]
     ;(dev(acl, 'd5').interfaces!['g0/0'] as Record<string, unknown>)['aclIn'] = '101'
-    expect(toLabber(acl).report.engineDecision).toBe('legacy')
+    expect(ok(acl)).toBe(false)
+    delete (dev(acl, 'd5').interfaces!['g0/0'] as Record<string, unknown>)['aclIn']
+    expect(ok(acl)).toBe(true)
     for (const [hop, expected] of [['10.0.0.3', false], ['10.0.0.2', true]] as const) {
       const recursive = nextHopBase()
       dev(recursive, 'd3').staticRoutes = [route('192.168.2.0', '203.0.113.9'), route('203.0.113.9', hop, 1, '255.255.255.255')]

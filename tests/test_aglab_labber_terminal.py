@@ -263,6 +263,44 @@ class LabberTerminalTests(unittest.TestCase):
         self.type("end")
         self.assertIn("% CDP is not enabled", self.type("show cdp neighbors"))
 
+    def test_acl_from_terminal(self):
+        """L5-c: terminalden standart ACL; yanlış yönde etkisiz, doğru yönde PC-01 trafiğini keser,
+        sayaçlar `show access-lists`'te, uygulanan liste `show ip interface`'te."""
+        self.load("return-route")
+        self.page.evaluate(
+            "() => { for (const b of aglabSharedEngine.recipes().find(r => r.id === 'return-route').solution)"
+            " aglabSharedEngine.commandBlock(b.device, b.commands) }"
+        )
+        self.assertTrue(self.goal())
+        self.device("R2")
+        for line in [
+            "enable",
+            "configure terminal",
+            "access-list 10 deny host 192.168.1.10",
+            "access-list 10 permit any",
+            "interface g0/1",
+            "ip access-group 10 in",
+            "end",
+        ]:
+            self.type(line)
+        # g0/1 sunucu tarafı: PC-01'in istekleri oradan girmez → süzülmez (yanlış yön)
+        self.assertTrue(self.goal())
+        self.type("configure terminal")
+        self.type("interface g0/1")
+        self.type("no ip access-group 10 in")
+        self.type("ip access-group 10 out")
+        self.type("end")
+        self.device("PC-01")
+        out = self.type("ping 10.20.0.10")
+        self.assertFalse(any("bytes from" in line for line in out), out)
+        self.assertFalse(self.goal())
+        self.device("R2")
+        out = self.type("show access-lists")
+        self.assertIn("Standard IP access list 10", out)
+        self.assertIn("    10 deny   192.168.1.10 (5 matches)", out)
+        out = self.type("show ip interface g0/1")
+        self.assertIn("  Outgoing access list is 10", out)
+
     def test_legacy_content_keeps_legacy_terminal(self):
         # L5-a'dan beri router-on-a-stick Labber'da; NAT/ACL'li senaryo L5'in kalanına kadar eski motorda.
         self.load("nat-pat")

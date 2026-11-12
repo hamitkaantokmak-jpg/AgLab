@@ -1,6 +1,7 @@
 // L2 reachability and L3 forwarding on top of the derived state.
 
 import { crossVlan, egress, ingress, peerOf, portForwards, type Derived, type DupIp, type LPort } from './engine'
+import { aclDecide, l3OptsOf, type Packet } from './acl'
 import { psAdmits } from './portsec'
 import { pk } from './topology'
 import type { PcDef, SwitchDef } from './types'
@@ -344,35 +345,75 @@ export interface Hop {
   outIf: L3If
 }
 
-export type Delivery =
+/** L5-c: an ACL evaluated on the way ('dev|acl|seq' counter key; seq null = implicit deny). */
+export interface AclHit {
+  dev: string
+  acl: string
+  seq: number | null
+  dir: 'in' | 'out'
+  ifname: string
+}
+
+export type Delivery = (
   | { kind: 'ok'; hops: Hop[]; routersCrossed: number }
   | { kind: 'noroute'; hops: Hop[] }
-  | { kind: 'unreach'; at: string; atIp: string; hops: Hop[] }
+  | { kind: 'unreach'; at: string; atIp: string; hops: Hop[]; filtered?: AclHit }
   | { kind: 'timeout'; hops: Hop[] }
   | { kind: 'noip'; hops: Hop[] }
+) & { acl?: AclHit[] }
 
-/** Walk a packet from dev toward dst. */
-export function deliver(d: Derived, from: string, dst: string): Delivery {
+/** L5-c: what is being carried; defaults to an ICMP echo from the egress address. */
+export type PacketSpec = Partial<Packet>
+
+/** `ip access-group` decision on one interface of a routing device. */
+function aclCheck(d: Derived, dev: string, ifname: string, dir: 'in' | 'out', pkt: Packet, hits: AclHit[]): AclHit | null {
+  const opts = l3OptsOf(d.cfgs[dev], ifname)
+  const name = dir === 'in' ? opts?.aclIn : opts?.aclOut
+  if (!name) return null
+  const r = aclDecide(d.cfgs[dev]!.acls?.[name], pkt)
+  const hit: AclHit = { dev, acl: name, seq: r.seq, dir, ifname }
+  if (r.seq !== null) hits.push(hit)
+  return r.permit ? null : hit
+}
+
+/**
+ * Walk a packet from dev toward dst. L5-c: on each routing device the inbound ACL of the
+ * interface the packet arrives on and the outbound ACL of the interface it leaves by are
+ * applied (traffic the device originates itself is not subject to its outbound ACL, IOS).
+ * A denied packet is answered with an ICMP unreachable from the filtering device.
+ */
+export function deliver(d: Derived, from: string, dst: string, spec: PacketSpec = {}): Delivery {
   let cur = from
   const hops: Hop[] = []
+  const acl: AclHit[] = []
   let routers = 0
   if (!l3Ifs(d, from).length) return { kind: 'noip', hops }
+  const pkt: Packet = { proto: 'icmp', icmpType: 'echo', ...spec, src: spec.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0]!.ip, dst } as Packet
+  const routing = (dev: string) => d.topo.devices[dev]?.kind === 'switch'
   for (let ttl = 0; ttl < 32; ttl++) {
-    if (owns(d, cur, dst)) return { kind: 'ok', hops, routersCrossed: routers }
-    if (cur !== from && !isRouter(d, cur)) return { kind: 'timeout', hops }
+    if (owns(d, cur, dst)) return { kind: 'ok', hops, routersCrossed: routers, acl }
+    if (cur !== from && !isRouter(d, cur)) return { kind: 'timeout', hops, acl }
     const r = lookup(d, cur, dst)
     if (!r) {
-      if (cur === from) return { kind: 'noroute', hops }
+      if (cur === from) return { kind: 'noroute', hops, acl }
       const at = hops[hops.length - 1]!
-      return { kind: 'unreach', at: cur, atIp: at.ip, hops }
+      return { kind: 'unreach', at: cur, atIp: at.ip, hops, acl }
     }
     const target = arpResolve(d, r.out, r.nh)
-    if (!target) return { kind: 'timeout', hops }
+    if (!target) return { kind: 'timeout', hops, acl }
+    if (cur !== from && routing(cur)) {
+      const denied = aclCheck(d, cur, r.out.name, 'out', pkt, acl)
+      if (denied) return { kind: 'unreach', at: cur, atIp: hops[hops.length - 1]!.ip, hops, acl, filtered: denied }
+    }
+    if (routing(target.dev)) {
+      const denied = aclCheck(d, target.dev, target.name, 'in', pkt, acl)
+      if (denied) return { kind: 'unreach', at: target.dev, atIp: target.ip, hops: [...hops, { dev: target.dev, ip: target.ip, outIf: r.out }], acl, filtered: denied }
+    }
     if (cur !== from) routers++
     hops.push({ dev: target.dev, ip: target.ip, outIf: r.out })
     cur = target.dev
   }
-  return { kind: 'timeout', hops }
+  return { kind: 'timeout', hops, acl }
 }
 
 /** Route choice for dst: outgoing interface and the next hop it is handed to (no ARP). */
@@ -439,6 +480,8 @@ export interface PingResult {
   /** the sender's own ARP request for its first hop went unanswered */
   arpIncomplete?: { dev: string; ip: string }
   forward?: Delivery
+  /** L5-c: the reply (or ICMP unreachable) on its way back */
+  back?: Delivery
 }
 
 export function ping(d: Derived, from: string, dst: string): PingResult {
@@ -449,10 +492,11 @@ export function ping(d: Derived, from: string, dst: string): PingResult {
   if (fwd.kind === 'noip') return { ok: false, reason: 'noip', forward: fwd }
   if (fwd.kind === 'noroute') return { ok: false, reason: 'noroute', forward: fwd }
   if (fwd.kind === 'unreach') {
-    const back = deliver(d, fwd.at, sourceIp(d, from, dst)!)
+    // the ICMP unreachable comes from the router (its own traffic: not filtered on the way out)
+    const back = deliver(d, fwd.at, sourceIp(d, from, dst)!, { proto: 'icmp', icmpType: 'unreachable', src: fwd.atIp })
     return back.kind === 'ok'
-      ? { ok: false, reason: 'unreach', unreachFrom: fwd.atIp, forward: fwd, firstHopArp }
-      : { ok: false, reason: 'timeout', forward: fwd, firstHopArp }
+      ? { ok: false, reason: 'unreach', unreachFrom: fwd.atIp, forward: fwd, back, firstHopArp }
+      : { ok: false, reason: 'timeout', forward: fwd, back, firstHopArp }
   }
   if (fwd.kind !== 'ok') {
     const nh = fwd.hops.length ? null : nextHop(d, from, dst)
@@ -462,11 +506,11 @@ export function ping(d: Derived, from: string, dst: string): PingResult {
   // the device the request reached answers; the reply must come back to the sender
   // (with a duplicate source address it goes to whoever wins ARP for that address)
   const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from
-  const back = deliver(d, replier, src)
+  const back = deliver(d, replier, src, { proto: 'icmp', icmpType: 'echo-reply', src: dst })
   const backTo = back.hops[back.hops.length - 1]?.dev ?? replier
-  if (back.kind !== 'ok' || backTo !== from) return { ok: false, reason: 'timeout', forward: fwd, firstHopArp }
+  if (back.kind !== 'ok' || backTo !== from) return { ok: false, reason: 'timeout', forward: fwd, back, firstHopArp }
   const base = d.topo.devices[replier]!.kind === 'pc' ? 64 : 255
-  return { ok: true, ttl: base - back.routersCrossed, replier, forward: fwd, firstHopArp }
+  return { ok: true, ttl: base - back.routersCrossed, replier, forward: fwd, back, firstHopArp }
 }
 
 function isValidIp(s: string) {
