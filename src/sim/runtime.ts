@@ -1,6 +1,7 @@
 // Lab runtime: owns configs, recomputes derived state, emits syslog on state changes.
 
 import { cdpBetween } from './discovery'
+import { activePs, secureCount } from './portsec'
 import { defaultSwitchConfig } from './config'
 import { apipaFor, dhcpDiscover, isApipa, type DhcpResult } from './dhcp'
 import { bpduViolations, type Derived } from './engine'
@@ -39,6 +40,11 @@ export interface SavedState {
   hw?: { cut: string[]; off: string[]; nicDown: string[] }
   /** L5-b: DHCP leases */
   dhcp?: DhcpBinding[]
+  /** L5-e: err-disable cause per port, dynamic secure MACs, violation counters, last source */
+  errCause?: [string, string][]
+  psDynamic?: [string, string[]][]
+  psViolations?: [string, number][]
+  psLast?: [string, string][]
 }
 
 export class LabRuntime {
@@ -58,6 +64,14 @@ export class LabRuntime {
   hw: Hardware = noHardwareFaults()
   /** L5-b: DHCP leases handed out by the lab's servers (kept in RAM: lost on reload) */
   dhcp: DhcpBinding[] = []
+  /** L5-e: why a port is err-disabled ('bpduguard' | 'psecure-violation'); missing = bpduguard */
+  errCause = new Map<string, string>()
+  /** L5-e: dynamically learned secure MACs per port ('dev|port'); cleared when the port goes down */
+  psDynamic = new Map<string, string[]>()
+  /** L5-e: security violation counters per port */
+  psViolations = new Map<string, number>()
+  /** L5-e: last source MAC seen on a secure port */
+  psLast = new Map<string, string>()
   private seq = 0
   private t0 = Date.now()
   private listeners = new Set<() => void>()
@@ -78,6 +92,10 @@ export class LabRuntime {
     }
     for (const pc of this.topo.pcs) this.pcs[pc.id] = clone(this.def.initialPcs?.[pc.id] ?? { ip: null, prefix: 24, gw: null })
     this.errdis.clear()
+    this.errCause.clear()
+    this.psDynamic.clear()
+    this.psViolations.clear()
+    this.psLast.clear()
     this.dhcp = []
     this.hw = noHardwareFaults()
     for (const l of this.def.links)
@@ -139,6 +157,7 @@ export class LabRuntime {
       for (const k of [...this.errdis]) {
         if (d.phys[k]?.adminDown) {
           this.errdis.delete(k)
+          this.errCause.delete(k)
           changed = true
         }
       }
@@ -147,14 +166,17 @@ export class LabRuntime {
         if (this.errdis.has(k)) continue
         const [dev, port] = k.split('|') as [string, string]
         this.errdis.add(k)
+        this.errCause.set(k, 'bpduguard')
         this.log(dev, `%SPANTREE-2-BLOCK_BPDUGUARD: Received BPDU on port ${port} with BPDU Guard enabled. Disabling port.`)
         this.log(dev, `%PM-4-ERR_DISABLE: bpduguard error detected on ${shortIf(port)}, putting ${shortIf(port)} in err-disable state`)
         changed = true
       }
       for (const k of [...this.errdis]) {
         const [dev, port] = k.split('|') as [string, string]
-        if (viol.has(k) || !this.running[dev]?.errRecoveryBpdu) continue
+        // only bpduguard recovery is modelled (`errdisable recovery cause bpduguard`)
+        if (viol.has(k) || !this.running[dev]?.errRecoveryBpdu || (this.errCause.get(k) ?? 'bpduguard') !== 'bpduguard') continue
         this.errdis.delete(k)
+        this.errCause.delete(k)
         this.log(dev, `%PM-4-ERR_RECOVER: Attempting to recover from bpduguard err-disable state on ${shortIf(port)}`)
         changed = true
       }
@@ -168,10 +190,49 @@ export class LabRuntime {
           changed = true
         }
       }
+      // L5-e: dynamic secure addresses go away when the port goes down or security is off
+      for (const k of [...this.psDynamic.keys()]) {
+        const [dev, port] = k.split('|') as [string, string]
+        if (d.phys[k]?.up && activePs(this.running[dev], port)) continue
+        this.psDynamic.delete(k)
+      }
       if (!changed) break
       d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw)
     }
     return d
+  }
+
+  /**
+   * L5-e: a PC puts frames on the wire (ping, trace, DHCP). On a secure access port its source
+   * MAC is learned (sticky → running-config) or, past `maximum`, triggers the violation mode:
+   * shutdown → err-disable + syslog, restrict → counter + syslog, protect → silent drop.
+   */
+  hostSends(pc: string) {
+    const at = this.topo.pcAttach[pc]
+    const def = this.topo.devices[pc]
+    if (!at || !def || this.hw.off.has(pc) || this.hw.nicDown.has(pc)) return
+    const key = pk(at.dev, at.port)
+    const ps = activePs(this.running[at.dev], at.port)
+    if (!ps || !this.derived.phys[key]?.up) return
+    const mac = def.mac
+    this.psLast.set(key, mac)
+    const dyn = this.psDynamic.get(key) ?? []
+    if (ps.macs.includes(mac) || ps.stickyMacs.includes(mac) || dyn.includes(mac)) return
+    if (secureCount(ps, dyn) < ps.max) {
+      if (ps.sticky) ps.stickyMacs.push(mac)
+      else this.psDynamic.set(key, [...dyn, mac])
+      this.commit()
+      return
+    }
+    if (ps.violation === 'protect') return
+    this.psViolations.set(key, (this.psViolations.get(key) ?? 0) + 1)
+    this.log(at.dev, `%PORT_SECURITY-2-PSECURE_VIOLATION: Security violation occurred, caused by MAC address ${mac} on port ${at.port}.`)
+    if (ps.violation === 'shutdown' && !this.errdis.has(key)) {
+      this.errdis.add(key)
+      this.errCause.set(key, 'psecure-violation')
+      this.log(at.dev, `%PM-4-ERR_DISABLE: psecure-violation error detected on ${shortIf(at.port)}, putting ${shortIf(at.port)} in err-disable state`)
+    }
+    this.commit()
   }
 
   /** Plug in (up) or unplug / cut (down) the cable on this port. False when no cable is there. */
@@ -375,6 +436,10 @@ export class LabRuntime {
       arp: [...this.arp],
       arpIncomplete: [...this.arpIncomplete],
       errdis: [...this.errdis],
+      errCause: [...this.errCause],
+      psDynamic: [...this.psDynamic],
+      psViolations: [...this.psViolations],
+      psLast: [...this.psLast],
       hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
       dhcp: clone(this.dhcp),
     }
@@ -394,6 +459,10 @@ export class LabRuntime {
     this.arp = new Set(s.arp)
     this.arpIncomplete = new Set(s.arpIncomplete ?? [])
     this.errdis = new Set(s.errdis ?? [])
+    this.errCause = new Map(s.errCause ?? [])
+    this.psDynamic = new Map(s.psDynamic ?? [])
+    this.psViolations = new Map(s.psViolations ?? [])
+    this.psLast = new Map(s.psLast ?? [])
     if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) }
     this.dhcp = clone(s.dhcp ?? [])
     this.derived = this.recompute()

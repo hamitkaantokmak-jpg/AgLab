@@ -746,6 +746,107 @@ var AgLabSim = (() => {
     return out;
   }
 
+  // src/sim/portsec.ts
+  function defaultPortSecurity() {
+    return { enabled: false, max: 1, violation: "shutdown", sticky: false, macs: [], stickyMacs: [] };
+  }
+  function activePs(cfg, port) {
+    const c = cfg?.ifaces[port];
+    if (!c?.portSecurity?.enabled || c.routed || c.mode !== "access") return null;
+    return c.portSecurity;
+  }
+  function secureCount(ps, dynamic = []) {
+    return ps.macs.length + ps.stickyMacs.length + dynamic.length;
+  }
+  function psAdmits(d, dev, port, mac) {
+    const ps = activePs(d.cfgs[dev], port);
+    if (!ps) return true;
+    if (ps.macs.includes(mac) || ps.stickyMacs.includes(mac)) return true;
+    return secureCount(ps) < ps.max;
+  }
+  function psConfigLines(ps) {
+    if (!ps) return [];
+    const o = [];
+    if (ps.max !== 1) o.push(` switchport port-security maximum ${ps.max}`);
+    if (ps.enabled) o.push(" switchport port-security");
+    if (ps.violation !== "shutdown") o.push(` switchport port-security violation ${ps.violation}`);
+    if (ps.sticky) o.push(" switchport port-security mac-address sticky");
+    for (const m of ps.stickyMacs) o.push(` switchport port-security mac-address sticky ${m}`);
+    for (const m of ps.macs) o.push(` switchport port-security mac-address ${m}`);
+    return o;
+  }
+  var ACTION = { shutdown: "Shutdown", restrict: "Restrict", protect: "Protect" };
+  var FOOTER = [
+    "---------------------------------------------------------------------------",
+    "Total Addresses in System (excluding one mac per port)     : ",
+    "Max Addresses limit in System (excluding one mac per port) : 4096"
+  ];
+  function securePorts(rt, dev) {
+    const sw = rt.topo.devices[dev];
+    return sw.ports.flatMap((p) => {
+      const ps = activePs(rt.running[dev], p);
+      return ps ? [[p, ps]] : [];
+    });
+  }
+  var dynOf = (rt, dev, port) => rt.psDynamic.get(pk(dev, port)) ?? [];
+  function extraTotal(rt, dev) {
+    return securePorts(rt, dev).reduce((n, [p, ps]) => n + Math.max(0, secureCount(ps, dynOf(rt, dev, p)) - 1), 0);
+  }
+  function showPortSecurity(rt, dev) {
+    const o = [
+      "Secure Port  MaxSecureAddr  CurrentAddr  SecurityViolation  Security Action",
+      "                (Count)       (Count)          (Count)",
+      "---------------------------------------------------------------------------"
+    ];
+    for (const [p, ps] of securePorts(rt, dev))
+      o.push(padL(shortIf(p), 11) + padL(ps.max, 15) + padL(secureCount(ps, dynOf(rt, dev, p)), 13) + padL(rt.psViolations.get(pk(dev, p)) ?? 0, 19) + padL(ACTION[ps.violation], 17));
+    o.push(FOOTER[0], FOOTER[1] + extraTotal(rt, dev), FOOTER[2]);
+    return o;
+  }
+  function showPortSecurityInterface(rt, dev, port) {
+    const ps = rt.running[dev].ifaces[port]?.portSecurity;
+    const on = activePs(rt.running[dev], port);
+    const key = pk(dev, port);
+    const phys = rt.derived.phys[key];
+    const status = !on ? "Secure-down" : phys?.errDisabled ? "Secure-shutdown" : phys?.up ? "Secure-up" : "Secure-down";
+    const p = ps ?? { max: 1, violation: "shutdown", macs: [], stickyMacs: [], sticky: false, enabled: false };
+    const dyn = dynOf(rt, dev, port);
+    const last = rt.psLast.get(key);
+    const vlan = rt.running[dev].ifaces[port]?.accessVlan ?? 1;
+    return [
+      `Port Security              : ${on ? "Enabled" : "Disabled"}`,
+      `Port Status                : ${status}`,
+      `Violation Mode             : ${ACTION[p.violation]}`,
+      "Aging Time                 : 0 mins",
+      "Aging Type                 : Absolute",
+      "SecureStatic Address Aging : Disabled",
+      `Maximum MAC Addresses      : ${p.max}`,
+      `Total MAC Addresses        : ${on ? secureCount(p, dyn) : 0}`,
+      `Configured MAC Addresses   : ${p.macs.length}`,
+      `Sticky MAC Addresses       : ${p.stickyMacs.length}`,
+      `Last Source Address:Vlan   : ${last ? `${last}:${vlan}` : "0000.0000.0000:0"}`,
+      `Security Violation Count   : ${rt.psViolations.get(key) ?? 0}`
+    ];
+  }
+  function showPortSecurityAddress(rt, dev) {
+    const o = [
+      "               Secure Mac Address Table",
+      "-----------------------------------------------------------------------------",
+      "Vlan    Mac Address       Type                          Ports   Remaining Age",
+      "                                                                   (mins)",
+      "----    -----------       ----                          -----   -------------"
+    ];
+    for (const [p, ps] of securePorts(rt, dev)) {
+      const vlan = rt.running[dev].ifaces[p].accessVlan;
+      const row = (mac, type) => o.push(padL(vlan, 4) + "    " + pad(mac, 18) + pad(type, 30) + pad(shortIf(p), 8) + "    -");
+      for (const m of ps.macs) row(m, "SecureConfigured");
+      for (const m of ps.stickyMacs) row(m, "SecureSticky");
+      for (const m of dynOf(rt, dev, p)) row(m, "SecureDynamic");
+    }
+    o.push("-----------------------------------------------------------------------------", FOOTER[1] + extraTotal(rt, dev), FOOTER[2]);
+    return o;
+  }
+
   // src/sim/net.ts
   var nk = (n) => `${n.dev}|${n.vlan}`;
   var ROUTED_TAG = 1e3;
@@ -811,6 +912,7 @@ var AgLabSim = (() => {
     if (!at) return null;
     const lp = d.lportOfPhys[pk(at.dev, at.port)];
     if (!lp || !lp.active) return null;
+    if (!psAdmits(d, at.dev, at.port, d.topo.devices[pc].mac)) return null;
     if (lp.routed) return routedNode(d, at.dev, at.port);
     const v = ingress(d, lp, "u", 0);
     if (v === null || !portForwards(d, at.dev, lp, v)) return null;
@@ -1732,7 +1834,10 @@ var AgLabSim = (() => {
         o.push(" no switchport", ...l3Lines(ic.ip, ic.l3, true));
         if (ic.shutdown) o.push(" shutdown");
       } else {
-        o.push("interface " + p, ...l2Lines(ic, !!sw.needsEncap));
+        const l2 = l2Lines(ic, !!sw.needsEncap);
+        const at = l2.findIndex((l) => l === " shutdown" || l.startsWith(" spanning-tree"));
+        l2.splice(at < 0 ? l2.length : at, 0, ...psConfigLines(ic.portSecurity));
+        o.push("interface " + p, ...l2);
         if (ic.bpduguard !== void 0) o.push(` spanning-tree bpduguard ${ic.bpduguard ? "enable" : "disable"}`);
         if (ic.channel) o.push(` channel-group ${ic.channel.id} mode ${ic.channel.mode}`);
       }
@@ -2114,7 +2219,7 @@ var AgLabSim = (() => {
     const o = ["", "Port      Name               Status       Reason               Err-disabled Vlans"];
     for (const p of sw.ports) {
       if (!d.phys[pk(dev, p)]?.errDisabled) continue;
-      o.push(pad(shortIf(p), 10) + pad(rt.running[dev].ifaces[p].description.slice(0, 18), 19) + pad("err-disabled", 13) + "bpduguard");
+      o.push(pad(shortIf(p), 10) + pad(rt.running[dev].ifaces[p].description.slice(0, 18), 19) + pad("err-disabled", 13) + (rt.errCause.get(pk(dev, p)) ?? "bpduguard"));
     }
     return o;
   }
@@ -2554,6 +2659,9 @@ var AgLabSim = (() => {
       { p: "show cdp interface <if>", run: (x, a) => showCdpInterface(x.rt, x.dev, x.physName(a[3], a[4], 3)), ifTypes: ["FastEthernet", "GigabitEthernet"] },
       { p: "show lldp neighbors", run: (x) => showLldpNeighbors(x.rt, x.dev, false) },
       { p: "show lldp neighbors detail", run: (x) => showLldpNeighbors(x.rt, x.dev, true) },
+      { p: "show port-security", run: (x) => showPortSecurity(x.rt, x.dev) },
+      { p: "show port-security address", run: (x) => showPortSecurityAddress(x.rt, x.dev) },
+      { p: "show port-security interface <if>", run: (x, a) => showPortSecurityInterface(x.rt, x.dev, x.physName(a[3], a[4], 3)), ifTypes: ["FastEthernet", "GigabitEthernet"] },
       { p: "show history", run: (x) => x.history.slice(-20).map((h) => "  " + h) },
       // L5-b: DHCP server
       { p: "show ip dhcp binding", run: (x) => showDhcpBinding(x.rt, x.dev) },
@@ -2725,7 +2833,7 @@ var AgLabSim = (() => {
     return def.router ? p.filter((x) => !ROUTER_HIDDEN_CONFIG.test(x.p)) : p;
   };
   var ROUTER_HIDDEN_CONFIG = /^(no )?(vlan|spanning-tree|errdisable) /;
-  var ROUTER_HIDDEN_SHOW = /^show (vlan|spanning-tree|mac address-table|interfaces (trunk|status|switchport)|interfaces <if> switchport|etherchannel|errdisable|vtp)/;
+  var ROUTER_HIDDEN_SHOW = /^show (vlan|spanning-tree|mac address-table|interfaces (trunk|status|switchport)|interfaces <if> switchport|etherchannel|errdisable|vtp|port-security)/;
   var l3OptPatterns = [
     { p: "ip ospf cost <1-65535:Cost>", run: (x, a) => x.eachL3((o) => void (o.ospfCost = Number(a[3]))) },
     { p: "no ip ospf cost", run: (x) => x.eachL3((o) => void delete o.ospfCost) },
@@ -2890,7 +2998,22 @@ var AgLabSim = (() => {
       { p: "channel-group <1-48:Channel group number> mode desirable", run: (x, a) => x.channelGroup(Number(a[1]), "desirable") },
       { p: "channel-group <1-48:Channel group number> mode auto", run: (x, a) => x.channelGroup(Number(a[1]), "auto") },
       { p: "no channel-group", run: (x) => x.noChannelGroup() },
-      ...discoveryIfPatterns
+      ...discoveryIfPatterns,
+      // L5-e: port security (access ports)
+      { p: "switchport port-security", run: (x) => x.portSec((ps) => void (ps.enabled = true)) },
+      { p: "no switchport port-security", run: (x) => x.portSec((ps) => void (ps.enabled = false)) },
+      { p: "switchport port-security maximum <1-8192:Maximum addresses>", run: (x, a) => x.portSecMax(Number(a[3])) },
+      { p: "no switchport port-security maximum", run: (x) => x.portSecMax(1) },
+      { p: "switchport port-security violation shutdown", run: (x) => x.portSec((ps) => void (ps.violation = "shutdown")) },
+      { p: "switchport port-security violation restrict", run: (x) => x.portSec((ps) => void (ps.violation = "restrict")) },
+      { p: "switchport port-security violation protect", run: (x) => x.portSec((ps) => void (ps.violation = "protect")) },
+      { p: "no switchport port-security violation", run: (x) => x.portSec((ps) => void (ps.violation = "shutdown")) },
+      { p: "switchport port-security mac-address <H.H.H:48 bit mac address>", run: (x, a) => x.portSecMac(a[3], false, true) },
+      { p: "no switchport port-security mac-address <H.H.H:48 bit mac address>", run: (x, a) => x.portSecMac(a[4], false, false) },
+      { p: "switchport port-security mac-address sticky", run: (x) => x.portSecSticky(true) },
+      { p: "no switchport port-security mac-address sticky", run: (x) => x.portSecSticky(false) },
+      { p: "switchport port-security mac-address sticky <H.H.H:48 bit mac address>", run: (x, a) => x.portSecMac(a[4], true, true) },
+      { p: "no switchport port-security mac-address sticky <H.H.H:48 bit mac address>", run: (x, a) => x.portSecMac(a[5], true, false) }
     ];
     if (def.l3) {
       p.push(
@@ -3222,6 +3345,58 @@ var AgLabSim = (() => {
       base2.shutdown = false;
       base2.description = "";
       return base2;
+    }
+    // ---- L5-e: port security ----
+    /** Apply to the selected ports; IOS rejects port security on trunk and dynamic ports. */
+    portSec(fn) {
+      const out = [];
+      for (const name of this.ifs) {
+        const c = this.cfg.ifaces[name];
+        if (!c) continue;
+        if (c.mode !== "access") throw new CliError([`Command rejected: ${name} is a ${c.mode === "trunk" ? "trunk" : "dynamic"} port.`]);
+        const r = fn(c.portSecurity ?? (c.portSecurity = defaultPortSecurity()), name);
+        if (r) out.push(...r);
+      }
+      return out.length ? out : void 0;
+    }
+    portSecMax(n) {
+      return this.portSec((ps, name) => {
+        const dyn = this.rt.psDynamic.get(`${this.dev}|${name}`) ?? [];
+        if (n < secureCount(ps, dyn)) return ["Maximum is less than number of currently secured mac-addresses."];
+        ps.max = n;
+      });
+    }
+    portSecMac(raw, sticky, add) {
+      const mac = normalizeMac(raw);
+      if (!mac || parseInt(mac.slice(0, 2), 16) % 2 === 1) return ["% Invalid MAC address"];
+      return this.portSec((ps, name) => {
+        const list = sticky ? ps.stickyMacs : ps.macs;
+        if (!add) {
+          const i = list.indexOf(mac);
+          if (i >= 0) list.splice(i, 1);
+          return;
+        }
+        if (ps.macs.includes(mac) || ps.stickyMacs.includes(mac)) return;
+        if (ps.macs.length + ps.stickyMacs.length >= ps.max)
+          return [`Total secure mac-addresses on interface ${name} has reached maximum limit.`];
+        if (sticky) ps.sticky = true;
+        list.push(mac);
+      });
+    }
+    /** `mac-address sticky`: dynamic addresses become sticky; `no …` turns sticky ones dynamic. */
+    portSecSticky(on) {
+      return this.portSec((ps, name) => {
+        const key = `${this.dev}|${name}`;
+        if (on) {
+          ps.sticky = true;
+          ps.stickyMacs.push(...this.rt.psDynamic.get(key) ?? []);
+          this.rt.psDynamic.delete(key);
+        } else {
+          ps.sticky = false;
+          this.rt.psDynamic.set(key, [...this.rt.psDynamic.get(key) ?? [], ...ps.stickyMacs]);
+          ps.stickyMacs = [];
+        }
+      });
     }
     /** A physical port of this device (show commands); anything else is invalid input. */
     physName(type, num, argIndex) {
@@ -3857,6 +4032,7 @@ var AgLabSim = (() => {
     dhcp(args) {
       const opt = args[0]?.toLowerCase();
       if (opt && opt !== "-r" && opt !== "-x") return ["Invalid options"];
+      this.rt.hostSends(this.dev);
       if (opt === "-x") {
         this.rt.dhcpRelease(this.dev);
         return [];
@@ -3940,6 +4116,7 @@ var AgLabSim = (() => {
       const c = this.rt.pcs[this.dev];
       if (!c.ip) return ["No gateway found"];
       if (!sameSubnet(c.ip, dst, c.prefix) && !c.gw) return [`host (${dst}) not reachable`, ""];
+      this.rt.hostSends(this.dev);
       const d = this.rt.derived;
       const r = ping(d, this.dev, dst);
       this.rt.markSeen(r.forward?.hops ?? [], this.dev);
@@ -3960,6 +4137,7 @@ var AgLabSim = (() => {
       if (ipToInt(dst) === null) return [`Cannot resolve ${dst}`];
       const c = this.rt.pcs[this.dev];
       if (!c.ip) return ["No gateway found"];
+      this.rt.hostSends(this.dev);
       const r = deliver(this.rt.derived, this.dev, dst);
       this.rt.markSeen(r.hops, this.dev);
       const out = [`trace to ${dst}, 8 hops max, press Ctrl+C to stop`];
@@ -4552,6 +4730,14 @@ var AgLabSim = (() => {
       __publicField(this, "hw", noHardwareFaults());
       /** L5-b: DHCP leases handed out by the lab's servers (kept in RAM: lost on reload) */
       __publicField(this, "dhcp", []);
+      /** L5-e: why a port is err-disabled ('bpduguard' | 'psecure-violation'); missing = bpduguard */
+      __publicField(this, "errCause", /* @__PURE__ */ new Map());
+      /** L5-e: dynamically learned secure MACs per port ('dev|port'); cleared when the port goes down */
+      __publicField(this, "psDynamic", /* @__PURE__ */ new Map());
+      /** L5-e: security violation counters per port */
+      __publicField(this, "psViolations", /* @__PURE__ */ new Map());
+      /** L5-e: last source MAC seen on a secure port */
+      __publicField(this, "psLast", /* @__PURE__ */ new Map());
       __publicField(this, "seq", 0);
       __publicField(this, "t0", Date.now());
       __publicField(this, "listeners", /* @__PURE__ */ new Set());
@@ -4566,6 +4752,10 @@ var AgLabSim = (() => {
       }
       for (const pc of this.topo.pcs) this.pcs[pc.id] = clone(this.def.initialPcs?.[pc.id] ?? { ip: null, prefix: 24, gw: null });
       this.errdis.clear();
+      this.errCause.clear();
+      this.psDynamic.clear();
+      this.psViolations.clear();
+      this.psLast.clear();
       this.dhcp = [];
       this.hw = noHardwareFaults();
       for (const l of this.def.links)
@@ -4620,6 +4810,7 @@ var AgLabSim = (() => {
         for (const k of [...this.errdis]) {
           if (d.phys[k]?.adminDown) {
             this.errdis.delete(k);
+            this.errCause.delete(k);
             changed = true;
           }
         }
@@ -4628,14 +4819,16 @@ var AgLabSim = (() => {
           if (this.errdis.has(k)) continue;
           const [dev, port] = k.split("|");
           this.errdis.add(k);
+          this.errCause.set(k, "bpduguard");
           this.log(dev, `%SPANTREE-2-BLOCK_BPDUGUARD: Received BPDU on port ${port} with BPDU Guard enabled. Disabling port.`);
           this.log(dev, `%PM-4-ERR_DISABLE: bpduguard error detected on ${shortIf(port)}, putting ${shortIf(port)} in err-disable state`);
           changed = true;
         }
         for (const k of [...this.errdis]) {
           const [dev, port] = k.split("|");
-          if (viol.has(k) || !this.running[dev]?.errRecoveryBpdu) continue;
+          if (viol.has(k) || !this.running[dev]?.errRecoveryBpdu || (this.errCause.get(k) ?? "bpduguard") !== "bpduguard") continue;
           this.errdis.delete(k);
+          this.errCause.delete(k);
           this.log(dev, `%PM-4-ERR_RECOVER: Attempting to recover from bpduguard err-disable state on ${shortIf(port)}`);
           changed = true;
         }
@@ -4648,10 +4841,47 @@ var AgLabSim = (() => {
             changed = true;
           }
         }
+        for (const k of [...this.psDynamic.keys()]) {
+          const [dev, port] = k.split("|");
+          if (d.phys[k]?.up && activePs(this.running[dev], port)) continue;
+          this.psDynamic.delete(k);
+        }
         if (!changed) break;
         d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw);
       }
       return d;
+    }
+    /**
+     * L5-e: a PC puts frames on the wire (ping, trace, DHCP). On a secure access port its source
+     * MAC is learned (sticky → running-config) or, past `maximum`, triggers the violation mode:
+     * shutdown → err-disable + syslog, restrict → counter + syslog, protect → silent drop.
+     */
+    hostSends(pc) {
+      const at = this.topo.pcAttach[pc];
+      const def = this.topo.devices[pc];
+      if (!at || !def || this.hw.off.has(pc) || this.hw.nicDown.has(pc)) return;
+      const key = pk(at.dev, at.port);
+      const ps = activePs(this.running[at.dev], at.port);
+      if (!ps || !this.derived.phys[key]?.up) return;
+      const mac = def.mac;
+      this.psLast.set(key, mac);
+      const dyn = this.psDynamic.get(key) ?? [];
+      if (ps.macs.includes(mac) || ps.stickyMacs.includes(mac) || dyn.includes(mac)) return;
+      if (secureCount(ps, dyn) < ps.max) {
+        if (ps.sticky) ps.stickyMacs.push(mac);
+        else this.psDynamic.set(key, [...dyn, mac]);
+        this.commit();
+        return;
+      }
+      if (ps.violation === "protect") return;
+      this.psViolations.set(key, (this.psViolations.get(key) ?? 0) + 1);
+      this.log(at.dev, `%PORT_SECURITY-2-PSECURE_VIOLATION: Security violation occurred, caused by MAC address ${mac} on port ${at.port}.`);
+      if (ps.violation === "shutdown" && !this.errdis.has(key)) {
+        this.errdis.add(key);
+        this.errCause.set(key, "psecure-violation");
+        this.log(at.dev, `%PM-4-ERR_DISABLE: psecure-violation error detected on ${shortIf(at.port)}, putting ${shortIf(at.port)} in err-disable state`);
+      }
+      this.commit();
     }
     /** Plug in (up) or unplug / cut (down) the cable on this port. False when no cable is there. */
     setLink(dev, port, up) {
@@ -4834,6 +5064,10 @@ var AgLabSim = (() => {
         arp: [...this.arp],
         arpIncomplete: [...this.arpIncomplete],
         errdis: [...this.errdis],
+        errCause: [...this.errCause],
+        psDynamic: [...this.psDynamic],
+        psViolations: [...this.psViolations],
+        psLast: [...this.psLast],
         hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
         dhcp: clone(this.dhcp)
       };
@@ -4851,6 +5085,10 @@ var AgLabSim = (() => {
       this.arp = new Set(s.arp);
       this.arpIncomplete = new Set(s.arpIncomplete ?? []);
       this.errdis = new Set(s.errdis ?? []);
+      this.errCause = new Map(s.errCause ?? []);
+      this.psDynamic = new Map(s.psDynamic ?? []);
+      this.psViolations = new Map(s.psViolations ?? []);
+      this.psLast = new Map(s.psLast ?? []);
       if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) };
       this.dhcp = clone(s.dhcp ?? []);
       this.derived = this.recompute();
@@ -6953,7 +7191,9 @@ write memory`
   var STATIC_ROUTE_FIELDS = /* @__PURE__ */ new Set(["network", "mask", "nextHop", "distance"]);
   var OSPF_FIELDS = /* @__PURE__ */ new Set(["pid", "routerId", "networks"]);
   var SERVER_FIELDS = /* @__PURE__ */ new Set([...PC_FIELDS, "services"]);
-  var PHYS_FIELDS = /* @__PURE__ */ new Set(["mode", "vlan", "allowed", "nativeVlan", "enabled"]);
+  var PHYS_FIELDS = /* @__PURE__ */ new Set(["mode", "vlan", "allowed", "nativeVlan", "enabled", "portSecurity", "errdisabled"]);
+  var PS_FIELDS = ["enabled", "max", "violation", "macs"];
+  var colonMac = (dotted) => dotted.replace(/\./g, "").match(/../g).join(":");
   var SVI_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "vlan"]);
   var FEATURE_REASON = {
     staticRoutes: "Switch üzerinde statik rota AğLab modelinde yok",
@@ -7032,6 +7272,7 @@ write memory`
     const pcs = {};
     const canonByDevice = {};
     const usedMacs = /* @__PURE__ */ new Map();
+    const errdis = [];
     const ids = /* @__PURE__ */ new Set();
     const claimMac = (dev, mac) => {
       const other = usedMacs.get(mac);
@@ -7445,6 +7686,26 @@ write memory`
         if (allowed.some((x) => x === null)) reject(id, `${name}.allowed`, "Geçersiz izinli VLAN listesi");
         else phys.allowed = [...new Set(allowed)].sort(sortNum);
         if (mode === "trunk" && sw.needsEncap) phys.encapDot1q = true;
+        if (iface.portSecurity !== void 0) {
+          const ps = iface.portSecurity;
+          const macs = Array.isArray(ps?.["macs"]) ? ps["macs"].map((m) => typeof m === "string" ? normalizeMac(m) : null) : null;
+          const max = ps?.["max"];
+          if (!ps || typeof ps !== "object" || Object.keys(ps).some((k) => !PS_FIELDS.includes(k)) || typeof ps["enabled"] !== "boolean" || !Number.isInteger(max) || max < 1 || max > 1024 || !["shutdown", "restrict", "protect"].includes(String(ps["violation"])) || !macs || macs.some((m) => !m || m === "0000.0000.0000" || parseInt(m.slice(0, 2), 16) % 2 === 1) || new Set(macs).size !== macs.length || macs.length > max) reject(id, `${name}.portSecurity`, "Geçersiz portSecurity yapılandırması");
+          else if (ps["enabled"] && mode !== "access") reject(id, `${name}.portSecurity`, "Port security yalnız access portta (IOS)");
+          else
+            phys.portSecurity = {
+              enabled: ps["enabled"],
+              max,
+              violation: ps["violation"],
+              sticky: false,
+              macs,
+              stickyMacs: []
+            };
+        }
+        if (iface.errdisabled !== void 0) {
+          if (typeof iface.errdisabled !== "boolean") reject(id, `${name}.errdisabled`, "errdisabled true/false olmalı");
+          else if (iface.errdisabled) errdis.push(`${id}|${c}`);
+        }
         cfg.ifaces[c] = phys;
       }
       for (const c of canonPorts)
@@ -7493,12 +7754,16 @@ write memory`
     for (const r of report.rejected) reasons.add("Reddedildi: " + r.reason);
     report.reasons = [...reasons].sort();
     report.engineDecision = report.unsupported.length || report.rejected.length ? "legacy" : "labber";
-    return { def, running, pcs, report };
+    return { def, running, pcs, report, ...errdis.length ? { errdis } : {} };
   }
   function createRuntime(result) {
     return new LabRuntime(result.def, (rt) => {
       for (const [id, cfg] of Object.entries(result.running)) rt.running[id] = clone(cfg);
       for (const [id, pc] of Object.entries(result.pcs)) rt.pcs[id] = clone(pc);
+      for (const k of result.errdis ?? []) {
+        rt.errdis.add(k);
+        rt.errCause.set(k, "psecure-violation");
+      }
     });
   }
   var BridgeError = class extends Error {
@@ -7615,6 +7880,7 @@ write memory`
         if (phys.nonegotiate) fail(`${canon} nonegotiate`);
         if (phys.description) fail(`${canon} description`);
         if (phys.bpduguard !== void 0) fail(`${canon} bpduguard`);
+        if (phys.portSecurity?.sticky || phys.portSecurity?.stickyMacs.length) fail(`${canon} port-security mac-address sticky`);
         if (phys.l3 || phys.ip) fail(`${canon} L3 ayarı`);
         const prev = d.interfaces[name];
         const def = defaultPhys();
@@ -7628,6 +7894,16 @@ write memory`
         put("allowed", phys.allowed, []);
         put("nativeVlan", phys.nativeVlan, def.nativeVlan);
         put("enabled", !phys.shutdown, true);
+        const ps = phys.portSecurity;
+        if (ps) {
+          const old = prev?.["portSecurity"] ?? {};
+          const macs = ps.macs.map((m) => old.macs?.find((x) => normalizeMac(x) === m) ?? colonMac(m));
+          iface["portSecurity"] = { enabled: ps.enabled, max: ps.max, violation: ps.violation, macs };
+        } else if (prev && "portSecurity" in prev) delete iface["portSecurity"];
+        if (rt.errdis) {
+          const on = rt.errdis.has(`${id}|${canon}`);
+          if (prev && "errdisabled" in prev || on) iface["errdisabled"] = on;
+        }
         if (prev || Object.keys(iface).length) d.interfaces[name] = iface;
       }
       for (const [v, svi2] of Object.entries(cfg.svis)) {

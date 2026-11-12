@@ -24,8 +24,9 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | CI tetikleme: push yalnız main, dal başına `concurrency` | #67 | birleşti |
 | L5-b DHCP/DNS; `relay-trunk` | #68 | birleşti (aynı işi yapan #69 kapatıldı) |
 | L5-f CDP/LLDP | #70 (main'den) | açık (birleşmeyi bekliyor) |
+| L5-e port security; `port-security` | dal `claude/l5e-port-security` (#70'in dalından) | PR açık (birleşmeyi bekliyor) |
 
-**Sıradaki (kullanıcı talimatı, sırayla):** L5-e port security → L5-c ACL → L5-d NAT/PAT.
+**Sıradaki (kullanıcı talimatı, sırayla):** L5-c ACL → L5-d NAT/PAT (L5-f ve L5-e PR'ları açık).
 Dal zinciri: L5-f (main'den) → L5-e → L5-c → L5-d; her biri ayrı PR, bir öncekinin dalından,
 hiçbiri birleştirilmez. CI sonucunu kullanıcı denetler (oturum CI'ı beklemez). Bugün eski
 motorda kalan içerik: `nat-pat` (ACL, NAT, HTTP servisi), `bgp-as`, `port-security`
@@ -340,6 +341,27 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
   düşme, `no cdp enable`, `no cdp run`, native VLAN syslog'u, LLDP kapalı/tek uç/iki uç,
   transmit/receive yönü); `test_aglab_labber_terminal` terminalden `show cdp neighbors`.
   Eski motorda CDP/LLDP yok: parite karşılaştırması yok (fark 0).
+
+## L5-e — Port security (yapıldı, PR açık)
+
+- **Labber**: `src/sim/portsec.ts`. Kabul kararı yapılandırmadan (`psAdmits`, `net.ts pcNode`):
+  kaynak MAC yapılandırılmış/sticky listede ya da güvenli adres sayısı `maximum`'un altında
+  değilse uç ağa çıkamaz (üç modda da). Yan etkiler uç trafik gönderdiğinde
+  (`LabRuntime.hostSends`: VPCS `ping`, `trace`, `ip dhcp`): öğrenme (sticky → config, değilse
+  `rt.psDynamic`), ihlal (shutdown → `rt.errdis` + `errCause` `psecure-violation` + syslog;
+  restrict → sayaç + syslog; protect → sessiz). Dinamik adresler port düşünce silinir.
+  bpduguard kurtarma döngüsü yalnız `bpduguard` nedenli portları kurtarır. CLI: `switchport
+  port-security [maximum | violation | mac-address [sticky] H.H.H | mac-address sticky]`,
+  `no` biçimleri, dinamik/trunk portta IOS ret metni; `show port-security [address |
+  interface X]`, `show interfaces status [err-disabled]` (neden sütunu). running-config IOS
+  sırasıyla.
+- **Köprü**: `portSecurity` ⇄ yapılandırılmış adresler (özgün MAC yazımı korunur),
+  `errdisabled` ⇄ `rt.errdis` (`BridgeResult.errdis`); sticky → `BridgeError`.
+- **Ürün**: `$SOURCE_MAC` IOS yazımı (H.H.H); `aglabSharedEngine.probe()` Labber içeriğinde
+  kaynak PC'nin gerçek trafiği (`aglabLabber.hostSends`).
+- **Testler**: `tests/sim/portsec.test.ts`, `bridge.test.ts` "port security (L5-e)",
+  `parity.test.ts` 200 rastgele yapılandırmada `port-security.js` ile; Playwright
+  `test_aglab_network_features` test_05/06 (Labber).
 
 ## Kurallar hatırlatması
 

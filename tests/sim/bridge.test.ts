@@ -363,6 +363,39 @@ describe('köprü: DHCP/DNS (L5-b)', () => {
   })
 })
 
+describe('köprü: port security (L5-e)', () => {
+  const secured = (): AglabTopology => {
+    const t = lan()
+    t.devices[2]!.interfaces!['fa0/1']!.portSecurity = { enabled: true, max: 2, violation: 'restrict', macs: ['02:00:00:00:00:FE'] }
+    return t
+  }
+  it('portSecurity ve errdisabled eşlenir; gidiş-dönüş birebir (özgün MAC yazımı korunur)', () => {
+    const t = secured()
+    t.devices[2]!.interfaces!['fa0/2']!.errdisabled = false
+    const r = toLabber(t)
+    expect(r.report.engineDecision, JSON.stringify(r.report)).toBe('labber')
+    expect(r.running['d3']!.ifaces['FastEthernet0/1']!.portSecurity).toEqual({ enabled: true, max: 2, violation: 'restrict', sticky: false, macs: ['0200.0000.00fe'], stickyMacs: [] })
+    expect(roundTrip(t)).toEqual(t)
+  })
+  it('errdisabled: true çalışma zamanında err-disabled (psecure-violation); kurtarma JSON\'a yazılır', () => {
+    const t = secured()
+    t.devices[2]!.interfaces!['fa0/1']!.errdisabled = true
+    const rt = createRuntime(toLabber(t))
+    expect([rt.errdis.has('d3|FastEthernet0/1'), rt.errCause.get('d3|FastEthernet0/1')]).toEqual([true, 'psecure-violation'])
+    expect(toAglab(rt, t).devices[2]!.interfaces!['fa0/1']!.errdisabled).toBe(true)
+    runScript(rt, 'd3', 'configure terminal\ninterface fa0/1\nshutdown\nno shutdown\nend')
+    expect(toAglab(rt, t).devices[2]!.interfaces!['fa0/1']!.errdisabled).toBe(false)
+  })
+  it('CLI ile yapılandırılan port security yazılır; sticky AğLab modelinde yok → BridgeError', () => {
+    const t = lan()
+    const rt = createRuntime(toLabber(t))
+    runScript(rt, 'd3', 'configure terminal\ninterface fa0/2\nswitchport port-security\nswitchport port-security mac-address 0200.0000.0001\nend')
+    expect(toAglab(rt, t).devices[2]!.interfaces!['fa0/2']!.portSecurity).toEqual({ enabled: true, max: 1, violation: 'shutdown', macs: ['02:00:00:00:00:01'] })
+    runScript(rt, 'd3', 'configure terminal\ninterface fa0/2\nswitchport port-security mac-address sticky\nend')
+    expect(() => toAglab(rt, t)).toThrow(BridgeError)
+  })
+})
+
 describe('köprü: gerçek içerik', () => {
   for (const [id, t] of content()) {
     const decision = toLabber(t).report.engineDecision
@@ -598,7 +631,6 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
     ['DHCP sunucu', (t) => (t.devices[0]!.services = { dhcp: true }), /servisleri/],
     ['ACL', (t) => (t.devices[2]!.acls = []), /ACL/],
     ['NAT', (t) => (t.devices[2]!.natOverload = { aclId: 1, outsideInterface: 'gi0/1' }), /NAT/],
-    ['port security', (t) => (t.devices[2]!.interfaces!['fa0/1']!.portSecurity = { enabled: true }), /Port security/],
     ['BGP', (t) => (t.devices[2]!.bgp = { asn: 65001 }), /BGP/],
     ['routed switch portu', (t) => (t.devices[2]!.interfaces!['gi0/1']!.ip = '10.0.0.1'), /routed port/],
     ['tanınmayan alan', (t) => (t.devices[2]!.foo = 1), /karşılığı olmayan/],
@@ -624,6 +656,10 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
     ['geçersiz PC maskesi', (t) => (t.devices[0]!.mask = '255.0.255.0'), /maske/],
     ['geçersiz PC MAC', (t) => (t.devices[0]!.mac = '01:00:5e:00:00:01'), /MAC/],
     ['bilinmeyen port modu', (t) => (t.devices[2]!.interfaces!['fa0/1']!.mode = 'dynamic'), /port modu/],
+    // L5-e: port security eşlenir; eksik/geçersiz yapılandırma ve trunk'ta açık güvenlik reddedilir
+    ['eksik portSecurity', (t) => (t.devices[2]!.interfaces!['fa0/1']!.portSecurity = { enabled: true }), /Geçersiz portSecurity/],
+    ['multicast güvenli MAC', (t) => (t.devices[2]!.interfaces!['fa0/1']!.portSecurity = { enabled: true, max: 1, violation: 'shutdown', macs: ['01:00:5e:00:00:01'] }), /Geçersiz portSecurity/],
+    ['trunk portta port security', (t) => (t.devices[2]!.interfaces!['gi0/1']!.portSecurity = { enabled: true, max: 1, violation: 'shutdown', macs: [] }), /yalnız access/],
     ['geçersiz statik rota', (t) => t.devices.push({ ...router({}), staticRoutes: [{ network: '10.0.0.0', mask: '255.0.255.0', nextHop: '1.1.1.1' }] }), /Geçersiz statik rota/],
     ['hizasız statik rota', (t) => t.devices.push({ ...router({}), staticRoutes: [{ network: '10.20.1.5', mask: '255.255.255.0', nextHop: '1.1.1.1' }] }), /hizalı değil/],
     ['statik rota AD 0', (t) => t.devices.push({ ...router({}), staticRoutes: [{ network: '10.0.0.0', mask: '255.0.0.0', nextHop: '1.1.1.1', distance: 0 }] }), /AD 1-255/],

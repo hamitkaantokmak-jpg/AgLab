@@ -132,6 +132,7 @@ export class VpcsSession {
   private dhcp(args: string[]): string[] {
     const opt = args[0]?.toLowerCase()
     if (opt && opt !== '-r' && opt !== '-x') return ['Invalid options']
+    this.rt.hostSends(this.dev)
     if (opt === '-x') {
       this.rt.dhcpRelease(this.dev)
       return []
@@ -222,6 +223,8 @@ export class VpcsSession {
     const c = this.rt.pcs[this.dev]!
     if (!c.ip) return ['No gateway found']
     if (!sameSubnet(c.ip, dst, c.prefix) && !c.gw) return [`host (${dst}) not reachable`, '']
+    // L5-e: the PC sends (ARP/ICMP): port security learns or flags its source MAC first
+    this.rt.hostSends(this.dev)
     const d = this.rt.derived
     const r = ping(d, this.dev, dst)
     this.rt.markSeen(r.forward?.hops ?? [], this.dev)
@@ -244,6 +247,7 @@ export class VpcsSession {
     if (ipToInt(dst) === null) return [`Cannot resolve ${dst}`]
     const c = this.rt.pcs[this.dev]!
     if (!c.ip) return ['No gateway found']
+    this.rt.hostSends(this.dev)
     const r = deliver(this.rt.derived, this.dev, dst)
     this.rt.markSeen(r.hops, this.dev)
     const out = [`trace to ${dst}, 8 hops max, press Ctrl+C to stop`]

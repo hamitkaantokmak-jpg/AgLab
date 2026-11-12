@@ -333,6 +333,11 @@ const aglabLabber = (() => {
   function changed() {
     writeBack();
   }
+  /** L5-e: PC trafik gönderir (port security öğrenmesi / ihlali); görünüm güncellenir. */
+  function hostSends(dev) {
+    runtime().hostSends(dev);
+    changed();
+  }
   /** Cihaz gücü (açılış bir reload'dur: running-config startup'tan gelir). */
   function setPower(dev, on) {
     runtime().setPower(dev, on);
@@ -400,6 +405,7 @@ const aglabLabber = (() => {
     state = s;
   }
   return {
+    hostSends,
     start,
     startLab,
     lab,
