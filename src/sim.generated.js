@@ -1075,6 +1075,72 @@ var AgLabSim = (() => {
     }
     return out.sort((a, b) => a.vlan - b.vlan || a.mac.localeCompare(b.mac));
   }
+  function helperOf(d, dev, ifname) {
+    const cfg = d.cfgs[dev];
+    if (!cfg) return null;
+    return (ifname.includes(".") ? cfg.subifs?.[ifname]?.helper : cfg.ifaces[ifname]?.helper) ?? null;
+  }
+  function configuredIps(d, except) {
+    const out = /* @__PURE__ */ new Set();
+    for (const x of d.topo.lab.devices) {
+      if (x.id === except) continue;
+      if (x.kind === "pc") {
+        const ip = d.pcs[x.id]?.ip;
+        if (ip) out.add(ip);
+        continue;
+      }
+      const c = d.cfgs[x.id];
+      for (const i of Object.values(c.ifaces)) if (i.ip) out.add(i.ip.addr);
+      for (const s of Object.values(c.svis)) if (s.ip) out.add(s.ip.addr);
+      for (const s of Object.values(c.subifs ?? {})) if (s.ip) out.add(s.ip.addr);
+      for (const l of Object.values(c.loopbacks ?? {})) if (l.ip) out.add(l.ip.addr);
+    }
+    return out;
+  }
+  function dhcpLease(d, pc) {
+    const servers = d.topo.pcs.filter((s) => s.dhcpServer && s.id !== pc && l3Ifs(d, s.id).length);
+    if (!servers.length) return { ok: false, reason: "noserver" };
+    const start = pcNode(d, pc);
+    if (!start || d.hw.off.has(pc) || d.hw.nicDown.has(pc)) return { ok: false, reason: "nopath" };
+    const dom = domainOf(d, start);
+    const inDom = (i) => !!i.node && dom.nodes.has(nk(i.node));
+    let pool = null;
+    for (const s of servers) {
+      const si = l3Ifs(d, s.id)[0];
+      if (!inDom(si)) continue;
+      pool = { net: si.ip, prefix: si.prefix, gw: d.pcs[s.id]?.gw ?? null, server: si.ip, relay: null };
+      break;
+    }
+    if (!pool)
+      outer: for (const s of servers) {
+        const sip = l3Ifs(d, s.id)[0].ip;
+        for (const r of d.topo.switches) {
+          if (!isRouter(d, r.id)) continue;
+          for (const i of l3Ifs(d, r.id)) {
+            if (!inDom(i) || helperOf(d, r.id, i.name) !== sip) continue;
+            if (deliver(d, r.id, sip).kind !== "ok") continue;
+            pool = { net: i.ip, prefix: i.prefix, gw: i.ip, server: sip, relay: { dev: r.id, ifname: i.name } };
+            break outer;
+          }
+        }
+      }
+    if (!pool) return { ok: false, reason: "nopath" };
+    if (pool.prefix >= 31) return { ok: false, reason: "subnet" };
+    const m = prefixMaskInt(pool.prefix);
+    const network = (ipToInt(pool.net) & m) >>> 0;
+    const broadcast = (network | ~m >>> 0) >>> 0;
+    const taken = configuredIps(d, pc);
+    for (const x of [pool.gw, pool.server]) if (x) taken.add(x);
+    const startOffset = Math.min(100, Math.max(1, broadcast - network - 1));
+    const offsets = [...Array(4096).keys()].map((i) => startOffset + i).concat([...Array(Math.max(0, startOffset - 1)).keys()].map((i) => i + 1));
+    for (const off of offsets) {
+      const cand = network + off;
+      if (cand >= broadcast) continue;
+      const ip = intTo(cand >>> 0);
+      if (!taken.has(ip)) return { ok: true, ip, prefix: pool.prefix, gw: pool.gw, server: pool.server, relay: pool.relay };
+    }
+    return { ok: false, reason: "exhausted" };
+  }
 
   // src/sim/cli/help.ts
   var HELP = {
@@ -1151,6 +1217,7 @@ var AgLabSim = (() => {
     encapsulation: "Set trunking encapsulation when interface is in trunking mode",
     dot1q: "Interface uses only 802.1q trunking encapsulation when trunking",
     dot1Q: "IEEE 802.1Q Virtual LAN",
+    "helper-address": "Specify a destination address for UDP broadcasts",
     "channel-group": "Etherchannel/port bundling configuration",
     active: "Enable LACP unconditionally",
     passive: "Enable LACP only if a LACP device is detected",
@@ -1450,6 +1517,7 @@ var AgLabSim = (() => {
       o.push("interface " + p);
       if (ic.description) o.push(" description " + ic.description);
       o.push(...l3Lines(ic.ip, ic.l3, true));
+      if (ic.helper) o.push(" ip helper-address " + ic.helper);
       if (ic.shutdown) o.push(" shutdown");
       o.push("!");
       for (const [name, si] of subifsOf(c, p)) {
@@ -1457,6 +1525,7 @@ var AgLabSim = (() => {
         if (si.description) o.push(" description " + si.description);
         if (si.vlan !== null) o.push(` encapsulation dot1Q ${si.vlan}${si.native ? " native" : ""}`);
         o.push(...l3Lines(si.ip, si.l3, true));
+        if (si.helper) o.push(" ip helper-address " + si.helper);
         if (si.shutdown) o.push(" shutdown");
         o.push("!");
       }
@@ -2374,6 +2443,8 @@ var AgLabSim = (() => {
     { p: "no description", run: (x) => x.eachPhys((c) => void (c.description = "")) },
     { p: "ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>", run: (x, a) => x.setIp(a[2], a[3]) },
     { p: "no ip address", run: (x) => x.eachPhys((c) => void (c.ip = null)) },
+    { p: "ip helper-address <A.B.C.D:IP destination address>", run: (x, a) => x.eachPhys((c) => void (c.helper = a[2])) },
+    { p: "no ip helper-address", run: (x) => x.eachPhys((c) => void delete c.helper) },
     ...l3OptPatterns
   ];
   var subIfPatterns = [
@@ -2387,6 +2458,8 @@ var AgLabSim = (() => {
     { p: "no description", run: (x) => x.eachSub((c) => void (c.description = "")) },
     { p: "ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>", run: (x, a) => x.setIp(a[2], a[3]) },
     { p: "no ip address", run: (x) => x.eachSub((c) => void (c.ip = null)) },
+    { p: "ip helper-address <A.B.C.D:IP destination address>", run: (x, a) => x.eachSub((c) => void (c.helper = a[2])) },
+    { p: "no ip helper-address", run: (x) => x.eachSub((c) => void delete c.helper) },
     ...l3OptPatterns
   ];
   var l2IfPatterns = (def) => {
@@ -3227,6 +3300,7 @@ var AgLabSim = (() => {
     "ip ARG ... [OPTION]      Configure the current VPC's IP settings",
     "  ip <address>/<len> [gateway]",
     "  ip <address> <mask> [gateway]",
+    "  ip dhcp                Get the address from a DHCP server",
     "clear ip                 Clear IP address, mask and gateway",
     "show [arp|ip]            Print the information of the VPC",
     "ping <address>           Ping the network host",
@@ -3283,6 +3357,7 @@ var AgLabSim = (() => {
     }
     ip(args) {
       if (!args.length) return ["Incomplete command."];
+      if (args[0].toLowerCase() === "dhcp" && args.length === 1) return this.dhcp();
       let addr;
       let prefix;
       let gw = null;
@@ -3311,6 +3386,14 @@ var AgLabSim = (() => {
       this.rt.pcs[this.dev] = { ip: addr, prefix, gw };
       this.rt.commit();
       return ["Checking for duplicate address...", `${this.name} : ${addr} ${prefixToMask(prefix)}${gw ? " gateway " + gw : ""}`, ""];
+    }
+    /** L5-b: DHCP Discover/Offer/Request/Ack (VPCS prints the four steps as "DORA"). */
+    dhcp() {
+      const r = dhcpLease(this.rt.derived, this.dev);
+      if (!r.ok) return [r.reason === "noserver" || r.reason === "nopath" ? "Can't find dhcp server" : "DHCP: no free address in the pool"];
+      this.rt.pcs[this.dev] = { ip: r.ip, prefix: r.prefix, gw: r.gw, dhcp: true };
+      this.rt.commit();
+      return [`DDORA IP ${r.ip}/${r.prefix}${r.gw ? " GW " + r.gw : ""}`, ""];
     }
     showIp() {
       const c = this.rt.pcs[this.dev];
@@ -6264,7 +6347,7 @@ write memory`
   };
   var TOP_OPAQUE = /* @__PURE__ */ new Set(["app", "version", "nextId", "selected", "importReport", "sourceArchive"]);
   var DEVICE_OPAQUE = /* @__PURE__ */ new Set(["id", "name", "type", "x", "y", "w", "h", "mode", "config", "selected"]);
-  var PC_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "ip", "mask", "gateway", "mac", "vlan"]);
+  var PC_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "ip", "mask", "gateway", "mac", "vlan", "dhcpLease"]);
   var SWITCH_FIELDS = /* @__PURE__ */ new Set([
     "enabled",
     "ports",
@@ -6278,8 +6361,8 @@ write memory`
     "mask"
   ]);
   var ROUTER_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "staticRoutes", "route", "ospf", "ip", "mask", "gateway", "vlan"]);
-  var ROUTER_IF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled"]);
-  var SUBIF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "parent", "vlan", "encapsulation"]);
+  var ROUTER_IF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "helperAddress"]);
+  var SUBIF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "parent", "vlan", "encapsulation", "helperAddress"]);
   var STATIC_ROUTE_FIELDS = /* @__PURE__ */ new Set(["network", "mask", "nextHop", "distance"]);
   var OSPF_FIELDS = /* @__PURE__ */ new Set(["pid", "routerId", "networks"]);
   var SERVER_FIELDS = /* @__PURE__ */ new Set([...PC_FIELDS, "services"]);
@@ -6293,7 +6376,7 @@ write memory`
     natTranslations: "NAT çeviri tablosu Labber'da yok (L5)",
     ospf: "Switch üzerinde OSPF AğLab modelinde yok",
     bgp: "BGP Labber'da yok (L5)",
-    services: "Sunucu servisleri (DHCP/DNS/HTTP) Labber'da yok (L5)",
+    services: "Sunucu DNS/HTTP servisleri Labber'da yok (L5)",
     startupConfig: "Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)",
     portSecurity: "Port security Labber'da yok (L5)",
     errdisabled: "Port security err-disable durumu Labber'da yok (L5)",
@@ -6386,6 +6469,15 @@ write memory`
       }
       return { portMap, canonPorts };
     };
+    const helperOf2 = (id, name, iface) => {
+      const h = iface["helperAddress"];
+      if (h === void 0 || h === "") return null;
+      if (typeof h !== "string" || !isIp(h)) {
+        reject(id, `${name}.helperAddress`, "Geçersiz ip helper-address");
+        return null;
+      }
+      return h;
+    };
     const routerToLabber = (d, id, off) => {
       for (const key of ["ip", "mask", "gateway"])
         if (d[key] !== void 0 && d[key] !== "") unsupported(id, key, "Router'da cihaz düzeyi adres alanı AğLab modelinde yok (arayüz adresleri kullanılır)");
@@ -6429,6 +6521,8 @@ write memory`
           if (!isIp(iface.ip) || pre === null || pre === 0) reject(id, name, "Geçersiz router arayüzü IPv4 adresi/maskesi");
           else phys.ip = { addr: iface.ip, mask: iface.mask };
         }
+        const helper = helperOf2(id, name, iface);
+        if (helper) phys.helper = helper;
       }
       for (const [name, iface] of Object.entries(ifaces)) {
         if (!name.includes(".")) continue;
@@ -6466,7 +6560,8 @@ write memory`
           else if (vlan === null) reject(id, name, "encapsulation dot1q olmadan alt arayüz IP adresi (IOS kabul etmez)");
           else ip = { addr: iface.ip, mask: iface.mask };
         }
-        subs[key] = { parent, vlan, native: false, shutdown: iface.enabled === false, description: "", ip };
+        const helper = helperOf2(id, name, iface);
+        subs[key] = { parent, vlan, native: false, shutdown: iface.enabled === false, description: "", ip, ...helper ? { helper } : {} };
       }
       const list = Array.isArray(d.staticRoutes) ? d.staticRoutes : [];
       if (d.staticRoutes !== void 0 && !Array.isArray(d.staticRoutes)) reject(id, "staticRoutes", "Statik rota listesi dizi olmalı");
@@ -6543,7 +6638,7 @@ write memory`
           reject(id, "services", "Servis listesi nesne olmalı");
         else
           for (const [name, on] of Object.entries(services ?? {}))
-            if (on) unsupported(id, `services.${name}`, FEATURE_REASON["services"]);
+            if (on && name !== "dhcp") unsupported(id, `services.${name}`, FEATURE_REASON["services"]);
       }
       if (d.type === "Router") {
         routerToLabber(d, id, off);
@@ -6565,10 +6660,12 @@ write memory`
         if (ip && !isIp(ip)) reject(id, "ip", "Geçersiz IPv4 adresi: " + ip);
         if (ip && prefix === null) reject(id, "mask", "Geçersiz alt ağ maskesi: " + d.mask);
         if (d.gateway && !isIp(d.gateway)) reject(id, "gateway", "Geçersiz ağ geçidi: " + d.gateway);
+        if (d.dhcpLease !== void 0 && typeof d.dhcpLease !== "boolean") reject(id, "dhcpLease", "dhcpLease true/false olmalı");
         pcs[id] = {
           ip: ip && isIp(ip) && prefix !== null ? ip : null,
           prefix: prefix ?? 24,
-          gw: d.gateway && isIp(d.gateway) ? d.gateway : null
+          gw: d.gateway && isIp(d.gateway) ? d.gateway : null,
+          ...d.dhcpLease === true ? { dhcp: true } : {}
         };
         const mac = resolveMac ? intToDotted(macToInt(resolveMac(d))) : "0000.0000.0000";
         claimMac(id, mac);
@@ -6579,7 +6676,8 @@ write memory`
           x: Number(d.x ?? 0),
           y: Number(d.y ?? 0),
           ...off ? { off: true } : {},
-          ...d.interfaces?.["eth0"]?.enabled === false ? { nicDown: true } : {}
+          ...d.interfaces?.["eth0"]?.enabled === false ? { nicDown: true } : {},
+          ...d.type === "Server" && d.services?.["dhcp"] ? { dhcpServer: true } : {}
         };
         def.devices.push(pc);
         canonByDevice[id] = { eth0: "eth0" };
@@ -6810,6 +6908,7 @@ write memory`
         if (pc.ip !== null && (d.mask !== void 0 || pc.ip)) d.mask = prefixToMask(pc.prefix);
         const gw2 = pc.gw ?? "";
         if (d.gateway !== void 0 || gw2) d.gateway = gw2;
+        if (d.dhcpLease !== void 0 || pc.dhcp) d.dhcpLease = !!pc.dhcp;
         continue;
       }
       if (d.type === "Router" && rt.running[id]) {
@@ -6912,13 +7011,15 @@ write memory`
       if (phys.description) fail(`${canon} description`);
       if (phys.l3 && Object.keys(phys.l3).length) fail(`${canon} arayüz OSPF/L3 ayarı`);
       const prev2 = d.interfaces[name];
-      if (!prev2 && !phys.ip && !phys.shutdown) continue;
+      if (!prev2 && !phys.ip && !phys.shutdown && !phys.helper) continue;
       const iface = prev2 ? { ...prev2 } : {};
       if (phys.ip) {
         iface.ip = phys.ip.addr;
         iface.mask = phys.ip.mask;
       } else if (prev2?.ip !== void 0) iface.ip = "";
       if (prev2?.enabled !== void 0 || phys.shutdown) iface.enabled = !phys.shutdown;
+      if (phys.helper) iface["helperAddress"] = phys.helper;
+      else delete iface["helperAddress"];
       d.interfaces[name] = iface;
     }
     const subNames = /* @__PURE__ */ new Set();
@@ -6942,6 +7043,8 @@ write memory`
         iface.vlan = si.vlan;
       }
       if (prev2?.parent !== void 0 || !prev2) iface.parent = physName;
+      if (si.helper) iface["helperAddress"] = si.helper;
+      else delete iface["helperAddress"];
       d.interfaces[name] = iface;
     }
     for (const name of Object.keys(d.interfaces)) if (name.includes(".") && !subNames.has(name)) delete d.interfaces[name];

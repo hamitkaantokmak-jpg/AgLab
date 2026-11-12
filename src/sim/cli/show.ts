@@ -68,6 +68,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
     o.push('interface ' + p)
     if (ic.description) o.push(' description ' + ic.description)
     o.push(...l3Lines(ic.ip, ic.l3, true))
+    if (ic.helper) o.push(' ip helper-address ' + ic.helper)
     if (ic.shutdown) o.push(' shutdown')
     o.push('!')
     for (const [name, si] of subifsOf(c, p)) {
@@ -75,6 +76,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
       if (si.description) o.push(' description ' + si.description)
       if (si.vlan !== null) o.push(` encapsulation dot1Q ${si.vlan}${si.native ? ' native' : ''}`)
       o.push(...l3Lines(si.ip, si.l3, true))
+      if (si.helper) o.push(' ip helper-address ' + si.helper)
       if (si.shutdown) o.push(' shutdown')
       o.push('!')
     }

@@ -21,7 +21,7 @@ import { createRequire } from 'node:module'
 import { createRuntime, toLabber } from '../../src/sim-bridge/bridge'
 import type { AglabTopology } from '../../src/sim-bridge/aglab'
 import { crossVlan, egress, vlanExists } from '../../src/sim/engine'
-import { deliver, routeOut, routeTable } from '../../src/sim/net'
+import { deliver, dhcpLease, routeOut, routeTable } from '../../src/sim/net'
 import { randomTopology, withHardwareFaults } from './bridge.test'
 import { LabQuery } from '../../src/sim/query'
 
@@ -324,6 +324,62 @@ const ORACLE_CASES: { name: string; routes: any[]; route?: string; linkDown?: nu
   },
   { name: 'eski route alanı varsayılan rota', routes: [], route: '10.0.0.2', dst: ['4.1.1.1', '10.0.0.2'] },
 ]
+
+// ---- L5-b: DHCP kiralama (src/engine/dhcp.js allocateLease) ----
+const dhcpOracle = require_(join(ROOT, 'src/engine/dhcp.js'))
+const ipv4Oracle = require_(join(ROOT, 'src/engine/ipv4.js'))
+
+/** Relay topolojisi: istemci + dolu adresli PC'ler — SW1 — R1 g0/0 (helper) ; R1 g0/1 — SRV. */
+function dhcpTopology(seed: number) {
+  const r = rng(seed)
+  const prefix = [24, 25, 26, 27, 28, 29, 30][r(7)]!
+  const mask = ipv4Oracle.maskFromPrefix(prefix)
+  const size = 2 ** (32 - prefix)
+  const host = (n: number) => `192.168.${50 + (seed % 100)}.${n}`
+  const gwHost = 1 + r(size - 2)
+  const others = 1 + r(Math.min(12, size))
+  const devices: any[] = [
+    { id: 'c', name: 'C', type: 'PC', enabled: true, ip: '169.254.1.1', mask: '255.255.0.0', gateway: '', dhcpLease: false },
+    { id: 'sw', name: 'SW', type: 'Switch', enabled: true, vlans: [1], ports: [...Array(14).keys()].map((i) => `fa0/${i + 1}`) },
+    { id: 'r1', name: 'R1', type: 'Router', enabled: true, ports: ['g0/0', 'g0/1'], staticRoutes: [],
+      interfaces: { 'g0/0': { ip: host(gwHost), mask, enabled: true, helperAddress: '10.10.20.2' }, 'g0/1': { ip: '10.10.20.1', mask: '255.255.255.0', enabled: true } } },
+    { id: 'srv', name: 'SRV', type: 'Server', enabled: true, ip: '10.10.20.2', mask: '255.255.255.0', gateway: '10.10.20.1', services: { dhcp: true } },
+  ]
+  const links: any[] = [
+    { a: 'c', portA: 'eth0', b: 'sw', portB: 'fa0/1', up: true },
+    { a: 'sw', portA: 'fa0/14', b: 'r1', portB: 'g0/0', up: true },
+    { a: 'r1', portA: 'g0/1', b: 'srv', portB: 'eth0', up: true },
+  ]
+  // dolu adresler: 100. host civarı ve rastgele (havuzun tükenmesi küçük öneklerde de denenir)
+  for (let i = 0; i < others; i++) {
+    const n = r(3) ? Math.min(size - 2, 100 + r(6)) : 1 + r(size - 2)
+    devices.push({ id: `o${i}`, name: `O${i}`, type: 'PC', enabled: true, ip: host(n), mask, gateway: host(gwHost) })
+    links.push({ a: `o${i}`, portA: 'eth0', b: 'sw', portB: `fa0/${i + 2}`, up: true })
+  }
+  return { devices, links, mask, gw: host(gwHost) }
+}
+
+describe('oracle paritesi: DHCP kiralama (L5-b, dhcp.js allocateLease)', () => {
+  it('rastgele önek ve dolulukta Labber ip dhcp sonucu oracle ile aynı', () => {
+    let leased = 0
+    let exhausted = 0
+    for (let seed = 1; seed <= 200; seed++) {
+      const t = dhcpTopology(seed)
+      const bridged = toLabber({ devices: t.devices, links: t.links })
+      // aynı adresi iki PC'ye veren tohumlar (çakışan IP) köprüde de geçerli; karar labber olmalı
+      expect(bridged.report.engineDecision, `seed ${seed} ` + JSON.stringify(bridged.report.reasons)).toBe('labber')
+      const lab = dhcpLease(createRuntime(bridged).derived, 'c')
+      const ora = dhcpOracle.allocateLease(t, t.devices[0], {
+        network: ipv4Oracle.subnet(t.gw, t.mask), mask: t.mask, gateway: t.gw, serverIp: '10.10.20.2',
+      })
+      expect(lab.ok ? lab.ip : 'none', `seed ${seed}`).toBe(ora.ok ? ora.ip : 'none')
+      if (ora.ok) leased++
+      else exhausted++
+    }
+    expect(leased).toBeGreaterThan(100)
+    expect(exhausted).toBeGreaterThan(0)
+  })
+})
 
 describe('oracle paritesi: dot1q alt arayüzleri (L5-a, test_engine_routing.cjs)', () => {
   const withSub = (extra: Record<string, any> = {}) => {

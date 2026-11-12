@@ -53,17 +53,18 @@ const TEMPLATES: Record<string, string[]> = {
 // Opak (arayüz/meta) alanlar: Labber'a gitmez, toAglab'da özgün değeriyle kalır.
 const TOP_OPAQUE = new Set(['app', 'version', 'nextId', 'selected', 'importReport', 'sourceArchive'])
 const DEVICE_OPAQUE = new Set(['id', 'name', 'type', 'x', 'y', 'w', 'h', 'mode', 'config', 'selected'])
-const PC_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'ip', 'mask', 'gateway', 'mac', 'vlan'])
+// L5-b: `dhcpLease` = adres DHCP'den alındı (PcConfig.dhcp)
+const PC_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'ip', 'mask', 'gateway', 'mac', 'vlan', 'dhcpLease'])
 const SWITCH_FIELDS = new Set([
   'enabled', 'ports', 'interfaces', 'gateway', 'vlans', 'vlanNames', 'stpPriority', 'stpPriorities', 'ip', 'mask',
 ])
 // L4: Router. `ip`/`mask`/`gateway` cihaz düzeyinde yalnız boş olabilir; `vlan` router için
 // anlamsızdır (PKT dönüştürücüsü 1 yazar) ve opak geçer.
 const ROUTER_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'staticRoutes', 'route', 'ospf', 'ip', 'mask', 'gateway', 'vlan'])
-const ROUTER_IF_FIELDS = new Set(['ip', 'mask', 'enabled'])
+const ROUTER_IF_FIELDS = new Set(['ip', 'mask', 'enabled', 'helperAddress'])
 // L5-a: router alt arayüzü (`g0/0.10`). Eski CLI yeni alt arayüzü `encapsulation: ''`, `vlan: 1`
 // ile kurar: boş encapsulation "henüz yapılandırılmadı" demektir (eski motorda da etkin değil).
-const SUBIF_FIELDS = new Set(['ip', 'mask', 'enabled', 'parent', 'vlan', 'encapsulation'])
+const SUBIF_FIELDS = new Set(['ip', 'mask', 'enabled', 'parent', 'vlan', 'encapsulation', 'helperAddress'])
 const STATIC_ROUTE_FIELDS = new Set(['network', 'mask', 'nextHop', 'distance'])
 const OSPF_FIELDS = new Set(['pid', 'routerId', 'networks'])
 // Server, servisi yoksa PC gibi bir uçtur (L4); servisler L5.
@@ -79,7 +80,7 @@ const FEATURE_REASON: Record<string, string> = {
   natTranslations: 'NAT çeviri tablosu Labber\'da yok (L5)',
   ospf: 'Switch üzerinde OSPF AğLab modelinde yok',
   bgp: 'BGP Labber\'da yok (L5)',
-  services: 'Sunucu servisleri (DHCP/DNS/HTTP) Labber\'da yok (L5)',
+  services: 'Sunucu DNS/HTTP servisleri Labber\'da yok (L5)',
   startupConfig: 'Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)',
   portSecurity: 'Port security Labber\'da yok (L5)',
   errdisabled: 'Port security err-disable durumu Labber\'da yok (L5)',
@@ -182,6 +183,17 @@ export function toLabber(input: AglabTopology): BridgeResult {
     return { portMap, canonPorts }
   }
 
+  /** L5-b: `helperAddress` (ip helper-address); geçersiz adres reddedilir. */
+  const helperOf = (id: string, name: string, iface: AglabInterface): string | null => {
+    const h = iface['helperAddress']
+    if (h === undefined || h === '') return null
+    if (typeof h !== 'string' || !isIp(h)) {
+      reject(id, `${name}.helperAddress`, 'Geçersiz ip helper-address')
+      return null
+    }
+    return h
+  }
+
   // ---- Router (L4) ----
   const routerToLabber = (d: AglabDevice, id: string, off: boolean) => {
     for (const key of ['ip', 'mask', 'gateway'] as const)
@@ -219,6 +231,8 @@ export function toLabber(input: AglabTopology): BridgeResult {
         if (!isIp(iface.ip) || pre === null || pre === 0) reject(id, name, 'Geçersiz router arayüzü IPv4 adresi/maskesi')
         else phys.ip = { addr: iface.ip, mask: iface.mask! }
       }
+      const helper = helperOf(id, name, iface)
+      if (helper) phys.helper = helper
     }
     // L5-a: alt arayüzler (`<fiziksel>.<n>`, 802.1Q)
     for (const [name, iface] of Object.entries(ifaces)) {
@@ -257,7 +271,8 @@ export function toLabber(input: AglabTopology): BridgeResult {
         else if (vlan === null) reject(id, name, 'encapsulation dot1q olmadan alt arayüz IP adresi (IOS kabul etmez)')
         else ip = { addr: iface.ip, mask: iface.mask! }
       }
-      subs[key] = { parent, vlan, native: false, shutdown: iface.enabled === false, description: '', ip }
+      const helper = helperOf(id, name, iface)
+      subs[key] = { parent, vlan, native: false, shutdown: iface.enabled === false, description: '', ip, ...(helper ? { helper } : {}) }
     }
     // Statik rotalar: AD (distance) 1-255; yoksa 1. Eski `route` alanı, listede varsayılan
     // rota yoksa AD 1 varsayılan rotadır (src/engine/routing.js staticRoutes ile aynı kural).
@@ -328,13 +343,14 @@ export function toLabber(input: AglabTopology): BridgeResult {
     const off = d.enabled === false
 
     if (d.type === 'Server') {
-      // Servisi açık sunucu L5'e kadar eski motorda; servissiz sunucu PC gibi bir uçtur.
+      // Sunucu PC gibi bir uçtur; DHCP servisi L5-b'den beri Labber'da (PcDef.dhcpServer),
+      // DNS/HTTP L5'in kalanına kadar eski motorda.
       const services = d.services
       if (services !== undefined && (typeof services !== 'object' || services === null || Array.isArray(services)))
         reject(id, 'services', 'Servis listesi nesne olmalı')
       else
         for (const [name, on] of Object.entries(services ?? {}))
-          if (on) unsupported(id, `services.${name}`, FEATURE_REASON['services']!)
+          if (on && name !== 'dhcp') unsupported(id, `services.${name}`, FEATURE_REASON['services']!)
     }
 
     if (d.type === 'Router') {
@@ -358,10 +374,12 @@ export function toLabber(input: AglabTopology): BridgeResult {
       if (ip && !isIp(ip)) reject(id, 'ip', 'Geçersiz IPv4 adresi: ' + ip)
       if (ip && prefix === null) reject(id, 'mask', 'Geçersiz alt ağ maskesi: ' + d.mask)
       if (d.gateway && !isIp(d.gateway)) reject(id, 'gateway', 'Geçersiz ağ geçidi: ' + d.gateway)
+      if (d.dhcpLease !== undefined && typeof d.dhcpLease !== 'boolean') reject(id, 'dhcpLease', 'dhcpLease true/false olmalı')
       pcs[id] = {
         ip: ip && isIp(ip) && prefix !== null ? ip : null,
         prefix: prefix ?? 24,
         gw: d.gateway && isIp(d.gateway) ? d.gateway : null,
+        ...(d.dhcpLease === true ? { dhcp: true } : {}),
       }
       const mac = resolveMac ? intToDotted(macToInt(resolveMac(d))) : '0000.0000.0000'
       claimMac(id, mac)
@@ -369,6 +387,7 @@ export function toLabber(input: AglabTopology): BridgeResult {
         id, kind: 'pc', mac, x: Number(d.x ?? 0), y: Number(d.y ?? 0),
         ...(off ? { off: true } : {}),
         ...(d.interfaces?.['eth0']?.enabled === false ? { nicDown: true } : {}),
+        ...(d.type === 'Server' && (d.services as Record<string, unknown> | undefined)?.['dhcp'] ? { dhcpServer: true } : {}),
       }
       def.devices.push(pc)
       canonByDevice[id] = { eth0: 'eth0' }
@@ -625,6 +644,7 @@ export function toAglab(
       if (pc.ip !== null && (d.mask !== undefined || pc.ip)) d.mask = prefixToMask(pc.prefix)
       const gw = pc.gw ?? ''
       if (d.gateway !== undefined || gw) d.gateway = gw
+      if (d.dhcpLease !== undefined || pc.dhcp) d.dhcpLease = !!pc.dhcp
       continue
     }
     if (d.type === 'Router' && rt.running[id]) {
@@ -737,13 +757,16 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
     if (phys.description) fail(`${canon} description`)
     if (phys.l3 && Object.keys(phys.l3).length) fail(`${canon} arayüz OSPF/L3 ayarı`)
     const prev = d.interfaces[name]
-    if (!prev && !phys.ip && !phys.shutdown) continue
+    if (!prev && !phys.ip && !phys.shutdown && !phys.helper) continue
     const iface: AglabInterface = prev ? { ...prev } : {}
     if (phys.ip) {
       iface.ip = phys.ip.addr
       iface.mask = phys.ip.mask
     } else if (prev?.ip !== undefined) iface.ip = ''
     if (prev?.enabled !== undefined || phys.shutdown) iface.enabled = !phys.shutdown
+    // L5-b: eski CLI `no ip helper-address` alanı siler
+    if (phys.helper) iface['helperAddress'] = phys.helper
+    else delete iface['helperAddress']
     d.interfaces[name] = iface
   }
   // L5-a: alt arayüzler. AğLab adı: fiziksel portun AğLab yazımı + '.N'. Native alt arayüz,
@@ -770,6 +793,8 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
       iface.vlan = si.vlan
     }
     if (prev?.parent !== undefined || !prev) iface.parent = physName
+    if (si.helper) iface['helperAddress'] = si.helper
+    else delete iface['helperAddress']
     d.interfaces[name] = iface
   }
   // CLI ile silinen alt arayüz (`no interface Gi0/0.N`) AğLab görünümünden de çıkar

@@ -181,6 +181,9 @@ function sharedRecipeGoal(row) {
       return aglabEngineChoice.labberStpRoot(row.verify.vlan) === row.verify.root && reached();
     if (row.verify.kind === 'ping') return reached();
     if (row.verify.kind === 'query') return sharedQueryGoal(row).ok;
+    // L5-b: istemci adresini DHCP'den almış olmalı (Labber PcConfig.dhcp)
+    if (row.verify.kind === 'dhcp')
+      return aglabEngineChoice.labberDhcpLease(sharedScenario.sourceId);
     throw new Error('Labber bu doğrulama türünü desteklemiyor: ' + row.verify.kind);
   }
   if (row.verify.kind === 'query')

@@ -952,7 +952,7 @@
       {
         "device": "PC-01",
         "commands": [
-          "ipconfig /renew"
+          "ip dhcp"
         ]
       }
     ],

@@ -95,6 +95,10 @@ const aglabEngineChoice = (() => {
     const snap = snapshot();
     return AgLabSim.toAglab(runtime(), snap);
   }
+  /** L5-b: PC'nin adresi Labber'da DHCP'den mi geldi. */
+  function labberDhcpLease(sourceId) {
+    return !!runtime().pcs[sourceId]?.dhcp;
+  }
   /** Labber STP kökü (cihaz adı) veya null. */
   function labberStpRoot(vlan) {
     const id = runtime().query().stpRoot(vlan);
@@ -106,6 +110,7 @@ const aglabEngineChoice = (() => {
     renderBadge,
     labberPing,
     labberSourceBinding,
+    labberDhcpLease,
     labberStpRoot,
     labberView,
     snapshot,

@@ -40,6 +40,8 @@ export interface L3Opts {
 }
 
 export interface PhysIfConfig extends L2IfConfig {
+  /** L5-b: `ip helper-address` (routed router ports; one helper modelled) */
+  helper?: string
   channel: { id: number; mode: ChannelMode } | null
   /** `no switchport` (L3 switches only) */
   routed?: boolean
@@ -69,6 +71,8 @@ export interface SubIfConfig {
   description: string
   ip: IpAddr | null
   l3?: L3Opts
+  /** L5-b: `ip helper-address` */
+  helper?: string
 }
 
 export interface LoopbackConfig {
@@ -134,6 +138,8 @@ export interface PcConfig {
   ip: string | null
   prefix: number
   gw: string | null
+  /** L5-b: the address came from DHCP (`ip dhcp`); manual `ip …` clears it */
+  dhcp?: boolean
 }
 
 // ---- Lab definition (authored by lab writers) ----
@@ -170,6 +176,8 @@ export interface PcDef {
   off?: boolean
   /** NIC disabled at lab start */
   nicDown?: boolean
+  /** L5-b: server end host running a DHCP server (pool = its own subnet or a relay's) */
+  dhcpServer?: boolean
   x: number
   y: number
 }

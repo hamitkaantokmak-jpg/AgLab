@@ -153,7 +153,8 @@ class EngineChoiceTests(unittest.TestCase):
             "() => { try { aglabSharedEngine.goal(); return null } catch (e) { return e.message } }"
         )
         self.assertIn("Motor değiştirilmez", error)
-        self.assertIn("Sunucu servisleri", error)
+        # L5-b'den beri DHCP servisi Labber'da; şablonun DNS/HTTP servisleri hâlâ yok.
+        self.assertIn("DNS/HTTP servisleri", error)
         # karar değişmez, rozet Labber kalır
         self.assertEqual(self.page.evaluate("aglabSharedEngine.engine()")["engine"], "labber")
         target = self.page.evaluate("aglabSharedEngine.target()")

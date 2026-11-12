@@ -499,3 +499,87 @@ export function macTable(d: Derived, dev: string, seen: Set<string>): MacEntry[]
 }
 
 export { egress }
+
+// ---- DHCP (L5-b) ----
+
+export type DhcpResult =
+  | { ok: true; ip: string; prefix: number; gw: string | null; server: string; relay: { dev: string; ifname: string } | null }
+  | { ok: false; reason: 'noserver' | 'nopath' | 'subnet' | 'exhausted' }
+
+/** `ip helper-address` of a router L3 interface (physical routed port or subinterface). */
+function helperOf(d: Derived, dev: string, ifname: string): string | null {
+  const cfg = d.cfgs[dev]
+  if (!cfg) return null
+  return (ifname.includes('.') ? cfg.subifs?.[ifname]?.helper : cfg.ifaces[ifname]?.helper) ?? null
+}
+
+/** Every configured address in the lab (up or not), as the oracle's pool exclusion does. */
+function configuredIps(d: Derived, except: string): Set<string> {
+  const out = new Set<string>()
+  for (const x of d.topo.lab.devices) {
+    if (x.id === except) continue
+    if (x.kind === 'pc') {
+      const ip = d.pcs[x.id]?.ip
+      if (ip) out.add(ip)
+      continue
+    }
+    const c = d.cfgs[x.id]!
+    for (const i of Object.values(c.ifaces)) if (i.ip) out.add(i.ip.addr)
+    for (const s of Object.values(c.svis)) if (s.ip) out.add(s.ip.addr)
+    for (const s of Object.values(c.subifs ?? {})) if (s.ip) out.add(s.ip.addr)
+    for (const l of Object.values(c.loopbacks ?? {})) if (l.ip) out.add(l.ip.addr)
+  }
+  return out
+}
+
+/**
+ * DHCP DORA for a PC (L5-b), same rules as the src/engine/dhcp.js oracle and the AğLab
+ * client: a DHCP server in the PC's broadcast domain leases from its own subnet (gateway =
+ * the server's gateway); otherwise a router interface in that domain with `ip helper-address
+ * <server>` relays (pool = that interface's subnet, gateway = its address) when the router
+ * can deliver to the server. The address is the first free one from the 100th host up.
+ */
+export function dhcpLease(d: Derived, pc: string): DhcpResult {
+  const servers = d.topo.pcs.filter((s) => s.dhcpServer && s.id !== pc && l3Ifs(d, s.id).length)
+  if (!servers.length) return { ok: false, reason: 'noserver' }
+  const start = pcNode(d, pc)
+  if (!start || d.hw.off.has(pc) || d.hw.nicDown.has(pc)) return { ok: false, reason: 'nopath' }
+  const dom = domainOf(d, start)
+  const inDom = (i: L3If) => !!i.node && dom.nodes.has(nk(i.node))
+  let pool: { net: string; prefix: number; gw: string | null; server: string; relay: { dev: string; ifname: string } | null } | null = null
+  for (const s of servers) {
+    const si = l3Ifs(d, s.id)[0]!
+    if (!inDom(si)) continue
+    pool = { net: si.ip, prefix: si.prefix, gw: d.pcs[s.id]?.gw ?? null, server: si.ip, relay: null }
+    break
+  }
+  if (!pool)
+    outer: for (const s of servers) {
+      const sip = l3Ifs(d, s.id)[0]!.ip
+      for (const r of d.topo.switches) {
+        if (!isRouter(d, r.id)) continue
+        for (const i of l3Ifs(d, r.id)) {
+          if (!inDom(i) || helperOf(d, r.id, i.name) !== sip) continue
+          if (deliver(d, r.id, sip).kind !== 'ok') continue
+          pool = { net: i.ip, prefix: i.prefix, gw: i.ip, server: sip, relay: { dev: r.id, ifname: i.name } }
+          break outer
+        }
+      }
+    }
+  if (!pool) return { ok: false, reason: 'nopath' }
+  if (pool.prefix >= 31) return { ok: false, reason: 'subnet' }
+  const m = prefixMaskInt(pool.prefix)
+  const network = (ipToInt(pool.net)! & m) >>> 0
+  const broadcast = (network | (~m >>> 0)) >>> 0
+  const taken = configuredIps(d, pc)
+  for (const x of [pool.gw, pool.server]) if (x) taken.add(x)
+  const startOffset = Math.min(100, Math.max(1, broadcast - network - 1))
+  const offsets = [...Array(4096).keys()].map((i) => startOffset + i).concat([...Array(Math.max(0, startOffset - 1)).keys()].map((i) => i + 1))
+  for (const off of offsets) {
+    const cand = network + off
+    if (cand >= broadcast) continue
+    const ip = intTo(cand >>> 0)
+    if (!taken.has(ip)) return { ok: true, ip, prefix: pool.prefix, gw: pool.gw, server: pool.server, relay: pool.relay }
+  }
+  return { ok: false, reason: 'exhausted' }
+}

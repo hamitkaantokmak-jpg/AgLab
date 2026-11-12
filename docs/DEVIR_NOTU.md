@@ -1,4 +1,4 @@
-# Devir notu — Labber entegrasyonu (L5-a → L5 kalanı)
+# Devir notu — Labber entegrasyonu (L5-b → L5 kalanı)
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
@@ -19,17 +19,19 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | E Labber'ın 13 labı (kaynak #61) | #62 | birleşti |
 | L3-b Simulation Mode olay adaptörü | #63 | birleşti |
 | L4 Router, AD, özyinelemeli statik rota; Akademi M4 + routing senaryoları | #64 | birleşti |
-| AGL-036 öğretmen çözümü (`no ip route`), öğretmen CLI testi gerçek başlangıçtan | #65 | açık (birleşmeyi bekliyor) |
-| L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | açık (birleşmeyi bekliyor) |
+| AGL-036 öğretmen çözümü (`no ip route`), öğretmen CLI testi gerçek başlangıçtan | #65 | birleşti |
+| L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | birleşti |
+| L5-b DHCP sunucusu + relay + PC DHCP istemcisi; `relay-trunk` | dal `claude/l5b-dhcp` | PR açık (birleşmeyi bekliyor) |
 
-**Sıradaki: L5'in kalanı** (L3 tablosu sıra 5–8: DHCP/Server servisleri + relay, ACL,
-NAT, port security; PKT IOS metin yolu). Bugün eski motorda kalan içerik ve gerekçeleri
-`LAB_MOTOR_HARITASI.md` özet tablosunda (hepsi bu kalemler: `nat-pat`, `relay-trunk`,
-`bgp-as`, `port-security`). #65 ve L5-a birbirinden bağımsız (farklı dosyalar; çakışma yok).
+**Sıradaki: L5'in kalanı** — L3 tablosu sıra 5'in DNS/HTTP kısmı, 6 ACL, 7 NAT, 8 port
+security; PKT IOS metin yolu. Eski motorda kalan içerik `LAB_MOTOR_HARITASI.md` özet
+tablosunda: `nat-pat` (ACL + NAT + HTTP servisi), `port-security`, `bgp-as` (sıra 9).
+Önerilen sıra: port security (tek senaryo, Labber'ın err-disable altyapısı hazır), sonra
+ACL + NAT + HTTP birlikte (`nat-pat` üçünü birden ister).
 
-Not: birleşen dallar (`claude/e-labber-labs`, `claude/l3b-simulation-adapter`,
-`claude/l4-router-routing`) oturumdan silinemedi (GitHub proxy'si dal silmeyi reddediyor);
-depo arayüzünden silinmeli.
+Not: birleşen dallar uzakta duruyor (`claude/e-labber-labs`, `claude/l3b-simulation-adapter`,
+`claude/l4-router-routing`, `claude/agl036-teacher-fix`, `claude/l5a-subinterfaces`).
+Oturum dal silemiyor (GitHub proxy'si reddediyor); depo arayüzünden silinmeli.
 
 ## Bugünkü mimari (kısaca)
 
@@ -224,7 +226,27 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
   senaryosu, Akademi labı ve Labber labında kurulur. İçe aktarılan topolojinin Labber'a
   alınması L5'teki PKT IOS metin yoluyla birlikte ele alınmalı.
 
-## L5-a — router alt arayüzü / 802.1Q (yapıldı, PR açık)
+## L5-b — DHCP sunucusu, relay, PC DHCP istemcisi (yapıldı, PR açık)
+
+- **Labber**: `PcDef.dhcpServer` (sunucu uç), `PhysIfConfig.helper` / `SubIfConfig.helper`
+  (`ip helper-address`, `no ip helper-address`; running-config'te), `PcConfig.dhcp`.
+  `net.ts dhcpLease(d, pc)`: yayın alanında DHCP sunucusu varsa onun alt ağı ve ağ geçidi;
+  yoksa yayın alanındaki router arayüzünden `helper` = sunucu adresi ve router'dan sunucuya
+  teslim varsa relay (havuz relay arayüzünün ağı, ağ geçidi relay adresi). Adres oracle
+  kuralıyla (100. hosttan ilk boş; yapılandırılmış bütün adresler, ağ geçidi ve sunucu dolu).
+  VPCS `ip dhcp` → `DDORA IP …/N GW …` ya da `Can't find dhcp server`.
+- **Köprü**: Server `services.dhcp` → `dhcpServer` (DNS/HTTP hâlâ unsupported), PC/Server
+  `dhcpLease` ⇄ `PcConfig.dhcp`, router arayüzü ve alt arayüz `helperAddress` ⇄ `helper`
+  (silinince alan kalkar; eski CLI gibi). Geçersiz helper ya da `dhcpLease` → rejected.
+- **Ürün**: `relay-trunk` sunucusu yalnız DHCP servisiyle kurulur; yönerge ve tarif çözümü
+  `ip dhcp` (eski terminal de kabul eder). Labber'da `verify.kind: 'dhcp'`
+  (`aglabEngineChoice.labberDhcpLease`).
+- **Testler**: `tests/sim/dhcp.test.ts` (relay, trunk arızası, helper yok/yanlış, sunucuya yol
+  yok, dolu adres, yerel sunucu, sunucu yok, alt arayüzde relay), `parity.test.ts` 200
+  rastgele kiralama oracle ile birebir, `bridge.test.ts` "DHCP (L5-b)";
+  `test_aglab_labber_terminal` relay-trunk Labber vakası.
+
+## L5-a — router alt arayüzü / 802.1Q (#66, birleşti)
 
 - **Labber** (`src/sim`):
   - `SwitchConfig.subifs` (yalnız router): `{parent, vlan, native, shutdown, description,
@@ -265,5 +287,5 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
 - `roas-*` senaryolarına ve `src/data/courses.json` / `course-details.json`'a dokunma (#56).
 - `simulator/network-scenarios.json` Prettier ile biçimlendirilmez (#56 ile çakışma riski);
   yalnız hedef satırı düzenle.
-- Kapsam dışı (L5-a sonrası): DHCP/ACL/NAT/port security (L5 kalanı), eski metin
-  senaryoları (L6), kalıcılık ve eski motorun kaldırılması (L7).
+- Kapsam dışı (L5-b sonrası): DNS/HTTP servisleri, ACL, NAT, port security (L5 kalanı), eski
+  metin senaryoları (L6), kalıcılık ve eski motorun kaldırılması (L7).

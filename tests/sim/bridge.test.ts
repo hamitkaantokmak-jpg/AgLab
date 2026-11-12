@@ -7,7 +7,7 @@ import {
 } from '../../src/sim-bridge/bridge'
 import type { AglabTopology } from '../../src/sim-bridge/aglab'
 import { LabQuery } from '../../src/sim/query'
-import { runScript } from '../../src/sim/index'
+import { createSession, runScript } from '../../src/sim/index'
 
 const ROOT = join(__dirname, '..', '..')
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
@@ -225,6 +225,43 @@ describe('köprü: alt arayüz (L5-a)', () => {
       expect(out.filter((l) => /^% /.test(l)), script).toEqual([])
       expect(() => toAglab(rt, roas()), script).toThrow(BridgeError)
     }
+  })
+})
+
+describe('köprü: DHCP (L5-b)', () => {
+  const relay = (): AglabTopology => {
+    const t = routed()
+    t.devices[0]!.ip = '169.254.30.8'
+    t.devices[0]!.mask = '255.255.0.0'
+    t.devices[0]!.gateway = '0.0.0.0'
+    t.devices[0]!.dhcpLease = false
+    t.devices[3]!.services = { dhcp: true }
+    t.devices[1]!.interfaces!['g0/0'] = { enabled: true, ip: '192.168.10.1', mask: '255.255.255.0', helperAddress: '192.168.20.20' }
+    t.devices[2]!.staticRoutes = [{ network: '192.168.10.0', mask: '255.255.255.0', nextHop: '10.0.12.1', distance: 1 }]
+    return t
+  }
+  it('Server dhcp → dhcpServer, helperAddress → helper, dhcpLease → dhcp; gidiş-dönüş birebir', () => {
+    const t = relay()
+    const r = toLabber(t)
+    expect(r.report.engineDecision, JSON.stringify(r.report)).toBe('labber')
+    expect(r.def.devices.find((d) => d.id === 'srv')).toMatchObject({ kind: 'pc', dhcpServer: true })
+    expect(r.running['r1']!.ifaces['GigabitEthernet0/0']!.helper).toBe('192.168.20.20')
+    expect(roundTrip(t)).toEqual(t)
+  })
+  it('VPCS ip dhcp relay üzerinden kiralar; sonuç ve dhcpLease JSON\'a yazılır', () => {
+    const t = relay()
+    const rt = createRuntime(toLabber(t))
+    expect(createSession(rt, 'pc1').exec('ip dhcp').join('\n')).toContain('DDORA IP 192.168.10.100/24 GW 192.168.10.1')
+    const pc = toAglab(rt, t).devices[0]!
+    expect([pc.ip, pc.mask, pc.gateway, pc.dhcpLease]).toEqual(['192.168.10.100', '255.255.255.0', '192.168.10.1', true])
+  })
+  it('helper CLI ile eklenir/silinir ve geri yazılır', () => {
+    const t = relay()
+    const rt = createRuntime(toLabber(t))
+    runScript(rt, 'r1', 'configure terminal\ninterface g0/0\nno ip helper-address\nend')
+    expect(toAglab(rt, t).devices[1]!.interfaces!['g0/0']).toEqual({ enabled: true, ip: '192.168.10.1', mask: '255.255.255.0' })
+    runScript(rt, 'r1', 'configure terminal\ninterface g0/0\nip helper-address 192.168.20.20\nend')
+    expect(toAglab(rt, t).devices[1]!.interfaces!['g0/0']!['helperAddress']).toBe('192.168.20.20')
   })
 })
 
@@ -449,8 +486,9 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
   const cases: [string, (t: AglabTopology) => void, RegExp][] = [
     // L4: Router ve servissiz Server desteklenir (bkz. "köprü: Router (L4)"); bu türlerin
     // L5'e kalan alanları raporlanır.
-    // L5-a: alt arayüz desteklenir (bkz. "köprü: alt arayüz (L5-a)"); üzerindeki L5 alanları raporlanır
-    ['alt arayüzde DHCP relay', (t) => t.devices.push(router({ 'g0/0': { enabled: true }, 'g0/0.10': { ip: '10.0.10.1', mask: '255.255.255.0', parent: 'g0/0', encapsulation: 'dot1q', vlan: 10, helperAddress: '10.0.0.9' } })), /DHCP relay/],
+    // L5-a/L5-b: alt arayüz ve relay desteklenir; üzerindeki L5 kalanı alanları raporlanır
+    ['alt arayüzde ACL', (t) => t.devices.push(router({ 'g0/0': { enabled: true }, 'g0/0.10': { ip: '10.0.10.1', mask: '255.255.255.0', parent: 'g0/0', encapsulation: 'dot1q', vlan: 10, aclIn: '1' } })), /ACL/],
+    ['HTTP servisli Server', (t) => t.devices.push({ id: 's2', name: 'S2', type: 'Server', ports: ['eth0'], services: { dhcp: true, http: true } }), /DNS\/HTTP/],
     ['router ACL', (t) => t.devices.push(router({ 'g0/0': { ip: '10.0.0.1', mask: '255.255.255.0', aclIn: '1' } })), /ACL/],
     ['servisi açık Server', (t) => t.devices.push({ id: 's1', name: 'S1', type: 'Server', ports: ['eth0'], services: { http: true } }), /servisleri/],
     ['bilinmeyen cihaz tipi', (t) => t.devices.push({ id: 'c1', name: 'C1', type: 'Cloud', ports: [] }), /Cloud cihaz tipi/],
@@ -497,6 +535,8 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
     ['alt arayüzde ISL', (t) => t.devices.push(router({ 'g0/0.10': { encapsulation: 'isl', vlan: 10 } })), /802\.1Q/],
     ['alt arayüzde geçersiz VLAN', (t) => t.devices.push(router({ 'g0/0.10': { encapsulation: 'dot1q', vlan: 5000 } })), /VLAN kimliği/],
     ['aynı VLAN iki alt arayüzde', (t) => t.devices.push(router({ 'g0/0.10': { encapsulation: 'dot1q', vlan: 10 }, 'g0/0.11': { encapsulation: 'dot1q', vlan: 10 } })), /iki alt arayüzde/],
+    ['geçersiz helper-address', (t) => t.devices.push(router({ 'g0/0': { ip: '10.0.0.1', mask: '255.255.255.0', helperAddress: '10.0.0' } })), /helper-address/],
+    ['geçersiz dhcpLease', (t) => (t.devices[0]!.dhcpLease = 'yes'), /dhcpLease/],
     ['encapsulation olmadan alt arayüz IP', (t) => t.devices.push(router({ 'g0/0.10': { ip: '10.0.10.1', mask: '255.255.255.0', encapsulation: '', vlan: 1 } })), /encapsulation dot1q olmadan/],
   ]
   for (const [name, mutate, reason] of rejects)

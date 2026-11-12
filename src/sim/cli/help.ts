@@ -73,6 +73,7 @@ export const HELP: Record<string, string> = {
   encapsulation: 'Set trunking encapsulation when interface is in trunking mode',
   dot1q: 'Interface uses only 802.1q trunking encapsulation when trunking',
   dot1Q: 'IEEE 802.1Q Virtual LAN',
+  'helper-address': 'Specify a destination address for UDP broadcasts',
   'channel-group': 'Etherchannel/port bundling configuration',
   active: 'Enable LACP unconditionally',
   passive: 'Enable LACP only if a LACP device is detected',

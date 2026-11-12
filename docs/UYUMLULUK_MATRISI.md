@@ -147,3 +147,21 @@ Labber'da aynı sonucu verir.
 | `show interfaces Gi0/0.N` | — | **Desteklenmiyor** (`show ip interface brief` ve running-config alt arayüzü gösterir) | — |
 | PC çözüm komutu (`roas-pc-gateway`, `roas-two-faults`) | `ip default-gateway 192.168.20.1` (AğLab PC komutu) | PC terminali VPCS: `ip 192.168.20.12 255.255.255.0 192.168.20.1` | **Tarif çözüm satırı VPCS sözdizimine çevrildi** (Labber kararıyla PC terminali VPCS olduğu için zorunlu; L3-a'daki AGL-013 değişikliğiyle aynı). İpucu metinlerindeki `ipconfig` VPCS'te `show ip`'tir (içerik düzeltmesi ayrıca). |
 
+## L5-b: DHCP sunucusu, relay ve PC DHCP istemcisi (Labber kararları)
+
+`relay-trunk` Labber kararındadır. Kiralama kuralı oracle (`src/engine/dhcp.js`
+`allocateLease`) ile birebir: `tests/sim/parity.test.ts` rastgele önek (/24–/30) ve
+dolulukta 200 relay topolojisinde Labber `ip dhcp` sonucunu oracle ile karşılaştırır
+(havuzun tükendiği durumlar dahil; fark 0).
+
+| Konu | Eski motor | Labber | Karar |
+|---|---|---|---|
+| Model | Server `services.dhcp`; router arayüzü `helperAddress`; PC `dhcpLease` | `PcDef.dhcpServer`; `PhysIfConfig.helper` / `SubIfConfig.helper`; `PcConfig.dhcp` | **Köprü iki yönde birebir.** |
+| İstemci komutu | `ipconfig /renew` ve `ip dhcp` | VPCS `ip dhcp` (`DDORA IP …/N GW …`); elle `ip …` DHCP işaretini kaldırır | **Labber (VPCS).** `relay-trunk` çözüm satırı `ip dhcp` yapıldı; eski terminal de bu komutu kabul ettiği için iki motorda aynı. |
+| Havuz | Yerel sunucu: sunucunun alt ağı ve ağ geçidi; relay: relay arayüzünün alt ağı, ağ geçidi relay adresi; 100. hosttan ilk boş adres | Aynı | **Oracle'a uyuldu.** Gerçek IOS'ta havuz sunucuda tanımlanır; iki motor da havuz ayarını modellemez. |
+| Relay'den sunucuya yol | Router'da sunucuya rota bulunması yeterli | Router'dan sunucuya paket gerçekten teslim edilmeli (`deliver`) | **Labber.** Rota var ama yol kopuksa (ör. sunucu tarafı kablo/port) kiralama olmaz. İçerikte fark yok. |
+| Birden çok `ip helper-address` | Tek alan | Tek helper modellenir (IOS birden çoğunu kabul eder) | **Sınır.** |
+| Sunucuda `show ip dhcp binding` | Var | **Desteklenmiyor** (sunucu konsolu VPCS) | Kiralama `ip dhcp` çıktısı ve AğLab görünümündeki `dhcpLease` ile izlenir. |
+| Router'da `ip dhcp pool` | Yok | Yok | **Desteklenmiyor** (iki motorda da). |
+| Sunucu DNS/HTTP servisleri | Var | **Desteklenmiyor (L5 kalanı)** | Servisi açık sunucu eski motorda kalır (`nat-pat`). |
+

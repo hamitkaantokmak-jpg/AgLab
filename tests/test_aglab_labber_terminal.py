@@ -238,6 +238,45 @@ class LabberTerminalTests(unittest.TestCase):
         self.type("end")
         self.assertFalse(self.goal())
 
+    def test_dhcp_relay_on_labber(self):
+        """L5-b: relay-trunk Labber'da; PC terminali VPCS `ip dhcp`, router `ip helper-address`.
+        Trunk VLAN 10'u taşımazken kiralama başarısız, düzeltilince relay ağından adres."""
+        self.load("relay-trunk")
+        self.assertTrue(self.page.evaluate("aglabLabberSession.active()"))
+        self.assertFalse(self.goal())
+        self.device("R1")
+        self.type("enable")
+        out = self.type("show running-config | include helper")
+        self.assertIn(" ip helper-address 10.10.20.2", out)
+        self.device("PC-01")
+        out = self.type("ip dhcp")
+        self.assertTrue(any("Can't find dhcp server" in line for line in out), out)
+        self.assertFalse(self.goal())
+        self.device("SW-01")
+        for line in [
+            "enable",
+            "configure terminal",
+            "interface gi0/1",
+            "switchport trunk allowed vlan 10,20",
+            "end",
+        ]:
+            self.type(line)
+        self.device("PC-01")
+        out = self.type("ip dhcp")
+        self.assertTrue(
+            any("DDORA IP 192.168.1.100/24 GW 192.168.1.1" in line for line in out), out
+        )
+        self.assertTrue(self.goal())
+        pc = next(
+            d
+            for d in self.page.evaluate("aglabSharedEngine.view()")["devices"]
+            if d["name"] == "PC-01"
+        )
+        self.assertEqual(
+            [pc["ip"], pc["mask"], pc["gateway"], pc["dhcpLease"]],
+            ["192.168.1.100", "255.255.255.0", "192.168.1.1", True],
+        )
+
     def test_legacy_content_keeps_legacy_terminal(self):
         # L5-a'dan beri router-on-a-stick Labber'da; NAT/ACL'li senaryo L5'in kalanına kadar eski motorda.
         self.load("nat-pat")

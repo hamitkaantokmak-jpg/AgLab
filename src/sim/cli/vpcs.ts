@@ -1,6 +1,6 @@
 // VPCS-style console for a lab PC.
 
-import { arpMac, deliver, ping } from '../net'
+import { arpMac, deliver, dhcpLease, ping } from '../net'
 import type { LabRuntime } from '../runtime'
 import type { PcDef } from '../types'
 import { ipToInt, isIp, macToColon, maskToPrefix, prefixToMask, sameSubnet } from '../util'
@@ -10,6 +10,7 @@ const HELP = [
   'ip ARG ... [OPTION]      Configure the current VPC\'s IP settings',
   '  ip <address>/<len> [gateway]',
   '  ip <address> <mask> [gateway]',
+  '  ip dhcp                Get the address from a DHCP server',
   'clear ip                 Clear IP address, mask and gateway',
   'show [arp|ip]            Print the information of the VPC',
   'ping <address>           Ping the network host',
@@ -75,6 +76,7 @@ export class VpcsSession {
 
   private ip(args: string[]): string[] {
     if (!args.length) return ['Incomplete command.']
+    if (args[0]!.toLowerCase() === 'dhcp' && args.length === 1) return this.dhcp()
     let addr: string
     let prefix: number
     let gw: string | null = null
@@ -103,6 +105,15 @@ export class VpcsSession {
     this.rt.pcs[this.dev] = { ip: addr, prefix, gw }
     this.rt.commit()
     return ['Checking for duplicate address...', `${this.name} : ${addr} ${prefixToMask(prefix)}${gw ? ' gateway ' + gw : ''}`, '']
+  }
+
+  /** L5-b: DHCP Discover/Offer/Request/Ack (VPCS prints the four steps as "DORA"). */
+  private dhcp(): string[] {
+    const r = dhcpLease(this.rt.derived, this.dev)
+    if (!r.ok) return [r.reason === 'noserver' || r.reason === 'nopath' ? "Can't find dhcp server" : 'DHCP: no free address in the pool']
+    this.rt.pcs[this.dev] = { ip: r.ip, prefix: r.prefix, gw: r.gw, dhcp: true }
+    this.rt.commit()
+    return [`DDORA IP ${r.ip}/${r.prefix}${r.gw ? ' GW ' + r.gw : ''}`, '']
   }
 
   private showIp(): string[] {

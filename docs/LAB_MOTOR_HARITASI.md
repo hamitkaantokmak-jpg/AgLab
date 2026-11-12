@@ -65,8 +65,8 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `access-vlan` | access-vlan | **Labber** |
 | `trunk-allowed` | trunk-allowed | **Labber** |
 | `native-vlan` | native-vlan | **Labber** |
-| `nat-pat` | nat-pat | Eski motor: ACL Labber'da yok (L5); NAT Labber'da yok (L5); NAT çeviri tablosu Labber'da yok (L5); Sunucu servisleri (DHCP/DNS/HTTP) Labber'da yok (L5) |
-| `relay-trunk` | relay-trunk | Eski motor: DHCP istemci kirası Labber'da yok (L5); DHCP relay Labber'da yok (L5); Sunucu servisleri (DHCP/DNS/HTTP) Labber'da yok (L5) |
+| `nat-pat` | nat-pat | Eski motor: ACL Labber'da yok (L5); NAT Labber'da yok (L5); NAT çeviri tablosu Labber'da yok (L5); Sunucu DNS/HTTP servisleri Labber'da yok (L5) |
+| `relay-trunk` | relay-trunk | **Labber** |
 | `stp-loop` | stp-loop | **Labber** |
 | `vlan-wrong-access` | VLAN · Yeni muhasebe PC'si kimseyi görmüyor | **Labber** |
 | `vlan-uplink-not-trunk` | Trunk · Katlar arası hiçbir şey çalışmıyor | **Labber** |
@@ -124,25 +124,25 @@ L3-a'dan beri Labber kararındaki içerikte terminal de Labber'dadır (tek kalı
 uzaklık ve özyinelemeli next-hop, AğLab OSPF alanları (pid, routerId, networks) ve
 servissiz sunucu (uç) da Labber'dadır; kaynak arayüzlü ICMP ölçütü Labber'da
 değerlendirilir. L5-a'dan beri router alt arayüzü (802.1Q, router-on-a-stick)
-da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine dayanır.
+da Labber'dadır. L5-b'den beri DHCP sunucusu (Server `services.dhcp`), relay
+(`ip helper-address`) ve PC DHCP istemcisi (VPCS `ip dhcp`) Labber'dadır.
+Eski motor kararı aşağıdaki gerekçelerden en az birine dayanır.
 
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 33 | 4 | 37 |
+| Ortak senaryolar | 34 | 3 | 37 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 86 | 4 | 90 |
+| Toplam | 87 | 3 | 90 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
-| Sunucu servisleri (DHCP/DNS/HTTP) Labber'da yok (L5) | 2 |
 | ACL Labber'da yok (L5) | 1 |
 | BGP Labber'da yok (L5) | 1 |
-| DHCP istemci kirası Labber'da yok (L5) | 1 |
-| DHCP relay Labber'da yok (L5) | 1 |
 | NAT Labber'da yok (L5) | 1 |
 | NAT çeviri tablosu Labber'da yok (L5) | 1 |
 | Port security Labber'da yok (L5) | 1 |
+| Sunucu DNS/HTTP servisleri Labber'da yok (L5) | 1 |
 
 ACL/NAT için security_smoke ayrı native operatör örnekleridir; mevcut 40 görevin ACL/NAT alanlarını dönüştürdüğü veya native doğruladığı iddia edilmez. ACL 28 ve SNAT/PAT 21 native kontrolü [CI 42205155584 / 6f651fe](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42205155584) güvenlik işlerinde geçti; görev aktarımı sayılmaz.
 

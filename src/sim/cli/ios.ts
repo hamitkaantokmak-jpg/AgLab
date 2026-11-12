@@ -296,6 +296,8 @@ const routerIfPatterns: P[] = [
   { p: 'no description', run: (x) => x.eachPhys((c) => void (c.description = '')) },
   { p: 'ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>', run: (x, a) => x.setIp(a[2]!, a[3]!) },
   { p: 'no ip address', run: (x) => x.eachPhys((c) => void (c.ip = null)) },
+  { p: 'ip helper-address <A.B.C.D:IP destination address>', run: (x, a) => x.eachPhys((c) => void (c.helper = a[2]!)) },
+  { p: 'no ip helper-address', run: (x) => x.eachPhys((c) => void delete c.helper) },
   ...l3OptPatterns,
 ]
 
@@ -311,6 +313,8 @@ const subIfPatterns: P[] = [
   { p: 'no description', run: (x) => x.eachSub((c) => void (c.description = '')) },
   { p: 'ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>', run: (x, a) => x.setIp(a[2]!, a[3]!) },
   { p: 'no ip address', run: (x) => x.eachSub((c) => void (c.ip = null)) },
+  { p: 'ip helper-address <A.B.C.D:IP destination address>', run: (x, a) => x.eachSub((c) => void (c.helper = a[2]!)) },
+  { p: 'no ip helper-address', run: (x) => x.eachSub((c) => void delete c.helper) },
   ...l3OptPatterns,
 ]
 
