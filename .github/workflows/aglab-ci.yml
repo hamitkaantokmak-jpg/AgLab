@@ -1,9 +1,18 @@
 name: AğLab doğrulama ve paketleme
 
 on:
+  # Dal push'ları PR olayıyla zaten koşar; push yalnız main'de tetiklenir
+  # (aksi halde her PR push'u iki kez koşuyordu).
   push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
+
+# Aynı dal için yeni koşu başlayınca süren eski koşu iptal edilir.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
