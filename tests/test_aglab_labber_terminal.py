@@ -301,9 +301,53 @@ class LabberTerminalTests(unittest.TestCase):
         out = self.type("show ip interface g0/1")
         self.assertIn("  Outgoing access list is 10", out)
 
-    def test_legacy_content_keeps_legacy_terminal(self):
-        # L5-a'dan beri router-on-a-stick Labber'da; NAT/ACL'li senaryo L5'in kalanına kadar eski motorda.
+    def test_nat_pat_from_terminal(self):
+        """L5-d: nat-pat senaryosu Labber'da. NAT'sız ping dönmez; PAT eklenince başarılı, çeviri
+        `show ip nat translations`'ta; inside/outside ters çevrilince yeniden başarısız."""
         self.load("nat-pat")
+        self.assertTrue(self.page.evaluate("aglabLabberSession.active()"))
+        self.device("PC-01")
+        out = self.type("ping 203.0.113.8")
+        self.assertFalse(any("bytes from" in line for line in out), out)
+        self.assertFalse(self.goal())
+        self.device("R1")
+        for line in [
+            "enable",
+            "configure terminal",
+            "ip nat inside source list 1 interface g0/1 overload",
+            "end",
+        ]:
+            self.type(line)
+        self.device("PC-01")
+        out = self.type("ping 203.0.113.8")
+        self.assertTrue(any("bytes from 203.0.113.8" in line for line in out), out)
+        self.assertTrue(self.goal())
+        self.device("R1")
+        out = self.type("show ip nat translations")
+        rows = [" ".join(line.split()) for line in out if line.startswith("icmp")]
+        self.assertEqual(
+            rows, ["icmp 203.0.113.1:1 192.168.1.10:1 203.0.113.8:1 203.0.113.8:1"], out
+        )
+        out = self.type("show ip nat statistics")
+        self.assertIn("Total active translations: 1 (0 static, 1 dynamic; 1 extended)", out)
+        self.type("clear ip nat translation *")
+        for line in [
+            "configure terminal",
+            "interface g0/0",
+            "ip nat outside",
+            "interface g0/1",
+            "ip nat inside",
+            "end",
+        ]:
+            self.type(line)
+        self.assertFalse(self.goal())
+        self.assertFalse(
+            any(line.startswith("icmp") for line in self.type("show ip nat translations"))
+        )
+
+    def test_legacy_content_keeps_legacy_terminal(self):
+        # L5-d'den beri NAT/PAT da Labber'da; eski motorda yalnız BGP senaryosu kaldı.
+        self.load("bgp-as")
         self.assertFalse(self.page.evaluate("aglabLabberSession.active()"))
         self.device("R1")
         self.type("enable")

@@ -349,6 +349,9 @@ export interface Hop {
   ip: string
   /** L5-d: interface the packet entered this device on */
   inIf?: string
+  /** L5-d: IP addresses on this hop's wire (after NAT on earlier routers) */
+  src?: string
+  dst?: string
   /** interface used to leave the previous device */
   outIf: L3If
 }
@@ -452,7 +455,7 @@ export function deliver(d: Derived, from: string, dst: string, spec: PacketSpec 
       if (denied) return end({ kind: 'unreach', at: target.dev, atIp: target.ip, hops: [...hops, { dev: target.dev, ip: target.ip, outIf: r.out, inIf: target.name }], filtered: denied })
     }
     if (cur !== from) routers++
-    hops.push({ dev: target.dev, ip: target.ip, outIf: r.out, inIf: target.name })
+    hops.push({ dev: target.dev, ip: target.ip, outIf: r.out, inIf: target.name, src: pkt.src, dst: pkt.dst })
     inIf = target.name
     cur = target.dev
   }

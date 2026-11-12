@@ -154,3 +154,23 @@ describe('NAT/PAT', () => {
     expect(rows(rt2)).toHaveLength(1)
   })
 })
+
+describe('NAT Simulation Mode izi', () => {
+  it('outside kablosunda kaynak çevrilmiş, dönüşte hedef geri çevrilmiş görünür', async () => {
+    const { pingTrace } = await import('../../src/sim-bridge/events')
+    const rt = createLab(lab(PAT))
+    const t = pingTrace(rt, 'PC1', '203.0.113.8')
+    expect(t.ok).toBe(true)
+    const frames = t.records.filter((r) => r.kind === 'wire').map((r) => `${r.frame!.kind} ${r.edge!.a}>${r.edge!.b} ${r.frame!.ipv4.sourceIp}>${r.frame!.ipv4.destinationIp}`)
+    expect(frames).toEqual([
+      'icmp-request PC1>SW1 192.168.1.10>203.0.113.8',
+      'icmp-request SW1>R1 192.168.1.10>203.0.113.8',
+      'icmp-request R1>SRV 203.0.113.1>203.0.113.8',
+      'icmp-reply SRV>R1 203.0.113.8>203.0.113.1',
+      'icmp-reply R1>SW1 203.0.113.8>192.168.1.10',
+      'icmp-reply SW1>PC1 203.0.113.8>192.168.1.10',
+    ])
+    // NAT'sız: istek gider, yanıt dönemez
+    expect(pingTrace(createLab(lab([])), 'PC1', '203.0.113.8').ok).toBe(false)
+  })
+})

@@ -159,7 +159,8 @@ export function pingTrace(
         vlan: hop.outIf.node ? nodeVlan(hop.outIf.node) : 0,
         etherType: '0x0800',
         arp: null,
-        ipv4: { sourceIp: srcIp, destinationIp: dstIp, ttl, protocol: 1 },
+        // L5-d: NAT'tan sonra kablodaki adresler (hop.src/dst)
+        ipv4: { sourceIp: hop.src ?? srcIp, destinationIp: hop.dst ?? dstIp, ttl, protocol: 1 },
         icmp: { type: kind === 'icmp-request' ? 8 : 0, code: 0 },
       }
       const ev = { frameId, frame }
@@ -201,7 +202,8 @@ export function pingTrace(
     return { ok: false, l2, records }
   }
   const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from
-  const back = deliver(d, replier, src)
+  // ping()'in kendi dönüş teslimatı (NAT çevirisi dahil)
+  const back = r.back ?? deliver(d, replier, src)
   const base = rt.topo.devices[replier]?.kind === 'pc' ? 64 : 255
   const backTo = walk('icmp-reply', replier, back.hops, dst, src, base)
   if (!r.ok || back.kind !== 'ok' || backTo !== from) {

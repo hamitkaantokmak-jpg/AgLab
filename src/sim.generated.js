@@ -928,6 +928,127 @@ var AgLabSim = (() => {
     return o;
   }
 
+  // src/sim/nat.ts
+  function emptyNat() {
+    return { statics: [], pools: {}, rules: [] };
+  }
+  var u322 = (ip) => ipToInt(ip) >>> 0;
+  var ip4 = (n) => [n >>> 24, n >>> 16 & 255, n >>> 8 & 255, n & 255].join(".");
+  var role = (cfg, ifname) => l3OptsOf(cfg, ifname)?.nat;
+  function poolAddrs(p) {
+    const out = [];
+    for (let n = u322(p.start); n <= u322(p.end) && out.length < 4096; n++) out.push(ip4(n));
+    return out;
+  }
+  var sameFlow = (e, dev, pkt) => e.dev === dev && e.proto === pkt.proto && e.insideLocal === pkt.src && e.lport === pkt.sport && e.outsideLocal === pkt.dst;
+  function natOutbound(d, dev, inIf, outIf, pkt, table) {
+    const cfg = d.cfgs[dev];
+    if (!cfg?.nat || role(cfg, inIf) !== "inside" || role(cfg, outIf) !== "outside") return null;
+    for (const s of cfg.nat.statics) {
+      if (s.proto ? s.proto === pkt.proto && s.local === pkt.src && s.lport === pkt.sport : s.local === pkt.src)
+        return { pkt: { ...pkt, src: s.global, ...s.proto ? { sport: s.gport } : {} }, entries: [] };
+    }
+    const known = table.find((e) => sameFlow(e, dev, pkt));
+    if (known) return { pkt: { ...pkt, src: known.insideGlobal, sport: known.gport }, entries: [] };
+    for (const rule of cfg.nat.rules) {
+      const acl = cfg.acls?.[rule.acl];
+      const m = acl ? aclDecide(acl, pkt) : null;
+      if (!m || !m.permit || m.seq === null) continue;
+      const ifIp = rule.iface ? ifAddr(d, dev, rule.iface) : void 0;
+      const pool = rule.pool ? cfg.nat.pools[rule.pool] : void 0;
+      const addrs = rule.iface ? ifIp ? [ifIp] : [] : pool ? poolAddrs(pool) : [];
+      if (!addrs.length) continue;
+      let global;
+      if (rule.overload) global = addrs[0];
+      else {
+        const mine = table.find((e) => e.dev === dev && e.proto === null && e.insideLocal === pkt.src);
+        const used = new Set(table.filter((e) => e.dev === dev && e.proto === null).map((e) => e.insideGlobal));
+        const free = mine?.insideGlobal ?? addrs.find((x) => !used.has(x));
+        if (!free) return "drop";
+        global = free;
+      }
+      let gport = pkt.sport;
+      if (rule.overload) {
+        const taken = (p) => table.some((e) => e.dev === dev && e.proto === pkt.proto && e.insideGlobal === global && e.gport === p && e.insideLocal !== pkt.src);
+        while (taken(gport)) gport = (gport ?? 0) + 1;
+      }
+      const entries = [];
+      if (!rule.overload && !table.some((e) => e.dev === dev && e.proto === null && e.insideLocal === pkt.src))
+        entries.push({ dev, proto: null, insideLocal: pkt.src, insideGlobal: global });
+      entries.push({ dev, proto: pkt.proto, insideLocal: pkt.src, insideGlobal: global, outsideLocal: pkt.dst, lport: pkt.sport, gport, oport: pkt.proto === "icmp" ? pkt.sport : pkt.dport });
+      return { pkt: { ...pkt, src: global, sport: gport }, entries };
+    }
+    return null;
+  }
+  function natInbound(d, dev, inIf, pkt, table) {
+    const cfg = d.cfgs[dev];
+    if (!cfg?.nat || role(cfg, inIf) !== "outside") return null;
+    for (const s of cfg.nat.statics) {
+      if (s.proto ? s.proto === pkt.proto && s.global === pkt.dst && s.gport === pkt.dport : s.global === pkt.dst)
+        return { ...pkt, dst: s.local, ...s.proto ? { dport: s.lport } : {} };
+    }
+    const ext = table.find((e) => e.dev === dev && e.proto === pkt.proto && e.insideGlobal === pkt.dst && e.gport === pkt.dport);
+    if (ext) return { ...pkt, dst: ext.insideLocal, dport: ext.lport };
+    const simple = table.find((e) => e.dev === dev && e.proto === null && e.insideGlobal === pkt.dst);
+    return simple ? { ...pkt, dst: simple.insideLocal } : null;
+  }
+  function natAliases(cfg) {
+    if (!cfg?.nat) return [];
+    return [...cfg.nat.statics.map((s) => s.global), ...Object.values(cfg.nat.pools).flatMap((p) => poolAddrs(p))];
+  }
+  function ifAddr(d, dev, ifname) {
+    const c = d.cfgs[dev];
+    if (ifname.includes(".")) return c.subifs?.[ifname]?.ip?.addr;
+    return c.ifaces[ifname]?.ip?.addr;
+  }
+  var col = (ip, port) => port === void 0 ? ip : `${ip}:${port}`;
+  function showNatTranslations(cfg, dev, table) {
+    const row = (pro, ig, il, ol, og) => pad(pro, 5) + pad(ig, 22) + pad(il, 22) + pad(ol, 22) + og;
+    const o = [row("Pro", "Inside global", "Inside local", "Outside local", "Outside global")];
+    for (const s of cfg.nat?.statics ?? [])
+      o.push(s.proto ? row(s.proto, col(s.global, s.gport), col(s.local, s.lport), "---", "---") : row("---", s.global, s.local, "---", "---"));
+    for (const e of table.filter((x) => x.dev === dev)) {
+      if (e.proto === null) o.push(row("---", e.insideGlobal, e.insideLocal, "---", "---"));
+      else o.push(row(e.proto, col(e.insideGlobal, e.gport), col(e.insideLocal, e.lport), col(e.outsideLocal, e.oport), col(e.outsideLocal, e.oport)));
+    }
+    return o;
+  }
+  function showNatStatistics(cfg, dev, table, hits, misses, ifNames) {
+    const mine = table.filter((e) => e.dev === dev);
+    const statics = cfg.nat?.statics.length ?? 0;
+    const o = [
+      `Total active translations: ${statics + mine.length} (${statics} static, ${mine.length} dynamic; ${mine.filter((e) => e.proto !== null).length} extended)`,
+      "Outside interfaces:",
+      ...ifNames.outside.map((n) => "  " + n),
+      "Inside interfaces:",
+      ...ifNames.inside.map((n) => "  " + n),
+      `Hits: ${hits}  Misses: ${misses}`,
+      "Expired translations: 0",
+      "Dynamic mappings:"
+    ];
+    if (cfg.nat?.rules.length) o.push("-- Inside Source");
+    cfg.nat?.rules.forEach((r, i) => {
+      const target = r.iface ? `interface ${r.iface}` : `pool ${r.pool}`;
+      o.push(`[Id: ${i + 1}] access-list ${r.acl} ${target}${r.overload ? " overload" : ""} refcount ${mine.filter((e) => e.proto !== null).length}`);
+      if (r.pool && cfg.nat.pools[r.pool]) {
+        const p = cfg.nat.pools[r.pool];
+        const total = poolAddrs(p).length;
+        const alloc = new Set(mine.filter((e) => e.proto === null).map((e) => e.insideGlobal)).size;
+        o.push(` pool ${r.pool}: netmask ${p.mask}`, `	start ${p.start} end ${p.end}`, `	type generic, total addresses ${total}, allocated ${alloc} (${Math.floor(alloc * 100 / total)}%), misses ${misses}`);
+      }
+    });
+    return o;
+  }
+  function natConfigLines(cfg) {
+    const n = cfg.nat;
+    if (!n) return [];
+    const o = [];
+    for (const [name, p] of Object.entries(n.pools)) o.push(`ip nat pool ${name} ${p.start} ${p.end} netmask ${p.mask}`);
+    for (const r of n.rules) o.push(`ip nat inside source list ${r.acl} ${r.iface ? `interface ${r.iface}` : `pool ${r.pool}`}${r.overload ? " overload" : ""}`);
+    for (const s of n.statics) o.push(s.proto ? `ip nat inside source static ${s.proto} ${s.local} ${s.lport} ${s.global} ${s.gport}` : `ip nat inside source static ${s.local} ${s.global}`);
+    return o;
+  }
+
   // src/sim/portsec.ts
   function defaultPortSecurity() {
     return { enabled: false, max: 1, violation: "shutdown", sticky: false, macs: [], stickyMacs: [] };
@@ -1256,6 +1377,10 @@ var AgLabSim = (() => {
       if (i.ip !== ip || !i.node) continue;
       if (dom.nodes.has(nk(i.node))) return i;
     }
+    for (const i of allL3Ifs(d)) {
+      if (!i.node || !dom.nodes.has(nk(i.node)) || !sameSubnet(i.ip, ip, i.prefix)) continue;
+      if (natAliases(d.cfgs[i.dev]).includes(ip)) return { ...i, ip };
+    }
     return null;
   }
   function aclCheck(d, dev, ifname, dir, pkt, hits) {
@@ -1271,34 +1396,57 @@ var AgLabSim = (() => {
     let cur = from;
     const hops = [];
     const acl = [];
+    const nat = [];
     let routers = 0;
     if (!l3Ifs(d, from).length) return { kind: "noip", hops };
-    const pkt = { proto: "icmp", icmpType: "echo", ...spec, src: spec.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0].ip, dst };
+    const { natPending, ...fields } = spec;
+    let pkt = { proto: "icmp", icmpType: "echo", ...fields, src: fields.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0].ip, dst };
+    if (pkt.proto === "icmp" && pkt.sport === void 0 && pkt.icmpType === "echo") pkt.sport = 1;
+    const table = () => [...d.natTable ?? [], ...natPending ?? [], ...nat];
     const routing = (dev) => d.topo.devices[dev]?.kind === "switch";
+    let inIf = null;
+    let natted = 0;
+    const end = (r) => ({ ...r, acl, pkt, nat, natted });
     for (let ttl = 0; ttl < 32; ttl++) {
-      if (owns(d, cur, dst)) return { kind: "ok", hops, routersCrossed: routers, acl };
-      if (cur !== from && !isRouter(d, cur)) return { kind: "timeout", hops, acl };
-      const r = lookup(d, cur, dst);
+      if (cur !== from && inIf && routing(cur)) {
+        const back = natInbound(d, cur, inIf, pkt, table());
+        if (back) {
+          pkt = back;
+          natted++;
+        }
+      }
+      if (owns(d, cur, pkt.dst)) return end({ kind: "ok", hops, routersCrossed: routers });
+      if (cur !== from && natAliases(d.cfgs[cur]).includes(pkt.dst)) return end({ kind: "timeout", hops });
+      if (cur !== from && !isRouter(d, cur)) return end({ kind: "timeout", hops });
+      const r = lookup(d, cur, pkt.dst);
       if (!r) {
-        if (cur === from) return { kind: "noroute", hops, acl };
+        if (cur === from) return end({ kind: "noroute", hops });
         const at = hops[hops.length - 1];
-        return { kind: "unreach", at: cur, atIp: at.ip, hops, acl };
+        return end({ kind: "unreach", at: cur, atIp: at.ip, hops });
       }
       const target = arpResolve(d, r.out, r.nh);
-      if (!target) return { kind: "timeout", hops, acl };
-      if (cur !== from && routing(cur)) {
+      if (!target) return end({ kind: "timeout", hops });
+      if (cur !== from && routing(cur) && inIf) {
+        const o = natOutbound(d, cur, inIf, r.out.name, pkt, table());
+        if (o === "drop") return end({ kind: "timeout", hops, natMiss: true });
+        if (o) {
+          pkt = o.pkt;
+          nat.push(...o.entries);
+          natted++;
+        }
         const denied = aclCheck(d, cur, r.out.name, "out", pkt, acl);
-        if (denied) return { kind: "unreach", at: cur, atIp: hops[hops.length - 1].ip, hops, acl, filtered: denied };
+        if (denied) return end({ kind: "unreach", at: cur, atIp: hops[hops.length - 1].ip, hops, filtered: denied });
       }
       if (routing(target.dev)) {
         const denied = aclCheck(d, target.dev, target.name, "in", pkt, acl);
-        if (denied) return { kind: "unreach", at: target.dev, atIp: target.ip, hops: [...hops, { dev: target.dev, ip: target.ip, outIf: r.out }], acl, filtered: denied };
+        if (denied) return end({ kind: "unreach", at: target.dev, atIp: target.ip, hops: [...hops, { dev: target.dev, ip: target.ip, outIf: r.out, inIf: target.name }], filtered: denied });
       }
       if (cur !== from) routers++;
-      hops.push({ dev: target.dev, ip: target.ip, outIf: r.out });
+      hops.push({ dev: target.dev, ip: target.ip, outIf: r.out, inIf: target.name, src: pkt.src, dst: pkt.dst });
+      inIf = target.name;
       cur = target.dev;
     }
-    return { kind: "timeout", hops, acl };
+    return end({ kind: "timeout", hops });
   }
   function nextHop(d, dev, dst) {
     return lookup(d, dev, dst)?.nh ?? null;
@@ -1343,16 +1491,16 @@ var AgLabSim = (() => {
     if (fwd.kind === "noip") return { ok: false, reason: "noip", forward: fwd };
     if (fwd.kind === "noroute") return { ok: false, reason: "noroute", forward: fwd };
     if (fwd.kind === "unreach") {
-      const back2 = deliver(d, fwd.at, sourceIp(d, from, dst), { proto: "icmp", icmpType: "unreachable", src: fwd.atIp });
+      const back2 = deliver(d, fwd.at, fwd.pkt?.src ?? sourceIp(d, from, dst), { proto: "icmp", icmpType: "unreachable", src: fwd.atIp, dport: fwd.pkt?.sport, natPending: fwd.nat });
       return back2.kind === "ok" ? { ok: false, reason: "unreach", unreachFrom: fwd.atIp, forward: fwd, back: back2, firstHopArp } : { ok: false, reason: "timeout", forward: fwd, back: back2, firstHopArp };
     }
     if (fwd.kind !== "ok") {
       const nh = fwd.hops.length ? null : nextHop(d, from, dst);
       return { ok: false, reason: "timeout", forward: fwd, firstHopArp, ...nh ? { arpIncomplete: { dev: from, ip: nh } } : {} };
     }
-    const src = sourceIp(d, from, dst);
+    const src = fwd.pkt?.src ?? sourceIp(d, from, dst);
     const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from;
-    const back = deliver(d, replier, src, { proto: "icmp", icmpType: "echo-reply", src: dst });
+    const back = deliver(d, replier, src, { proto: "icmp", icmpType: "echo-reply", src: dst, dport: fwd.pkt?.sport, natPending: fwd.nat });
     const backTo = back.hops[back.hops.length - 1]?.dev ?? replier;
     if (back.kind !== "ok" || backTo !== from) return { ok: false, reason: "timeout", forward: fwd, back, firstHopArp };
     const base2 = d.topo.devices[replier].kind === "pc" ? 64 : 255;
@@ -1908,6 +2056,7 @@ var AgLabSim = (() => {
     for (const h of o?.helpers ?? []) out.push(" ip helper-address " + h);
     if (o?.aclIn) out.push(` ip access-group ${o.aclIn} in`);
     if (o?.aclOut) out.push(` ip access-group ${o.aclOut} out`);
+    if (o?.nat) out.push(` ip nat ${o.nat}`);
     if (o?.mtu) out.push(" ip mtu " + o.mtu);
     if (o?.ospfNet) out.push(" ip ospf network " + o.ospfNet);
     if (o?.ospfHello) out.push(" ip ospf hello-interval " + o.ospfHello);
@@ -1963,6 +2112,7 @@ var AgLabSim = (() => {
     }
     if (c.ospf) o.push(...ospfLines(c));
     o.push("ip forward-protocol nd", "no ip http server", "!");
+    o.push(...natConfigLines(c));
     for (const r of c.routes) o.push(routeLine(r));
     o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), "!", "line con 0", "line aux 0", "line vty 0 4", " login", "!", "end");
     return o;
@@ -2912,6 +3062,9 @@ var AgLabSim = (() => {
       { p: "show ip access-lists", run: (x) => showAccessLists(x.cfg, x.dev, x.rt.aclHits) },
       { p: "show ip access-lists <WORD:ACL name or number>", run: (x, a) => showAccessLists(x.cfg, x.dev, x.rt.aclHits, a[3]) },
       { p: "show ip interface", run: (x) => showIpInterface(x.rt, x.dev) },
+      // L5-d: NAT (yalnız router; switch'te gizli)
+      { p: "show ip nat translations", run: (x) => showNatTranslations(x.cfg, x.dev, x.rt.natTable) },
+      { p: "show ip nat statistics", run: (x) => x.natStatistics() },
       { p: "show ip interface <if>", run: (x, a) => showIpInterface(x.rt, x.dev, x.resolveL3(a[3], a[4], 3)) },
       { p: "show port-security address", run: (x) => showPortSecurityAddress(x.rt, x.dev) },
       { p: "show port-security interface <if>", run: (x, a) => showPortSecurityInterface(x.rt, x.dev, x.physName(a[3], a[4], 3)), ifTypes: ["FastEthernet", "GigabitEthernet"] },
@@ -2962,6 +3115,7 @@ var AgLabSim = (() => {
     },
     { p: "erase startup-config", run: (x) => x.erase() },
     { p: "reload", run: (x) => x.reload() },
+    { p: "clear ip nat translation *", run: (x) => x.clearNat() },
     {
       p: "clear access-list counters",
       run: (x) => {
@@ -3096,9 +3250,35 @@ var AgLabSim = (() => {
         }
       );
     }
+    if (def.router) {
+      const L = "<A.B.C.D:Inside local IP address>", G = "<A.B.C.D:Inside global IP address>";
+      const LP = "<1-65535:Local UDP/TCP port>", GP = "<1-65535:Global UDP/TCP port>";
+      const ACL = "<WORD:Access list number or name for local addresses>", POOL = "<WORD:Name pool of global addresses>";
+      p.push(
+        { p: `ip nat inside source static ${L} ${G}`, run: (x, a) => x.natStatic(true, { local: a[5], global: a[6] }) },
+        { p: `no ip nat inside source static ${L} ${G}`, run: (x, a) => x.natStatic(false, { local: a[6], global: a[7] }) },
+        ...["tcp", "udp"].flatMap((pr) => [
+          { p: `ip nat inside source static ${pr} ${L} ${LP} ${G} ${GP}`, run: (x, a) => x.natStatic(true, { proto: pr, local: a[6], lport: Number(a[7]), global: a[8], gport: Number(a[9]) }) },
+          { p: `no ip nat inside source static ${pr} ${L} ${LP} ${G} ${GP}`, run: (x, a) => x.natStatic(false, { proto: pr, local: a[7], lport: Number(a[8]), global: a[9], gport: Number(a[10]) }) }
+        ]),
+        { p: `ip nat pool ${POOL} <A.B.C.D:Start IP address> <A.B.C.D:End IP address> netmask <A.B.C.D:Network mask>`, run: (x, a) => x.natPool(a[3], a[4], a[5], a[7]) },
+        { p: `no ip nat pool ${POOL}`, run: (x, a) => x.natNoPool(a[4]) },
+        { p: `no ip nat pool ${POOL} <A.B.C.D:Start IP address> <A.B.C.D:End IP address> netmask <A.B.C.D:Network mask>`, run: (x, a) => x.natNoPool(a[4]) },
+        { p: `ip nat inside source list ${ACL} pool ${POOL}`, run: (x, a) => x.natRule({ acl: a[5], pool: a[7], overload: false }) },
+        { p: `ip nat inside source list ${ACL} pool ${POOL} overload`, run: (x, a) => x.natRule({ acl: a[5], pool: a[7], overload: true }) },
+        { p: `ip nat inside source list ${ACL} interface <if>`, run: (x, a) => x.natRule({ acl: a[5], iface: x.resolveL3(a[7], a[8], 7), overload: false }), ifTypes: ["FastEthernet", "GigabitEthernet"] },
+        { p: `ip nat inside source list ${ACL} interface <if> overload`, run: (x, a) => x.natRule({ acl: a[5], iface: x.resolveL3(a[7], a[8], 7), overload: true }), ifTypes: ["FastEthernet", "GigabitEthernet"] },
+        { p: `no ip nat inside source list ${ACL}`, run: (x, a) => x.natNoRule(a[6]) },
+        { p: `no ip nat inside source list ${ACL} pool ${POOL}`, run: (x, a) => x.natNoRule(a[6]) },
+        { p: `no ip nat inside source list ${ACL} pool ${POOL} overload`, run: (x, a) => x.natNoRule(a[6]) },
+        { p: `no ip nat inside source list ${ACL} interface <if>`, run: (x, a) => x.natNoRule(a[6]), ifTypes: ["FastEthernet", "GigabitEthernet"] },
+        { p: `no ip nat inside source list ${ACL} interface <if> overload`, run: (x, a) => x.natNoRule(a[6]), ifTypes: ["FastEthernet", "GigabitEthernet"] }
+      );
+    }
     return def.router ? p.filter((x) => !ROUTER_HIDDEN_CONFIG.test(x.p)) : p;
   };
   var ROUTER_HIDDEN_CONFIG = /^(no )?(vlan|spanning-tree|errdisable) /;
+  var SWITCH_HIDDEN_SHOW = /^(show|clear) ip nat /;
   var ROUTER_HIDDEN_SHOW = /^show (vlan|spanning-tree|mac address-table|interfaces (trunk|status|switchport)|interfaces <if> switchport|etherchannel|errdisable|vtp|port-security)/;
   var l3OptPatterns = [
     { p: "ip ospf cost <1-65535:Cost>", run: (x, a) => x.eachL3((o) => void (o.ospfCost = Number(a[3]))) },
@@ -3203,6 +3383,12 @@ var AgLabSim = (() => {
     { p: "lldp receive", run: (x) => x.eachPhys((c) => void delete c.lldpRx) },
     { p: "no lldp receive", run: (x) => x.eachPhys((c) => void (c.lldpRx = false)) }
   ];
+  var natIfPatterns = [
+    { p: "ip nat inside", run: (x) => x.eachL3((o) => void (o.nat = "inside")) },
+    { p: "ip nat outside", run: (x) => x.eachL3((o) => void (o.nat = "outside")) },
+    { p: "no ip nat inside", run: (x) => x.eachL3((o) => void (o.nat === "inside" && delete o.nat)) },
+    { p: "no ip nat outside", run: (x) => x.eachL3((o) => void (o.nat === "outside" && delete o.nat)) }
+  ];
   var routerIfPatterns = [
     ...commonSub,
     { p: "shutdown", run: (x) => x.eachPhys((c) => void (c.shutdown = true)) },
@@ -3212,6 +3398,7 @@ var AgLabSim = (() => {
     { p: "ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>", run: (x, a) => x.setIp(a[2], a[3]) },
     { p: "no ip address", run: (x) => x.eachPhys((c) => void (c.ip = null)) },
     ...l3OptPatterns,
+    ...natIfPatterns,
     ...discoveryIfPatterns
   ];
   var subIfPatterns = [
@@ -3225,7 +3412,8 @@ var AgLabSim = (() => {
     { p: "no description", run: (x) => x.eachSub((c) => void (c.description = "")) },
     { p: "ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>", run: (x, a) => x.setIp(a[2], a[3]) },
     { p: "no ip address", run: (x) => x.eachSub((c) => void (c.ip = null)) },
-    ...l3OptPatterns
+    ...l3OptPatterns,
+    ...natIfPatterns
   ];
   var l2IfPatterns = (def) => {
     if (def.router) return routerIfPatterns;
@@ -3347,7 +3535,7 @@ var AgLabSim = (() => {
   function tries(def) {
     let t = trieCache.get(def);
     if (!t) {
-      const exec = (ps) => def.router ? ps.filter((x) => !ROUTER_HIDDEN_SHOW.test(x.p)) : ps;
+      const exec = (ps) => ps.filter((x) => !(def.router ? ROUTER_HIDDEN_SHOW : SWITCH_HIDDEN_SHOW).test(x.p));
       t = {
         user: buildTrie(exec(userPatterns)),
         priv: buildTrie(exec(privPatterns)),
@@ -3638,6 +3826,70 @@ var AgLabSim = (() => {
       throw e;
     }
     /** `access-list N permit|deny …`: appended with the next sequence number. */
+    // ---- L5-d: NAT ----
+    natCfg() {
+      var _a;
+      return (_a = this.cfg).nat ?? (_a.nat = emptyNat());
+    }
+    natStatic(add, s) {
+      const n = this.natCfg();
+      const same = (x) => x.proto === s.proto && x.local === s.local && x.global === s.global && x.lport === s.lport && x.gport === s.gport;
+      if (!add) {
+        const i = n.statics.findIndex(same);
+        if (i < 0) return ["%Translation not found"];
+        n.statics.splice(i, 1);
+        return;
+      }
+      if (n.statics.some(same)) return;
+      const clash = n.statics.find((x) => x.proto === s.proto && (s.proto ? x.local === s.local && x.lport === s.lport || x.global === s.global && x.gport === s.gport : x.local === s.local || x.global === s.global));
+      if (clash) return [`% similar static entry (${clash.local} -> ${clash.global}) already exists`];
+      n.statics.push(s);
+    }
+    natPool(name, start, end, mask) {
+      const m = ipToInt(mask);
+      if (maskToPrefix(mask) === null || m === null) throw new InvalidAt(7);
+      if (ipToInt(end) >>> 0 < ipToInt(start) >>> 0) return ["%End address less than starting address"];
+      if ((ipToInt(start) & m) >>> 0 !== (ipToInt(end) & m) >>> 0) return ["%Start and end addresses on different subnets"];
+      this.natCfg().pools[name] = { start, end, mask };
+    }
+    natNoPool(name) {
+      const n = this.natCfg();
+      if (!n.pools[name]) return [`%Pool ${name} not found`];
+      if (n.rules.some((r) => r.pool === name)) return [`%Pool ${name} in use, cannot destroy`];
+      delete n.pools[name];
+    }
+    natRule(r) {
+      const n = this.natCfg();
+      const i = n.rules.findIndex((x) => x.acl === r.acl);
+      if (i >= 0) n.rules[i] = r;
+      else n.rules.push(r);
+    }
+    natNoRule(aclName) {
+      const n = this.natCfg();
+      const i = n.rules.findIndex((x) => x.acl === aclName);
+      if (i < 0) return ["%Dynamic mapping not found"];
+      const drop = () => {
+        n.rules.splice(i, 1);
+        this.rt.natTable.splice(0, this.rt.natTable.length, ...this.rt.natTable.filter((e) => e.dev !== this.dev));
+      };
+      if (!this.rt.natTable.some((e) => e.dev === this.dev)) return void n.rules.splice(i, 1);
+      return this.ask("%Dynamic mapping in use, do you want to delete all entries? [no]: ", (line) => {
+        if (/^y(es?)?$/i.test(line.trim())) drop();
+      });
+    }
+    clearNat() {
+      this.rt.natTable.splice(0, this.rt.natTable.length, ...this.rt.natTable.filter((e) => e.dev !== this.dev));
+      this.rt.emit();
+    }
+    natStatistics() {
+      const names = (role2) => {
+        const o = [];
+        for (const [n, c] of Object.entries(this.cfg.ifaces)) if (c.l3?.nat === role2) o.push(n);
+        for (const [n, c] of Object.entries(this.cfg.subifs ?? {})) if (c.l3?.nat === role2) o.push(n);
+        return o;
+      };
+      return showNatStatistics(this.cfg, this.dev, this.rt.natTable, this.rt.natHits, this.rt.natMisses, { inside: names("inside"), outside: names("outside") });
+    }
     aclNumbered(num, rest) {
       var _a;
       const kind = aclKind(num);
@@ -4142,6 +4394,7 @@ var AgLabSim = (() => {
       const r = ping(d, this.dev, ip);
       this.rt.markSeen(r.forward?.hops ?? [], this.dev);
       this.rt.countAcl(5, r.forward, r.back);
+      this.rt.recordNat(5, r.forward, r.back);
       const head = ["Type escape sequence to abort.", `Sending 5, 100-byte ICMP Echos to ${ip}, timeout is 2 seconds:`];
       if (r.reason === "noip" && !l3Ifs(d, this.dev).length) return [...head, ".....", "Success rate is 0 percent (0/5)"];
       let marks;
@@ -4170,9 +4423,10 @@ var AgLabSim = (() => {
     }
     traceroute(ip) {
       const d = this.rt.derived;
-      const r = deliver(d, this.dev, ip, { proto: "udp", dport: 33434 });
+      const r = deliver(d, this.dev, ip, { proto: "udp", sport: 49152, dport: 33434 });
       this.rt.markSeen(r.hops, this.dev);
       this.rt.countAcl(1, r);
+      this.rt.recordNat(1, r);
       const out = ["Type escape sequence to abort.", `Tracing the route to ${ip}`, "VRF info: (vrf in name/id, vrf out name/id)"];
       r.hops.forEach((h, i) => out.push(`  ${i + 1} ${h.ip} ${1 + i} msec ${i} msec ${1 + i} msec`));
       if (r.kind === "ok") {
@@ -4458,6 +4712,7 @@ var AgLabSim = (() => {
       const r = ping(d, this.dev, dst);
       this.rt.markSeen(r.forward?.hops ?? [], this.dev);
       this.rt.countAcl(5, r.forward, r.back);
+      this.rt.recordNat(5, r.forward, r.back);
       if (r.firstHopArp) this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`);
       this.rt.emit();
       const out = [];
@@ -4476,9 +4731,10 @@ var AgLabSim = (() => {
       const c = this.rt.pcs[this.dev];
       if (!c.ip) return ["No gateway found"];
       this.rt.hostSends(this.dev);
-      const r = deliver(this.rt.derived, this.dev, dst, { proto: "udp", dport: 33434 });
+      const r = deliver(this.rt.derived, this.dev, dst, { proto: "udp", sport: 49152, dport: 33434 });
       this.rt.markSeen(r.hops, this.dev);
       this.rt.countAcl(1, r);
+      this.rt.recordNat(1, r);
       const out = [`trace to ${dst}, 8 hops max, press Ctrl+C to stop`];
       r.hops.forEach((h, i) => {
         const last = r.kind === "ok" && i === r.hops.length - 1;
@@ -4633,11 +4889,11 @@ var AgLabSim = (() => {
         const bothP2p = a.net === "point-to-point" && b.net === "point-to-point";
         const sameType = a.net === b.net;
         let state;
-        let role = "-";
+        let role2 = "-";
         if (bothP2p || !sameType) state = "FULL";
         else {
-          role = a.dr?.ip === b.ip ? "DR" : a.bdr?.ip === b.ip ? "BDR" : "DROTHER";
-          const adj = a.role === "DR" || a.role === "BDR" || role === "DR" || role === "BDR";
+          role2 = a.dr?.ip === b.ip ? "DR" : a.bdr?.ip === b.ip ? "BDR" : "DROTHER";
+          const adj = a.role === "DR" || a.role === "BDR" || role2 === "DR" || role2 === "BDR";
           state = adj ? "FULL" : "2WAY";
         }
         if (state === "FULL" && a.mtu !== b.mtu) state = "EXSTART";
@@ -4645,7 +4901,7 @@ var AgLabSim = (() => {
           rid: out[b.dev].rid,
           prio: b.prio,
           state,
-          role,
+          role: role2,
           ip: b.ip,
           ifname: a.name,
           peerDev: b.dev,
@@ -5079,6 +5335,12 @@ var AgLabSim = (() => {
       __publicField(this, "psLast", /* @__PURE__ */ new Map());
       /** L5-c: ACL match counters ('dev|acl|seq'); `clear access-list counters` resets them */
       __publicField(this, "aclHits", /* @__PURE__ */ new Map());
+      /** L5-d: dynamic NAT translations (no timeout; `clear ip nat translation *` empties it) */
+      __publicField(this, "natTable", []);
+      /** L5-d: packets translated (show ip nat statistics "Hits") */
+      __publicField(this, "natHits", 0);
+      /** L5-d: packets dropped because the pool had no free address */
+      __publicField(this, "natMisses", 0);
       __publicField(this, "seq", 0);
       __publicField(this, "t0", Date.now());
       __publicField(this, "listeners", /* @__PURE__ */ new Set());
@@ -5098,6 +5360,9 @@ var AgLabSim = (() => {
       this.psViolations.clear();
       this.psLast.clear();
       this.aclHits.clear();
+      this.natTable = [];
+      this.natHits = 0;
+      this.natMisses = 0;
       this.dhcp = [];
       this.hw = noHardwareFaults();
       for (const l of this.def.links)
@@ -5191,6 +5456,7 @@ var AgLabSim = (() => {
         if (!changed) break;
         d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw);
       }
+      d.natTable = this.natTable;
       return d;
     }
     /**
@@ -5379,6 +5645,16 @@ var AgLabSim = (() => {
           this.aclHits.set(k, (this.aclHits.get(k) ?? 0) + packets);
         }
     }
+    /** L5-d: record translations created by real traffic; `packets` per delivery. */
+    recordNat(packets, ...ds) {
+      for (const d of ds) {
+        if (d?.natMiss) this.natMisses += packets;
+        this.natHits += packets * (d?.natted ?? 0);
+        for (const e of d?.nat ?? [])
+          if (!this.natTable.some((x) => JSON.stringify(x) === JSON.stringify(e))) this.natTable.push(e);
+      }
+      this.derived.natTable = this.natTable;
+    }
     markSeen(hops, from) {
       if (!hops.length) return;
       for (const h of hops) {
@@ -5419,6 +5695,9 @@ var AgLabSim = (() => {
         psViolations: [...this.psViolations],
         psLast: [...this.psLast],
         aclHits: [...this.aclHits],
+        nat: clone(this.natTable),
+        natHits: this.natHits,
+        natMisses: this.natMisses,
         hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
         dhcp: clone(this.dhcp)
       };
@@ -5441,6 +5720,9 @@ var AgLabSim = (() => {
       this.psViolations = new Map(s.psViolations ?? []);
       this.psLast = new Map(s.psLast ?? []);
       this.aclHits = new Map(s.aclHits ?? []);
+      this.natTable = clone(s.nat ?? []);
+      this.natHits = s.natHits ?? 0;
+      this.natMisses = s.natMisses ?? 0;
       if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) };
       this.dhcp = clone(s.dhcp ?? []);
       this.derived = this.recompute();
@@ -7536,11 +7818,11 @@ write memory`
     "ip",
     "mask"
   ]);
-  var ROUTER_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "staticRoutes", "route", "ospf", "ip", "mask", "gateway", "vlan", "dhcpPools", "dhcpExcluded", "acls"]);
-  var ROUTER_IF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "helperAddress", "aclIn", "aclOut"]);
+  var ROUTER_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "staticRoutes", "route", "ospf", "ip", "mask", "gateway", "vlan", "dhcpPools", "dhcpExcluded", "acls", "natOverload", "natTranslations"]);
+  var ROUTER_IF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "helperAddress", "aclIn", "aclOut", "natRole"]);
   var ACL_RULE_FIELDS = /* @__PURE__ */ new Set(["id", "action", "protocol", "srcType", "src", "wildcard", "dstType", "dst", "dstWildcard", "port"]);
   var DHCP_POOL_FIELDS = /* @__PURE__ */ new Set(["name", "network", "mask", "defaultRouter", "dnsServer"]);
-  var SUBIF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "parent", "vlan", "encapsulation", "helperAddress", "aclIn", "aclOut"]);
+  var SUBIF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "parent", "vlan", "encapsulation", "helperAddress", "aclIn", "aclOut", "natRole"]);
   var STATIC_ROUTE_FIELDS = /* @__PURE__ */ new Set(["network", "mask", "nextHop", "distance"]);
   var OSPF_FIELDS = /* @__PURE__ */ new Set(["pid", "routerId", "networks"]);
   var SERVER_FIELDS = /* @__PURE__ */ new Set([...PC_FIELDS, "services"]);
@@ -7626,6 +7908,7 @@ write memory`
     const canonByDevice = {};
     const usedMacs = /* @__PURE__ */ new Map();
     const errdis = [];
+    const nat = [];
     const ids = /* @__PURE__ */ new Set();
     const claimMac = (dev, mac) => {
       const other = usedMacs.get(mac);
@@ -7668,6 +7951,15 @@ write memory`
         else out[k] = String(v);
       }
       return Object.keys(out).length ? out : null;
+    };
+    const natRoleOf = (id, name, iface) => {
+      const v = iface["natRole"];
+      if (v === void 0 || v === "" || v === null) return null;
+      if (v !== "inside" && v !== "outside") {
+        reject(id, `${name}.natRole`, "natRole inside ya da outside olmalı");
+        return null;
+      }
+      return { nat: v };
     };
     const aclsToLabber = (id, rules) => {
       const lists = {};
@@ -7777,6 +8069,8 @@ write memory`
         if (helpers) phys.l3 = { ...phys.l3 ?? {}, helpers };
         const groups = accessGroups(id, name, iface);
         if (groups) phys.l3 = { ...phys.l3 ?? {}, ...groups };
+        const role2 = natRoleOf(id, name, iface);
+        if (role2) phys.l3 = { ...phys.l3 ?? {}, ...role2 };
       }
       for (const [name, iface] of Object.entries(ifaces)) {
         if (!name.includes(".")) continue;
@@ -7819,6 +8113,32 @@ write memory`
         if (helpers) subs[key].l3 = { helpers };
         const groups = accessGroups(id, name, iface);
         if (groups) subs[key].l3 = { ...subs[key].l3 ?? {}, ...groups };
+        const role2 = natRoleOf(id, name, iface);
+        if (role2) subs[key].l3 = { ...subs[key].l3 ?? {}, ...role2 };
+      }
+      if (d.natOverload !== void 0 && d.natOverload !== null) {
+        const n = d.natOverload;
+        const out = typeof n["outsideInterface"] === "string" ? String(n["outsideInterface"]) : "";
+        const dot = out.indexOf(".");
+        const canon = dot < 0 ? canonPort(out) : canonPort(out.slice(0, dot)) + out.slice(dot);
+        const known = !!canon && (dot < 0 ? portMap[canon] !== void 0 : !!cfg.subifs?.[canon]);
+        if (typeof n !== "object" || n["aclId"] === void 0 || n["aclId"] === "" || !known)
+          reject(id, "natOverload", "NAT overload için ACL kimliği ve cihazdaki outside arayüzü gerekli");
+        else {
+          for (const k of Object.keys(n)) if (k !== "aclId" && k !== "outsideInterface") unsupported(id, `natOverload.${k}`, "Labber'da karşılığı olmayan NAT alanı");
+          cfg.nat = { ...emptyNat(), rules: [{ acl: String(n["aclId"]), iface: canon, overload: true }] };
+        }
+      }
+      if (d.natTranslations !== void 0) {
+        if (!Array.isArray(d.natTranslations)) reject(id, "natTranslations", "NAT çeviri tablosu dizi olmalı");
+        else
+          d.natTranslations.forEach((t, i) => {
+            const proto = t?.["protocol"];
+            const ips = ["insideLocal", "insideGlobal", "outsideLocal"].map((k) => String(t?.[k] ?? ""));
+            if (proto !== "icmp" && proto !== "tcp" && proto !== "udp" || !ips.every(isIp))
+              return reject(id, `natTranslations[${i}]`, "Geçersiz NAT çeviri girdisi");
+            nat.push({ dev: id, proto, insideLocal: ips[0], insideGlobal: ips[1], outsideLocal: ips[2] });
+          });
       }
       if (d.acls !== void 0) {
         if (!Array.isArray(d.acls)) reject(id, "acls", "ACL listesi dizi olmalı");
@@ -8189,7 +8509,7 @@ write memory`
     for (const r of report.rejected) reasons.add("Reddedildi: " + r.reason);
     report.reasons = [...reasons].sort();
     report.engineDecision = report.unsupported.length || report.rejected.length ? "legacy" : "labber";
-    return { def, running, pcs, report, ...errdis.length ? { errdis } : {} };
+    return { def, running, pcs, report, ...errdis.length ? { errdis } : {}, ...nat.length ? { nat } : {} };
   }
   function createRuntime(result) {
     return new LabRuntime(result.def, (rt) => {
@@ -8199,6 +8519,7 @@ write memory`
         rt.errdis.add(k);
         rt.errCause.set(k, "psecure-violation");
       }
+      rt.natTable = clone(result.nat ?? []);
     });
   }
   var BridgeError = class extends Error {
@@ -8266,7 +8587,7 @@ write memory`
         continue;
       }
       if (d.type === "Router" && rt.running[id]) {
-        routerToAglab(d, rt.running[id], portNames[id] ?? {}, original.devices.find((x) => String(x.id) === id));
+        routerToAglab(d, rt.running[id], portNames[id] ?? {}, original.devices.find((x) => String(x.id) === id), rt.natTable);
         continue;
       }
       if (d.type !== "Switch" || !rt.running[id]) continue;
@@ -8361,7 +8682,7 @@ write memory`
     }
     return out;
   }
-  function routerToAglab(d, cfg, back, orig) {
+  function routerToAglab(d, cfg, back, orig, natTable) {
     const id = String(d.id);
     const fail = (what) => {
       throw new BridgeError(`${id}: ${what} AğLab modelinde ifade edilemiyor`);
@@ -8383,7 +8704,7 @@ write memory`
       if (phys.description) fail(`${canon} description`);
       const helper = helperBack(phys.l3, canon, fail);
       const prev2 = d.interfaces[name];
-      if (!prev2 && !phys.ip && !phys.shutdown && !helper && !phys.l3?.aclIn && !phys.l3?.aclOut) continue;
+      if (!prev2 && !phys.ip && !phys.shutdown && !helper && !phys.l3?.aclIn && !phys.l3?.aclOut && !phys.l3?.nat) continue;
       const iface = prev2 ? { ...prev2 } : {};
       if (phys.ip) {
         iface.ip = phys.ip.addr;
@@ -8393,6 +8714,7 @@ write memory`
       if (helper) iface["helperAddress"] = helper;
       else if (iface["helperAddress"] !== "") delete iface["helperAddress"];
       groupsBack(iface, phys.l3);
+      natRoleBack(iface, phys.l3);
       d.interfaces[name] = iface;
     }
     const subNames = /* @__PURE__ */ new Set();
@@ -8419,9 +8741,11 @@ write memory`
       if (helper) iface["helperAddress"] = helper;
       else if (iface["helperAddress"] !== "") delete iface["helperAddress"];
       groupsBack(iface, si.l3);
+      natRoleBack(iface, si.l3);
       d.interfaces[name] = iface;
     }
     for (const name of Object.keys(d.interfaces)) if (name.includes(".") && !subNames.has(name)) delete d.interfaces[name];
+    natBack(d, cfg, back, orig, natTable ?? [], fail);
     const pools = Object.entries(cfg.dhcpPools ?? {}).map(([name, p]) => {
       const next = { name, network: p.net?.addr ?? "", mask: p.net?.mask ?? "" };
       if (p.defaultRouter) next["defaultRouter"] = p.defaultRouter;
@@ -8467,10 +8791,41 @@ write memory`
   }
   function helperBack(l3, canon, fail) {
     if (!l3) return null;
-    const { helpers, aclIn: _in, aclOut: _out, ...rest } = l3;
+    const { helpers, aclIn: _in, aclOut: _out, nat: _nat, ...rest } = l3;
     if (Object.keys(rest).length) fail(`${canon} arayüz OSPF/L3 ayarı`);
     if (helpers && helpers.length > 1) fail(`${canon} üzerinde birden çok ip helper-address`);
     return helpers?.[0] ?? null;
+  }
+  function natRoleBack(iface, l3) {
+    if (l3?.nat) iface["natRole"] = l3.nat;
+    else if (iface["natRole"] !== "") delete iface["natRole"];
+  }
+  function natBack(d, cfg, back, orig, table, fail) {
+    const n = cfg.nat;
+    if (n?.statics.length) fail("Statik NAT (ip nat inside source static)");
+    if (n && Object.keys(n.pools).length) fail("NAT havuzu (ip nat pool)");
+    const rules = n?.rules ?? [];
+    if (rules.length > 1) fail("Birden çok dinamik NAT eşlemesi");
+    const r = rules[0];
+    if (r && (!r.iface || !r.overload)) fail(`NAT eşlemesi (${r.iface ? "overload olmadan" : "havuzla"})`);
+    if (r) {
+      const dot = r.iface.indexOf(".");
+      const name = dot < 0 ? back[r.iface] : back[r.iface.slice(0, dot)] && back[r.iface.slice(0, dot)] + r.iface.slice(dot);
+      if (!name) fail(`NAT outside arayüzü ${r.iface}`);
+      const prev = orig.natOverload;
+      const aclId = prev && String(prev["aclId"]) === r.acl ? prev["aclId"] : r.acl;
+      d.natOverload = { aclId, outsideInterface: name };
+    } else if (d.natOverload !== void 0) delete d.natOverload;
+    const id = String(d.id);
+    const entries = [];
+    for (const e of table) {
+      if (e.dev !== id || e.proto === null || !e.outsideLocal) continue;
+      const key = [e.insideLocal, e.outsideLocal, e.proto].join("|");
+      if (entries.some((x) => x["key"] === key)) continue;
+      entries.push({ key, protocol: e.proto, insideLocal: e.insideLocal, insideGlobal: e.insideGlobal, outsideLocal: e.outsideLocal });
+    }
+    if (JSON.stringify(entries) === JSON.stringify(orig.natTranslations ?? [])) return;
+    if (d.natTranslations !== void 0 || entries.length) d.natTranslations = entries;
   }
   function groupsBack(iface, l3) {
     for (const k of ["aclIn", "aclOut"]) {
@@ -8481,6 +8836,7 @@ write memory`
   function aclsBack(cfg, orig, fail) {
     const lists = cfg.acls ?? {};
     const origOrder = [...new Set((orig.acls ?? []).map((r) => String(r["id"])))];
+    const origId = (n) => (orig.acls ?? []).find((r) => String(r["id"]) === n)?.["id"] ?? (aclKind(n) ? Number(n) : n);
     const names = [...origOrder.filter((n) => lists[n]), ...Object.keys(lists).filter((n) => !origOrder.includes(n))];
     const out = [];
     const side = (a, pre) => {
@@ -8494,7 +8850,7 @@ write memory`
         if (e.dstPort && e.dstPort.op !== "eq") fail(`ACL ${n} ${e.seq} port işleci ${e.dstPort.op}`);
         if (e.icmpType) fail(`ACL ${n} ${e.seq} ICMP türü`);
         out.push({
-          id: aclKind(n) ? Number(n) : n,
+          id: origId(n),
           action: e.action,
           protocol: e.proto,
           ...side(e.src, "src"),
@@ -8578,7 +8934,8 @@ write memory`
           vlan: hop.outIf.node ? nodeVlan(hop.outIf.node) : 0,
           etherType: "0x0800",
           arp: null,
-          ipv4: { sourceIp: srcIp, destinationIp: dstIp, ttl, protocol: 1 },
+          // L5-d: NAT'tan sonra kablodaki adresler (hop.src/dst)
+          ipv4: { sourceIp: hop.src ?? srcIp, destinationIp: hop.dst ?? dstIp, ttl, protocol: 1 },
           icmp: { type: kind === "icmp-request" ? 8 : 0, code: 0 }
         };
         const ev = { frameId, frame };
@@ -8619,7 +8976,7 @@ write memory`
       return { ok: false, l2, records };
     }
     const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from;
-    const back = deliver(d, replier, src);
+    const back = r.back ?? deliver(d, replier, src);
     const base2 = rt.topo.devices[replier]?.kind === "pc" ? 64 : 255;
     const backTo = walk2("icmp-reply", replier, back.hops, dst, src, base2);
     if (!r.ok || back.kind !== "ok" || backTo !== from) {
