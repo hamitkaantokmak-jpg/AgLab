@@ -23,7 +23,7 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | birleşti |
 | CI tetikleme: push yalnız main, dal başına `concurrency` | #67 | birleşti |
 | L5-b DHCP/DNS; `relay-trunk` | #68 | birleşti (aynı işi yapan #69 kapatıldı) |
-| L5-f CDP/LLDP | dal `claude/l5f-cdp-lldp` (main'den) | PR açık (birleşmeyi bekliyor) |
+| L5-f CDP/LLDP | #70 (main'den) | açık (birleşmeyi bekliyor) |
 
 **Sıradaki (kullanıcı talimatı, sırayla):** L5-e port security → L5-c ACL → L5-d NAT/PAT.
 Dal zinciri: L5-f (main'den) → L5-e → L5-c → L5-d; her biri ayrı PR, bir öncekinin dalından,
