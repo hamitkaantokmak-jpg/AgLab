@@ -21,7 +21,7 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L4 Router, AD, özyinelemeli statik rota; Akademi M4 + routing senaryoları | #64 | birleşti |
 | AGL-036 öğretmen çözümü (`no ip route`), öğretmen CLI testi gerçek başlangıçtan | #65 | birleşti |
 | L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | birleşti |
-| L5-b DHCP sunucusu + relay + PC DHCP istemcisi; `relay-trunk` | dal `claude/l5b-dhcp` | PR açık (birleşmeyi bekliyor) |
+| L5-b DHCP sunucusu + relay + PC DHCP istemcisi; `relay-trunk` | #69 | açık (birleşmeyi bekliyor) |
 
 **Sıradaki: L5'in kalanı** — L3 tablosu sıra 5'in DNS/HTTP kısmı, 6 ACL, 7 NAT, 8 port
 security; PKT IOS metin yolu. Eski motorda kalan içerik `LAB_MOTOR_HARITASI.md` özet
