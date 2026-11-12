@@ -24,7 +24,7 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | CI tetikleme: push yalnız main, dal başına `concurrency` | #67 | birleşti |
 | L5-b DHCP/DNS; `relay-trunk` | #68 | birleşti (aynı işi yapan #69 kapatıldı) |
 | L5-f CDP/LLDP | #70 (main'den) | açık (birleşmeyi bekliyor) |
-| L5-e port security; `port-security` | dal `claude/l5e-port-security` (#70'in dalından) | PR açık (birleşmeyi bekliyor) |
+| L5-e port security; `port-security` | #72 (#70'in dalından) | açık (birleşmeyi bekliyor) |
 
 **Sıradaki (kullanıcı talimatı, sırayla):** L5-c ACL → L5-d NAT/PAT (L5-f ve L5-e PR'ları açık).
 Dal zinciri: L5-f (main'den) → L5-e → L5-c → L5-d; her biri ayrı PR, bir öncekinin dalından,
