@@ -26,9 +26,9 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L5-f CDP/LLDP | #70 (main'den) | açık (birleşmeyi bekliyor) |
 | L5-e port security; `port-security` | #72 (#70'in dalından) | açık (birleşmeyi bekliyor) |
 | L5-c ACL | #73 (#72'nin dalından) | açık (birleşmeyi bekliyor) |
-| L5-d NAT/PAT; `nat-pat` | #L5D (#73'ün dalından) | açık (birleşmeyi bekliyor) |
+| L5-d NAT/PAT; `nat-pat` | #74 (#73'ün dalından) | açık (birleşmeyi bekliyor) |
 
-Açık zincir: #70 (L5-f, main'den) → #72 (L5-e) → #73 (L5-c) → #L5D (L5-d); her biri bir
+Açık zincir: #70 (L5-f, main'den) → #72 (L5-e) → #73 (L5-c) → #74 (L5-d); her biri bir
 öncekinin dalından, hiçbiri birleştirilmedi. Birleştirme sırası aynı olmalı (her PR bir
 öncekinin değişikliklerini içerir). CI sonucunu kullanıcı denetler (oturum CI'ı beklemez).
 
@@ -37,7 +37,7 @@ yalnız `bgp-as` (BGP; kapsam dışı, gerekçe haritada). İçe aktarılan `.pk
 eski motorda (içe aktarmanın Labber'a geçmesi kapsam dışı).
 
 **Sıradaki iş** (YENIDEN_YAPILANMA L5 satırı, kullanıcı kararı gerekir):
-1. Zincirin sırayla birleştirilmesi (#70 → #72 → #73 → #L5D); her birleşmeden sonra bir
+1. Zincirin sırayla birleştirilmesi (#70 → #72 → #73 → #74); her birleşmeden sonra bir
    sonraki PR'ın tabanı `main`'e çevrilir.
 2. PKT IOS metin yolu (hoşgörülü mod) ve içe aktarılan topolojilerin Labber'a geçmesi (L5'in
    kalan satırı; bu turda kapsam dışıydı). Bunlar gelince `test_aglab_icmp_ttl`,
