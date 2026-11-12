@@ -7,6 +7,7 @@ import type { OspfIf } from '../ospf'
 import type { LabRuntime } from '../runtime'
 import { psConfigLines } from '../portsec'
 import { aclConfigLines } from '../acl'
+import { natConfigLines } from '../nat'
 import { pk } from '../topology'
 import type { IpAddr, L2IfConfig, L3Opts, PhysIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { formatVlanList, ifType, intToIp, ipToInt, macAdd, maskToPrefix, pad, padL, prefixMaskInt, shortIf } from '../util'
@@ -41,6 +42,7 @@ function l3Lines(ip: IpAddr | null | undefined, o: L3Opts | undefined, noIpLine:
   for (const h of o?.helpers ?? []) out.push(' ip helper-address ' + h)
   if (o?.aclIn) out.push(` ip access-group ${o.aclIn} in`)
   if (o?.aclOut) out.push(` ip access-group ${o.aclOut} out`)
+  if (o?.nat) out.push(` ip nat ${o.nat}`)
   if (o?.mtu) out.push(' ip mtu ' + o.mtu)
   if (o?.ospfNet) out.push(' ip ospf network ' + o.ospfNet)
   if (o?.ospfHello) out.push(' ip ospf hello-interval ' + o.ospfHello)
@@ -102,6 +104,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   }
   if (c.ospf) o.push(...ospfLines(c))
   o.push('ip forward-protocol nd', 'no ip http server', '!')
+  o.push(...natConfigLines(c))
   for (const r of c.routes) o.push(routeLine(r))
   o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), '!', 'line con 0', 'line aux 0', 'line vty 0 4', ' login', '!', 'end')
   return o

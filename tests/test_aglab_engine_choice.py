@@ -196,10 +196,10 @@ class EngineChoiceTests(unittest.TestCase):
         self.assertEqual(self.page.evaluate("aglabLabberSession.runtimeId()"), before)
 
     def test_legacy_scenario_keeps_old_engine(self):
-        # L5-a'dan beri alt arayüz (router-on-a-stick) Labber'da; NAT/ACL L5'in kalanına kadar eski motorda.
-        decision = self.load("nat-pat")
+        # L5-d'den beri NAT/PAT da Labber'da; eski motorda yalnız BGP senaryosu kaldı.
+        decision = self.load("bgp-as")
         self.assertEqual(decision["engine"], "legacy")
-        self.assertIn("NAT", self.badge())
+        self.assertIn("BGP", self.badge())
         self.assertFalse(self.page.evaluate("aglabSharedEngine.goal()"))
 
 

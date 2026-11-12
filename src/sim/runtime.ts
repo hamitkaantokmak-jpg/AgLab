@@ -1,5 +1,6 @@
 // Lab runtime: owns configs, recomputes derived state, emits syslog on state changes.
 
+import type { NatEntry } from './nat'
 import { cdpBetween } from './discovery'
 import { activePs, secureCount } from './portsec'
 import { defaultSwitchConfig } from './config'
@@ -46,6 +47,10 @@ export interface SavedState {
   psViolations?: [string, number][]
   psLast?: [string, string][]
   aclHits?: [string, number][]
+  /** L5-d: dynamic NAT translations and hit counter */
+  nat?: NatEntry[]
+  natHits?: number
+  natMisses?: number
 }
 
 export class LabRuntime {
@@ -75,6 +80,12 @@ export class LabRuntime {
   psLast = new Map<string, string>()
   /** L5-c: ACL match counters ('dev|acl|seq'); `clear access-list counters` resets them */
   aclHits = new Map<string, number>()
+  /** L5-d: dynamic NAT translations (no timeout; `clear ip nat translation *` empties it) */
+  natTable: NatEntry[] = []
+  /** L5-d: packets translated (show ip nat statistics "Hits") */
+  natHits = 0
+  /** L5-d: packets dropped because the pool had no free address */
+  natMisses = 0
   private seq = 0
   private t0 = Date.now()
   private listeners = new Set<() => void>()
@@ -100,6 +111,9 @@ export class LabRuntime {
     this.psViolations.clear()
     this.psLast.clear()
     this.aclHits.clear()
+    this.natTable = []
+    this.natHits = 0
+    this.natMisses = 0
     this.dhcp = []
     this.hw = noHardwareFaults()
     for (const l of this.def.links)
@@ -203,6 +217,7 @@ export class LabRuntime {
       if (!changed) break
       d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw)
     }
+    d.natTable = this.natTable
     return d
   }
 
@@ -411,6 +426,17 @@ export class LabRuntime {
       }
   }
 
+  /** L5-d: record translations created by real traffic; `packets` per delivery. */
+  recordNat(packets: number, ...ds: (Delivery | undefined)[]) {
+    for (const d of ds) {
+      if (d?.natMiss) this.natMisses += packets
+      this.natHits += packets * (d?.natted ?? 0)
+      for (const e of d?.nat ?? [])
+        if (!this.natTable.some((x) => JSON.stringify(x) === JSON.stringify(e))) this.natTable.push(e)
+    }
+    this.derived.natTable = this.natTable
+  }
+
   markSeen(hops: Hop[], from: string) {
     if (!hops.length) return
     for (const h of hops) {
@@ -454,6 +480,9 @@ export class LabRuntime {
       psViolations: [...this.psViolations],
       psLast: [...this.psLast],
       aclHits: [...this.aclHits],
+      nat: clone(this.natTable),
+      natHits: this.natHits,
+      natMisses: this.natMisses,
       hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
       dhcp: clone(this.dhcp),
     }
@@ -478,6 +507,9 @@ export class LabRuntime {
     this.psViolations = new Map(s.psViolations ?? [])
     this.psLast = new Map(s.psLast ?? [])
     this.aclHits = new Map(s.aclHits ?? [])
+    this.natTable = clone(s.nat ?? [])
+    this.natHits = s.natHits ?? 0
+    this.natMisses = s.natMisses ?? 0
     if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) }
     this.dhcp = clone(s.dhcp ?? [])
     this.derived = this.recompute()

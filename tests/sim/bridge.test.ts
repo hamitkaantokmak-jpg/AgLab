@@ -8,7 +8,7 @@ import {
 } from '../../src/sim-bridge/bridge'
 import type { AglabTopology } from '../../src/sim-bridge/aglab'
 import { LabQuery } from '../../src/sim/query'
-import { createSession, runScript } from '../../src/sim/index'
+import { createSession, runScript, type VpcsSession } from '../../src/sim/index'
 
 const ROOT = join(__dirname, '..', '..')
 const require_ = createRequire(import.meta.url)
@@ -439,6 +439,71 @@ describe('köprü: ACL (L5-c)', () => {
   })
 })
 
+describe('köprü: NAT (L5-d)', () => {
+  /** R1: g0/0 inside, g0/1 outside, PAT ACL 1; R2'nin 192.168.10.0/24 rotası yok. */
+  const withNat = (): AglabTopology => {
+    const t = routed()
+    const r1 = t.devices[1]!
+    r1.interfaces!['g0/0']!.natRole = 'inside'
+    r1.interfaces!['g0/1']!.natRole = 'outside'
+    r1.acls = [{ id: '1', action: 'permit', protocol: 'ip', srcType: 'network', src: '192.168.10.0', wildcard: '0.0.0.255', dstType: 'any', dst: '' }]
+    r1.natOverload = { aclId: '1', outsideInterface: 'g0/1' }
+    r1.natTranslations = []
+    return t
+  }
+  it('natRole, natOverload ve çeviri tablosu eşlenir; gidiş-dönüş birebir', () => {
+    const t = withNat()
+    const r = toLabber(t)
+    expect(r.report.engineDecision, JSON.stringify(r.report)).toBe('labber')
+    expect(r.running['r1']!.nat).toEqual({ statics: [], pools: {}, rules: [{ acl: '1', iface: 'GigabitEthernet0/1', overload: true }] })
+    expect(r.running['r1']!.ifaces['GigabitEthernet0/0']!.l3).toEqual({ nat: 'inside' })
+    expect(roundTrip(t)).toEqual(t)
+  })
+  it('NAT\'sız dönüş yok; PAT ile ping döner ve çeviri natTranslations\'a yazılır', () => {
+    const t = withNat()
+    t.devices[1]!.staticRoutes = [{ network: '0.0.0.0', mask: '0.0.0.0', nextHop: '10.0.12.2', distance: 1 }]
+    const rt = createRuntime(toLabber(t))
+    runScript(rt, 'r1', 'configure terminal\nno ip nat inside source list 1 interface g0/1 overload\nend')
+    expect(rt.query().ping('pc1', '192.168.20.20').ok).toBe(false)
+    expect(toAglab(rt, t).devices[1]!.natOverload).toBeUndefined()
+    runScript(rt, 'r1', 'configure terminal\nip nat inside source list 1 interface g0/1 overload\nend')
+    // değerlendirme ping'i tabloya yazmaz; terminal ping'i yazar
+    expect(rt.query().ping('pc1', '192.168.20.20').ok).toBe(true)
+    expect(rt.natTable).toEqual([])
+    expect((createSession(rt, 'pc1') as VpcsSession).exec('ping 192.168.20.20').join('\n')).toContain('bytes from')
+    const back = toAglab(rt, t).devices[1]!
+    expect(back.natOverload).toEqual({ aclId: '1', outsideInterface: 'g0/1' })
+    expect(back.natTranslations).toEqual([{ key: '192.168.10.10|192.168.20.20|icmp', protocol: 'icmp', insideLocal: '192.168.10.10', insideGlobal: '10.0.12.1', outsideLocal: '192.168.20.20' }])
+  })
+  it('AğLab çeviri tablosu Labber\'da gösterilir; clear ile boşalır', () => {
+    const t = withNat()
+    t.devices[1]!.natTranslations = [{ key: '192.168.10.10|192.168.20.20|icmp', protocol: 'icmp', insideLocal: '192.168.10.10', insideGlobal: '10.0.12.1', outsideLocal: '192.168.20.20' }]
+    const rt = createRuntime(toLabber(t))
+    expect(runScript(rt, 'r1', 'show ip nat translations').join('\n')).toMatch(/icmp 10\.0\.12\.1\s+192\.168\.10\.10\s+192\.168\.20\.20\s+192\.168\.20\.20/)
+    runScript(rt, 'r1', 'clear ip nat translation *')
+    expect(toAglab(rt, t).devices[1]!.natTranslations).toEqual([])
+  })
+  it('AğLab modelinde olmayan NAT ayrıntısı açık hata verir; geçersiz alan reddedilir', () => {
+    for (const line of ['ip nat inside source static 192.168.10.10 10.0.12.5', 'ip nat pool P 10.0.12.1 10.0.12.1 netmask 255.255.255.252', 'ip nat inside source list 1 interface g0/1']) {
+      const rt = createRuntime(toLabber(withNat()))
+      runScript(rt, 'r1', 'configure terminal\n' + line + '\nend')
+      expect(() => toAglab(rt, withNat()), line).toThrow(BridgeError)
+    }
+    const bad: [string, (t: AglabTopology) => void][] = [
+      ['natRole', (t) => (t.devices[1]!.interfaces!['g0/0']!.natRole = 'both')],
+      ['outside arayüzü', (t) => (t.devices[1]!.natOverload = { aclId: '1', outsideInterface: 'g0/9' })],
+      ['çeviri girdisi', (t) => (t.devices[1]!.natTranslations = [{ protocol: 'gre', insideLocal: '1.1.1.1', insideGlobal: '2.2.2.2', outsideLocal: '3.3.3.3' }])],
+    ]
+    for (const [name, mutate] of bad) {
+      const t = withNat()
+      mutate(t)
+      const r = toLabber(t)
+      expect(r.report.engineDecision, name).toBe('legacy')
+      expect(r.report.rejected.length, name).toBeGreaterThan(0)
+    }
+  })
+})
+
 describe('köprü: gerçek içerik', () => {
   for (const [id, t] of content()) {
     const decision = toLabber(t).report.engineDecision
@@ -674,7 +739,8 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
     ['DHCP relay', (t) => (t.devices[2]!.interfaces!['gi0/1']!.helperAddress = '10.0.0.1'), /DHCP relay/],
     ['DHCP sunucu', (t) => (t.devices[0]!.services = { dhcp: true }), /servisleri/],
     ['ACL', (t) => (t.devices[2]!.acls = []), /ACL/],
-    ['NAT', (t) => (t.devices[2]!.natOverload = { aclId: 1, outsideInterface: 'gi0/1' }), /NAT/],
+    // L5-d: router NAT desteklenir (bkz. "köprü: NAT (L5-d)"); switch'te NAT yoktur
+    ['switch NAT', (t) => (t.devices[2]!.natOverload = { aclId: 1, outsideInterface: 'gi0/1' }), /NAT/],
     ['BGP', (t) => (t.devices[2]!.bgp = { asn: 65001 }), /BGP/],
     ['routed switch portu', (t) => (t.devices[2]!.interfaces!['gi0/1']!.ip = '10.0.0.1'), /routed port/],
     ['tanınmayan alan', (t) => (t.devices[2]!.foo = 1), /karşılığı olmayan/],

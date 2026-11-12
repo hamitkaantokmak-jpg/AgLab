@@ -1,4 +1,4 @@
-# Devir notu — Labber entegrasyonu (L5-f → L5-e → L5-c → L5-d)
+# Devir notu — Labber entegrasyonu (L5-f → L5-e → L5-c → L5-d tamam)
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
@@ -26,48 +26,24 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L5-f CDP/LLDP | #70 (main'den) | açık (birleşmeyi bekliyor) |
 | L5-e port security; `port-security` | #72 (#70'in dalından) | açık (birleşmeyi bekliyor) |
 | L5-c ACL | #73 (#72'nin dalından) | açık (birleşmeyi bekliyor) |
-| L5-d NAT/PAT | — | **başlanmadı** (bağlam doldu; aşağıdaki plan) |
+| L5-d NAT/PAT; `nat-pat` | #74 (#73'ün dalından) | açık (birleşmeyi bekliyor) |
 
-**Sıradaki: L5-d NAT/PAT**, #73'ün dalından (`claude/l5c-acl`) yeni dal; tek PR, birleştirilmez.
-Açık zincir: #70 (L5-f, main'den) → #72 (L5-e) → #73 (L5-c). Bugün eski motorda kalan içerik:
-`nat-pat` (NAT + sunucunun HTTP servisi) ve `bgp-as` (BGP, kapsam dışı).
+Açık zincir: #70 (L5-f, main'den) → #72 (L5-e) → #73 (L5-c) → #74 (L5-d); her biri bir
+öncekinin dalından, hiçbiri birleştirilmedi. Birleştirme sırası aynı olmalı (her PR bir
+öncekinin değişikliklerini içerir). CI sonucunu kullanıcı denetler (oturum CI'ı beklemez).
 
-### L5-d için kalan adımlar (kullanıcı talimatı + tasarım önerisi)
-1. **Model** (`types.ts`): `L3Opts.natRole?: 'inside' | 'outside'` (router portu, alt arayüz);
-   `SwitchConfig.nat?: { statics: {local, global, proto?, lport?, gport?}[]; pools:
-   Record<name, {start, end, mask}>; dynamic: {acl, pool?|iface?, overload}[] }`. Çeviri
-   tablosu çalışma zamanı durumu: `LabRuntime.natTable` (inside local/global, outside
-   local/global, protokol, port; ICMP için kimlik), `natStats` (hit/miss).
-2. **Veri yolu** (`net.ts deliver`): paket inside→outside geçerken (giriş arayüzü inside,
-   çıkış outside) kaynak çevrilir: önce statik, sonra dinamik kural (ACL `aclDecide` ile
-   eşleşen kaynak; havuzdan sıradaki boş adres; `overload` ile port/ICMP kimliği). Dönüş
-   paketinde tablo ile hedef geri çevrilir; tabloda yoksa outside→inside düşer (statik hariç).
-   Tablo girdisi yalnız gerçek trafikte (CLI ping) yazılır; LabQuery salt okunur ama aynı
-   kararı verir (tablo üretmeden). Sıra IOS'taki gibi: inside→outside'da yönlendirmeden
-   sonra çevirme, outside→inside'da yönlendirmeden önce. ACL (L5-c) çevirmeden önce/sonra
-   IOS sırasına göre (giriş ACL'i çevrilmemiş, çıkış ACL'i çevrilmiş adresi görür).
-3. **CLI**: arayüzde `ip nat inside|outside`; `ip nat inside source static [tcp|udp] L G
-   [lport gport]`; `ip nat pool NAME start end netmask M`; `ip nat inside source list ACL
-   pool NAME [overload]`; `ip nat inside source list ACL interface IF overload`; `no` biçimleri;
-   `show ip nat translations [verbose]`, `show ip nat statistics`, `clear ip nat translation *`.
-   running-config satırları. Gerçek IOS biçimi: `Pro Inside global Inside local Outside local
-   Outside global`; ICMP girdisi `icmp 203.0.113.1:1 192.168.1.10:1 …`.
-4. **Köprü**: AğLab router `natOverload {aclId, outsideInterface}`, arayüz `natRole`,
-   `natTranslations` (oracle: `src/engine/nat.js`, test `tests/node/test_engine_nat_dhcp.cjs`);
-   ifade edilemeyen (statik NAT, havuz) → `BridgeError` ya da AğLab modeline alan ekle.
-5. **`nat-pat` senaryosu** (`main.js loadSharedNatScenario`): sunucu `WEB-PUBLIC`
-   `services.http`. Labber'da HTTP yok: ya sunucu servisi kapatılır (senaryo yalnız ping ile
-   doğrular; önceki L4/L5-b örneği gibi gerekçelendir) ya da HTTP (TCP 80) modellenir.
-   Senaryo `verify.kind: ping`; çözüm `ip nat inside source list 1 interface g0/1 overload`.
-6. **Testler**: tests/sim başarılı + başarısız (inside/outside ters, ACL eşleşmiyor, pool
-   tükendi — overload yok); `parity.test.ts` `nat.js` ile; Playwright `nat-pat`
-   (`test_aglab_network_features`, `test_aglab_engine_choice`); belgeler (UYUMLULUK_MATRISI
-   "L5-d", YENIDEN_YAPILANMA sıra 7, LAB_MOTOR_HARITASI üret, DEVIR_NOTU).
-Dal zinciri: L5-f (main'den) → L5-e → L5-c → L5-d; her biri ayrı PR, bir öncekinin dalından,
-hiçbiri birleştirilmez. CI sonucunu kullanıcı denetler (oturum CI'ı beklemez). Bugün eski
-motorda kalan içerik: `nat-pat` (ACL, NAT, HTTP servisi), `bgp-as`, `port-security`
-(`LAB_MOTOR_HARITASI.md` özet tablosu). Kapsam dışı: BGP, PKT IOS metin yolu, içe aktarmanın
-Labber'a geçmesi, arayüz değişikliği, Canlı Lab, DHCP snooping, DAI.
+**L5 kapsamındaki işler bitti.** Eski motorda kalan içerik (`LAB_MOTOR_HARITASI.md`):
+yalnız `bgp-as` (BGP; kapsam dışı, gerekçe haritada). İçe aktarılan `.pkt` topolojileri de
+eski motorda (içe aktarmanın Labber'a geçmesi kapsam dışı).
+
+**Sıradaki iş** (YENIDEN_YAPILANMA L5 satırı, kullanıcı kararı gerekir):
+1. Zincirin sırayla birleştirilmesi (#70 → #72 → #73 → #74); her birleşmeden sonra bir
+   sonraki PR'ın tabanı `main`'e çevrilir.
+2. PKT IOS metin yolu (hoşgörülü mod) ve içe aktarılan topolojilerin Labber'a geçmesi (L5'in
+   kalan satırı; bu turda kapsam dışıydı). Bunlar gelince `test_aglab_icmp_ttl`,
+   `test_aglab_traceroute`, `test_aglab_routed_frames` gibi içe aktarma testlerinin eski
+   motor yolundaki NAT/ACL adımları Labber'da da sınanmalı.
+3. L6 (eski metin senaryoları), L7 (kalıcılık ve eski motorun kaldırılması).
 
 Kalan PR'ların kapsamı (kullanıcı talimatı):
 - **L5-c ACL:** standart ve genişletilmiş, numaralı ve isimli ACL; `ip access-group in/out`;
@@ -419,6 +395,31 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
   genişletilmiş, isimli, traceroute `!A`, geçersiz satırlar, router trafiği, tanımsız liste),
   `bridge.test.ts` "ACL (L5-c)", `parity.test.ts` `acl.js` ile, `routing-acceptance` next_hop
   ACL adımı; Playwright `test_aglab_labber_terminal` terminalden ACL.
+
+## L5-d — NAT/PAT (yapıldı, PR açık)
+
+- **Labber**: `src/sim/nat.ts` — tipler `NatConfig/NatStatic/NatRule` (types.ts),
+  `SwitchConfig.nat`, `L3Opts.nat`. `natOutbound` (inside→outside, yönlendirmeden sonra,
+  çıkış ACL'inden önce: statik, bilinen akış, kurallar — ACL'in açık `permit` satırı; arayüz
+  ya da havuz; overload'da port/ICMP kimliği, çakışırsa bir sonraki; havuz tükenirse düşer),
+  `natInbound` (outside→inside, yönlendirmeden önce), `natAliases` (global adresler için ARP).
+  `net.ts deliver`: `Hop.inIf/src/dst`, `Delivery.pkt/nat/natMiss/natted`,
+  `PacketSpec.natPending`; `ping` dönüşü çevrilmiş kaynağa gider ve geri çevrilir.
+  `LabRuntime.natTable/natHits/natMisses`, `recordNat` (yalnız CLI ping/traceroute),
+  kayıt/yükleme; `Derived.natTable` (runtime ile aynı dizi).
+- **CLI** (yalnız router): arayüz/alt arayüzde `ip nat inside|outside`; `ip nat inside source
+  static [tcp|udp] …`, `ip nat pool … netmask …`, `ip nat inside source list ACL pool|interface
+  … [overload]`, `no` biçimleri (çeviri varken onay sorusu); `show ip nat translations`,
+  `show ip nat statistics`, `clear ip nat translation *`; running-config.
+- **Köprü**: `natRole` ⇄ `L3Opts.nat`, `natOverload` ⇄ tek kural, `natTranslations` ⇄
+  `BridgeResult.nat` → runtime. Statik/havuz/overload'suz/birden çok eşleme → `BridgeError`.
+  Yan düzeltme: ACL kimliğinin AğLab türü (`"1"`/`1`) geri yazımda korunur.
+- **Senaryo**: `nat-pat` Labber'da; `WEB-PUBLIC` servissiz ve ağ geçitsiz (genel adres
+  alanındaki sunucunun özel ağa rotası yok).
+- **Testler**: `tests/sim/nat.test.ts` (PAT, TCP/UDP, ters roller, ACL eşleşmiyor/tanımsız,
+  havuz tükendi, statik, IOS hata iletileri, onay sorusu, kayıt/yükleme, Simulation Mode izi),
+  `nat-parity.test.ts` (`nat.js`), `bridge.test.ts` "NAT (L5-d)"; Playwright
+  `test_aglab_labber_terminal` `nat-pat` terminalden; eski motor örneği `bgp-as`.
 
 ## Kurallar hatırlatması
 

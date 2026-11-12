@@ -10594,8 +10594,11 @@ labLoadExperiment();
     srv.name = 'WEB-PUBLIC';
     srv.ip = '203.0.113.8';
     srv.mask = '255.255.255.0';
-    srv.gateway = '203.0.113.1';
-    srv.services = { ...(srv.services || {}), http: true };
+    // L5-d: genel adres alanındaki sunucunun özel ağa rotası yoktur (ağ geçidi yok): NAT'sız
+    // 192.168.1.10 kaynaklı paket sunucuya ulaşır ama yanıt dönemez (gerçek IOS davranışı).
+    // Sunucu yalnız ICMP hedefi; HTTP servisi Labber'da yok ve senaryoda kullanılmıyordu.
+    srv.gateway = '';
+    srv.services = {};
     [swIn, swOut].forEach((sw) => {
       sw.vlans = [1, 10];
       Object.entries(sw.interfaces).forEach(([n, i]) => {

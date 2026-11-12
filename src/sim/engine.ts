@@ -1,6 +1,7 @@
 // Derivation engine: turns switch configs into operational state.
 // Nothing here is scripted per lab; wrong config yields wrong behaviour on its own.
 
+import type { NatEntry } from './nat'
 import { noHardwareFaults, type ChannelMode, type Hardware, type L2IfConfig, type PcConfig, type SwitchConfig, type SwitchDef } from './types'
 import type { OspfState } from './ospf'
 import { l2Signature } from './config'
@@ -120,6 +121,8 @@ export interface Derived {
   ospf: Record<string, OspfState>
   /** duplicate addresses; filled by computeState() in ospf.ts */
   dups: DupIp[]
+  /** L5-d: dynamic NAT translations (owned by the runtime; read by deliver()) */
+  natTable?: NatEntry[]
 }
 
 const protoOf = (m: ChannelMode): 'LACP' | 'PAgP' | '-' =>

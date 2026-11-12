@@ -65,7 +65,7 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `access-vlan` | access-vlan | **Labber** |
 | `trunk-allowed` | trunk-allowed | **Labber** |
 | `native-vlan` | native-vlan | **Labber** |
-| `nat-pat` | nat-pat | Eski motor: NAT Labber'da yok (L5); NAT çeviri tablosu Labber'da yok (L5); Sunucu servisleri içinde HTTP Labber'da yok (L5) |
+| `nat-pat` | nat-pat | **Labber** |
 | `relay-trunk` | relay-trunk | **Labber** |
 | `stp-loop` | stp-loop | **Labber** |
 | `vlan-wrong-access` | VLAN · Yeni muhasebe PC'si kimseyi görmüyor | **Labber** |
@@ -129,16 +129,13 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 35 | 2 | 37 |
+| Ortak senaryolar | 36 | 1 | 37 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 88 | 2 | 90 |
+| Toplam | 89 | 1 | 90 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
 | BGP Labber'da yok (L5) | 1 |
-| NAT Labber'da yok (L5) | 1 |
-| NAT çeviri tablosu Labber'da yok (L5) | 1 |
-| Sunucu servisleri içinde HTTP Labber'da yok (L5) | 1 |
 
 ACL/NAT için security_smoke ayrı native operatör örnekleridir; mevcut 40 görevin ACL/NAT alanlarını dönüştürdüğü veya native doğruladığı iddia edilmez. ACL 28 ve SNAT/PAT 21 native kontrolü [CI 42205155584 / 6f651fe](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42205155584) güvenlik işlerinde geçti; görev aktarımı sayılmaz.
 

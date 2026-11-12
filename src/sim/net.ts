@@ -2,6 +2,7 @@
 
 import { crossVlan, egress, ingress, peerOf, portForwards, type Derived, type DupIp, type LPort } from './engine'
 import { aclDecide, l3OptsOf, type Packet } from './acl'
+import { natAliases, natInbound, natOutbound, type NatEntry } from './nat'
 import { psAdmits } from './portsec'
 import { pk } from './topology'
 import type { PcDef, SwitchDef } from './types'
@@ -335,12 +336,22 @@ export function arpResolve(d: Derived, from: L3If, ip: string): L3If | null {
     if (i.ip !== ip || !i.node) continue
     if (dom.nodes.has(nk(i.node))) return i
   }
+  // L5-d: a NAT router answers ARP for its global addresses on the connected subnet
+  for (const i of allL3Ifs(d)) {
+    if (!i.node || !dom.nodes.has(nk(i.node)) || !sameSubnet(i.ip, ip, i.prefix)) continue
+    if (natAliases(d.cfgs[i.dev]).includes(ip)) return { ...i, ip }
+  }
   return null
 }
 
 export interface Hop {
   dev: string
   ip: string
+  /** L5-d: interface the packet entered this device on */
+  inIf?: string
+  /** L5-d: IP addresses on this hop's wire (after NAT on earlier routers) */
+  src?: string
+  dst?: string
   /** interface used to leave the previous device */
   outIf: L3If
 }
@@ -360,10 +371,19 @@ export type Delivery = (
   | { kind: 'unreach'; at: string; atIp: string; hops: Hop[]; filtered?: AclHit }
   | { kind: 'timeout'; hops: Hop[] }
   | { kind: 'noip'; hops: Hop[] }
-) & { acl?: AclHit[] }
+) & {
+  acl?: AclHit[]
+  /** L5-d: the packet as it arrived (addresses after NAT) and the NAT entries it created */
+  pkt?: Packet
+  nat?: NatEntry[]
+  /** L5-d: a matching dynamic NAT rule had no free address (pool exhausted) */
+  natMiss?: boolean
+  /** L5-d: translations applied to this packet (show ip nat statistics "Hits") */
+  natted?: number
+}
 
-/** L5-c: what is being carried; defaults to an ICMP echo from the egress address. */
-export type PacketSpec = Partial<Packet>
+/** L5-c: what is being carried; defaults to an ICMP echo (id 1) from the egress address. */
+export type PacketSpec = Partial<Packet> & { natPending?: NatEntry[] }
 
 /** `ip access-group` decision on one interface of a routing device. */
 function aclCheck(d: Derived, dev: string, ifname: string, dir: 'in' | 'out', pkt: Packet, hits: AclHit[]): AclHit | null {
@@ -386,34 +406,60 @@ export function deliver(d: Derived, from: string, dst: string, spec: PacketSpec 
   let cur = from
   const hops: Hop[] = []
   const acl: AclHit[] = []
+  const nat: NatEntry[] = []
   let routers = 0
   if (!l3Ifs(d, from).length) return { kind: 'noip', hops }
-  const pkt: Packet = { proto: 'icmp', icmpType: 'echo', ...spec, src: spec.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0]!.ip, dst } as Packet
+  const { natPending, ...fields } = spec
+  let pkt: Packet = { proto: 'icmp', icmpType: 'echo', ...fields, src: fields.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0]!.ip, dst } as Packet
+  if (pkt.proto === 'icmp' && pkt.sport === undefined && pkt.icmpType === 'echo') pkt.sport = 1
+  const table = () => [...(d.natTable ?? []), ...(natPending ?? []), ...nat]
   const routing = (dev: string) => d.topo.devices[dev]?.kind === 'switch'
+  let inIf: string | null = null
+  let natted = 0
+  const end = <T extends Delivery>(r: T): T => ({ ...r, acl, pkt, nat, natted })
   for (let ttl = 0; ttl < 32; ttl++) {
-    if (owns(d, cur, dst)) return { kind: 'ok', hops, routersCrossed: routers, acl }
-    if (cur !== from && !isRouter(d, cur)) return { kind: 'timeout', hops, acl }
-    const r = lookup(d, cur, dst)
+    // L5-d: outside → inside: destination translated back on arrival (before routing)
+    if (cur !== from && inIf && routing(cur)) {
+      const back = natInbound(d, cur, inIf, pkt, table())
+      if (back) {
+        pkt = back
+        natted++
+      }
+    }
+    if (owns(d, cur, pkt.dst)) return end({ kind: 'ok', hops, routersCrossed: routers })
+    // a global address with no translation: nothing to forward to
+    if (cur !== from && natAliases(d.cfgs[cur]).includes(pkt.dst)) return end({ kind: 'timeout', hops })
+    if (cur !== from && !isRouter(d, cur)) return end({ kind: 'timeout', hops })
+    const r = lookup(d, cur, pkt.dst)
     if (!r) {
-      if (cur === from) return { kind: 'noroute', hops, acl }
+      if (cur === from) return end({ kind: 'noroute', hops })
       const at = hops[hops.length - 1]!
-      return { kind: 'unreach', at: cur, atIp: at.ip, hops, acl }
+      return end({ kind: 'unreach', at: cur, atIp: at.ip, hops })
     }
     const target = arpResolve(d, r.out, r.nh)
-    if (!target) return { kind: 'timeout', hops, acl }
-    if (cur !== from && routing(cur)) {
+    if (!target) return end({ kind: 'timeout', hops })
+    if (cur !== from && routing(cur) && inIf) {
+      // L5-d: inside → outside: source translated after routing, before the outbound ACL
+      const o = natOutbound(d, cur, inIf, r.out.name, pkt, table())
+      if (o === 'drop') return end({ kind: 'timeout', hops, natMiss: true })
+      if (o) {
+        pkt = o.pkt
+        nat.push(...o.entries)
+        natted++
+      }
       const denied = aclCheck(d, cur, r.out.name, 'out', pkt, acl)
-      if (denied) return { kind: 'unreach', at: cur, atIp: hops[hops.length - 1]!.ip, hops, acl, filtered: denied }
+      if (denied) return end({ kind: 'unreach', at: cur, atIp: hops[hops.length - 1]!.ip, hops, filtered: denied })
     }
     if (routing(target.dev)) {
       const denied = aclCheck(d, target.dev, target.name, 'in', pkt, acl)
-      if (denied) return { kind: 'unreach', at: target.dev, atIp: target.ip, hops: [...hops, { dev: target.dev, ip: target.ip, outIf: r.out }], acl, filtered: denied }
+      if (denied) return end({ kind: 'unreach', at: target.dev, atIp: target.ip, hops: [...hops, { dev: target.dev, ip: target.ip, outIf: r.out, inIf: target.name }], filtered: denied })
     }
     if (cur !== from) routers++
-    hops.push({ dev: target.dev, ip: target.ip, outIf: r.out })
+    hops.push({ dev: target.dev, ip: target.ip, outIf: r.out, inIf: target.name, src: pkt.src, dst: pkt.dst })
+    inIf = target.name
     cur = target.dev
   }
-  return { kind: 'timeout', hops, acl }
+  return end({ kind: 'timeout', hops })
 }
 
 /** Route choice for dst: outgoing interface and the next hop it is handed to (no ARP). */
@@ -492,8 +538,9 @@ export function ping(d: Derived, from: string, dst: string): PingResult {
   if (fwd.kind === 'noip') return { ok: false, reason: 'noip', forward: fwd }
   if (fwd.kind === 'noroute') return { ok: false, reason: 'noroute', forward: fwd }
   if (fwd.kind === 'unreach') {
-    // the ICMP unreachable comes from the router (its own traffic: not filtered on the way out)
-    const back = deliver(d, fwd.at, sourceIp(d, from, dst)!, { proto: 'icmp', icmpType: 'unreachable', src: fwd.atIp })
+    // the ICMP unreachable comes from the router (its own traffic: not filtered on the way out);
+    // it goes to the (possibly NAT-translated) source and is translated back on the way in
+    const back = deliver(d, fwd.at, fwd.pkt?.src ?? sourceIp(d, from, dst)!, { proto: 'icmp', icmpType: 'unreachable', src: fwd.atIp, dport: fwd.pkt?.sport, natPending: fwd.nat })
     return back.kind === 'ok'
       ? { ok: false, reason: 'unreach', unreachFrom: fwd.atIp, forward: fwd, back, firstHopArp }
       : { ok: false, reason: 'timeout', forward: fwd, back, firstHopArp }
@@ -502,11 +549,12 @@ export function ping(d: Derived, from: string, dst: string): PingResult {
     const nh = fwd.hops.length ? null : nextHop(d, from, dst)
     return { ok: false, reason: 'timeout', forward: fwd, firstHopArp, ...(nh ? { arpIncomplete: { dev: from, ip: nh } } : {}) }
   }
-  const src = sourceIp(d, from, dst)!
   // the device the request reached answers; the reply must come back to the sender
-  // (with a duplicate source address it goes to whoever wins ARP for that address)
+  // (with a duplicate source address it goes to whoever wins ARP for that address).
+  // L5-d: it is addressed to the source as the replier saw it (after NAT) and translated back.
+  const src = fwd.pkt?.src ?? sourceIp(d, from, dst)!
   const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from
-  const back = deliver(d, replier, src, { proto: 'icmp', icmpType: 'echo-reply', src: dst })
+  const back = deliver(d, replier, src, { proto: 'icmp', icmpType: 'echo-reply', src: dst, dport: fwd.pkt?.sport, natPending: fwd.nat })
   const backTo = back.hops[back.hops.length - 1]?.dev ?? replier
   if (back.kind !== 'ok' || backTo !== from) return { ok: false, reason: 'timeout', forward: fwd, back, firstHopArp }
   const base = d.topo.devices[replier]!.kind === 'pc' ? 64 : 255

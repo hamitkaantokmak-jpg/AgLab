@@ -236,3 +236,31 @@ Bu PR'la senaryo motor kararı değişmez: `nat-pat` NAT ve HTTP servisi için e
 | AğLab'da ifade edilemeyen | — | Kaynak portu, `eq` dışı port işleci, ICMP türü | `toAglab` `BridgeError`. |
 | **Desteklenmiyor** | — | `remark`, `log`/`log-input`, `established`, ICMP türü listesi dışındakiler (`echo`, `echo-reply`, `unreachable`, `time-exceeded` var), `ip access-list resequence`, zaman tabanlı ACL, `access-class` (vty), IPv6 ACL, switch portu (PACL) ve VLAN ACL | Komut `% Invalid input` verir. |
 
+
+## L5-d: NAT/PAT (Labber kararları)
+
+Oracle paritesi: `tests/sim/nat-parity.test.ts` bütün varyant birleşimlerinde (arayüz rolleri doğru/ters/inside
+yok × ACL eşleşir/eşleşmez/yok × overload çıkış arayüzü/başka outside arayüz/yok) Labber'ın
+çeviri kararını `src/engine/nat.js` `natPathCheck` ile karşılaştırır. Oracle'ın çevirdiği her
+durumda inside global adresi ve girdi (inside local, outside local, protokol) aynı; farklar
+yalnız aşağıdaki iki bilinen türde. `nat-pat` senaryosu Labber kararına geçti.
+
+| Konu | Eski motor | Labber | Karar |
+|---|---|---|---|
+| Model | Router `natOverload {aclId, outsideInterface}`, arayüz `natRole`, `natTranslations[]` `{key, protocol, insideLocal, insideGlobal, outsideLocal}` | `SwitchConfig.nat {statics, pools, rules}`, `L3Opts.nat` (router portu, alt arayüz), çalışma zamanı çeviri tablosu | **Köprü iki yönde** (tek "ACL + arayüz + overload" eşlemesi). Statik NAT, havuz, overload'suz ya da birden çok eşleme AğLab modelinde yok → `toAglab` `BridgeError`. |
+| NAT'sız / ACL eşleşmeyen inside → outside akışı | Akış "başarısız" | IOS: paket çevrilmeden iletilir; dönüş yolu yoksa yanıt gelmez | **Labber (IOS).** Bilinen fark `oracle-fails-untranslated`. |
+| Overload başka bir outside arayüzü gösteriyor | Akış reddedilir | IOS: gösterilen arayüzün adresine çevrilir | **Labber (IOS).** Bilinen fark `other-outside-interface-translates`. |
+| Sıra | Yol üzerinde ilk inside → outside router | inside → outside: giriş ACL'i, yönlendirme, NAT, çıkış ACL'i; outside → inside: giriş ACL'i, NAT (hedef geri çevrilir), yönlendirme | **Labber (IOS).** |
+| Tanımsız ACL'e bağlı eşleme | Doğrulamada reddedilir | Hiçbir şey çevrilmez | **Labber.** **Doğrulanmadı:** IOS'un tanımsız liste için tam davranışı. |
+| PAT port seçimi | Port yok (anahtar kaynak\|hedef\|protokol) | Kaynak port/ICMP kimliği korunur; başka bir akış kullanıyorsa bir sonraki boş değer | **Doğrulanmadı:** IOS'un port/ICMP kimliği seçimi. |
+| ICMP kimliği, UDP kaynak portu | — | VPCS ve IOS ping kimliği 1; traceroute UDP kaynak portu 49152, hedef 33434 | **Doğrulanmadı.** |
+| Havuz tükendi (overload yok) | — | Paket düşer (zaman aşımı), `show ip nat statistics` "Misses" ve havuz "misses" artar | **Labber (IOS).** |
+| ARP | — | NAT router'ı statik global adresler ve havuz adresleri için bağlı alt ağda ARP yanıtlar (IOS alias); çevirisi olmayan global adrese gelen paket düşer | **Doğrulanmadı:** havuz adresleri için alias ayrıntısı. |
+| Çeviri tablosu | Akış başına kayıt (zaman aşımı yok) | Yalnız gerçek trafik (terminal ping/traceroute) yazar; değerlendirme ping'i (LabQuery) aynı kararı tabloya yazmadan verir. Zaman aşımı yok; `clear ip nat translation *` boşaltır; kayıt/yüklemede korunur | **Doğrulanmadı:** zaman aşımları (ICMP 60 sn, UDP 300 sn, TCP 24 sa) modellenmez. AğLab'a port bilgisi olmadan, eski motor anahtarıyla tekilleştirilerek yazılır. |
+| Statik NAT girdisi | — | `show ip nat translations` yapılandırmadan `---` satırı; statik çeviriyle geçen trafik ayrıca genişletilmiş girdi yazmaz | **Doğrulanmadı:** IOS statik çeviride trafikle genişletilmiş girdi de gösterir. |
+| `no ip nat inside source list …` (çeviri varken) | — | IOS gibi `%Dynamic mapping in use, do you want to delete all entries? [no]:` sorar; `yes` eşlemeyi ve cihazın dinamik çevirilerini siler | Kabul edildi. |
+| Hata iletileri | — | `%End address less than starting address`, `%Start and end addresses on different subnets`, `%Pool P in use, cannot destroy`, `% similar static entry (A -> B) already exists` | **Doğrulanmadı:** iletilerin tam metni. |
+| Aynı ACL için yeni eşleme | — | Önceki eşlemenin yerine geçer | **Doğrulanmadı:** IOS kullanımdaki eşlemeyi değiştirmeyi reddedebilir. |
+| Switch | — | NAT yok: `ip nat`, `show/clear ip nat` switch'te `% Invalid input` | Kabul edildi. |
+| Simulation Mode | — | Her kablodaki IP adresleri NAT'tan sonraki değerleri gösterir; dönüş ping'in kendi (geri çevrilen) teslimatıdır | Kabul edildi. |
+| **Desteklenmiyor** | — | `ip nat outside source …`, `ip nat inside destination …`, route-map'li NAT, `ip nat pool … prefix-length`, `ip nat pool … type rotary`, `extendable`, `no-alias`, `add-route`, `ip nat translation timeout`, `clear ip nat translation` (tek girdi), `ip nat log`, NVI (`ip nat enable`), NAT64, router'ın kendi trafiğinin çevrilmesi | Komut `% Invalid input` verir. |
