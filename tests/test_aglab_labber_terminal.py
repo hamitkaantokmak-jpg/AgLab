@@ -238,6 +238,31 @@ class LabberTerminalTests(unittest.TestCase):
         self.type("end")
         self.assertFalse(self.goal())
 
+    def test_show_cdp_neighbors_from_terminal(self):
+        """L5-f: terminalden `show cdp neighbors` IOS sütunlarıyla; PC'ler listelenmez, kablo
+        çıkınca komşu anında düşer, `no cdp run` sonrası CDP kapalı mesajı."""
+        self.load("vlan-uplink-not-trunk")
+        self.assertTrue(self.page.evaluate("aglabLabberSession.active()"))
+        self.device("SW1")
+        self.type("enable")
+        out = self.type("show cdp neighbors")
+        self.assertIn(
+            "Device ID        Local Intrfce     Holdtme    Capability  Platform  Port ID", out
+        )
+        rows = [line for line in out if line.startswith("SW2 ")]
+        self.assertEqual(len(rows), 1, out)
+        self.assertIn("Gig 0/24", rows[0])
+        self.assertFalse(any(line.startswith("PC-") for line in out), out)
+        self.assertIn("Total cdp entries displayed : 1", out)
+        self.page.evaluate("aglabLabberSession.setLink('d3', 'gi0/24', false)")
+        out = self.type("show cdp neighbors")
+        self.assertFalse(any(line.startswith("SW2 ") for line in out), out)
+        self.assertIn("Total cdp entries displayed : 0", out)
+        self.type("configure terminal")
+        self.type("no cdp run")
+        self.type("end")
+        self.assertIn("% CDP is not enabled", self.type("show cdp neighbors"))
+
     def test_legacy_content_keeps_legacy_terminal(self):
         # L5-a'dan beri router-on-a-stick Labber'da; NAT/ACL'li senaryo L5'in kalanına kadar eski motorda.
         self.load("nat-pat")

@@ -7,6 +7,7 @@ import type { ChannelMode, DhcpPool, IpAddr, L2IfConfig, L3Opts, OspfConfig, Phy
 import { canonIf, clone, ifNum, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
+import * as disc from '../discovery'
 
 export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp'
 
@@ -56,7 +57,12 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show etherchannel summary', run: (x) => show.showEtherchannelSummary(x.rt, x.dev) },
     { p: 'show mac address-table', run: (x) => show.showMac(x.rt, x.dev) },
     { p: 'show mac address-table address <H.H.H:48 bit mac address>', run: (x, a) => show.showMac(x.rt, x.dev, normalizeMac(a[4]!)!) },
-    { p: 'show cdp neighbors', run: (x) => show.showCdp(x.rt, x.dev) },
+    { p: 'show cdp neighbors', run: (x) => disc.showCdpNeighbors(x.rt, x.dev, false) },
+    { p: 'show cdp neighbors detail', run: (x) => disc.showCdpNeighbors(x.rt, x.dev, true) },
+    { p: 'show cdp interface', run: (x) => disc.showCdpInterface(x.rt, x.dev) },
+    { p: 'show cdp interface <if>', run: (x, a) => disc.showCdpInterface(x.rt, x.dev, x.physName(a[3]!, a[4]!, 3)), ifTypes: ['FastEthernet', 'GigabitEthernet'] },
+    { p: 'show lldp neighbors', run: (x) => disc.showLldpNeighbors(x.rt, x.dev, false) },
+    { p: 'show lldp neighbors detail', run: (x) => disc.showLldpNeighbors(x.rt, x.dev, true) },
     { p: 'show history', run: (x) => x.history.slice(-20).map((h) => '  ' + h) },
     // L5-b: DHCP server
     { p: 'show ip dhcp binding', run: (x) => show.showDhcpBinding(x.rt, x.dev) },
@@ -175,6 +181,11 @@ const configPatterns = (def: SwitchDef): P[] => {
     { p: 'no ip dhcp excluded-address <A.B.C.D:Low IP address>', run: (x, a) => x.dhcpExclude(a[4]!, a[4]!, false) },
     { p: 'no ip dhcp excluded-address <A.B.C.D:Low IP address> <A.B.C.D:High IP address>', run: (x, a) => x.dhcpExclude(a[4]!, a[5]!, false) },
     { p: 'no ip domain-lookup', run: () => {} },
+    // L5-f: CDP (IOS: varsayılan açık), LLDP (varsayılan kapalı)
+    { p: 'cdp run', run: (x) => void delete x.cfg.cdpRun },
+    { p: 'no cdp run', run: (x) => void (x.cfg.cdpRun = false) },
+    { p: 'lldp run', run: (x) => void (x.cfg.lldpRun = true) },
+    { p: 'no lldp run', run: (x) => void delete x.cfg.lldpRun },
     { p: 'ip domain-lookup', run: () => {} },
     { p: 'spanning-tree portfast bpduguard default', run: (x) => void (x.cfg.bpduguardDefault = true) },
     { p: 'no spanning-tree portfast bpduguard default', run: (x) => void (x.cfg.bpduguardDefault = false) },
@@ -321,6 +332,16 @@ const routerPatterns: P[] = [
   },
 ]
 
+/** L5-f: CDP/LLDP per physical port (switch and router). */
+const discoveryIfPatterns: P[] = [
+  { p: 'cdp enable', run: (x) => x.eachPhys((c) => void delete c.cdp) },
+  { p: 'no cdp enable', run: (x) => x.eachPhys((c) => void (c.cdp = false)) },
+  { p: 'lldp transmit', run: (x) => x.eachPhys((c) => void delete c.lldpTx) },
+  { p: 'no lldp transmit', run: (x) => x.eachPhys((c) => void (c.lldpTx = false)) },
+  { p: 'lldp receive', run: (x) => x.eachPhys((c) => void delete c.lldpRx) },
+  { p: 'no lldp receive', run: (x) => x.eachPhys((c) => void (c.lldpRx = false)) },
+]
+
 /** Router port (always routed): no switchport, STP or channel commands. */
 const routerIfPatterns: P[] = [
   ...commonSub,
@@ -331,6 +352,7 @@ const routerIfPatterns: P[] = [
   { p: 'ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>', run: (x, a) => x.setIp(a[2]!, a[3]!) },
   { p: 'no ip address', run: (x) => x.eachPhys((c) => void (c.ip = null)) },
   ...l3OptPatterns,
+  ...discoveryIfPatterns,
 ]
 
 /** L5-a: router subinterface (`interface Gi0/0.N`). */
@@ -393,6 +415,7 @@ const l2IfPatterns = (def: SwitchDef): P[] => {
     { p: 'channel-group <1-48:Channel group number> mode desirable', run: (x, a) => x.channelGroup(Number(a[1]), 'desirable') },
     { p: 'channel-group <1-48:Channel group number> mode auto', run: (x, a) => x.channelGroup(Number(a[1]), 'auto') },
     { p: 'no channel-group', run: (x) => x.noChannelGroup() },
+    ...discoveryIfPatterns,
   ]
   if (def.l3) {
     p.push(
@@ -768,6 +791,13 @@ export class IosSession {
     base.shutdown = false
     base.description = ''
     return base
+  }
+
+  /** A physical port of this device (show commands); anything else is invalid input. */
+  physName(type: string, num: string, argIndex: number): string {
+    const name = canonIf(type, num)
+    if (!name || !this.cfg.ifaces[name]) throw new InvalidAt(argIndex + 1)
+    return name
   }
 
   enterIf(type: string, num: string): Out {

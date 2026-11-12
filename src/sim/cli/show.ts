@@ -6,7 +6,7 @@ import { macTable, routeTable, type RouteEntry } from '../net'
 import type { OspfIf } from '../ospf'
 import type { LabRuntime } from '../runtime'
 import { pk } from '../topology'
-import type { IpAddr, L2IfConfig, L3Opts, SwitchConfig, SwitchDef } from '../types'
+import type { IpAddr, L2IfConfig, L3Opts, PhysIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { formatVlanList, ifType, intToIp, ipToInt, macAdd, maskToPrefix, pad, padL, prefixMaskInt, shortIf } from '../util'
 
 const sortIfs = (sw: SwitchDef, names: string[]) =>
@@ -50,6 +50,21 @@ function l3Lines(ip: IpAddr | null | undefined, o: L3Opts | undefined, noIpLine:
 /** `ip route` line; the distance is shown only when it is not the default 1. */
 const routeLine = (r: SwitchConfig['routes'][number]) => `ip route ${r.net} ${r.mask} ${r.nh}` + (r.ad && r.ad !== 1 ? ' ' + r.ad : '')
 
+/** L5-f: CDP/LLDP lines differing from the IOS defaults (CDP on, LLDP off). */
+function discoveryGlobalLines(c: SwitchConfig): string[] {
+  const o: string[] = []
+  if (c.cdpRun === false) o.push('!', 'no cdp run')
+  if (c.lldpRun) o.push('!', 'lldp run')
+  return o
+}
+function discoveryIfLines(c: PhysIfConfig): string[] {
+  const o: string[] = []
+  if (c.cdp === false) o.push(' no cdp enable')
+  if (c.lldpTx === false) o.push(' no lldp transmit')
+  if (c.lldpRx === false) o.push(' no lldp receive')
+  return o
+}
+
 /** Router (L4): no VLAN/VTP/STP sections, routed ports without `no switchport`. */
 function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   const o: string[] = []
@@ -71,7 +86,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
     if (ic.description) o.push(' description ' + ic.description)
     o.push(...l3Lines(ic.ip, ic.l3, true))
     if (ic.shutdown) o.push(' shutdown')
-    o.push('!')
+    o.push(...discoveryIfLines(ic), '!')
     for (const [name, si] of subifsOf(c, p)) {
       o.push('interface ' + name)
       if (si.description) o.push(' description ' + si.description)
@@ -84,7 +99,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   if (c.ospf) o.push(...ospfLines(c))
   o.push('ip forward-protocol nd', 'no ip http server', '!')
   for (const r of c.routes) o.push(routeLine(r))
-  o.push('!', 'line con 0', 'line aux 0', 'line vty 0 4', ' login', '!', 'end')
+  o.push(...discoveryGlobalLines(c), '!', 'line con 0', 'line aux 0', 'line vty 0 4', ' login', '!', 'end')
   return o
 }
 
@@ -170,7 +185,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
       if (ic.bpduguard !== undefined) o.push(` spanning-tree bpduguard ${ic.bpduguard ? 'enable' : 'disable'}`)
       if (ic.channel) o.push(` channel-group ${ic.channel.id} mode ${ic.channel.mode}`)
     }
-    o.push('!')
+    o.push(...discoveryIfLines(ic), '!')
   }
   for (const v of Object.keys(c.svis).map(Number).sort((a, b) => a - b)) {
     const s = c.svis[String(v)]!
@@ -184,7 +199,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   if (c.defaultGateway) o.push('ip default-gateway ' + c.defaultGateway)
   o.push('ip forward-protocol nd', 'no ip http server', '!')
   for (const r of c.routes) o.push(routeLine(r))
-  o.push('!', 'line con 0', 'line vty 0 4', ' login', 'line vty 5 15', ' login', '!', 'end')
+  o.push(...discoveryGlobalLines(c), '!', 'line con 0', 'line vty 0 4', ' login', 'line vty 5 15', ' login', '!', 'end')
   return o
 }
 
@@ -698,28 +713,6 @@ export function showMac(rt: LabRuntime, dev: string, only?: string): string[] {
   const shown = only ? rows.filter((r) => r.mac === only) : rows
   o.push(...shown.map((r) => r.line))
   o.push(`Total Mac Addresses for this criterion: ${shown.length}`)
-  return o
-}
-
-export function showCdp(rt: LabRuntime, dev: string): string[] {
-  const d = rt.derived
-  const sw = rt.topo.devices[dev] as SwitchDef
-  const o = [
-    'Capability Codes: R - Router, T - Trans Bridge, B - Source Route Bridge',
-    '                  S - Switch, H - Host, I - IGMP, r - Repeater, P - Phone,',
-    '                  D - Remote, C - CVTA, M - Two-port Mac Relay',
-    '',
-    'Device ID        Local Intrfce     Holdtme    Capability  Platform  Port ID',
-  ]
-  for (const p of sw.ports) {
-    const ps = d.phys[pk(dev, p)]!
-    if (!ps.up || !ps.peer || ps.peerIsPc) continue
-    const peer = rt.topo.devices[ps.peer.dev] as SwitchDef
-    const caps = peer.router ? 'R B' : peer.l3 ? 'R S I' : 'S I'
-    o.push(pad(rt.hostname(peer.id), 17) + pad(shortIf(p).replace(/^(\w\w)/, '$1 '), 18) + pad('163', 11) + pad(caps, 12) + pad(peer.model.split(' ')[0]!.slice(0, 9), 10) + shortIf(ps.peer.port).replace(/^(\w\w)/, '$1 '))
-  }
-  const n = o.length - 5
-  o.push('', `Total cdp entries displayed : ${n}`)
   return o
 }
 

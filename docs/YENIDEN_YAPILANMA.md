@@ -265,6 +265,7 @@ aşamasının gereksinimine göre):
 | 12 | Aynı IP'yi kullanan iki cihaz — **tamamlandı (L2-C)** | Türetme adımı: çakışan adreslerin tespiti; `%IP-4-DUPADDR` syslog'u (`runtime.ts` `diffLogs`); ping'in hangi cihazın yanıtladığını belirtmesi | Çakışma varken syslog üretilir ve yanıtlayan cihaz belirlidir (deterministik); çakışma kalkınca syslog kesilir |
 | 13 | Topoloji düzenlemede kablonun başka porta taşınması — **tamamlandı (L2-C)** | Köprü + runtime: bağlantı uç noktası değişince yeniden türetme; eski portun MAC/ARP girişlerinin temizlenmesi | Taşımadan önce/sonra ping ve MAC tablosu; eski porttaki giriş kalmaz |
 | 14 | `LabQuery` eklemeleri: `macPort`, `macVlan`, `macTable`, `ipUnique`, `ping().replier` — **tamamlandı (L2-C)** | `query.ts`; L5'teki `query.*` beyaz listesine eklenir | Her sorgu için başarılı ve başarısız durum |
+| 15 | CDP/LLDP — **tamamlandı (L5-f)** | `discovery.ts`: komşu tablosu türetilmiş durumdan; `cdp run`/`lldp run`, arayüzde `cdp enable`, `lldp transmit/receive`; `show cdp neighbors [detail]`, `show cdp interface`, `show lldp neighbors [detail]` | Kablo/güç/shutdown ile komşu düşer; `no cdp enable` portunda komşu yok; LLDP açılmadan tablo boş |
 
 Labber'ın AğLab'dan **güçlü** olduğu alanlar olduğu gibi alınır: DTP, EtherChannel
 (LACP/PAgP), PVST+/Rapid-PVST, PortFast, BPDU Guard, err-disable kurtarma, OSPF

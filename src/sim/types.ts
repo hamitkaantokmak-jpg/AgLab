@@ -68,6 +68,11 @@ export interface DhcpBinding {
 }
 
 export interface PhysIfConfig extends L2IfConfig {
+  /** L5-f: `no cdp enable` → false (undefined = CDP on the port) */
+  cdp?: boolean
+  /** L5-f: `no lldp transmit` / `no lldp receive` → false (undefined = on) */
+  lldpTx?: boolean
+  lldpRx?: boolean
   channel: { id: number; mode: ChannelMode } | null
   /** `no switchport` (L3 switches only) */
   routed?: boolean
@@ -150,6 +155,10 @@ export interface SwitchConfig {
   /** L5-a, routers only: full subinterface name (e.g. GigabitEthernet0/0.10) -> config */
   subifs?: Record<string, SubIfConfig>
   ospf?: OspfConfig | null
+  /** L5-f: `no cdp run` → false (undefined = CDP on, IOS default) */
+  cdpRun?: boolean
+  /** L5-f: `lldp run` → true (undefined = LLDP off, IOS default) */
+  lldpRun?: boolean
   /** `spanning-tree portfast bpduguard default` */
   bpduguardDefault?: boolean
   /** `errdisable recovery cause bpduguard` */
