@@ -37,6 +37,9 @@ export interface L3Opts {
   mtu?: number
   /** `bandwidth` in kbit/s */
   bandwidth?: number
+  /** L5-c: `ip access-group <acl> in|out` (routed port, subinterface, SVI) */
+  aclIn?: string
+  aclOut?: string
   /** L5-b: `ip helper-address` list (DHCP relay), in configuration order */
   helpers?: string[]
 }
@@ -65,6 +68,34 @@ export interface DhcpBinding {
   mac: string
   /** lease expiration as printed by `show ip dhcp binding` */
   expires: string
+}
+
+/** L5-c: IPv4 access list. `wild` is the IOS wildcard (any = 0.0.0.0 255.255.255.255). */
+export interface AclAddr {
+  addr: string
+  wild: string
+}
+export interface AclPort {
+  op: 'eq' | 'neq' | 'gt' | 'lt' | 'range'
+  a: number
+  b?: number
+}
+export interface AclEntry {
+  seq: number
+  action: 'permit' | 'deny'
+  /** standard lists: 'ip' */
+  proto: 'ip' | 'icmp' | 'tcp' | 'udp'
+  src: AclAddr
+  srcPort?: AclPort
+  /** extended lists only (standard lists match the source address) */
+  dst?: AclAddr
+  dstPort?: AclPort
+  /** icmp message type keyword (echo, echo-reply, unreachable, time-exceeded) */
+  icmpType?: string
+}
+export interface Acl {
+  type: 'standard' | 'extended'
+  entries: AclEntry[]
 }
 
 /** L5-e: `switchport port-security …` on an access port. */
@@ -172,6 +203,8 @@ export interface SwitchConfig {
   /** L5-a, routers only: full subinterface name (e.g. GigabitEthernet0/0.10) -> config */
   subifs?: Record<string, SubIfConfig>
   ospf?: OspfConfig | null
+  /** L5-c: access lists by number or name */
+  acls?: Record<string, Acl>
   /** L5-f: `no cdp run` → false (undefined = CDP on, IOS default) */
   cdpRun?: boolean
   /** L5-f: `lldp run` → true (undefined = LLDP off, IOS default) */

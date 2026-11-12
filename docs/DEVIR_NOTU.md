@@ -25,8 +25,9 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L5-b DHCP/DNS; `relay-trunk` | #68 | birleşti (aynı işi yapan #69 kapatıldı) |
 | L5-f CDP/LLDP | #70 (main'den) | açık (birleşmeyi bekliyor) |
 | L5-e port security; `port-security` | #72 (#70'in dalından) | açık (birleşmeyi bekliyor) |
+| L5-c ACL | dal `claude/l5c-acl` (#72'nin dalından) | PR açık (birleşmeyi bekliyor) |
 
-**Sıradaki (kullanıcı talimatı, sırayla):** L5-c ACL → L5-d NAT/PAT (L5-f ve L5-e PR'ları açık).
+**Sıradaki (kullanıcı talimatı):** L5-d NAT/PAT, L5-c'nin dalından (L5-f, L5-e, L5-c PR'ları açık).
 Dal zinciri: L5-f (main'den) → L5-e → L5-c → L5-d; her biri ayrı PR, bir öncekinin dalından,
 hiçbiri birleştirilmez. CI sonucunu kullanıcı denetler (oturum CI'ı beklemez). Bugün eski
 motorda kalan içerik: `nat-pat` (ACL, NAT, HTTP servisi), `bgp-as`, `port-security`
@@ -362,6 +363,27 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
 - **Testler**: `tests/sim/portsec.test.ts`, `bridge.test.ts` "port security (L5-e)",
   `parity.test.ts` 200 rastgele yapılandırmada `port-security.js` ile; Playwright
   `test_aglab_network_features` test_05/06 (Labber).
+
+## L5-c — ACL (yapıldı, PR açık)
+
+- **Labber**: `src/sim/acl.ts` — tipler `Acl/AclEntry/AclAddr/AclPort` (types.ts),
+  `SwitchConfig.acls`, `L3Opts.aclIn/aclOut`. `parseEntry` (standart: kaynak; genişletilmiş:
+  `ip|icmp|tcp|udp`, `host/any/A W`, `eq|neq|gt|lt|range`, ICMP türü), `aclDecide` (ilk eşleşme,
+  örtük deny, tanımsız/boş liste izin verir). `net.ts deliver(d, from, dst, spec)` paket
+  (`Packet`) taşır; her routing cihazında giriş arayüzünün `aclIn`'i ve çıkışın `aclOut`'u
+  (kaynak cihazın kendi trafiği hariç) uygulanır; ret → `unreach` + `filtered`. `ping` geri
+  dönüşü `echo-reply`/`unreachable` paketiyle; `PingResult.back`. Sayaçlar
+  `LabRuntime.countAcl(paket, …)` (VPCS/IOS ping ×5, traceroute ×1), `aclHits`.
+- **CLI**: `access-list <1-199> …`, `no access-list N`, `ip access-list standard|extended NAME`
+  kipi (`[seq] permit|deny …`, `no seq`), `ip access-group X in|out` (`l3OptPatterns`),
+  `show access-lists [X]`, `show ip access-lists [X]`, `show ip interface [<if>]`,
+  `clear access-list counters`; traceroute `!A`. running-config numaralı ve isimli listeler.
+- **Köprü**: router `acls[]` ⇄ listeler (türü çıkarılır), `aclIn/aclOut` ⇄ L3Opts (router portu
+  ve alt arayüz). Kaynak portu, `eq` dışı işleç, ICMP türü → `BridgeError`.
+- **Testler**: `tests/sim/acl.test.ts` (örtük deny, yanlış yön, yanlış wildcard, sıra hatası,
+  genişletilmiş, isimli, traceroute `!A`, geçersiz satırlar, router trafiği, tanımsız liste),
+  `bridge.test.ts` "ACL (L5-c)", `parity.test.ts` `acl.js` ile, `routing-acceptance` next_hop
+  ACL adımı; Playwright `test_aglab_labber_terminal` terminalden ACL.
 
 ## Kurallar hatırlatması
 

@@ -746,6 +746,188 @@ var AgLabSim = (() => {
     return out;
   }
 
+  // src/sim/acl.ts
+  var ANY = { addr: "0.0.0.0", wild: "255.255.255.255" };
+  var hostAddr = (ip) => ({ addr: ip, wild: "0.0.0.0" });
+  var TCP_NAMES = { ftp: 21, telnet: 23, smtp: 25, www: 80, pop3: 110 };
+  var UDP_NAMES = { domain: 53, bootps: 67, bootpc: 68, tftp: 69, snmp: 161 };
+  var BOTH = { domain: 53 };
+  var ICMP_TYPES = ["echo", "echo-reply", "unreachable", "time-exceeded"];
+  function aclKind(name) {
+    if (!/^\d+$/.test(name)) return null;
+    const n = Number(name);
+    return n >= 1 && n <= 99 ? "standard" : n >= 100 && n <= 199 ? "extended" : null;
+  }
+  var u32 = (ip) => ipToInt(ip) >>> 0;
+  function normAddr(addr, wild) {
+    return { addr: intToIp2((u32(addr) & ~u32(wild)) >>> 0), wild };
+  }
+  function intToIp2(n) {
+    return [n >>> 24, n >>> 16 & 255, n >>> 8 & 255, n & 255].join(".");
+  }
+  function addrMatches(a, ip) {
+    const w = u32(a.wild);
+    return (u32(ip) & ~w) >>> 0 === (u32(a.addr) & ~w) >>> 0;
+  }
+  function portMatches(p, v) {
+    if (!p) return true;
+    if (v === void 0) return false;
+    switch (p.op) {
+      case "eq":
+        return v === p.a;
+      case "neq":
+        return v !== p.a;
+      case "gt":
+        return v > p.a;
+      case "lt":
+        return v < p.a;
+      case "range":
+        return v >= p.a && v <= p.b;
+    }
+  }
+  function entryMatches(e, pkt) {
+    if (e.proto !== "ip" && e.proto !== pkt.proto) return false;
+    if (!addrMatches(e.src, pkt.src)) return false;
+    if (e.dst && !addrMatches(e.dst, pkt.dst)) return false;
+    if (e.icmpType && e.icmpType !== pkt.icmpType) return false;
+    if (!portMatches(e.srcPort, pkt.sport) || !portMatches(e.dstPort, pkt.dport)) return false;
+    return true;
+  }
+  function aclDecide(acl, pkt) {
+    if (!acl || !acl.entries.length) return { permit: true, seq: null };
+    for (const e of acl.entries) if (entryMatches(e, pkt)) return { permit: e.action === "permit", seq: e.seq };
+    return { permit: false, seq: null };
+  }
+  function l3OptsOf(cfg, ifname) {
+    if (!cfg) return void 0;
+    if (ifname.startsWith("Vlan")) return cfg.svis[ifname.slice(4)]?.l3;
+    if (ifname.includes(".")) return cfg.subifs?.[ifname]?.l3;
+    return cfg.ifaces[ifname]?.l3;
+  }
+  var AclSyntax = class {
+    constructor(token) {
+      this.token = token;
+    }
+  };
+  function parseEntry(tok, type, seq) {
+    let i = 0;
+    const need = () => {
+      if (i >= tok.length) throw new AclSyntax(-1);
+      return tok[i++];
+    };
+    const action = need().toLowerCase();
+    if (action !== "permit" && action !== "deny") throw new AclSyntax(0);
+    const addr = (wildRequired) => {
+      const t = need().toLowerCase();
+      if (t === "any") return { ...ANY };
+      if (t === "host") {
+        const h = need();
+        if (!isIp(h)) throw new AclSyntax(i - 1);
+        return hostAddr(h);
+      }
+      if (!isIp(t)) throw new AclSyntax(i - 1);
+      const w = tok[i];
+      if (w && isIp(w)) {
+        i++;
+        return normAddr(t, w);
+      }
+      if (wildRequired) throw new AclSyntax(i);
+      return hostAddr(t);
+    };
+    if (type === "standard") {
+      const src2 = addr(false);
+      if (i < tok.length) throw new AclSyntax(i);
+      return { seq, action, proto: "ip", src: src2 };
+    }
+    const proto = need().toLowerCase();
+    if (!["ip", "icmp", "tcp", "udp"].includes(proto)) throw new AclSyntax(i - 1);
+    const port = () => {
+      if (proto !== "tcp" && proto !== "udp") return void 0;
+      const op = tok[i]?.toLowerCase();
+      if (!op || !["eq", "neq", "gt", "lt", "range"].includes(op)) return void 0;
+      i++;
+      const num = () => {
+        const t = need().toLowerCase();
+        const names = proto === "tcp" ? { ...TCP_NAMES, ...BOTH } : UDP_NAMES;
+        const v = /^\d+$/.test(t) ? Number(t) : names[t];
+        if (v === void 0 || v < 0 || v > 65535) throw new AclSyntax(i - 1);
+        return v;
+      };
+      const a = num();
+      return op === "range" ? { op: "range", a, b: num() } : { op, a };
+    };
+    const src = addr(true);
+    const srcPort = port();
+    const dst = addr(true);
+    const dstPort = port();
+    let icmpType;
+    if (proto === "icmp" && i < tok.length && ICMP_TYPES.includes(tok[i].toLowerCase())) icmpType = tok[i++].toLowerCase();
+    if (i < tok.length) throw new AclSyntax(i);
+    return {
+      seq,
+      action,
+      proto,
+      src,
+      dst,
+      ...srcPort ? { srcPort } : {},
+      ...dstPort ? { dstPort } : {},
+      ...icmpType ? { icmpType } : {}
+    };
+  }
+  function nextSeq(acl) {
+    return (acl.entries.at(-1)?.seq ?? 0) + 10;
+  }
+  function insertEntry(acl, e) {
+    if (acl.entries.some((x) => x.seq === e.seq)) return [`% Duplicate sequence number`];
+    acl.entries.push(e);
+    acl.entries.sort((a, b) => a.seq - b.seq);
+  }
+  var PORT_NAME = { 21: "ftp", 23: "telnet", 25: "smtp", 53: "domain", 80: "www", 110: "pop3", 67: "bootps", 68: "bootpc", 69: "tftp", 161: "snmp" };
+  function fmtPort(p, proto) {
+    if (!p) return "";
+    const n = (v) => proto === "udp" && v === 80 ? "80" : PORT_NAME[v] ?? String(v);
+    return p.op === "range" ? ` range ${n(p.a)} ${n(p.b)}` : ` ${p.op} ${n(p.a)}`;
+  }
+  function fmtAddr(a, standardShow = false) {
+    if (a.wild === "255.255.255.255") return "any";
+    if (a.wild === "0.0.0.0") return standardShow ? a.addr : `host ${a.addr}`;
+    return standardShow ? `${a.addr}, wildcard bits ${a.wild}` : `${a.addr} ${a.wild}`;
+  }
+  function entryText(e, type) {
+    const act = e.action === "deny" ? "deny  " : "permit";
+    if (type === "standard") {
+      const src = e.src.wild === "255.255.255.255" ? "any" : e.src.wild === "0.0.0.0" ? e.src.addr : `${e.src.addr} ${e.src.wild}`;
+      return `${act} ${src}`;
+    }
+    return `${act} ${e.proto} ${fmtAddr(e.src)}${fmtPort(e.srcPort, e.proto)} ${fmtAddr(e.dst)}${fmtPort(e.dstPort, e.proto)}${e.icmpType ? " " + e.icmpType : ""}`;
+  }
+  function aclConfigLines(cfg) {
+    const o = [];
+    const names = Object.keys(cfg.acls ?? {});
+    const numbered = names.filter((n) => aclKind(n)).sort((a, b) => Number(a) - Number(b));
+    for (const n of numbered) for (const e of cfg.acls[n].entries) o.push(`access-list ${n} ${entryText(e, cfg.acls[n].type)}`);
+    for (const n of names.filter((x) => !aclKind(x)).sort()) {
+      const acl = cfg.acls[n];
+      o.push(`ip access-list ${acl.type} ${n}`, ...acl.entries.map((e) => " " + entryText(e, acl.type)));
+    }
+    return o.length ? ["!", ...o] : [];
+  }
+  function showAccessLists(cfg, dev, hits, only) {
+    const o = [];
+    const names = Object.keys(cfg.acls ?? {}).filter((n) => !only || n === only);
+    names.sort((a, b) => aclKind(a) && aclKind(b) ? Number(a) - Number(b) : aclKind(a) ? -1 : aclKind(b) ? 1 : a.localeCompare(b));
+    for (const n of names) {
+      const acl = cfg.acls[n];
+      o.push(`${acl.type === "standard" ? "Standard" : "Extended"} IP access list ${n}`);
+      for (const e of acl.entries) {
+        const c = hits.get(`${dev}|${n}|${e.seq}`) ?? 0;
+        const body = acl.type === "standard" ? `${e.action === "deny" ? "deny  " : "permit"} ${fmtAddr(e.src, true)}` : entryText(e, "extended");
+        o.push(`    ${e.seq} ${body}${c ? ` (${c} match${c === 1 ? "" : "es"})` : ""}`);
+      }
+    }
+    return o;
+  }
+
   // src/sim/portsec.ts
   function defaultPortSecurity() {
     return { enabled: false, max: 1, violation: "shutdown", sticky: false, macs: [], stickyMacs: [] };
@@ -1076,27 +1258,47 @@ var AgLabSim = (() => {
     }
     return null;
   }
-  function deliver(d, from, dst) {
+  function aclCheck(d, dev, ifname, dir, pkt, hits) {
+    const opts = l3OptsOf(d.cfgs[dev], ifname);
+    const name = dir === "in" ? opts?.aclIn : opts?.aclOut;
+    if (!name) return null;
+    const r = aclDecide(d.cfgs[dev].acls?.[name], pkt);
+    const hit = { dev, acl: name, seq: r.seq, dir, ifname };
+    if (r.seq !== null) hits.push(hit);
+    return r.permit ? null : hit;
+  }
+  function deliver(d, from, dst, spec = {}) {
     let cur = from;
     const hops = [];
+    const acl = [];
     let routers = 0;
     if (!l3Ifs(d, from).length) return { kind: "noip", hops };
+    const pkt = { proto: "icmp", icmpType: "echo", ...spec, src: spec.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0].ip, dst };
+    const routing = (dev) => d.topo.devices[dev]?.kind === "switch";
     for (let ttl = 0; ttl < 32; ttl++) {
-      if (owns(d, cur, dst)) return { kind: "ok", hops, routersCrossed: routers };
-      if (cur !== from && !isRouter(d, cur)) return { kind: "timeout", hops };
+      if (owns(d, cur, dst)) return { kind: "ok", hops, routersCrossed: routers, acl };
+      if (cur !== from && !isRouter(d, cur)) return { kind: "timeout", hops, acl };
       const r = lookup(d, cur, dst);
       if (!r) {
-        if (cur === from) return { kind: "noroute", hops };
+        if (cur === from) return { kind: "noroute", hops, acl };
         const at = hops[hops.length - 1];
-        return { kind: "unreach", at: cur, atIp: at.ip, hops };
+        return { kind: "unreach", at: cur, atIp: at.ip, hops, acl };
       }
       const target = arpResolve(d, r.out, r.nh);
-      if (!target) return { kind: "timeout", hops };
+      if (!target) return { kind: "timeout", hops, acl };
+      if (cur !== from && routing(cur)) {
+        const denied = aclCheck(d, cur, r.out.name, "out", pkt, acl);
+        if (denied) return { kind: "unreach", at: cur, atIp: hops[hops.length - 1].ip, hops, acl, filtered: denied };
+      }
+      if (routing(target.dev)) {
+        const denied = aclCheck(d, target.dev, target.name, "in", pkt, acl);
+        if (denied) return { kind: "unreach", at: target.dev, atIp: target.ip, hops: [...hops, { dev: target.dev, ip: target.ip, outIf: r.out }], acl, filtered: denied };
+      }
       if (cur !== from) routers++;
       hops.push({ dev: target.dev, ip: target.ip, outIf: r.out });
       cur = target.dev;
     }
-    return { kind: "timeout", hops };
+    return { kind: "timeout", hops, acl };
   }
   function nextHop(d, dev, dst) {
     return lookup(d, dev, dst)?.nh ?? null;
@@ -1141,8 +1343,8 @@ var AgLabSim = (() => {
     if (fwd.kind === "noip") return { ok: false, reason: "noip", forward: fwd };
     if (fwd.kind === "noroute") return { ok: false, reason: "noroute", forward: fwd };
     if (fwd.kind === "unreach") {
-      const back2 = deliver(d, fwd.at, sourceIp(d, from, dst));
-      return back2.kind === "ok" ? { ok: false, reason: "unreach", unreachFrom: fwd.atIp, forward: fwd, firstHopArp } : { ok: false, reason: "timeout", forward: fwd, firstHopArp };
+      const back2 = deliver(d, fwd.at, sourceIp(d, from, dst), { proto: "icmp", icmpType: "unreachable", src: fwd.atIp });
+      return back2.kind === "ok" ? { ok: false, reason: "unreach", unreachFrom: fwd.atIp, forward: fwd, back: back2, firstHopArp } : { ok: false, reason: "timeout", forward: fwd, back: back2, firstHopArp };
     }
     if (fwd.kind !== "ok") {
       const nh = fwd.hops.length ? null : nextHop(d, from, dst);
@@ -1150,11 +1352,11 @@ var AgLabSim = (() => {
     }
     const src = sourceIp(d, from, dst);
     const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from;
-    const back = deliver(d, replier, src);
+    const back = deliver(d, replier, src, { proto: "icmp", icmpType: "echo-reply", src: dst });
     const backTo = back.hops[back.hops.length - 1]?.dev ?? replier;
-    if (back.kind !== "ok" || backTo !== from) return { ok: false, reason: "timeout", forward: fwd, firstHopArp };
+    if (back.kind !== "ok" || backTo !== from) return { ok: false, reason: "timeout", forward: fwd, back, firstHopArp };
     const base2 = d.topo.devices[replier].kind === "pc" ? 64 : 255;
-    return { ok: true, ttl: base2 - back.routersCrossed, replier, forward: fwd, firstHopArp };
+    return { ok: true, ttl: base2 - back.routersCrossed, replier, forward: fwd, back, firstHopArp };
   }
   function isValidIp(s) {
     return ipToInt(s) !== null;
@@ -1519,14 +1721,14 @@ var AgLabSim = (() => {
     return `169.254.${1 + b5 % 254}.${b6}`;
   }
   var nk2 = (n) => `${n.dev}|${n.vlan}`;
-  function l3OptsOf(cfg, name) {
+  function l3OptsOf2(cfg, name) {
     if (name.startsWith("Vlan")) return cfg.svis[ifNum(name)]?.l3;
     if (name.startsWith("Loopback")) return cfg.loopbacks?.[ifNum(name)]?.l3;
     if (name.includes(".")) return cfg.subifs?.[name]?.l3;
     return cfg.ifaces[name]?.l3;
   }
   function helpersOf(cfg, name) {
-    return l3OptsOf(cfg, name)?.helpers ?? [];
+    return l3OptsOf2(cfg, name)?.helpers ?? [];
   }
   function poolFor(cfg, addr) {
     let best = null;
@@ -1704,6 +1906,8 @@ var AgLabSim = (() => {
     if (ip) out.push(` ip address ${ip.addr} ${ip.mask}`);
     else if (noIpLine) out.push(" no ip address");
     for (const h of o?.helpers ?? []) out.push(" ip helper-address " + h);
+    if (o?.aclIn) out.push(` ip access-group ${o.aclIn} in`);
+    if (o?.aclOut) out.push(` ip access-group ${o.aclOut} out`);
     if (o?.mtu) out.push(" ip mtu " + o.mtu);
     if (o?.ospfNet) out.push(" ip ospf network " + o.ospfNet);
     if (o?.ospfHello) out.push(" ip ospf hello-interval " + o.ospfHello);
@@ -1760,7 +1964,7 @@ var AgLabSim = (() => {
     if (c.ospf) o.push(...ospfLines(c));
     o.push("ip forward-protocol nd", "no ip http server", "!");
     for (const r of c.routes) o.push(routeLine(r));
-    o.push(...discoveryGlobalLines(c), "!", "line con 0", "line aux 0", "line vty 0 4", " login", "!", "end");
+    o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), "!", "line con 0", "line aux 0", "line vty 0 4", " login", "!", "end");
     return o;
   }
   function dhcpLines(c) {
@@ -1855,7 +2059,7 @@ var AgLabSim = (() => {
     if (c.defaultGateway) o.push("ip default-gateway " + c.defaultGateway);
     o.push("ip forward-protocol nd", "no ip http server", "!");
     for (const r of c.routes) o.push(routeLine(r));
-    o.push(...discoveryGlobalLines(c), "!", "line con 0", "line vty 0 4", " login", "line vty 5 15", " login", "!", "end");
+    o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), "!", "line con 0", "line vty 0 4", " login", "line vty 5 15", " login", "!", "end");
     return o;
   }
   function showRun(rt, dev, which) {
@@ -2430,6 +2634,49 @@ var AgLabSim = (() => {
     }
     return out;
   }
+  function showIpInterface(rt, dev, only) {
+    const d = rt.derived;
+    const c = rt.running[dev];
+    const sw = rt.topo.devices[dev];
+    const rows = [];
+    for (const s of d.svis[dev] ?? []) {
+      const cfg = c.svis[String(s.vlan)];
+      rows.push({ name: "Vlan" + s.vlan, ip: cfg.ip, l3: cfg.l3, status: s.status === "administratively down" ? "administratively down" : s.up ? "up" : "down", proto: s.up });
+    }
+    for (const p of sw.ports) {
+      const ic = c.ifaces[p];
+      const ps = d.phys[pk(dev, p)];
+      if (ic.routed || only === p)
+        rows.push({ name: p, ip: ic.routed ? ic.ip ?? null : null, l3: ic.l3, status: ps.adminDown ? "administratively down" : ps.up ? "up" : "down", proto: ps.up });
+      for (const [name, si] of subifsOf(c, p)) {
+        const up = !si.shutdown && ps.up;
+        rows.push({ name, ip: si.ip, l3: si.l3, status: si.shutdown ? "administratively down" : up ? "up" : "down", proto: up });
+      }
+    }
+    for (const [n, l] of Object.entries(c.loopbacks ?? {})) rows.push({ name: "Loopback" + n, ip: l.ip, l3: l.l3, status: l.shutdown ? "administratively down" : "up", proto: !l.shutdown });
+    const o = [];
+    for (const r of rows) {
+      if (only && r.name !== only) continue;
+      o.push(`${r.name} is ${r.status}, line protocol is ${r.proto ? "up" : "down"}`);
+      if (!r.ip) {
+        o.push("  Internet protocol processing disabled");
+        continue;
+      }
+      const helpers = r.l3?.helpers ?? [];
+      o.push(
+        `  Internet address is ${r.ip.addr}/${maskToPrefix(r.ip.mask)}`,
+        "  Broadcast address is 255.255.255.255",
+        `  MTU is ${r.l3?.mtu ?? 1500} bytes`,
+        helpers.length ? `  Helper addresses are ${helpers.join(" ")}` : "  Helper address is not set",
+        "  Outgoing Common access list is not set",
+        `  Outgoing access list is ${r.l3?.aclOut ?? "not set"}`,
+        "  Inbound Common access list is not set",
+        `  Inbound  access list is ${r.l3?.aclIn ?? "not set"}`,
+        "  Proxy ARP is enabled"
+      );
+    }
+    return o;
+  }
 
   // src/sim/discovery.ts
   var CDP_HOLDTIME = 180;
@@ -2660,6 +2907,12 @@ var AgLabSim = (() => {
       { p: "show lldp neighbors", run: (x) => showLldpNeighbors(x.rt, x.dev, false) },
       { p: "show lldp neighbors detail", run: (x) => showLldpNeighbors(x.rt, x.dev, true) },
       { p: "show port-security", run: (x) => showPortSecurity(x.rt, x.dev) },
+      { p: "show access-lists", run: (x) => showAccessLists(x.cfg, x.dev, x.rt.aclHits) },
+      { p: "show access-lists <WORD:ACL name or number>", run: (x, a) => showAccessLists(x.cfg, x.dev, x.rt.aclHits, a[2]) },
+      { p: "show ip access-lists", run: (x) => showAccessLists(x.cfg, x.dev, x.rt.aclHits) },
+      { p: "show ip access-lists <WORD:ACL name or number>", run: (x, a) => showAccessLists(x.cfg, x.dev, x.rt.aclHits, a[3]) },
+      { p: "show ip interface", run: (x) => showIpInterface(x.rt, x.dev) },
+      { p: "show ip interface <if>", run: (x, a) => showIpInterface(x.rt, x.dev, x.resolveL3(a[3], a[4], 3)) },
       { p: "show port-security address", run: (x) => showPortSecurityAddress(x.rt, x.dev) },
       { p: "show port-security interface <if>", run: (x, a) => showPortSecurityInterface(x.rt, x.dev, x.physName(a[3], a[4], 3)), ifTypes: ["FastEthernet", "GigabitEthernet"] },
       { p: "show history", run: (x) => x.history.slice(-20).map((h) => "  " + h) },
@@ -2709,6 +2962,12 @@ var AgLabSim = (() => {
     },
     { p: "erase startup-config", run: (x) => x.erase() },
     { p: "reload", run: (x) => x.reload() },
+    {
+      p: "clear access-list counters",
+      run: (x) => {
+        for (const k of [...x.rt.aclHits.keys()]) if (k.startsWith(x.dev + "|")) x.rt.aclHits.delete(k);
+      }
+    },
     {
       p: "clear mac address-table dynamic",
       run: (x) => {
@@ -2779,6 +3038,13 @@ var AgLabSim = (() => {
       { p: "no ip dhcp excluded-address <A.B.C.D:Low IP address> <A.B.C.D:High IP address>", run: (x, a) => x.dhcpExclude(a[4], a[5], false) },
       { p: "no ip domain-lookup", run: () => {
       } },
+      // L5-c: access lists
+      { p: "access-list <1-199:IP access list number> <LINE:permit | deny …>", run: (x, a) => x.aclNumbered(a[1], a[2]) },
+      { p: "no access-list <1-199:IP access list number>", run: (x, a) => void delete x.cfg.acls?.[a[2]] },
+      { p: "ip access-list standard <WORD:Access-list name>", run: (x, a) => x.enterAcl(a[3], "standard") },
+      { p: "ip access-list extended <WORD:Access-list name>", run: (x, a) => x.enterAcl(a[3], "extended") },
+      { p: "no ip access-list standard <WORD:Access-list name>", run: (x, a) => x.deleteAcl(a[4], "standard") },
+      { p: "no ip access-list extended <WORD:Access-list name>", run: (x, a) => x.deleteAcl(a[4], "extended") },
       // L5-f: CDP (IOS: varsayılan açık), LLDP (varsayılan kapalı)
       { p: "cdp run", run: (x) => void delete x.cfg.cdpRun },
       { p: "no cdp run", run: (x) => void (x.cfg.cdpRun = false) },
@@ -2867,7 +3133,14 @@ var AgLabSim = (() => {
         if (!o.helpers.length) delete o.helpers;
       })
     },
-    { p: "no ip helper-address", run: (x) => x.eachL3((o) => void delete o.helpers) }
+    { p: "no ip helper-address", run: (x) => x.eachL3((o) => void delete o.helpers) },
+    // L5-c: `ip access-group` (routed port, subinterface, SVI)
+    { p: "ip access-group <WORD:IP access list (standard or extended)> in", run: (x, a) => x.eachL3((o) => void (o.aclIn = a[2])) },
+    { p: "ip access-group <WORD:IP access list (standard or extended)> out", run: (x, a) => x.eachL3((o) => void (o.aclOut = a[2])) },
+    { p: "no ip access-group <WORD:IP access list (standard or extended)> in", run: (x) => x.eachL3((o) => void delete o.aclIn) },
+    { p: "no ip access-group <WORD:IP access list (standard or extended)> out", run: (x) => x.eachL3((o) => void delete o.aclOut) },
+    { p: "no ip access-group in", run: (x) => x.eachL3((o) => void delete o.aclIn) },
+    { p: "no ip access-group out", run: (x) => x.eachL3((o) => void delete o.aclOut) }
   ];
   var routerPatterns = [
     ...[
@@ -3037,6 +3310,14 @@ var AgLabSim = (() => {
     }
     return p;
   };
+  var aclPatterns = [
+    ...commonSub,
+    { p: "permit <LINE:permit conditions>", run: (x, a) => x.aclLine(null, "permit " + a[1], 1) },
+    { p: "deny <LINE:deny conditions>", run: (x, a) => x.aclLine(null, "deny " + a[1], 1) },
+    { p: "<1-2147483647:Sequence Number> permit <LINE:permit conditions>", run: (x, a) => x.aclLine(Number(a[0]), "permit " + a[2], 2) },
+    { p: "<1-2147483647:Sequence Number> deny <LINE:deny conditions>", run: (x, a) => x.aclLine(Number(a[0]), "deny " + a[2], 2) },
+    { p: "no <1-2147483647:Sequence Number>", run: (x, a) => x.aclNoSeq(Number(a[1])) }
+  ];
   var sviPatterns = [
     ...commonSub,
     { p: "shutdown", run: (x) => x.eachSvi((s) => void (s.shutdown = true)) },
@@ -3076,7 +3357,8 @@ var AgLabSim = (() => {
         subif: buildTrie(subIfPatterns),
         vlan: buildTrie(vlanPatterns),
         router: buildTrie(routerPatterns),
-        dhcp: buildTrie(dhcpPoolPatterns)
+        dhcp: buildTrie(dhcpPoolPatterns),
+        acl: buildTrie(aclPatterns)
       };
       trieCache.set(def, t);
     }
@@ -3090,6 +3372,8 @@ var AgLabSim = (() => {
       __publicField(this, "ifs", []);
       __publicField(this, "range", false);
       __publicField(this, "vlanIds", []);
+      /** L5-c: list being edited in `(config-std-nacl)` / `(config-ext-nacl)` */
+      __publicField(this, "aclName", "");
       /** L5-b: pool under `ip dhcp pool <name>` */
       __publicField(this, "pool", "");
       __publicField(this, "history", []);
@@ -3120,10 +3404,12 @@ var AgLabSim = (() => {
           return h + "(config-router)#";
         case "dhcp":
           return h + "(dhcp-config)#";
+        case "acl":
+          return h + (this.cfg.acls?.[this.aclName]?.type === "extended" ? "(config-ext-nacl)#" : "(config-std-nacl)#");
       }
     }
     get inConfig() {
-      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp";
+      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl";
     }
     trie() {
       const t = tries(this.def);
@@ -3166,7 +3452,7 @@ var AgLabSim = (() => {
     }
     run(cmd) {
       let r = parse(this.trie(), cmd);
-      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp") && r.err !== "empty") {
+      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl") && r.err !== "empty") {
         const g = parse(tries(this.def).config, cmd);
         if (g.ok) {
           this.mode = "config";
@@ -3345,6 +3631,54 @@ var AgLabSim = (() => {
       base2.shutdown = false;
       base2.description = "";
       return base2;
+    }
+    // ---- L5-c: access lists ----
+    aclSyntax(e, argIndex) {
+      if (e instanceof AclSyntax) throw new InvalidAt(argIndex);
+      throw e;
+    }
+    /** `access-list N permit|deny …`: appended with the next sequence number. */
+    aclNumbered(num, rest) {
+      var _a;
+      const kind = aclKind(num);
+      const lists = (_a = this.cfg).acls ?? (_a.acls = {});
+      const list = lists[num] ?? (lists[num] = { type: kind, entries: [] });
+      try {
+        return insertEntry(list, parseEntry(rest.trim().split(/\s+/), kind, nextSeq(list)));
+      } catch (e) {
+        if (!list.entries.length) delete lists[num];
+        this.aclSyntax(e, 2);
+      }
+    }
+    enterAcl(name, type) {
+      var _a;
+      const num = aclKind(name);
+      if (num && num !== type) return [`% Invalid access list number for ${type} list`];
+      const lists = (_a = this.cfg).acls ?? (_a.acls = {});
+      const cur = lists[name];
+      if (cur && cur.type !== type) return [`% A named ${cur.type} IP access list with this name already exists`];
+      lists[name] ?? (lists[name] = { type, entries: [] });
+      this.aclName = name;
+      this.mode = "acl";
+    }
+    deleteAcl(name, type) {
+      if (this.cfg.acls?.[name]?.type === type) delete this.cfg.acls[name];
+    }
+    aclLine(seq, text, argIndex) {
+      const list = this.cfg.acls[this.aclName];
+      try {
+        return insertEntry(list, parseEntry(text.trim().split(/\s+/), list.type, seq ?? nextSeq(list)));
+      } catch (e) {
+        this.aclSyntax(e, argIndex);
+      }
+    }
+    aclNoSeq(seq) {
+      const list = this.cfg.acls[this.aclName];
+      list.entries = list.entries.filter((e) => e.seq !== seq);
+    }
+    /** An L3 interface name for show commands (physical, subinterface, SVI, loopback). */
+    resolveL3(type, num, argIndex) {
+      return this.resolveIf(type, num, argIndex, false);
     }
     // ---- L5-e: port security ----
     /** Apply to the selected ports; IOS rejects port security on trunk and dynamic ports. */
@@ -3807,6 +4141,7 @@ var AgLabSim = (() => {
       const d = this.rt.derived;
       const r = ping(d, this.dev, ip);
       this.rt.markSeen(r.forward?.hops ?? [], this.dev);
+      this.rt.countAcl(5, r.forward, r.back);
       const head = ["Type escape sequence to abort.", `Sending 5, 100-byte ICMP Echos to ${ip}, timeout is 2 seconds:`];
       if (r.reason === "noip" && !l3Ifs(d, this.dev).length) return [...head, ".....", "Success rate is 0 percent (0/5)"];
       let marks;
@@ -3835,8 +4170,9 @@ var AgLabSim = (() => {
     }
     traceroute(ip) {
       const d = this.rt.derived;
-      const r = deliver(d, this.dev, ip);
+      const r = deliver(d, this.dev, ip, { proto: "udp", dport: 33434 });
       this.rt.markSeen(r.hops, this.dev);
+      this.rt.countAcl(1, r);
       const out = ["Type escape sequence to abort.", `Tracing the route to ${ip}`, "VRF info: (vrf in name/id, vrf out name/id)"];
       r.hops.forEach((h, i) => out.push(`  ${i + 1} ${h.ip} ${1 + i} msec ${i} msec ${1 + i} msec`));
       if (r.kind === "ok") {
@@ -3844,7 +4180,8 @@ var AgLabSim = (() => {
         return out;
       }
       if (r.kind === "unreach") {
-        out.push(`  ${r.hops.length + 1} ${r.atIp} !H  !H  !H`);
+        const m = r.filtered ? "!A" : "!H";
+        out.push(`  ${r.hops.length + 1} ${r.atIp} ${m}  ${m}  ${m}`);
         return out;
       }
       for (let i = r.hops.length + 1; i <= r.hops.length + 3; i++) out.push(`  ${i}  *  *  *`);
@@ -4120,6 +4457,7 @@ var AgLabSim = (() => {
       const d = this.rt.derived;
       const r = ping(d, this.dev, dst);
       this.rt.markSeen(r.forward?.hops ?? [], this.dev);
+      this.rt.countAcl(5, r.forward, r.back);
       if (r.firstHopArp) this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`);
       this.rt.emit();
       const out = [];
@@ -4138,8 +4476,9 @@ var AgLabSim = (() => {
       const c = this.rt.pcs[this.dev];
       if (!c.ip) return ["No gateway found"];
       this.rt.hostSends(this.dev);
-      const r = deliver(this.rt.derived, this.dev, dst);
+      const r = deliver(this.rt.derived, this.dev, dst, { proto: "udp", dport: 33434 });
       this.rt.markSeen(r.hops, this.dev);
+      this.rt.countAcl(1, r);
       const out = [`trace to ${dst}, 8 hops max, press Ctrl+C to stop`];
       r.hops.forEach((h, i) => {
         const last = r.kind === "ok" && i === r.hops.length - 1;
@@ -4738,6 +5077,8 @@ var AgLabSim = (() => {
       __publicField(this, "psViolations", /* @__PURE__ */ new Map());
       /** L5-e: last source MAC seen on a secure port */
       __publicField(this, "psLast", /* @__PURE__ */ new Map());
+      /** L5-c: ACL match counters ('dev|acl|seq'); `clear access-list counters` resets them */
+      __publicField(this, "aclHits", /* @__PURE__ */ new Map());
       __publicField(this, "seq", 0);
       __publicField(this, "t0", Date.now());
       __publicField(this, "listeners", /* @__PURE__ */ new Set());
@@ -4756,6 +5097,7 @@ var AgLabSim = (() => {
       this.psDynamic.clear();
       this.psViolations.clear();
       this.psLast.clear();
+      this.aclHits.clear();
       this.dhcp = [];
       this.hw = noHardwareFaults();
       for (const l of this.def.links)
@@ -5029,6 +5371,14 @@ var AgLabSim = (() => {
       this.commit();
     }
     /** Hosts that sent or answered traffic become visible in MAC tables. */
+    /** L5-c: count ACL entries matched by real traffic; `packets` per delivery (ping sends 5). */
+    countAcl(packets, ...ds) {
+      for (const d of ds)
+        for (const h of d?.acl ?? []) {
+          const k = `${h.dev}|${h.acl}|${h.seq}`;
+          this.aclHits.set(k, (this.aclHits.get(k) ?? 0) + packets);
+        }
+    }
     markSeen(hops, from) {
       if (!hops.length) return;
       for (const h of hops) {
@@ -5068,6 +5418,7 @@ var AgLabSim = (() => {
         psDynamic: [...this.psDynamic],
         psViolations: [...this.psViolations],
         psLast: [...this.psLast],
+        aclHits: [...this.aclHits],
         hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
         dhcp: clone(this.dhcp)
       };
@@ -5089,6 +5440,7 @@ var AgLabSim = (() => {
       this.psDynamic = new Map(s.psDynamic ?? []);
       this.psViolations = new Map(s.psViolations ?? []);
       this.psLast = new Map(s.psLast ?? []);
+      this.aclHits = new Map(s.aclHits ?? []);
       if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) };
       this.dhcp = clone(s.dhcp ?? []);
       this.derived = this.recompute();
@@ -7184,10 +7536,11 @@ write memory`
     "ip",
     "mask"
   ]);
-  var ROUTER_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "staticRoutes", "route", "ospf", "ip", "mask", "gateway", "vlan", "dhcpPools", "dhcpExcluded"]);
-  var ROUTER_IF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "helperAddress"]);
+  var ROUTER_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "staticRoutes", "route", "ospf", "ip", "mask", "gateway", "vlan", "dhcpPools", "dhcpExcluded", "acls"]);
+  var ROUTER_IF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "helperAddress", "aclIn", "aclOut"]);
+  var ACL_RULE_FIELDS = /* @__PURE__ */ new Set(["id", "action", "protocol", "srcType", "src", "wildcard", "dstType", "dst", "dstWildcard", "port"]);
   var DHCP_POOL_FIELDS = /* @__PURE__ */ new Set(["name", "network", "mask", "defaultRouter", "dnsServer"]);
-  var SUBIF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "parent", "vlan", "encapsulation", "helperAddress"]);
+  var SUBIF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "parent", "vlan", "encapsulation", "helperAddress", "aclIn", "aclOut"]);
   var STATIC_ROUTE_FIELDS = /* @__PURE__ */ new Set(["network", "mask", "nextHop", "distance"]);
   var OSPF_FIELDS = /* @__PURE__ */ new Set(["pid", "routerId", "networks"]);
   var SERVER_FIELDS = /* @__PURE__ */ new Set([...PC_FIELDS, "services"]);
@@ -7306,6 +7659,77 @@ write memory`
       }
       return [h];
     };
+    const accessGroups = (id, name, iface) => {
+      const out = {};
+      for (const k of ["aclIn", "aclOut"]) {
+        const v = iface[k];
+        if (v === void 0 || v === "" || v === null) continue;
+        if (typeof v !== "string" && typeof v !== "number") reject(id, `${name}.${k}`, "Geçersiz ACL kimliği");
+        else out[k] = String(v);
+      }
+      return Object.keys(out).length ? out : null;
+    };
+    const aclsToLabber = (id, rules) => {
+      const lists = {};
+      const order = [];
+      let ok = true;
+      const addr = (type, a, w, where) => {
+        if (type === void 0 || type === "any") return { addr: "0.0.0.0", wild: "255.255.255.255" };
+        if (type === "host" && typeof a === "string" && isIp(a)) return { addr: a, wild: "0.0.0.0" };
+        if (type === "network" && typeof a === "string" && isIp(a) && typeof w === "string" && isIp(w)) return normAddr(a, w);
+        reject(id, where, "Geçersiz ACL adres/wildcard");
+        ok = false;
+        return null;
+      };
+      rules.forEach((r, i) => {
+        const where = `acls[${i}]`;
+        for (const k of Object.keys(r ?? {})) if (!ACL_RULE_FIELDS.has(k)) unsupported(id, `${where}.${k}`, "Labber'da karşılığı olmayan ACL alanı");
+        const name = String(r?.["id"] ?? "");
+        const proto = String(r?.["protocol"] ?? "ip");
+        if (!name || !["permit", "deny"].includes(String(r?.["action"])) || !["ip", "icmp", "tcp", "udp"].includes(proto)) {
+          reject(id, where, "Geçersiz ACL kuralı");
+          ok = false;
+          return;
+        }
+        const src = addr(r["srcType"], r["src"], r["wildcard"], where + ".src");
+        const dst = addr(r["dstType"], r["dst"], r["dstWildcard"], where + ".dst");
+        const port = r["port"];
+        if (port !== void 0 && port !== null && (!["tcp", "udp"].includes(proto) || !Number.isInteger(Number(port)) || Number(port) < 0 || Number(port) > 65535)) {
+          reject(id, where + ".port", "ACL portu yalnız tcp/udp için 0-65535");
+          ok = false;
+          return;
+        }
+        if (!src || !dst) return;
+        if (!lists[name]) {
+          lists[name] = { type: "extended", entries: [] };
+          order.push(name);
+        }
+        const e = {
+          seq: (lists[name].entries.length + 1) * 10,
+          action: r["action"],
+          proto,
+          src,
+          dst,
+          ...port !== void 0 && port !== null ? { dstPort: { op: "eq", a: Number(port) } } : {}
+        };
+        lists[name].entries.push(e);
+      });
+      for (const name of order) {
+        const l = lists[name];
+        const plain = l.entries.every((e) => e.proto === "ip" && !e.dstPort && e.dst.wild === "255.255.255.255");
+        const kind = aclKind(name) ?? (plain ? "standard" : "extended");
+        if (kind === "standard") {
+          if (!plain) {
+            reject(id, `acls.${name}`, "Standart ACL (1-99) yalnız kaynak adresi eşler");
+            ok = false;
+            continue;
+          }
+          l.type = "standard";
+          for (const e of l.entries) delete e.dst;
+        }
+      }
+      return ok ? lists : null;
+    };
     const routerToLabber = (d, id, off) => {
       for (const key of ["ip", "mask", "gateway"])
         if (d[key] !== void 0 && d[key] !== "") unsupported(id, key, "Router'da cihaz düzeyi adres alanı AğLab modelinde yok (arayüz adresleri kullanılır)");
@@ -7351,6 +7775,8 @@ write memory`
         }
         const helpers = helperOf(id, name, iface);
         if (helpers) phys.l3 = { ...phys.l3 ?? {}, helpers };
+        const groups = accessGroups(id, name, iface);
+        if (groups) phys.l3 = { ...phys.l3 ?? {}, ...groups };
       }
       for (const [name, iface] of Object.entries(ifaces)) {
         if (!name.includes(".")) continue;
@@ -7391,6 +7817,15 @@ write memory`
         subs[key] = { parent, vlan, native: false, shutdown: iface.enabled === false, description: "", ip };
         const helpers = helperOf(id, name, iface);
         if (helpers) subs[key].l3 = { helpers };
+        const groups = accessGroups(id, name, iface);
+        if (groups) subs[key].l3 = { ...subs[key].l3 ?? {}, ...groups };
+      }
+      if (d.acls !== void 0) {
+        if (!Array.isArray(d.acls)) reject(id, "acls", "ACL listesi dizi olmalı");
+        else {
+          const lists = aclsToLabber(id, d.acls);
+          if (lists) cfg.acls = lists;
+        }
       }
       if (d.dhcpPools !== void 0) {
         if (!Array.isArray(d.dhcpPools)) reject(id, "dhcpPools", "DHCP havuz listesi dizi olmalı");
@@ -7935,6 +8370,12 @@ write memory`
     if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail("Loopback");
     if (!cfg.ipRouting) fail("no ip routing");
     if (cfg.defaultGateway) fail("ip default-gateway");
+    {
+      const rules = aclsBack(cfg, orig, fail);
+      const prevRules = JSON.stringify(orig.acls ?? null);
+      const same2 = JSON.stringify(rules.map((r) => ({ ...r }))) === prevRules;
+      if (!same2 && (d.acls !== void 0 || rules.length)) d.acls = rules;
+    }
     d.interfaces = d.interfaces ?? {};
     for (const [canon, phys] of Object.entries(cfg.ifaces)) {
       const name = back[canon];
@@ -7942,7 +8383,7 @@ write memory`
       if (phys.description) fail(`${canon} description`);
       const helper = helperBack(phys.l3, canon, fail);
       const prev2 = d.interfaces[name];
-      if (!prev2 && !phys.ip && !phys.shutdown && !helper) continue;
+      if (!prev2 && !phys.ip && !phys.shutdown && !helper && !phys.l3?.aclIn && !phys.l3?.aclOut) continue;
       const iface = prev2 ? { ...prev2 } : {};
       if (phys.ip) {
         iface.ip = phys.ip.addr;
@@ -7951,6 +8392,7 @@ write memory`
       if (prev2?.enabled !== void 0 || phys.shutdown) iface.enabled = !phys.shutdown;
       if (helper) iface["helperAddress"] = helper;
       else if (iface["helperAddress"] !== "") delete iface["helperAddress"];
+      groupsBack(iface, phys.l3);
       d.interfaces[name] = iface;
     }
     const subNames = /* @__PURE__ */ new Set();
@@ -7976,6 +8418,7 @@ write memory`
       if (prev2?.parent !== void 0 || !prev2) iface.parent = physName;
       if (helper) iface["helperAddress"] = helper;
       else if (iface["helperAddress"] !== "") delete iface["helperAddress"];
+      groupsBack(iface, si.l3);
       d.interfaces[name] = iface;
     }
     for (const name of Object.keys(d.interfaces)) if (name.includes(".") && !subNames.has(name)) delete d.interfaces[name];
@@ -8024,10 +8467,43 @@ write memory`
   }
   function helperBack(l3, canon, fail) {
     if (!l3) return null;
-    const { helpers, ...rest } = l3;
+    const { helpers, aclIn: _in, aclOut: _out, ...rest } = l3;
     if (Object.keys(rest).length) fail(`${canon} arayüz OSPF/L3 ayarı`);
     if (helpers && helpers.length > 1) fail(`${canon} üzerinde birden çok ip helper-address`);
     return helpers?.[0] ?? null;
+  }
+  function groupsBack(iface, l3) {
+    for (const k of ["aclIn", "aclOut"]) {
+      if (l3?.[k]) iface[k] = l3[k];
+      else if (iface[k] !== "") delete iface[k];
+    }
+  }
+  function aclsBack(cfg, orig, fail) {
+    const lists = cfg.acls ?? {};
+    const origOrder = [...new Set((orig.acls ?? []).map((r) => String(r["id"])))];
+    const names = [...origOrder.filter((n) => lists[n]), ...Object.keys(lists).filter((n) => !origOrder.includes(n))];
+    const out = [];
+    const side = (a, pre) => {
+      if (a.wild === "255.255.255.255") return { [pre + "Type"]: "any", [pre]: "" };
+      if (a.wild === "0.0.0.0") return { [pre + "Type"]: "host", [pre]: a.addr };
+      return { [pre + "Type"]: "network", [pre]: a.addr, [pre === "src" ? "wildcard" : "dstWildcard"]: a.wild };
+    };
+    for (const n of names) {
+      for (const e of lists[n].entries) {
+        if (e.srcPort) fail(`ACL ${n} ${e.seq} kaynak portu`);
+        if (e.dstPort && e.dstPort.op !== "eq") fail(`ACL ${n} ${e.seq} port işleci ${e.dstPort.op}`);
+        if (e.icmpType) fail(`ACL ${n} ${e.seq} ICMP türü`);
+        out.push({
+          id: aclKind(n) ? Number(n) : n,
+          action: e.action,
+          protocol: e.proto,
+          ...side(e.src, "src"),
+          ...side(e.dst ?? { addr: "0.0.0.0", wild: "255.255.255.255" }, "dst"),
+          ...e.dstPort ? { port: e.dstPort.a } : {}
+        });
+      }
+    }
+    return out;
   }
 
   // src/sim-bridge/events.ts

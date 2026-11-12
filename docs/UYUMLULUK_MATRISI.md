@@ -215,3 +215,24 @@ karşılaştırır (fark 0; sayaç için aşağıdaki karar).
 | Arkasında switch olan güvenli port | Bütün kaynak MAC'ler sayılır | Yalnız doğrudan bağlı uç denetlenir | **Sınır.** İçerikte güvenli port hep uca bağlı. |
 | **Desteklenmiyor** | — | `switchport port-security aging …`, `errdisable recovery cause psecure-violation`, `show port-security interface X address`, `clear port-security` | Komut `% Invalid input` verir. |
 
+## L5-c: IPv4 ACL (Labber kararları)
+
+Oracle paritesi: `tests/sim/parity.test.ts` 300 rastgele liste × 6 pakette Labber kararını
+`src/engine/acl.js` `aclEvaluate` ile karşılaştırır (fark 0); `test_aglab_next_hop`'un ACL
+adımı (yalnız dönüş yolundaki router'da) `routing-acceptance.test.ts`'de Labber'da aynı sonuç.
+Bu PR'la senaryo motor kararı değişmez: `nat-pat` NAT ve HTTP servisi için eski motorda kalır.
+
+| Konu | Eski motor | Labber | Karar |
+|---|---|---|---|
+| Model | Router `acls[]` `{id, action, protocol, srcType, src, wildcard, dstType, dst, dstWildcard, port}`, arayüz `aclIn`/`aclOut` | `SwitchConfig.acls` (standart/genişletilmiş, sıra numaralı satırlar), `L3Opts.aclIn/aclOut` (router portu, alt arayüz, SVI) | **Köprü iki yönde.** |
+| Liste türü | Yok | 1–99 standart, 100–199 genişletilmiş; isimli listenin türü (AğLab'da alan yok) kurallardan çıkarılır: hepsi `ip` + hedef `any` ise standart | **Sınır.** İsimli genişletilmiş bir liste yalnız `permit ip any any` türü satırlardan oluşuyorsa yeniden yüklemede standart görünür (eşleşme aynı). |
+| Sıra numaraları | Yok (dizi sırası) | IOS gibi 10'ar; isimli listede `N permit …`, `no N` | AğLab'a yalnız sıra yazılır; yeniden yüklemede numaralar 10, 20, … olur (eşleşme sırası korunur). |
+| Tanımsız (ya da boş) liste uygulanmış | Her şeyi engeller | IOS: her şeye izin verir | **Labber (IOS).** Bilinen fark; parite testinde ayrıca sabitlenir. |
+| Router'ın kendi trafiği | — | Giden ACL'e takılmaz (IOS); gelen ACL uygulanır | **Labber (IOS).** |
+| Engellenen paket | Yol kararında "ACL engelliyor" | Süzen router ICMP unreachable döner: ping `U`, traceroute `!A` | **Labber (IOS).** ICMP kodu (13, administratively prohibited) ayrıca modellenmez. |
+| Eşleşme sayaçları | Yok | `show access-lists` paket başına (ping 5 paket); `clear access-list counters` | **Doğrulanmadı:** traceroute sondası başına sayım (1), yanıt paketlerinin sayılması. Değerlendirme ping'leri (LabQuery) saymaz. |
+| Port adları | — | `www, telnet, ftp, smtp, domain, pop3, bootps, bootpc, tftp, snmp` kabul edilir ve gösterilir | **Doğrulanmadı:** IOS'un tam ad listesi; diğerleri sayı. |
+| Traceroute paketi | — | UDP 33434 (IOS ve VPCS) | **Doğrulanmadı:** VPCS'nin hedef port aralığı. |
+| AğLab'da ifade edilemeyen | — | Kaynak portu, `eq` dışı port işleci, ICMP türü | `toAglab` `BridgeError`. |
+| **Desteklenmiyor** | — | `remark`, `log`/`log-input`, `established`, ICMP türü listesi dışındakiler (`echo`, `echo-reply`, `unreachable`, `time-exceeded` var), `ip access-list resequence`, zaman tabanlı ACL, `access-class` (vty), IPv6 ACL, switch portu (PACL) ve VLAN ACL | Komut `% Invalid input` verir. |
+

@@ -5,7 +5,7 @@ import { activePs, secureCount } from './portsec'
 import { defaultSwitchConfig } from './config'
 import { apipaFor, dhcpDiscover, isApipa, type DhcpResult } from './dhcp'
 import { bpduViolations, type Derived } from './engine'
-import { l3Ifs, macTable, type Hop } from './net'
+import { l3Ifs, macTable, type Delivery, type Hop } from './net'
 import { candidateRid, computeState } from './ospf'
 import { LabQuery } from './query'
 import { buildTopo, pk, type Topo } from './topology'
@@ -45,6 +45,7 @@ export interface SavedState {
   psDynamic?: [string, string[]][]
   psViolations?: [string, number][]
   psLast?: [string, string][]
+  aclHits?: [string, number][]
 }
 
 export class LabRuntime {
@@ -72,6 +73,8 @@ export class LabRuntime {
   psViolations = new Map<string, number>()
   /** L5-e: last source MAC seen on a secure port */
   psLast = new Map<string, string>()
+  /** L5-c: ACL match counters ('dev|acl|seq'); `clear access-list counters` resets them */
+  aclHits = new Map<string, number>()
   private seq = 0
   private t0 = Date.now()
   private listeners = new Set<() => void>()
@@ -96,6 +99,7 @@ export class LabRuntime {
     this.psDynamic.clear()
     this.psViolations.clear()
     this.psLast.clear()
+    this.aclHits.clear()
     this.dhcp = []
     this.hw = noHardwareFaults()
     for (const l of this.def.links)
@@ -398,6 +402,15 @@ export class LabRuntime {
   }
 
   /** Hosts that sent or answered traffic become visible in MAC tables. */
+  /** L5-c: count ACL entries matched by real traffic; `packets` per delivery (ping sends 5). */
+  countAcl(packets: number, ...ds: (Delivery | undefined)[]) {
+    for (const d of ds)
+      for (const h of d?.acl ?? []) {
+        const k = `${h.dev}|${h.acl}|${h.seq}`
+        this.aclHits.set(k, (this.aclHits.get(k) ?? 0) + packets)
+      }
+  }
+
   markSeen(hops: Hop[], from: string) {
     if (!hops.length) return
     for (const h of hops) {
@@ -440,6 +453,7 @@ export class LabRuntime {
       psDynamic: [...this.psDynamic],
       psViolations: [...this.psViolations],
       psLast: [...this.psLast],
+      aclHits: [...this.aclHits],
       hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
       dhcp: clone(this.dhcp),
     }
@@ -463,6 +477,7 @@ export class LabRuntime {
     this.psDynamic = new Map(s.psDynamic ?? [])
     this.psViolations = new Map(s.psViolations ?? [])
     this.psLast = new Map(s.psLast ?? [])
+    this.aclHits = new Map(s.aclHits ?? [])
     if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) }
     this.dhcp = clone(s.dhcp ?? [])
     this.derived = this.recompute()

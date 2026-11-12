@@ -396,6 +396,49 @@ describe('köprü: port security (L5-e)', () => {
   })
 })
 
+describe('köprü: ACL (L5-c)', () => {
+  const withAcl = (): AglabTopology => {
+    const t = routed()
+    t.devices[2]!.acls = [
+      { id: 10, action: 'deny', protocol: 'ip', srcType: 'host', src: '192.168.10.10', dstType: 'any', dst: '' },
+      { id: 10, action: 'permit', protocol: 'ip', srcType: 'any', src: '', dstType: 'any', dst: '' },
+      { id: 'WEB', action: 'permit', protocol: 'tcp', srcType: 'network', src: '192.168.10.0', wildcard: '0.0.0.255', dstType: 'host', dst: '192.168.20.20', port: 80 },
+    ]
+    t.devices[2]!.interfaces!['g0/0']!.aclOut = '10'
+    return t
+  }
+  it('kurallar listelere, aclIn/aclOut access-group\'a eşlenir; gidiş-dönüş birebir', () => {
+    const t = withAcl()
+    const r = toLabber(t)
+    expect(r.report.engineDecision, JSON.stringify(r.report)).toBe('labber')
+    expect(r.running['r2']!.acls!['10']).toEqual({ type: 'standard', entries: [
+      { seq: 10, action: 'deny', proto: 'ip', src: { addr: '192.168.10.10', wild: '0.0.0.0' } },
+      { seq: 20, action: 'permit', proto: 'ip', src: { addr: '0.0.0.0', wild: '255.255.255.255' } },
+    ] })
+    expect(r.running['r2']!.acls!['WEB']!.type).toBe('extended')
+    expect(r.running['r2']!.ifaces['GigabitEthernet0/0']!.l3).toEqual({ aclOut: '10' })
+    expect(roundTrip(t)).toEqual(t)
+  })
+  it('ACL trafiği keser; CLI ile kaldırılınca geri gelir ve JSON\'a yazılır', () => {
+    const t = withAcl()
+    t.devices[2]!.staticRoutes = [{ network: '192.168.10.0', mask: '255.255.255.0', nextHop: '10.0.12.1', distance: 1 }]
+    const rt = createRuntime(toLabber(t))
+    expect(rt.query().ping('pc1', '192.168.20.20').ok).toBe(false)
+    runScript(rt, 'r2', 'configure terminal\ninterface g0/0\nno ip access-group 10 out\nend')
+    expect(rt.query().ping('pc1', '192.168.20.20').ok).toBe(true)
+    expect(toAglab(rt, t).devices[2]!.interfaces!['g0/0']!.aclOut).toBeUndefined()
+    runScript(rt, 'r2', 'configure terminal\naccess-list 20 permit 192.168.10.0 0.0.0.255\nend')
+    expect((toAglab(rt, t).devices[2]!.acls as unknown[]).at(-1)).toEqual({ id: 20, action: 'permit', protocol: 'ip', srcType: 'network', src: '192.168.10.0', wildcard: '0.0.0.255', dstType: 'any', dst: '' })
+  })
+  it('AğLab modelinde olmayan ACL ayrıntısı açık hata verir', () => {
+    for (const line of ['access-list 101 permit tcp any eq 80 any', 'access-list 101 permit tcp any any gt 1023', 'access-list 101 deny icmp any any echo']) {
+      const rt = createRuntime(toLabber(withAcl()))
+      runScript(rt, 'r2', 'configure terminal\n' + line + '\nend')
+      expect(() => toAglab(rt, withAcl()), line).toThrow(BridgeError)
+    }
+  })
+})
+
 describe('köprü: gerçek içerik', () => {
   for (const [id, t] of content()) {
     const decision = toLabber(t).report.engineDecision
@@ -621,7 +664,8 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
     // L5-b: router arayüzünde/alt arayüzünde DHCP relay desteklenir (bkz. "köprü: DHCP/DNS (L5-b)");
     // switch SVI'sinde relay AğLab modelinde yoktur ve raporlanır.
     ['SVI\'da DHCP relay', (t) => (t.devices[2]!.interfaces!['vlan10'] = { ip: '192.168.10.1', mask: '255.255.255.0', vlan: 10, helperAddress: '10.0.0.9' }), /DHCP relay/],
-    ['router ACL', (t) => t.devices.push(router({ 'g0/0': { ip: '10.0.0.1', mask: '255.255.255.0', aclIn: '1' } })), /ACL/],
+    // L5-c: router ACL'i desteklenir (bkz. "köprü: ACL (L5-c)"); switch üzerindeki ACL eşlenmez
+    ['switch ACL', (t) => (t.devices[2]!.acls = []), /ACL/],
     ['servisi açık Server', (t) => t.devices.push({ id: 's1', name: 'S1', type: 'Server', ports: ['eth0'], services: { http: true } }), /servisleri/],
     ['bilinmeyen cihaz tipi', (t) => t.devices.push({ id: 'c1', name: 'C1', type: 'Cloud', ports: [] }), /Cloud cihaz tipi/],
     ['switch\'te statik rota', (t) => (t.devices[2]!.staticRoutes = [{ network: '0.0.0.0', mask: '0.0.0.0', nextHop: '1.1.1.1', distance: 5 }]), /statik rota/],
@@ -664,6 +708,9 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
     ['hizasız statik rota', (t) => t.devices.push({ ...router({}), staticRoutes: [{ network: '10.20.1.5', mask: '255.255.255.0', nextHop: '1.1.1.1' }] }), /hizalı değil/],
     ['statik rota AD 0', (t) => t.devices.push({ ...router({}), staticRoutes: [{ network: '10.0.0.0', mask: '255.0.0.0', nextHop: '1.1.1.1', distance: 0 }] }), /AD 1-255/],
     ['yinelenen statik rota', (t) => t.devices.push({ ...router({}), staticRoutes: [{ network: '10.0.0.0', mask: '255.0.0.0', nextHop: '1.1.1.1' }, { network: '10.0.0.0', mask: '255.0.0.0', nextHop: '1.1.1.1', distance: 9 }] }), /yinelenen/],
+    ['geçersiz ACL kuralı', (t) => t.devices.push({ ...router({}), acls: [{ id: 10, action: 'allow', protocol: 'ip' }] }), /Geçersiz ACL kuralı/],
+    ['standart ACL\'de hedef', (t) => t.devices.push({ ...router({}), acls: [{ id: 10, action: 'permit', protocol: 'ip', srcType: 'any', dstType: 'host', dst: '10.0.0.1' }] }), /Standart ACL/],
+    ['ACL portu icmp\'de', (t) => t.devices.push({ ...router({}), acls: [{ id: 101, action: 'permit', protocol: 'icmp', srcType: 'any', dstType: 'any', port: 80 }] }), /ACL portu/],
     ['geçersiz router arayüz maskesi', (t) => t.devices.push(router({ 'g0/0': { ip: '10.0.0.1', mask: '255.0.255.0' } })), /router arayüzü/],
     ['alt arayüzün portu yok', (t) => t.devices.push(router({ 'g0/7.10': { encapsulation: 'dot1q', vlan: 10 } })), /fiziksel portu/],
     ['alt arayüz parent uyuşmuyor', (t) => t.devices.push(router({ 'g0/0.10': { parent: 'g0/1', encapsulation: 'dot1q', vlan: 10 } })), /parent/],

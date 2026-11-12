@@ -9,8 +9,9 @@ import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from '.
 import * as show from './show'
 import * as disc from '../discovery'
 import * as psec from '../portsec'
+import * as acl from '../acl'
 
-export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp'
+export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl'
 
 type P = Pattern<IosSession>
 type Out = string[] | void
@@ -65,6 +66,12 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show lldp neighbors', run: (x) => disc.showLldpNeighbors(x.rt, x.dev, false) },
     { p: 'show lldp neighbors detail', run: (x) => disc.showLldpNeighbors(x.rt, x.dev, true) },
     { p: 'show port-security', run: (x) => psec.showPortSecurity(x.rt, x.dev) },
+    { p: 'show access-lists', run: (x) => acl.showAccessLists(x.cfg, x.dev, x.rt.aclHits) },
+    { p: 'show access-lists <WORD:ACL name or number>', run: (x, a) => acl.showAccessLists(x.cfg, x.dev, x.rt.aclHits, a[2]!) },
+    { p: 'show ip access-lists', run: (x) => acl.showAccessLists(x.cfg, x.dev, x.rt.aclHits) },
+    { p: 'show ip access-lists <WORD:ACL name or number>', run: (x, a) => acl.showAccessLists(x.cfg, x.dev, x.rt.aclHits, a[3]!) },
+    { p: 'show ip interface', run: (x) => show.showIpInterface(x.rt, x.dev) },
+    { p: 'show ip interface <if>', run: (x, a) => show.showIpInterface(x.rt, x.dev, x.resolveL3(a[3]!, a[4]!, 3)) },
     { p: 'show port-security address', run: (x) => psec.showPortSecurityAddress(x.rt, x.dev) },
     { p: 'show port-security interface <if>', run: (x, a) => psec.showPortSecurityInterface(x.rt, x.dev, x.physName(a[3]!, a[4]!, 3)), ifTypes: ['FastEthernet', 'GigabitEthernet'] },
     { p: 'show history', run: (x) => x.history.slice(-20).map((h) => '  ' + h) },
@@ -114,6 +121,12 @@ const privPatterns: P[] = [
   },
   { p: 'erase startup-config', run: (x) => x.erase() },
   { p: 'reload', run: (x) => x.reload() },
+  {
+    p: 'clear access-list counters',
+    run: (x) => {
+      for (const k of [...x.rt.aclHits.keys()]) if (k.startsWith(x.dev + '|')) x.rt.aclHits.delete(k)
+    },
+  },
   {
     p: 'clear mac address-table dynamic',
     run: (x) => {
@@ -185,6 +198,13 @@ const configPatterns = (def: SwitchDef): P[] => {
     { p: 'no ip dhcp excluded-address <A.B.C.D:Low IP address>', run: (x, a) => x.dhcpExclude(a[4]!, a[4]!, false) },
     { p: 'no ip dhcp excluded-address <A.B.C.D:Low IP address> <A.B.C.D:High IP address>', run: (x, a) => x.dhcpExclude(a[4]!, a[5]!, false) },
     { p: 'no ip domain-lookup', run: () => {} },
+    // L5-c: access lists
+    { p: 'access-list <1-199:IP access list number> <LINE:permit | deny …>', run: (x, a) => x.aclNumbered(a[1]!, a[2]!) },
+    { p: 'no access-list <1-199:IP access list number>', run: (x, a) => void delete x.cfg.acls?.[a[2]!] },
+    { p: 'ip access-list standard <WORD:Access-list name>', run: (x, a) => x.enterAcl(a[3]!, 'standard') },
+    { p: 'ip access-list extended <WORD:Access-list name>', run: (x, a) => x.enterAcl(a[3]!, 'extended') },
+    { p: 'no ip access-list standard <WORD:Access-list name>', run: (x, a) => x.deleteAcl(a[4]!, 'standard') },
+    { p: 'no ip access-list extended <WORD:Access-list name>', run: (x, a) => x.deleteAcl(a[4]!, 'extended') },
     // L5-f: CDP (IOS: varsayılan açık), LLDP (varsayılan kapalı)
     { p: 'cdp run', run: (x) => void delete x.cfg.cdpRun },
     { p: 'no cdp run', run: (x) => void (x.cfg.cdpRun = false) },
@@ -280,6 +300,13 @@ const l3OptPatterns: P[] = [
       }),
   },
   { p: 'no ip helper-address', run: (x) => x.eachL3((o) => void delete o.helpers) },
+  // L5-c: `ip access-group` (routed port, subinterface, SVI)
+  { p: 'ip access-group <WORD:IP access list (standard or extended)> in', run: (x, a) => x.eachL3((o) => void (o.aclIn = a[2]!)) },
+  { p: 'ip access-group <WORD:IP access list (standard or extended)> out', run: (x, a) => x.eachL3((o) => void (o.aclOut = a[2]!)) },
+  { p: 'no ip access-group <WORD:IP access list (standard or extended)> in', run: (x) => x.eachL3((o) => void delete o.aclIn) },
+  { p: 'no ip access-group <WORD:IP access list (standard or extended)> out', run: (x) => x.eachL3((o) => void delete o.aclOut) },
+  { p: 'no ip access-group in', run: (x) => x.eachL3((o) => void delete o.aclIn) },
+  { p: 'no ip access-group out', run: (x) => x.eachL3((o) => void delete o.aclOut) },
 ]
 
 const routerPatterns: P[] = [
@@ -460,6 +487,16 @@ const l2IfPatterns = (def: SwitchDef): P[] => {
   return p
 }
 
+/** L5-c: named access-list sub-mode (`ip access-list standard|extended NAME`). */
+const aclPatterns: P[] = [
+  ...commonSub,
+  { p: 'permit <LINE:permit conditions>', run: (x, a) => x.aclLine(null, 'permit ' + a[1]!, 1) },
+  { p: 'deny <LINE:deny conditions>', run: (x, a) => x.aclLine(null, 'deny ' + a[1]!, 1) },
+  { p: '<1-2147483647:Sequence Number> permit <LINE:permit conditions>', run: (x, a) => x.aclLine(Number(a[0]), 'permit ' + a[2]!, 2) },
+  { p: '<1-2147483647:Sequence Number> deny <LINE:deny conditions>', run: (x, a) => x.aclLine(Number(a[0]), 'deny ' + a[2]!, 2) },
+  { p: 'no <1-2147483647:Sequence Number>', run: (x, a) => x.aclNoSeq(Number(a[1])) },
+]
+
 const sviPatterns: P[] = [
   ...commonSub,
   { p: 'shutdown', run: (x) => x.eachSvi((s) => void (s.shutdown = true)) },
@@ -505,6 +542,7 @@ function tries(def: SwitchDef) {
       vlan: buildTrie(vlanPatterns),
       router: buildTrie(routerPatterns),
       dhcp: buildTrie(dhcpPoolPatterns),
+      acl: buildTrie(aclPatterns),
     }
     trieCache.set(def, t)
   }
@@ -518,6 +556,8 @@ export class IosSession {
   ifs: string[] = []
   range = false
   vlanIds: number[] = []
+  /** L5-c: list being edited in `(config-std-nacl)` / `(config-ext-nacl)` */
+  aclName = ''
   /** L5-b: pool under `ip dhcp pool <name>` */
   pool = ''
   history: string[] = []
@@ -554,11 +594,13 @@ export class IosSession {
         return h + '(config-router)#'
       case 'dhcp':
         return h + '(dhcp-config)#'
+      case 'acl':
+        return h + (this.cfg.acls?.[this.aclName]?.type === 'extended' ? '(config-ext-nacl)#' : '(config-std-nacl)#')
     }
   }
 
   get inConfig() {
-    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp'
+    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl'
   }
 
   private trie(): TrieNode<IosSession> {
@@ -607,7 +649,7 @@ export class IosSession {
   private run(cmd: string): string[] {
     let r = parse(this.trie(), cmd)
     // in a sub-mode, a global config command drops back to config mode (as IOS does)
-    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp') && r.err !== 'empty') {
+    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl') && r.err !== 'empty') {
       const g = parse(tries(this.def).config, cmd)
       if (g.ok) {
         this.mode = 'config'
@@ -810,6 +852,60 @@ export class IosSession {
     base.shutdown = false
     base.description = ''
     return base
+  }
+
+  // ---- L5-c: access lists ----
+
+  private aclSyntax(e: unknown, argIndex: number): never {
+    if (e instanceof acl.AclSyntax) throw new InvalidAt(argIndex)
+    throw e
+  }
+
+  /** `access-list N permit|deny …`: appended with the next sequence number. */
+  aclNumbered(num: string, rest: string): Out {
+    const kind = acl.aclKind(num)!
+    const lists = (this.cfg.acls ??= {})
+    const list = (lists[num] ??= { type: kind, entries: [] })
+    try {
+      return acl.insertEntry(list, acl.parseEntry(rest.trim().split(/\s+/), kind, acl.nextSeq(list)))
+    } catch (e) {
+      if (!list.entries.length) delete lists[num]
+      this.aclSyntax(e, 2)
+    }
+  }
+
+  enterAcl(name: string, type: 'standard' | 'extended'): Out {
+    const num = acl.aclKind(name)
+    if (num && num !== type) return [`% Invalid access list number for ${type} list`]
+    const lists = (this.cfg.acls ??= {})
+    const cur = lists[name]
+    if (cur && cur.type !== type) return [`% A named ${cur.type} IP access list with this name already exists`]
+    lists[name] ??= { type, entries: [] }
+    this.aclName = name
+    this.mode = 'acl'
+  }
+
+  deleteAcl(name: string, type: 'standard' | 'extended'): Out {
+    if (this.cfg.acls?.[name]?.type === type) delete this.cfg.acls[name]
+  }
+
+  aclLine(seq: number | null, text: string, argIndex: number): Out {
+    const list = this.cfg.acls![this.aclName]!
+    try {
+      return acl.insertEntry(list, acl.parseEntry(text.trim().split(/\s+/), list.type, seq ?? acl.nextSeq(list)))
+    } catch (e) {
+      this.aclSyntax(e, argIndex)
+    }
+  }
+
+  aclNoSeq(seq: number): Out {
+    const list = this.cfg.acls![this.aclName]!
+    list.entries = list.entries.filter((e) => e.seq !== seq)
+  }
+
+  /** An L3 interface name for show commands (physical, subinterface, SVI, loopback). */
+  resolveL3(type: string, num: string, argIndex: number): string {
+    return this.resolveIf(type, num, argIndex, false)
   }
 
   // ---- L5-e: port security ----
@@ -1326,6 +1422,7 @@ export class IosSession {
     const d = this.rt.derived
     const r = ping(d, this.dev, ip)
     this.rt.markSeen(r.forward?.hops ?? [], this.dev)
+    this.rt.countAcl(5, r.forward, r.back)
     const head = ['Type escape sequence to abort.', `Sending 5, 100-byte ICMP Echos to ${ip}, timeout is 2 seconds:`]
     if (r.reason === 'noip' && !l3Ifs(d, this.dev).length) return [...head, '.....', 'Success rate is 0 percent (0/5)']
     let marks: string
@@ -1355,8 +1452,10 @@ export class IosSession {
 
   traceroute(ip: string): string[] {
     const d = this.rt.derived
-    const r = deliver(d, this.dev, ip)
+    // IOS traceroute: UDP probes to ports 33434+ (ACLs see UDP)
+    const r = deliver(d, this.dev, ip, { proto: 'udp', dport: 33434 })
     this.rt.markSeen(r.hops, this.dev)
+    this.rt.countAcl(1, r)
     const out = ['Type escape sequence to abort.', `Tracing the route to ${ip}`, 'VRF info: (vrf in name/id, vrf out name/id)']
     r.hops.forEach((h, i) => out.push(`  ${i + 1} ${h.ip} ${1 + i} msec ${i} msec ${1 + i} msec`))
     if (r.kind === 'ok') {
@@ -1364,7 +1463,9 @@ export class IosSession {
       return out
     }
     if (r.kind === 'unreach') {
-      out.push(`  ${r.hops.length + 1} ${r.atIp} !H  !H  !H`)
+      // L5-c: ACL deny → administratively prohibited (!A)
+      const m = r.filtered ? '!A' : '!H'
+      out.push(`  ${r.hops.length + 1} ${r.atIp} ${m}  ${m}  ${m}`)
       return out
     }
     for (let i = r.hops.length + 1; i <= r.hops.length + 3; i++) out.push(`  ${i}  *  *  *`)

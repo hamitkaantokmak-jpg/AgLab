@@ -12,7 +12,8 @@ import AgLabMacAddress from '../../simulator/mac-address.js'
 import { defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED_VLANS } from '../sim/config'
 import { LabRuntime } from '../sim/runtime'
 import { isApipa } from '../sim/dhcp'
-import type { DhcpPool, Hardware, L3Opts, LabDef, OspfConfig, PcConfig, PcDef, StaticRoute, SubIfConfig, SwitchConfig, SwitchDef } from '../sim/types'
+import { aclKind, normAddr } from '../sim/acl'
+import type { Acl, AclAddr, AclEntry, DhcpPool, Hardware, L3Opts, LabDef, OspfConfig, PcConfig, PcDef, StaticRoute, SubIfConfig, SwitchConfig, SwitchDef } from '../sim/types'
 import { canonIf, clone, ipToInt, isIp, maskToPrefix, networkOf, normalizeMac, ports as expandPorts, prefixToMask } from '../sim/util'
 import type { AglabDevice, AglabInterface, AglabLink, AglabStaticRoute, AglabTopology } from './aglab'
 
@@ -64,12 +65,14 @@ const SWITCH_FIELDS = new Set([
 // L4: Router. `ip`/`mask`/`gateway` cihaz düzeyinde yalnız boş olabilir; `vlan` router için
 // anlamsızdır (PKT dönüştürücüsü 1 yazar) ve opak geçer.
 // L5-b: `dhcpPools` / `dhcpExcluded` (IOS DHCP sunucusu) ve arayüzde `helperAddress` (relay).
-const ROUTER_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'staticRoutes', 'route', 'ospf', 'ip', 'mask', 'gateway', 'vlan', 'dhcpPools', 'dhcpExcluded'])
-const ROUTER_IF_FIELDS = new Set(['ip', 'mask', 'enabled', 'helperAddress'])
+const ROUTER_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'staticRoutes', 'route', 'ospf', 'ip', 'mask', 'gateway', 'vlan', 'dhcpPools', 'dhcpExcluded', 'acls'])
+// L5-c: `aclIn` / `aclOut` (ip access-group)
+const ROUTER_IF_FIELDS = new Set(['ip', 'mask', 'enabled', 'helperAddress', 'aclIn', 'aclOut'])
+const ACL_RULE_FIELDS = new Set(['id', 'action', 'protocol', 'srcType', 'src', 'wildcard', 'dstType', 'dst', 'dstWildcard', 'port'])
 const DHCP_POOL_FIELDS = new Set(['name', 'network', 'mask', 'defaultRouter', 'dnsServer'])
 // L5-a: router alt arayüzü (`g0/0.10`). Eski CLI yeni alt arayüzü `encapsulation: ''`, `vlan: 1`
 // ile kurar: boş encapsulation "henüz yapılandırılmadı" demektir (eski motorda da etkin değil).
-const SUBIF_FIELDS = new Set(['ip', 'mask', 'enabled', 'parent', 'vlan', 'encapsulation', 'helperAddress'])
+const SUBIF_FIELDS = new Set(['ip', 'mask', 'enabled', 'parent', 'vlan', 'encapsulation', 'helperAddress', 'aclIn', 'aclOut'])
 const STATIC_ROUTE_FIELDS = new Set(['network', 'mask', 'nextHop', 'distance'])
 const OSPF_FIELDS = new Set(['pid', 'routerId', 'networks'])
 // Server: PC gibi bir uç; L5-b'den beri DHCP ve DNS servisleri modellenir (HTTP L5-d'ye kadar yok).
@@ -204,6 +207,80 @@ export function toLabber(input: AglabTopology): BridgeResult {
     return [h]
   }
 
+  /** L5-c: `aclIn` / `aclOut` → L3Opts (boş metin = uygulanmamış). */
+  const accessGroups = (id: string, name: string, iface: AglabInterface) => {
+    const out: { aclIn?: string; aclOut?: string } = {}
+    for (const k of ['aclIn', 'aclOut'] as const) {
+      const v = iface[k]
+      if (v === undefined || v === '' || v === null) continue
+      if (typeof v !== 'string' && typeof v !== 'number') reject(id, `${name}.${k}`, 'Geçersiz ACL kimliği')
+      else out[k] = String(v)
+    }
+    return Object.keys(out).length ? out : null
+  }
+
+  /**
+   * L5-c: eski motor kuralları → Labber listeleri. 1-99 standart, 100-199 genişletilmiş; isimli
+   * listenin türü kurallarından çıkarılır (yalnız `ip` ve hedef `any` → standart).
+   */
+  const aclsToLabber = (id: string, rules: Record<string, unknown>[]): Record<string, Acl> | null => {
+    const lists: Record<string, Acl> = {}
+    const order: string[] = []
+    let ok = true
+    const addr = (type: unknown, a: unknown, w: unknown, where: string): AclAddr | null => {
+      if (type === undefined || type === 'any') return { addr: '0.0.0.0', wild: '255.255.255.255' }
+      if (type === 'host' && typeof a === 'string' && isIp(a)) return { addr: a, wild: '0.0.0.0' }
+      if (type === 'network' && typeof a === 'string' && isIp(a) && typeof w === 'string' && isIp(w)) return normAddr(a, w)
+      reject(id, where, 'Geçersiz ACL adres/wildcard')
+      ok = false
+      return null
+    }
+    rules.forEach((r, i) => {
+      const where = `acls[${i}]`
+      for (const k of Object.keys(r ?? {})) if (!ACL_RULE_FIELDS.has(k)) unsupported(id, `${where}.${k}`, 'Labber\'da karşılığı olmayan ACL alanı')
+      const name = String(r?.['id'] ?? '')
+      const proto = String(r?.['protocol'] ?? 'ip')
+      if (!name || !['permit', 'deny'].includes(String(r?.['action'])) || !['ip', 'icmp', 'tcp', 'udp'].includes(proto)) {
+        reject(id, where, 'Geçersiz ACL kuralı')
+        ok = false
+        return
+      }
+      const src = addr(r['srcType'], r['src'], r['wildcard'], where + '.src')
+      const dst = addr(r['dstType'], r['dst'], r['dstWildcard'], where + '.dst')
+      const port = r['port']
+      if (port !== undefined && port !== null && (!['tcp', 'udp'].includes(proto) || !Number.isInteger(Number(port)) || Number(port) < 0 || Number(port) > 65535)) {
+        reject(id, where + '.port', 'ACL portu yalnız tcp/udp için 0-65535')
+        ok = false
+        return
+      }
+      if (!src || !dst) return
+      if (!lists[name]) {
+        lists[name] = { type: 'extended', entries: [] }
+        order.push(name)
+      }
+      const e: AclEntry = {
+        seq: (lists[name]!.entries.length + 1) * 10, action: r['action'] as 'permit' | 'deny', proto: proto as AclEntry['proto'], src, dst,
+        ...(port !== undefined && port !== null ? { dstPort: { op: 'eq' as const, a: Number(port) } } : {}),
+      }
+      lists[name]!.entries.push(e)
+    })
+    for (const name of order) {
+      const l = lists[name]!
+      const plain = l.entries.every((e) => e.proto === 'ip' && !e.dstPort && e.dst!.wild === '255.255.255.255')
+      const kind = aclKind(name) ?? (plain ? 'standard' : 'extended')
+      if (kind === 'standard') {
+        if (!plain) {
+          reject(id, `acls.${name}`, 'Standart ACL (1-99) yalnız kaynak adresi eşler')
+          ok = false
+          continue
+        }
+        l.type = 'standard'
+        for (const e of l.entries) delete e.dst
+      }
+    }
+    return ok ? lists : null
+  }
+
   // ---- Router (L4) ----
   const routerToLabber = (d: AglabDevice, id: string, off: boolean) => {
     for (const key of ['ip', 'mask', 'gateway'] as const)
@@ -243,6 +320,8 @@ export function toLabber(input: AglabTopology): BridgeResult {
       }
       const helpers = helperOf(id, name, iface)
       if (helpers) phys.l3 = { ...(phys.l3 ?? {}), helpers }
+      const groups = accessGroups(id, name, iface)
+      if (groups) phys.l3 = { ...(phys.l3 ?? {}), ...groups }
     }
     // L5-a: alt arayüzler (`<fiziksel>.<n>`, 802.1Q)
     for (const [name, iface] of Object.entries(ifaces)) {
@@ -284,6 +363,16 @@ export function toLabber(input: AglabTopology): BridgeResult {
       subs[key] = { parent, vlan, native: false, shutdown: iface.enabled === false, description: '', ip }
       const helpers = helperOf(id, name, iface)
       if (helpers) subs[key]!.l3 = { helpers }
+      const groups = accessGroups(id, name, iface)
+      if (groups) subs[key]!.l3 = { ...(subs[key]!.l3 ?? {}), ...groups }
+    }
+    // L5-c: ACL'ler (eski motor kuralları; liste kimliğine göre sırayla gruplanır)
+    if (d.acls !== undefined) {
+      if (!Array.isArray(d.acls)) reject(id, 'acls', 'ACL listesi dizi olmalı')
+      else {
+        const lists = aclsToLabber(id, d.acls as Record<string, unknown>[])
+        if (lists) cfg.acls = lists
+      }
     }
     // L5-b: IOS DHCP sunucusu (`ip dhcp pool`, `ip dhcp excluded-address`)
     if (d.dhcpPools !== undefined) {
@@ -868,6 +957,13 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
   if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail('Loopback')
   if (!cfg.ipRouting) fail('no ip routing')
   if (cfg.defaultGateway) fail('ip default-gateway')
+  // L5-c: ACL'ler (özgünde alan varsa ya da liste tanımlıysa yazılır)
+  {
+    const rules = aclsBack(cfg, orig, fail)
+    const prevRules = JSON.stringify(orig.acls ?? null)
+    const same = JSON.stringify(rules.map((r) => ({ ...r }))) === prevRules
+    if (!same && (d.acls !== undefined || rules.length)) d.acls = rules
+  }
   d.interfaces = d.interfaces ?? {}
   for (const [canon, phys] of Object.entries(cfg.ifaces)) {
     const name = back[canon]
@@ -875,7 +971,7 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
     if (phys.description) fail(`${canon} description`)
     const helper = helperBack(phys.l3, canon, fail)
     const prev = d.interfaces[name]
-    if (!prev && !phys.ip && !phys.shutdown && !helper) continue
+    if (!prev && !phys.ip && !phys.shutdown && !helper && !phys.l3?.aclIn && !phys.l3?.aclOut) continue
     const iface: AglabInterface = prev ? { ...prev } : {}
     if (phys.ip) {
       iface.ip = phys.ip.addr
@@ -884,6 +980,7 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
     if (prev?.enabled !== undefined || phys.shutdown) iface.enabled = !phys.shutdown
     if (helper) iface['helperAddress'] = helper
     else if (iface['helperAddress'] !== '') delete iface['helperAddress']
+    groupsBack(iface, phys.l3)
     d.interfaces[name] = iface
   }
   // L5-a: alt arayüzler. AğLab adı: fiziksel portun AğLab yazımı + '.N'. Native alt arayüz,
@@ -912,6 +1009,7 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
     if (prev?.parent !== undefined || !prev) iface.parent = physName
     if (helper) iface['helperAddress'] = helper
     else if (iface['helperAddress'] !== '') delete iface['helperAddress']
+    groupsBack(iface, si.l3)
     d.interfaces[name] = iface
   }
   // CLI ile silinen alt arayüz (`no interface Gi0/0.N`) AğLab görünümünden de çıkar
@@ -974,10 +1072,48 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
  */
 function helperBack(l3: L3Opts | undefined, canon: string, fail: (what: string) => never): string | null {
   if (!l3) return null
-  const { helpers, ...rest } = l3
+  const { helpers, aclIn: _in, aclOut: _out, ...rest } = l3
   if (Object.keys(rest).length) fail(`${canon} arayüz OSPF/L3 ayarı`)
   if (helpers && helpers.length > 1) fail(`${canon} üzerinde birden çok ip helper-address`)
   return helpers?.[0] ?? null
+}
+
+/** L5-c: `ip access-group` → AğLab `aclIn` / `aclOut` (kaldırılınca alan silinir). */
+function groupsBack(iface: AglabInterface, l3: L3Opts | undefined) {
+  for (const k of ['aclIn', 'aclOut'] as const) {
+    if (l3?.[k]) iface[k] = l3[k]
+    else if (iface[k] !== '') delete iface[k]
+  }
+}
+
+/**
+ * L5-c: Labber listeleri → eski motor kuralları (listeler özgün sırasıyla, yeniler sonda).
+ * Sıra numaraları AğLab'da tutulmaz (sıra korunur). Kaynak portu, eq dışı port işleci ve ICMP
+ * türü AğLab modelinde yok → BridgeError. Boş liste yazılmaz (IOS'ta da her şeye izin verir).
+ */
+function aclsBack(cfg: SwitchConfig, orig: AglabDevice, fail: (what: string) => never): Record<string, unknown>[] {
+  const lists = cfg.acls ?? {}
+  const origOrder = [...new Set(((orig.acls as Record<string, unknown>[] | undefined) ?? []).map((r) => String(r['id'])))]
+  const names = [...origOrder.filter((n) => lists[n]), ...Object.keys(lists).filter((n) => !origOrder.includes(n))]
+  const out: Record<string, unknown>[] = []
+  const side = (a: AclAddr, pre: 'src' | 'dst') => {
+    if (a.wild === '255.255.255.255') return { [pre + 'Type']: 'any', [pre]: '' }
+    if (a.wild === '0.0.0.0') return { [pre + 'Type']: 'host', [pre]: a.addr }
+    return { [pre + 'Type']: 'network', [pre]: a.addr, [pre === 'src' ? 'wildcard' : 'dstWildcard']: a.wild }
+  }
+  for (const n of names) {
+    for (const e of lists[n]!.entries) {
+      if (e.srcPort) fail(`ACL ${n} ${e.seq} kaynak portu`)
+      if (e.dstPort && e.dstPort.op !== 'eq') fail(`ACL ${n} ${e.seq} port işleci ${e.dstPort.op}`)
+      if (e.icmpType) fail(`ACL ${n} ${e.seq} ICMP türü`)
+      out.push({
+        id: aclKind(n) ? Number(n) : n, action: e.action, protocol: e.proto, ...side(e.src, 'src'),
+        ...side(e.dst ?? { addr: '0.0.0.0', wild: '255.255.255.255' }, 'dst'),
+        ...(e.dstPort ? { port: e.dstPort.a } : {}),
+      })
+    }
+  }
+  return out
 }
 
 /** IPv4 → tam sayı (yardımcı; testlerde kullanılır). */

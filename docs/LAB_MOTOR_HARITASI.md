@@ -65,7 +65,7 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `access-vlan` | access-vlan | **Labber** |
 | `trunk-allowed` | trunk-allowed | **Labber** |
 | `native-vlan` | native-vlan | **Labber** |
-| `nat-pat` | nat-pat | Eski motor: ACL Labber'da yok (L5); NAT Labber'da yok (L5); NAT çeviri tablosu Labber'da yok (L5); Sunucu servisleri içinde HTTP Labber'da yok (L5) |
+| `nat-pat` | nat-pat | Eski motor: NAT Labber'da yok (L5); NAT çeviri tablosu Labber'da yok (L5); Sunucu servisleri içinde HTTP Labber'da yok (L5) |
 | `relay-trunk` | relay-trunk | **Labber** |
 | `stp-loop` | stp-loop | **Labber** |
 | `vlan-wrong-access` | VLAN · Yeni muhasebe PC'si kimseyi görmüyor | **Labber** |
@@ -135,7 +135,6 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
-| ACL Labber'da yok (L5) | 1 |
 | BGP Labber'da yok (L5) | 1 |
 | NAT Labber'da yok (L5) | 1 |
 | NAT çeviri tablosu Labber'da yok (L5) | 1 |

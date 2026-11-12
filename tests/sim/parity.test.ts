@@ -22,6 +22,7 @@ import { createRuntime, toLabber } from '../../src/sim-bridge/bridge'
 import type { AglabTopology } from '../../src/sim-bridge/aglab'
 import { crossVlan, egress, vlanExists } from '../../src/sim/engine'
 import { deliver, pcNode, routeOut, routeTable } from '../../src/sim/net'
+import { aclDecide } from '../../src/sim/acl'
 import { randomTopology, withHardwareFaults } from './bridge.test'
 import { LabQuery } from '../../src/sim/query'
 
@@ -378,6 +379,53 @@ describe('oracle paritesi: port security (L5-e, port-security.js)', () => {
     }
     expect(admitted).toBeGreaterThan(20)
     expect(denied).toBeGreaterThan(20)
+  })
+})
+
+// ---- L5-c: ACL (src/engine/acl.js aclEvaluate) ----
+const aclOracle = require_(join(ROOT, 'src/engine/acl.js'))
+
+describe('oracle paritesi: ACL (L5-c, acl.js aclEvaluate)', () => {
+  it('rastgele kural ve paketlerde ilk eşleşme ve örtük deny eski motorla aynı', () => {
+    const ips = ['10.0.0.5', '10.0.0.9', '10.0.1.9', '192.168.1.10', '192.168.1.200', '8.8.8.8']
+    let permits = 0
+    let denies = 0
+    for (let seed = 1; seed <= 300; seed++) {
+      const r = rng(seed)
+      const id = r(2) ? 110 : 'NAMED'
+      const rules: Record<string, unknown>[] = []
+      for (let k = 1 + r(4); k > 0; k--) {
+        const proto = ['ip', 'icmp', 'tcp', 'udp'][r(4)]!
+        const side = (pre: 'src' | 'dst') => {
+          const t = ['any', 'host', 'network'][r(3)]!
+          if (t === 'any') return { [pre + 'Type']: 'any', [pre]: '' }
+          if (t === 'host') return { [pre + 'Type']: 'host', [pre]: ips[r(ips.length)] }
+          const [net, w] = [['10.0.0.0', '0.0.0.255'], ['10.0.0.0', '0.0.255.255'], ['192.168.1.0', '0.0.0.127'], ['0.0.0.0', '255.255.255.255']][r(4)]!
+          return { [pre + 'Type']: 'network', [pre]: net, [pre === 'src' ? 'wildcard' : 'dstWildcard']: w }
+        }
+        rules.push({ id, action: r(2) ? 'permit' : 'deny', protocol: proto, ...side('src'), ...side('dst'), ...((proto === 'tcp' || proto === 'udp') && r(2) ? { port: [23, 80, 443][r(3)] } : {}) })
+      }
+      const t: AglabTopology = { devices: [{ id: 'r', name: 'R', type: 'Router', enabled: true, ports: ['g0/0'], interfaces: {}, acls: rules }], links: [] }
+      const bridged = toLabber(t)
+      expect(bridged.report.engineDecision, `seed ${seed} ${JSON.stringify(bridged.report.reasons)}`).toBe('labber')
+      const list = bridged.running['r']!.acls![String(id)]
+      for (let p = 0; p < 6; p++) {
+        const proto = (['icmp', 'tcp', 'udp'] as const)[r(3)]
+        const pkt = { src: ips[r(ips.length)]!, dst: ips[r(ips.length)]!, proto, ...(proto !== 'icmp' ? { dport: [23, 80, 443, 8080][r(4)] } : {}) }
+        const ora = aclOracle.aclEvaluate({ acls: rules }, id, pkt.src, pkt.dst, proto, pkt.dport).action
+        const lab = aclDecide(list, pkt).permit ? 'permit' : 'deny'
+        expect(lab, `seed ${seed} ${JSON.stringify(pkt)} ${JSON.stringify(rules)}`).toBe(ora)
+        if (ora === 'permit') permits++
+        else denies++
+      }
+    }
+    expect(permits).toBeGreaterThan(100)
+    expect(denies).toBeGreaterThan(100)
+  })
+
+  it('bilinen fark: tanımsız liste — eski motor engeller, IOS (Labber) izin verir', () => {
+    expect(aclOracle.aclEvaluate({ acls: [] }, 99, '10.0.0.1', '10.0.0.2', 'icmp').action).toBe('deny')
+    expect(aclDecide(undefined, { src: '10.0.0.1', dst: '10.0.0.2', proto: 'icmp' }).permit).toBe(true)
   })
 })
 

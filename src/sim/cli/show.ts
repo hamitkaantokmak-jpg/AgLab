@@ -6,6 +6,7 @@ import { macTable, routeTable, type RouteEntry } from '../net'
 import type { OspfIf } from '../ospf'
 import type { LabRuntime } from '../runtime'
 import { psConfigLines } from '../portsec'
+import { aclConfigLines } from '../acl'
 import { pk } from '../topology'
 import type { IpAddr, L2IfConfig, L3Opts, PhysIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { formatVlanList, ifType, intToIp, ipToInt, macAdd, maskToPrefix, pad, padL, prefixMaskInt, shortIf } from '../util'
@@ -38,6 +39,8 @@ function l3Lines(ip: IpAddr | null | undefined, o: L3Opts | undefined, noIpLine:
   if (ip) out.push(` ip address ${ip.addr} ${ip.mask}`)
   else if (noIpLine) out.push(' no ip address')
   for (const h of o?.helpers ?? []) out.push(' ip helper-address ' + h)
+  if (o?.aclIn) out.push(` ip access-group ${o.aclIn} in`)
+  if (o?.aclOut) out.push(` ip access-group ${o.aclOut} out`)
   if (o?.mtu) out.push(' ip mtu ' + o.mtu)
   if (o?.ospfNet) out.push(' ip ospf network ' + o.ospfNet)
   if (o?.ospfHello) out.push(' ip ospf hello-interval ' + o.ospfHello)
@@ -100,7 +103,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   if (c.ospf) o.push(...ospfLines(c))
   o.push('ip forward-protocol nd', 'no ip http server', '!')
   for (const r of c.routes) o.push(routeLine(r))
-  o.push(...discoveryGlobalLines(c), '!', 'line con 0', 'line aux 0', 'line vty 0 4', ' login', '!', 'end')
+  o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), '!', 'line con 0', 'line aux 0', 'line vty 0 4', ' login', '!', 'end')
   return o
 }
 
@@ -204,7 +207,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   if (c.defaultGateway) o.push('ip default-gateway ' + c.defaultGateway)
   o.push('ip forward-protocol nd', 'no ip http server', '!')
   for (const r of c.routes) o.push(routeLine(r))
-  o.push(...discoveryGlobalLines(c), '!', 'line con 0', 'line vty 0 4', ' login', 'line vty 5 15', ' login', '!', 'end')
+  o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), '!', 'line con 0', 'line vty 0 4', ' login', 'line vty 5 15', ' login', '!', 'end')
   return o
 }
 
@@ -842,4 +845,51 @@ export function showDhcpPool(rt: LabRuntime, dev: string, only?: string): string
     out.push('')
   }
   return out
+}
+
+// ---- L5-c: show ip interface (ACL ve helper satırlarıyla) ----
+
+/** `show ip interface [<if>]`: L3 interfaces with address, helper and access-group lines. */
+export function showIpInterface(rt: LabRuntime, dev: string, only?: string): string[] {
+  const d = rt.derived
+  const c = rt.running[dev]!
+  const sw = rt.topo.devices[dev] as SwitchDef
+  const rows: { name: string; ip: IpAddr | null; l3?: L3Opts; status: string; proto: boolean }[] = []
+  for (const s of d.svis[dev] ?? []) {
+    const cfg = c.svis[String(s.vlan)]!
+    rows.push({ name: 'Vlan' + s.vlan, ip: cfg.ip, l3: cfg.l3, status: s.status === 'administratively down' ? 'administratively down' : s.up ? 'up' : 'down', proto: s.up })
+  }
+  for (const p of sw.ports) {
+    const ic = c.ifaces[p]!
+    const ps = d.phys[pk(dev, p)]!
+    if (ic.routed || only === p)
+      rows.push({ name: p, ip: ic.routed ? (ic.ip ?? null) : null, l3: ic.l3, status: ps.adminDown ? 'administratively down' : ps.up ? 'up' : 'down', proto: ps.up })
+    for (const [name, si] of subifsOf(c, p)) {
+      const up = !si.shutdown && ps.up
+      rows.push({ name, ip: si.ip, l3: si.l3, status: si.shutdown ? 'administratively down' : up ? 'up' : 'down', proto: up })
+    }
+  }
+  for (const [n, l] of Object.entries(c.loopbacks ?? {})) rows.push({ name: 'Loopback' + n, ip: l.ip, l3: l.l3, status: l.shutdown ? 'administratively down' : 'up', proto: !l.shutdown })
+  const o: string[] = []
+  for (const r of rows) {
+    if (only && r.name !== only) continue
+    o.push(`${r.name} is ${r.status}, line protocol is ${r.proto ? 'up' : 'down'}`)
+    if (!r.ip) {
+      o.push('  Internet protocol processing disabled')
+      continue
+    }
+    const helpers = r.l3?.helpers ?? []
+    o.push(
+      `  Internet address is ${r.ip.addr}/${maskToPrefix(r.ip.mask)}`,
+      '  Broadcast address is 255.255.255.255',
+      `  MTU is ${r.l3?.mtu ?? 1500} bytes`,
+      helpers.length ? `  Helper addresses are ${helpers.join(' ')}` : '  Helper address is not set',
+      '  Outgoing Common access list is not set',
+      `  Outgoing access list is ${r.l3?.aclOut ?? 'not set'}`,
+      '  Inbound Common access list is not set',
+      `  Inbound  access list is ${r.l3?.aclIn ?? 'not set'}`,
+      '  Proxy ARP is enabled',
+    )
+  }
+  return o
 }
