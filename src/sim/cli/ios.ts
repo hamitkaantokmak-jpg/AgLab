@@ -3,13 +3,14 @@
 import { defaultSvi, defaultSwitchConfig, defaultVlanName, pickL2, RESERVED_VLANS } from '../config'
 import { arpMac, deliver, l3Ifs, ping } from '../net'
 import type { LabRuntime } from '../runtime'
-import type { ChannelMode, DhcpPool, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
+import type { ChannelMode, DhcpPool, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { canonIf, clone, ifNum, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
 import * as disc from '../discovery'
 import * as psec from '../portsec'
 import * as acl from '../acl'
+import * as nat from '../nat'
 
 export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl'
 
@@ -71,6 +72,9 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show ip access-lists', run: (x) => acl.showAccessLists(x.cfg, x.dev, x.rt.aclHits) },
     { p: 'show ip access-lists <WORD:ACL name or number>', run: (x, a) => acl.showAccessLists(x.cfg, x.dev, x.rt.aclHits, a[3]!) },
     { p: 'show ip interface', run: (x) => show.showIpInterface(x.rt, x.dev) },
+    // L5-d: NAT (yalnız router; switch'te gizli)
+    { p: 'show ip nat translations', run: (x) => nat.showNatTranslations(x.cfg, x.dev, x.rt.natTable) },
+    { p: 'show ip nat statistics', run: (x) => x.natStatistics() },
     { p: 'show ip interface <if>', run: (x, a) => show.showIpInterface(x.rt, x.dev, x.resolveL3(a[3]!, a[4]!, 3)) },
     { p: 'show port-security address', run: (x) => psec.showPortSecurityAddress(x.rt, x.dev) },
     { p: 'show port-security interface <if>', run: (x, a) => psec.showPortSecurityInterface(x.rt, x.dev, x.physName(a[3]!, a[4]!, 3)), ifTypes: ['FastEthernet', 'GigabitEthernet'] },
@@ -121,6 +125,7 @@ const privPatterns: P[] = [
   },
   { p: 'erase startup-config', run: (x) => x.erase() },
   { p: 'reload', run: (x) => x.reload() },
+  { p: 'clear ip nat translation *', run: (x) => x.clearNat() },
   {
     p: 'clear access-list counters',
     run: (x) => {
@@ -256,12 +261,40 @@ const configPatterns = (def: SwitchDef): P[] => {
       },
     )
   }
+  if (def.router) {
+    // L5-d: NAT/PAT
+    const L = '<A.B.C.D:Inside local IP address>', G = '<A.B.C.D:Inside global IP address>'
+    const LP = '<1-65535:Local UDP/TCP port>', GP = '<1-65535:Global UDP/TCP port>'
+    const ACL = '<WORD:Access list number or name for local addresses>', POOL = '<WORD:Name pool of global addresses>'
+    p.push(
+      { p: `ip nat inside source static ${L} ${G}`, run: (x, a) => x.natStatic(true, { local: a[5]!, global: a[6]! }) },
+      { p: `no ip nat inside source static ${L} ${G}`, run: (x, a) => x.natStatic(false, { local: a[6]!, global: a[7]! }) },
+      ...(['tcp', 'udp'] as const).flatMap((pr): P[] => [
+        { p: `ip nat inside source static ${pr} ${L} ${LP} ${G} ${GP}`, run: (x, a) => x.natStatic(true, { proto: pr, local: a[6]!, lport: Number(a[7]), global: a[8]!, gport: Number(a[9]) }) },
+        { p: `no ip nat inside source static ${pr} ${L} ${LP} ${G} ${GP}`, run: (x, a) => x.natStatic(false, { proto: pr, local: a[7]!, lport: Number(a[8]), global: a[9]!, gport: Number(a[10]) }) },
+      ]),
+      { p: `ip nat pool ${POOL} <A.B.C.D:Start IP address> <A.B.C.D:End IP address> netmask <A.B.C.D:Network mask>`, run: (x, a) => x.natPool(a[3]!, a[4]!, a[5]!, a[7]!) },
+      { p: `no ip nat pool ${POOL}`, run: (x, a) => x.natNoPool(a[4]!) },
+      { p: `no ip nat pool ${POOL} <A.B.C.D:Start IP address> <A.B.C.D:End IP address> netmask <A.B.C.D:Network mask>`, run: (x, a) => x.natNoPool(a[4]!) },
+      { p: `ip nat inside source list ${ACL} pool ${POOL}`, run: (x, a) => x.natRule({ acl: a[5]!, pool: a[7]!, overload: false }) },
+      { p: `ip nat inside source list ${ACL} pool ${POOL} overload`, run: (x, a) => x.natRule({ acl: a[5]!, pool: a[7]!, overload: true }) },
+      { p: `ip nat inside source list ${ACL} interface <if>`, run: (x, a) => x.natRule({ acl: a[5]!, iface: x.resolveL3(a[7]!, a[8]!, 7), overload: false }), ifTypes: ['FastEthernet', 'GigabitEthernet'] },
+      { p: `ip nat inside source list ${ACL} interface <if> overload`, run: (x, a) => x.natRule({ acl: a[5]!, iface: x.resolveL3(a[7]!, a[8]!, 7), overload: true }), ifTypes: ['FastEthernet', 'GigabitEthernet'] },
+      { p: `no ip nat inside source list ${ACL}`, run: (x, a) => x.natNoRule(a[6]!) },
+      { p: `no ip nat inside source list ${ACL} pool ${POOL}`, run: (x, a) => x.natNoRule(a[6]!) },
+      { p: `no ip nat inside source list ${ACL} pool ${POOL} overload`, run: (x, a) => x.natNoRule(a[6]!) },
+      { p: `no ip nat inside source list ${ACL} interface <if>`, run: (x, a) => x.natNoRule(a[6]!), ifTypes: ['FastEthernet', 'GigabitEthernet'] },
+      { p: `no ip nat inside source list ${ACL} interface <if> overload`, run: (x, a) => x.natNoRule(a[6]!), ifTypes: ['FastEthernet', 'GigabitEthernet'] },
+    )
+  }
   // A router has no VLAN database, spanning tree or err-disable recovery (L4).
   return def.router ? p.filter((x) => !ROUTER_HIDDEN_CONFIG.test(x.p)) : p
 }
 
 const ROUTER_HIDDEN_CONFIG = /^(no )?(vlan|spanning-tree|errdisable) /
 /** Exec commands about L2 switching state that a router does not have. */
+/** L5-d: NAT is a router feature (Catalyst access/L3 switches here have no NAT). */
+const SWITCH_HIDDEN_SHOW = /^(show|clear) ip nat /
 const ROUTER_HIDDEN_SHOW = /^show (vlan|spanning-tree|mac address-table|interfaces (trunk|status|switchport)|interfaces <if> switchport|etherchannel|errdisable|vtp|port-security)/
 
 const l3OptPatterns: P[] = [
@@ -373,6 +406,14 @@ const discoveryIfPatterns: P[] = [
   { p: 'no lldp receive', run: (x) => x.eachPhys((c) => void (c.lldpRx = false)) },
 ]
 
+/** L5-d: `ip nat inside|outside` (router ports and subinterfaces). */
+const natIfPatterns: P[] = [
+  { p: 'ip nat inside', run: (x) => x.eachL3((o) => void (o.nat = 'inside')) },
+  { p: 'ip nat outside', run: (x) => x.eachL3((o) => void (o.nat = 'outside')) },
+  { p: 'no ip nat inside', run: (x) => x.eachL3((o) => void (o.nat === 'inside' && delete o.nat)) },
+  { p: 'no ip nat outside', run: (x) => x.eachL3((o) => void (o.nat === 'outside' && delete o.nat)) },
+]
+
 /** Router port (always routed): no switchport, STP or channel commands. */
 const routerIfPatterns: P[] = [
   ...commonSub,
@@ -383,6 +424,7 @@ const routerIfPatterns: P[] = [
   { p: 'ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>', run: (x, a) => x.setIp(a[2]!, a[3]!) },
   { p: 'no ip address', run: (x) => x.eachPhys((c) => void (c.ip = null)) },
   ...l3OptPatterns,
+  ...natIfPatterns,
   ...discoveryIfPatterns,
 ]
 
@@ -399,6 +441,7 @@ const subIfPatterns: P[] = [
   { p: 'ip address <A.B.C.D:IP address> <A.B.C.D:IP subnet mask>', run: (x, a) => x.setIp(a[2]!, a[3]!) },
   { p: 'no ip address', run: (x) => x.eachSub((c) => void (c.ip = null)) },
   ...l3OptPatterns,
+  ...natIfPatterns,
 ]
 
 const l2IfPatterns = (def: SwitchDef): P[] => {
@@ -531,7 +574,7 @@ const trieCache = new WeakMap<SwitchDef, Record<Mode | 'svi' | 'subif', TrieNode
 function tries(def: SwitchDef) {
   let t = trieCache.get(def)
   if (!t) {
-    const exec = (ps: P[]) => (def.router ? ps.filter((x) => !ROUTER_HIDDEN_SHOW.test(x.p)) : ps)
+    const exec = (ps: P[]) => ps.filter((x) => !(def.router ? ROUTER_HIDDEN_SHOW : SWITCH_HIDDEN_SHOW).test(x.p))
     t = {
       user: buildTrie(exec(userPatterns)),
       priv: buildTrie(exec(privPatterns)),
@@ -862,6 +905,79 @@ export class IosSession {
   }
 
   /** `access-list N permit|deny …`: appended with the next sequence number. */
+  // ---- L5-d: NAT ----
+
+  private natCfg() {
+    return (this.cfg.nat ??= nat.emptyNat())
+  }
+
+  natStatic(add: boolean, s: NatStatic): Out {
+    const n = this.natCfg()
+    const same = (x: NatStatic) => x.proto === s.proto && x.local === s.local && x.global === s.global && x.lport === s.lport && x.gport === s.gport
+    if (!add) {
+      const i = n.statics.findIndex(same)
+      if (i < 0) return ['%Translation not found']
+      n.statics.splice(i, 1)
+      return
+    }
+    if (n.statics.some(same)) return
+    const clash = n.statics.find((x) => x.proto === s.proto && (s.proto ? (x.local === s.local && x.lport === s.lport) || (x.global === s.global && x.gport === s.gport) : x.local === s.local || x.global === s.global))
+    if (clash) return [`% similar static entry (${clash.local} -> ${clash.global}) already exists`]
+    n.statics.push(s)
+  }
+
+  natPool(name: string, start: string, end: string, mask: string): Out {
+    const m = ipToInt(mask)
+    if (maskToPrefix(mask) === null || m === null) throw new InvalidAt(7)
+    if ((ipToInt(end)! >>> 0) < (ipToInt(start)! >>> 0)) return ['%End address less than starting address']
+    if (((ipToInt(start)! & m) >>> 0) !== ((ipToInt(end)! & m) >>> 0)) return ['%Start and end addresses on different subnets']
+    this.natCfg().pools[name] = { start, end, mask }
+  }
+
+  natNoPool(name: string): Out {
+    const n = this.natCfg()
+    if (!n.pools[name]) return [`%Pool ${name} not found`]
+    if (n.rules.some((r) => r.pool === name)) return [`%Pool ${name} in use, cannot destroy`]
+    delete n.pools[name]
+  }
+
+  natRule(r: NatRule): Out {
+    const n = this.natCfg()
+    const i = n.rules.findIndex((x) => x.acl === r.acl)
+    if (i >= 0) n.rules[i] = r
+    else n.rules.push(r)
+  }
+
+  natNoRule(aclName: string): Out {
+    const n = this.natCfg()
+    const i = n.rules.findIndex((x) => x.acl === aclName)
+    if (i < 0) return ['%Dynamic mapping not found']
+    const drop = () => {
+      n.rules.splice(i, 1)
+      this.rt.natTable.splice(0, this.rt.natTable.length, ...this.rt.natTable.filter((e) => e.dev !== this.dev))
+    }
+    if (!this.rt.natTable.some((e) => e.dev === this.dev)) return void n.rules.splice(i, 1)
+    // IOS asks before removing a mapping with active translations
+    return this.ask('%Dynamic mapping in use, do you want to delete all entries? [no]: ', (line) => {
+      if (/^y(es?)?$/i.test(line.trim())) drop()
+    })
+  }
+
+  clearNat(): Out {
+    this.rt.natTable.splice(0, this.rt.natTable.length, ...this.rt.natTable.filter((e) => e.dev !== this.dev))
+    this.rt.emit()
+  }
+
+  natStatistics(): Out {
+    const names = (role: 'inside' | 'outside') => {
+      const o: string[] = []
+      for (const [n, c] of Object.entries(this.cfg.ifaces)) if (c.l3?.nat === role) o.push(n)
+      for (const [n, c] of Object.entries(this.cfg.subifs ?? {})) if (c.l3?.nat === role) o.push(n)
+      return o
+    }
+    return nat.showNatStatistics(this.cfg, this.dev, this.rt.natTable, this.rt.natHits, this.rt.natMisses, { inside: names('inside'), outside: names('outside') })
+  }
+
   aclNumbered(num: string, rest: string): Out {
     const kind = acl.aclKind(num)!
     const lists = (this.cfg.acls ??= {})
@@ -1423,6 +1539,7 @@ export class IosSession {
     const r = ping(d, this.dev, ip)
     this.rt.markSeen(r.forward?.hops ?? [], this.dev)
     this.rt.countAcl(5, r.forward, r.back)
+    this.rt.recordNat(5, r.forward, r.back)
     const head = ['Type escape sequence to abort.', `Sending 5, 100-byte ICMP Echos to ${ip}, timeout is 2 seconds:`]
     if (r.reason === 'noip' && !l3Ifs(d, this.dev).length) return [...head, '.....', 'Success rate is 0 percent (0/5)']
     let marks: string
@@ -1453,9 +1570,10 @@ export class IosSession {
   traceroute(ip: string): string[] {
     const d = this.rt.derived
     // IOS traceroute: UDP probes to ports 33434+ (ACLs see UDP)
-    const r = deliver(d, this.dev, ip, { proto: 'udp', dport: 33434 })
+    const r = deliver(d, this.dev, ip, { proto: 'udp', sport: 49152, dport: 33434 })
     this.rt.markSeen(r.hops, this.dev)
     this.rt.countAcl(1, r)
+    this.rt.recordNat(1, r)
     const out = ['Type escape sequence to abort.', `Tracing the route to ${ip}`, 'VRF info: (vrf in name/id, vrf out name/id)']
     r.hops.forEach((h, i) => out.push(`  ${i + 1} ${h.ip} ${1 + i} msec ${i} msec ${1 + i} msec`))
     if (r.kind === 'ok') {

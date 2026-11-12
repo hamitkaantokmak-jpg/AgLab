@@ -37,6 +37,8 @@ export interface L3Opts {
   mtu?: number
   /** `bandwidth` in kbit/s */
   bandwidth?: number
+  /** L5-d: `ip nat inside|outside` */
+  nat?: 'inside' | 'outside'
   /** L5-c: `ip access-group <acl> in|out` (routed port, subinterface, SVI) */
   aclIn?: string
   aclOut?: string
@@ -96,6 +98,28 @@ export interface AclEntry {
 export interface Acl {
   type: 'standard' | 'extended'
   entries: AclEntry[]
+}
+
+/** L5-d: `ip nat inside source static [tcp|udp] L G [lport gport]` */
+export interface NatStatic {
+  proto?: 'tcp' | 'udp'
+  local: string
+  global: string
+  lport?: number
+  gport?: number
+}
+/** L5-d: `ip nat inside source list ACL pool NAME|interface IF [overload]` */
+export interface NatRule {
+  acl: string
+  pool?: string
+  iface?: string
+  overload: boolean
+}
+export interface NatConfig {
+  statics: NatStatic[]
+  /** `ip nat pool NAME start end netmask M` */
+  pools: Record<string, { start: string; end: string; mask: string }>
+  rules: NatRule[]
 }
 
 /** L5-e: `switchport port-security …` on an access port. */
@@ -203,6 +227,8 @@ export interface SwitchConfig {
   /** L5-a, routers only: full subinterface name (e.g. GigabitEthernet0/0.10) -> config */
   subifs?: Record<string, SubIfConfig>
   ospf?: OspfConfig | null
+  /** L5-d: NAT (`ip nat inside source …`, `ip nat pool`) */
+  nat?: NatConfig
   /** L5-c: access lists by number or name */
   acls?: Record<string, Acl>
   /** L5-f: `no cdp run` → false (undefined = CDP on, IOS default) */

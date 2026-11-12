@@ -229,6 +229,7 @@ export class VpcsSession {
     const r = ping(d, this.dev, dst)
     this.rt.markSeen(r.forward?.hops ?? [], this.dev)
     this.rt.countAcl(5, r.forward, r.back)
+    this.rt.recordNat(5, r.forward, r.back)
     // the first hop answered ARP (target on-link, else the gateway)
     if (r.firstHopArp) this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`)
     this.rt.emit()
@@ -249,10 +250,11 @@ export class VpcsSession {
     const c = this.rt.pcs[this.dev]!
     if (!c.ip) return ['No gateway found']
     this.rt.hostSends(this.dev)
-    // VPCS trace: UDP probes by default (doğrulanmadı: hedef port)
-    const r = deliver(this.rt.derived, this.dev, dst, { proto: 'udp', dport: 33434 })
+    // VPCS trace: UDP probes by default (doğrulanmadı: kaynak ve hedef port)
+    const r = deliver(this.rt.derived, this.dev, dst, { proto: 'udp', sport: 49152, dport: 33434 })
     this.rt.markSeen(r.hops, this.dev)
     this.rt.countAcl(1, r)
+    this.rt.recordNat(1, r)
     const out = [`trace to ${dst}, 8 hops max, press Ctrl+C to stop`]
     r.hops.forEach((h, i) => {
       const last = r.kind === 'ok' && i === r.hops.length - 1
