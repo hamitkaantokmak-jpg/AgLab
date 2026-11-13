@@ -1403,7 +1403,8 @@ var AgLabSim = (() => {
     const nat = [];
     let routers = 0;
     if (!l3Ifs(d, from).length) return { kind: "noip", hops };
-    const { natPending, ...fields } = spec;
+    const { natPending, ttl: ttl0, ...fields } = spec;
+    let ipTtl = ttl0 ?? Infinity;
     let pkt = { proto: "icmp", icmpType: "echo", ...fields, src: fields.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0].ip, dst };
     if (pkt.proto === "icmp" && pkt.sport === void 0 && pkt.icmpType === "echo") pkt.sport = 1;
     const table = () => [...d.natTable ?? [], ...natPending ?? [], ...nat];
@@ -1421,6 +1422,10 @@ var AgLabSim = (() => {
       }
       if (owns(d, cur, pkt.dst)) return end({ kind: "ok", hops, routersCrossed: routers });
       if (cur !== from && natAliases(d.cfgs[cur]).includes(pkt.dst)) return end({ kind: "timeout", hops });
+      if (cur !== from && routing(cur)) {
+        if (ipTtl <= 1) return end({ kind: "expired", at: cur, atIp: hops[hops.length - 1].ip, hops });
+        ipTtl--;
+      }
       if (cur !== from && !isRouter(d, cur)) return end({ kind: "timeout", hops });
       const r = lookup(d, cur, pkt.dst);
       if (!r) {
@@ -1487,16 +1492,20 @@ var AgLabSim = (() => {
   function sourceIp(d, dev, dst) {
     return lookup(d, dev, dst)?.out.ip ?? null;
   }
-  function ping(d, from, dst) {
+  function ping(d, from, dst, opts = {}) {
     if (d.hw.off.has(from)) return { ok: false, reason: "off" };
     if (!isValidIp(dst)) return { ok: false, reason: "noroute" };
-    const fwd = deliver(d, from, dst);
+    const fwd = deliver(d, from, dst, { ...opts.ttl !== void 0 ? { ttl: opts.ttl } : {}, ...opts.src ? { src: opts.src } : {} });
     const firstHopArp = fwd.hops[0] ? { dev: from, ip: fwd.hops[0].ip } : void 0;
     if (fwd.kind === "noip") return { ok: false, reason: "noip", forward: fwd };
     if (fwd.kind === "noroute") return { ok: false, reason: "noroute", forward: fwd };
     if (fwd.kind === "unreach") {
       const back2 = deliver(d, fwd.at, fwd.pkt?.src ?? sourceIp(d, from, dst), { proto: "icmp", icmpType: "unreachable", src: fwd.atIp, dport: fwd.pkt?.sport, natPending: fwd.nat });
       return back2.kind === "ok" ? { ok: false, reason: "unreach", unreachFrom: fwd.atIp, forward: fwd, back: back2, firstHopArp } : { ok: false, reason: "timeout", forward: fwd, back: back2, firstHopArp };
+    }
+    if (fwd.kind === "expired") {
+      const back2 = deliver(d, fwd.at, fwd.pkt?.src ?? sourceIp(d, from, dst), { proto: "icmp", icmpType: "time-exceeded", src: fwd.atIp, dport: fwd.pkt?.sport, natPending: fwd.nat });
+      return back2.kind === "ok" ? { ok: false, reason: "expired", expiredFrom: fwd.atIp, forward: fwd, back: back2, firstHopArp } : { ok: false, reason: "timeout", forward: fwd, back: back2, firstHopArp };
     }
     if (fwd.kind !== "ok") {
       const nh = fwd.hops.length ? null : nextHop(d, from, dst);
@@ -1509,6 +1518,25 @@ var AgLabSim = (() => {
     if (back.kind !== "ok" || backTo !== from) return { ok: false, reason: "timeout", forward: fwd, back, firstHopArp };
     const base2 = d.topo.devices[replier].kind === "pc" ? 64 : 255;
     return { ok: true, ttl: base2 - back.routersCrossed, replier, forward: fwd, back, firstHopArp };
+  }
+  function traceProbe(d, from, dst, ttl, dport, sport = 49152) {
+    const fwd = deliver(d, from, dst, { proto: "udp", sport, dport, ttl });
+    const src = fwd.pkt?.src ?? sourceIp(d, from, dst);
+    if (!src) return { result: { kind: "none" }, forward: fwd };
+    const answer = (at, ip2, icmpType) => deliver(d, at, src, { proto: "icmp", icmpType, src: ip2, dport: fwd.pkt?.sport, natPending: fwd.nat });
+    const home = (b) => b.kind === "ok" && (b.hops[b.hops.length - 1]?.dev ?? from) === from;
+    if (fwd.kind === "expired") {
+      const back2 = answer(fwd.at, fwd.atIp, "time-exceeded");
+      return { result: home(back2) ? { kind: "hop", ip: fwd.atIp } : { kind: "none" }, forward: fwd, back: back2 };
+    }
+    if (fwd.kind === "unreach") {
+      const back2 = answer(fwd.at, fwd.atIp, "unreachable");
+      return { result: home(back2) ? { kind: "unreach", ip: fwd.atIp, code: fwd.filtered ? "A" : "H" } : { kind: "none" }, forward: fwd, back: back2 };
+    }
+    if (fwd.kind !== "ok") return { result: { kind: "none" }, forward: fwd };
+    const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from;
+    const back = answer(replier, fwd.pkt?.dst ?? dst, "unreachable");
+    return { result: home(back) ? { kind: "dest", ip: dst } : { kind: "none" }, forward: fwd, back };
   }
   function isValidIp(s) {
     return ipToInt(s) !== null;
@@ -3092,6 +3120,9 @@ var AgLabSim = (() => {
     { p: "exit", run: (x) => x.logout() },
     { p: "logout", run: (x) => x.logout() },
     { p: "ping <A.B.C.D:Ping destination address>", run: (x, a) => x.ping(a[1]) },
+    // L5-i: tek satırlık seçenekler ve etkileşimli extended ping
+    { p: "ping <A.B.C.D:Ping destination address> <LINE:repeat | size | source | timeout …>", run: (x, a) => x.pingOptions(a[1], a[2]) },
+    { p: "ping", run: (x) => x.extendedPing() },
     { p: "traceroute <A.B.C.D:Trace route to destination address>", run: (x, a) => x.traceroute(a[1]) },
     { p: "terminal length <0-512:Number of lines on screen (0 for no pausing)>", run: () => {
     } },
@@ -4406,14 +4437,16 @@ var AgLabSim = (() => {
         ""
       ];
     }
-    ping(ip2) {
+    ping(ip2, o = {}) {
       const d = this.rt.derived;
-      const r = ping(d, this.dev, ip2);
+      const repeat = o.repeat ?? 5;
+      const r = ping(d, this.dev, ip2, o.src ? { src: o.src } : {});
       this.rt.markSeen(r.forward?.hops ?? [], this.dev);
-      this.rt.countAcl(5, r.forward, r.back);
-      this.rt.recordNat(5, r.forward, r.back);
-      const head = ["Type escape sequence to abort.", `Sending 5, 100-byte ICMP Echos to ${ip2}, timeout is 2 seconds:`];
-      if (r.reason === "noip" && !l3Ifs(d, this.dev).length) return [...head, ".....", "Success rate is 0 percent (0/5)"];
+      this.rt.countAcl(repeat, r.forward, r.back);
+      this.rt.recordNat(repeat, r.forward, r.back);
+      const head = ["Type escape sequence to abort.", `Sending ${repeat}, ${o.size ?? 100}-byte ICMP Echos to ${ip2}, timeout is ${o.timeout ?? 2} seconds:`];
+      if (o.src) head.push(`Packet sent with a source address of ${o.src} `);
+      if (r.reason === "noip" && !l3Ifs(d, this.dev).length) return [...head, ".".repeat(repeat), `Success rate is 0 percent (0/${repeat})`];
       let marks;
       let ok = 0;
       if (r.ok) {
@@ -4421,41 +4454,107 @@ var AgLabSim = (() => {
         const cold = !this.rt.arp.has(key);
         this.rt.arp.add(key);
         this.rt.arpIncomplete.delete(key);
-        marks = cold ? ".!!!!" : "!!!!!";
-        ok = cold ? 4 : 5;
+        marks = (cold ? "." : "!") + "!".repeat(repeat - 1);
+        ok = cold ? repeat - 1 : repeat;
       } else {
         if (r.firstHopArp) {
           this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`);
           this.rt.arpIncomplete.delete(`${this.dev}>${r.firstHopArp.ip}`);
         }
         if (r.arpIncomplete) this.rt.arpIncomplete.add(`${this.dev}>${r.arpIncomplete.ip}`);
-        marks = r.reason === "unreach" ? "U.U.U" : ".....";
+        const c = r.reason === "unreach" ? "U" : r.reason === "expired" ? "&" : ".";
+        marks = Array.from({ length: repeat }, (_, i) => c === "U" && i % 2 ? "." : c).join("");
       }
       this.rt.emit();
       return [
         ...head,
         marks,
-        `Success rate is ${ok * 20} percent (${ok}/5)` + (ok ? ", round-trip min/avg/max = 1/2/4 ms" : "")
+        `Success rate is ${Math.floor(ok * 100 / repeat)} percent (${ok}/${repeat})` + (ok ? ", round-trip min/avg/max = 1/2/4 ms" : "")
       ];
+    }
+    /** L5-i: `ping A.B.C.D [repeat N] [size N] [timeout N] [source A.B.C.D|<if>]` */
+    pingOptions(ip2, rest) {
+      const t = rest.trim().split(/\s+/);
+      const o = {};
+      for (let i = 0; i < t.length; i += 2) {
+        const k = t[i].toLowerCase();
+        const v = t[i + 1];
+        if (v === void 0) throw new CliError(["% Incomplete command."]);
+        const num = (lo, hi) => {
+          const n = Number(v);
+          if (!/^\d+$/.test(v) || n < lo || n > hi) throw new CliError(["% Invalid input detected at '^' marker."]);
+          return n;
+        };
+        if ("repeat".startsWith(k) && k.length >= 1) o.repeat = num(1, 2147483647);
+        else if ("size".startsWith(k) && k.length >= 2) o.size = num(36, 18024);
+        else if ("timeout".startsWith(k) && k.length >= 1) o.timeout = num(0, 3600);
+        else if ("source".startsWith(k) && k.length >= 2) {
+          const src = this.sourceAddr(v + (t[i + 2] && /^\d/.test(t[i + 2]) ? t[++i] : ""));
+          if (!src) throw new CliError(["% Invalid source address- IP address not on any of our up interfaces"]);
+          o.src = src;
+        } else throw new CliError(["% Invalid input detected at '^' marker."]);
+      }
+      return this.ping(ip2, o);
+    }
+    /** Kaynak: bu cihazın açık bir arayüzünün adresi ya da arayüz adı. */
+    sourceAddr(v) {
+      const ifs = l3Ifs(this.rt.derived, this.dev);
+      if (ipToInt(v) !== null) return ifs.some((i) => i.ip === v) ? v : null;
+      const m = /^([A-Za-z-]+)\s*([\d/.:]+)$/.exec(v);
+      const name = m ? canonIf(m[1], m[2]) : null;
+      return ifs.find((i) => i.name === name)?.ip ?? null;
+    }
+    /** L5-i: etkileşimli extended ping (IOS soruları; boş yanıt = köşeli parantezdeki varsayılan). */
+    extendedPing() {
+      const o = {};
+      let target = "";
+      const bad = (msg) => [msg];
+      const steps = [
+        ["Protocol [ip]: ", (v) => !v || v.toLowerCase() === "ip" ? "next" : bad('% Unknown protocol - "' + v + '", type "ping ?" for help')],
+        ["Target IP address: ", (v) => ipToInt(v) !== null ? (target = v, "next") : bad("% Bad IP address")],
+        ["Repeat count [5]: ", (v) => !v ? "next" : /^\d+$/.test(v) && Number(v) >= 1 ? (o.repeat = Number(v), "next") : bad("% A decimal number between 1 and 2147483647.")],
+        ["Datagram size [100]: ", (v) => !v ? "next" : /^\d+$/.test(v) && Number(v) >= 36 && Number(v) <= 18024 ? (o.size = Number(v), "next") : bad("% A decimal number between 36 and 18024.")],
+        ["Timeout in seconds [2]: ", (v) => !v ? "next" : /^\d+$/.test(v) ? (o.timeout = Number(v), "next") : bad("% A decimal number between 0 and 3600.")],
+        ["Extended commands [n]: ", (v) => /^y/i.test(v) ? "next" : "run"],
+        ["Source address or interface: ", (v) => {
+          if (!v) return "next";
+          const src = this.sourceAddr(v.replace(/\s+/g, ""));
+          if (!src) return bad("% Invalid source address- IP address not on any of our up interfaces");
+          o.src = src;
+          return "next";
+        }],
+        // modellenmeyen ayrıntılar: varsayılan kabul edilir (doğrulanmadı: değiştirilmiş değerlerin etkisi)
+        ["Type of service [0]: ", () => "next"],
+        ["Set DF bit in IP header? [no]: ", () => "next"],
+        ["Validate reply data? [no]: ", () => "next"],
+        ["Data pattern [0x0000ABCD]: ", () => "next"],
+        ["Loose, Strict, Record, Timestamp, Verbose[none]: ", () => "next"],
+        ["Sweep range of sizes [n]: ", () => "run"]
+      ];
+      const step2 = (i) => this.ask(steps[i][0], (line) => {
+        const r = steps[i][1](line.trim());
+        if (r === "run") return this.ping(target, o);
+        if (r === "next") return step2(i + 1);
+        return r;
+      });
+      return step2(0);
     }
     traceroute(ip2) {
       const d = this.rt.derived;
-      const r = deliver(d, this.dev, ip2, { proto: "udp", sport: 49152, dport: 33434 });
-      this.rt.markSeen(r.hops, this.dev);
-      this.rt.countAcl(1, r);
-      this.rt.recordNat(1, r);
       const out = ["Type escape sequence to abort.", `Tracing the route to ${ip2}`, "VRF info: (vrf in name/id, vrf out name/id)"];
-      r.hops.forEach((h, i) => out.push(`  ${i + 1} ${h.ip} ${1 + i} msec ${i} msec ${1 + i} msec`));
-      if (r.kind === "ok") {
-        if (!r.hops.length) out.push(`  1 ${ip2} 0 msec 0 msec 0 msec`);
-        return out;
+      for (let ttl = 1; ttl <= 30; ttl++) {
+        const p = traceProbe(d, this.dev, ip2, ttl, 33434 + (ttl - 1) * 3);
+        this.rt.markSeen(p.forward.hops, this.dev);
+        this.rt.countAcl(3, p.forward, p.back);
+        this.rt.recordNat(3, p.forward, p.back);
+        const r = p.result;
+        const t = String(ttl).padStart(3);
+        if (r.kind === "none") out.push(`${t}  *  *  * `);
+        else if (r.kind === "unreach") out.push(`${t} ${r.ip} !${r.code}  !${r.code}  !${r.code} `);
+        else out.push(`${t} ${r.ip} ${ttl} msec ${ttl - 1} msec ${ttl} msec`);
+        if (r.kind === "dest" || r.kind === "unreach") break;
       }
-      if (r.kind === "unreach") {
-        const m = r.filtered ? "!A" : "!H";
-        out.push(`  ${r.hops.length + 1} ${r.atIp} ${m}  ${m}  ${m}`);
-        return out;
-      }
-      for (let i = r.hops.length + 1; i <= r.hops.length + 3; i++) out.push(`  ${i}  *  *  *`);
+      this.rt.emit();
       return out;
     }
     // ---- show helpers ----
@@ -4698,7 +4797,7 @@ var AgLabSim = (() => {
     "  ip dns <address>       Set the DNS server (0.0.0.0 clears it)",
     "clear ip                 Clear IP address, mask and gateway",
     "show [arp|ip]            Print the information of the VPC",
-    "ping <address>           Ping the network host",
+    "ping <address> [-c count] [-T ttl]  Ping the network host",
     "trace <address>          Print the path packets take to network host",
     "nslookup <name>          Ask the DNS server for the address of a host name",
     "curl [http://]<host>[:port][/path]  Fetch a web page (Labber addition: VPCS has no HTTP client)",
@@ -4763,7 +4862,7 @@ var AgLabSim = (() => {
       }
       if (c === "show" && (!args[0] || args[0] === "ip")) return this.showIp();
       if (c === "show" && args[0] === "arp") return this.showArp();
-      if (c === "ping" && args[0]) return this.ping(args[0]);
+      if (c === "ping" && args[0]) return this.pingCmd(args);
       if ((c === "trace" || c === "tracert" || c === "traceroute") && args[0]) return this.trace(args[0]);
       return ['Bad command: "' + line + '". Use ? for help.'];
     }
@@ -4917,23 +5016,38 @@ var AgLabSim = (() => {
       }
       return ["", ...out.length ? out : ["arp table is empty"], ""];
     }
-    ping(dst) {
+    /** L5-i: VPCS `ping host [-c count] [-T ttl]` (diğer VPCS seçenekleri modellenmez). */
+    pingCmd(args) {
+      let count = 5;
+      let ttl;
+      for (let i = 1; i < args.length; i++) {
+        const v = args[i + 1];
+        const n = v !== void 0 && /^\d+$/.test(v) ? Number(v) : NaN;
+        if (args[i] === "-c" && n >= 1) count = n;
+        else if (args[i] === "-T" && n >= 1 && n <= 255) ttl = n;
+        else return [`Invalid options: ${args.slice(i).join(" ")}`];
+        i++;
+      }
+      return this.ping(args[0], count, ttl);
+    }
+    ping(dst, count = 5, ttlOut) {
       if (ipToInt(dst) === null) return [`Cannot resolve ${dst}`];
       const c = this.rt.pcs[this.dev];
       if (!c.ip) return ["No gateway found"];
       if (!sameSubnet(c.ip, dst, c.prefix) && !c.gw) return [`host (${dst}) not reachable`, ""];
       this.rt.hostSends(this.dev);
       const d = this.rt.derived;
-      const r = ping(d, this.dev, dst);
+      const r = ping(d, this.dev, dst, ttlOut !== void 0 ? { ttl: ttlOut } : {});
       this.rt.markSeen(r.forward?.hops ?? [], this.dev);
-      this.rt.countAcl(5, r.forward, r.back);
-      this.rt.recordNat(5, r.forward, r.back);
+      this.rt.countAcl(count, r.forward, r.back);
+      this.rt.recordNat(count, r.forward, r.back);
       if (r.firstHopArp) this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`);
       this.rt.emit();
       const out = [];
-      for (let i = 1; i <= 5; i++) {
+      for (let i = 1; i <= count; i++) {
         const t = (0.4 + i * 37 % 10 / 10 + (r.ttl && r.ttl < 64 ? 0.8 : 0)).toFixed(3);
         if (r.ok) out.push(`84 bytes from ${dst} icmp_seq=${i} ttl=${r.ttl} time=${t} ms`);
+        else if (r.reason === "expired") out.push(`*${r.expiredFrom} icmp_seq=${i} ttl=255 time=${t} ms (ICMP type:11, code:0, TTL expired in transit)`);
         else if (r.reason === "unreach") out.push(`*${r.unreachFrom} icmp_seq=${i} ttl=255 time=${t} ms (ICMP type:3, code:1, Destination host unreachable)`);
         else if (r.reason === "noroute" && !r.forward?.hops.length && c.gw && !sameSubnet(c.ip, dst, c.prefix)) out.push(`host (${c.gw}) not reachable`);
         else out.push(`${dst} icmp_seq=${i} timeout`);
@@ -4946,17 +5060,22 @@ var AgLabSim = (() => {
       const c = this.rt.pcs[this.dev];
       if (!c.ip) return ["No gateway found"];
       this.rt.hostSends(this.dev);
-      const r = deliver(this.rt.derived, this.dev, dst, { proto: "udp", sport: 49152, dport: 33434 });
-      this.rt.markSeen(r.hops, this.dev);
-      this.rt.countAcl(1, r);
-      this.rt.recordNat(1, r);
       const out = [`trace to ${dst}, 8 hops max, press Ctrl+C to stop`];
-      r.hops.forEach((h, i) => {
-        const last = r.kind === "ok" && i === r.hops.length - 1;
-        out.push(` ${i + 1}   ${last ? "*" : ""}${h.ip}   ${(0.5 + i).toFixed(3)} ms  ${(0.4 + i).toFixed(3)} ms  ${(0.6 + i).toFixed(3)} ms`);
-      });
-      if (r.kind === "unreach") out.push(` ${r.hops.length + 1}   *${r.atIp}   1.000 ms (ICMP type:3, code:1, Destination host unreachable)`);
-      else if (r.kind !== "ok") for (let i = r.hops.length + 1; i <= Math.min(8, r.hops.length + 3); i++) out.push(` ${i}     *  *  *`);
+      for (let ttl = 1; ttl <= 8; ttl++) {
+        const p = traceProbe(this.rt.derived, this.dev, dst, ttl, 33434 + ttl - 1);
+        this.rt.markSeen(p.forward.hops, this.dev);
+        this.rt.countAcl(1, p.forward, p.back);
+        this.rt.recordNat(1, p.forward, p.back);
+        const r = p.result;
+        const ms = (x) => (x + ttl * 0.5).toFixed(3) + " ms";
+        if (r.kind === "none") out.push(` ${ttl}     *  *  *`);
+        else if (r.kind === "hop") out.push(` ${ttl}   ${r.ip}   ${ms(0.1)}  ${ms(0.05)}  ${ms(0.08)}`);
+        else if (r.kind === "dest") out.push(` ${ttl}   *${r.ip}   ${ms(0.2)} (ICMP type:3, code:3, Destination port unreachable)`);
+        else
+          out.push(` ${ttl}   *${r.ip}   ${ms(0.2)} (ICMP type:3, code:${r.code === "A" ? 13 : 1}, ${r.code === "A" ? "Communication administratively prohibited" : "Destination host unreachable"})`);
+        if (r.kind === "dest" || r.kind === "unreach") break;
+      }
+      this.rt.emit();
       return [...out, ""];
     }
   };
@@ -9134,9 +9253,9 @@ write memory`
     }
     return steps;
   }
-  function pingTrace(rt, from, dst, portName = (_dev, port) => port) {
+  function pingTrace(rt, from, dst, portName = (_dev, port) => port, opts = {}) {
     const d = rt.derived;
-    const r = ping(d, from, dst);
+    const r = ping(d, from, dst, opts.ttl !== void 0 ? { ttl: opts.ttl } : {});
     const records = [];
     let frameNo = 0;
     let l2 = true;
@@ -9161,7 +9280,7 @@ write memory`
           arp: null,
           // L5-d: NAT'tan sonra kablodaki adresler (hop.src/dst)
           ipv4: { sourceIp: hop.src ?? srcIp, destinationIp: hop.dst ?? dstIp, ttl, protocol: 1 },
-          icmp: { type: kind === "icmp-request" ? 8 : 0, code: 0 }
+          icmp: { type: kind === "icmp-request" ? 8 : kind === "icmp-time-exceeded" ? 11 : 0, code: 0 }
         };
         const ev = { frameId, frame };
         records.push({ raw: `frame ${kind} src ${sender} dst ${frame.destinationMac} vlan ${frame.vlan}`, ...ev });
@@ -9194,7 +9313,16 @@ write memory`
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "noroute"}` });
       return { ok: false, l2: true, records };
     }
-    const reached = walk2("icmp-request", from, fwd.hops, src, dst, 64);
+    const reached = walk2("icmp-request", from, fwd.hops, src, dst, opts.ttl ?? 64);
+    if (fwd.kind === "expired") {
+      records.push({ raw: `ttl-expired ${fwd.at}` });
+      const back2 = r.back;
+      const backTo2 = back2 ? walk2("icmp-time-exceeded", fwd.at, back2.hops, fwd.atIp, src, 255) : fwd.at;
+      if (!back2 || back2.kind !== "ok" || backTo2 !== from) records.push({ raw: `discard ${backTo2} no-return-path` });
+      else records.push({ raw: `icmp-time-exceeded ${from} from ${fwd.at}` });
+      records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "expired"}` });
+      return { ok: false, l2, records };
+    }
     if (fwd.kind !== "ok") {
       records.push({ raw: `discard ${reached} ${fwd.kind === "unreach" ? "no-route" : "no-l2-path"}` });
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? fwd.kind}` });

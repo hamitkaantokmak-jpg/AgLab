@@ -294,7 +294,12 @@ const aglabLabber = (() => {
     if (/^\s*% ?(Invalid|Incomplete|Ambiguous|Unknown|Unrecognized|Bad|Please)/.test(text))
       return 'outerr';
     if (/^Success rate is 0 percent/.test(text)) return 'outerr';
-    if (/ icmp_seq=\d+ timeout$|Destination host unreachable|not reachable$/.test(text))
+    // L5-i: TTL bitti, traceroute'ta yanıtsız atlama, !H/!A
+    if (
+      / icmp_seq=\d+ timeout$|Destination host unreachable|not reachable$|TTL expired in transit|administratively prohibited/.test(
+        text,
+      )
+    )
       return 'outerr';
     if (
       /^(Bad command|Invalid (address|netmask|gateway|options)|Cannot resolve|No gateway found)/.test(

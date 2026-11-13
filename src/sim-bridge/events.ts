@@ -25,7 +25,7 @@ export interface TraceEdge {
 
 export interface TraceFrame {
   protocol: 'ICMP'
-  kind: 'icmp-request' | 'icmp-reply'
+  kind: 'icmp-request' | 'icmp-reply' | 'icmp-time-exceeded'
   sourceMac: string
   destinationMac: string
   vlan: number
@@ -125,9 +125,11 @@ export function pingTrace(
   dst: string,
   /** kanonik port adının arayüzdeki yazımı (AğLab bağlantılarıyla eşleşmesi için) */
   portName: (dev: string, port: string) => string = (_dev, port) => port,
+  /** L5-i: gönderenin IP TTL'i (ping -T); verilmezse 64 ve süresiz */
+  opts: { ttl?: number } = {},
 ): PingTrace {
   const d = rt.derived
-  const r = ping(d, from, dst)
+  const r = ping(d, from, dst, opts.ttl !== undefined ? { ttl: opts.ttl } : {})
   const records: TraceRecord[] = []
   let frameNo = 0
   let l2 = true
@@ -135,7 +137,7 @@ export function pingTrace(
 
   /** Bir teslimatın atlamaları; döndürdüğü: son ulaşılan cihaz. */
   const walk = (
-    kind: 'icmp-request' | 'icmp-reply',
+    kind: 'icmp-request' | 'icmp-reply' | 'icmp-time-exceeded',
     start: string,
     hops: Hop[],
     srcIp: string,
@@ -161,7 +163,7 @@ export function pingTrace(
         arp: null,
         // L5-d: NAT'tan sonra kablodaki adresler (hop.src/dst)
         ipv4: { sourceIp: hop.src ?? srcIp, destinationIp: hop.dst ?? dstIp, ttl, protocol: 1 },
-        icmp: { type: kind === 'icmp-request' ? 8 : 0, code: 0 },
+        icmp: { type: kind === 'icmp-request' ? 8 : kind === 'icmp-time-exceeded' ? 11 : 0, code: 0 },
       }
       const ev = { frameId, frame }
       records.push({ raw: `frame ${kind} src ${sender} dst ${frame.destinationMac} vlan ${frame.vlan}`, ...ev })
@@ -195,7 +197,17 @@ export function pingTrace(
     records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? 'noroute'}` })
     return { ok: false, l2: true, records }
   }
-  const reached = walk('icmp-request', from, fwd.hops, src, dst, 64)
+  const reached = walk('icmp-request', from, fwd.hops, src, dst, opts.ttl ?? 64)
+  if (fwd.kind === 'expired') {
+    // L5-i: TTL router'da bitti; router ICMP Time Exceeded'ı kaynağa gönderir
+    records.push({ raw: `ttl-expired ${fwd.at}` })
+    const back = r.back
+    const backTo = back ? walk('icmp-time-exceeded', fwd.at, back.hops, fwd.atIp, src, 255) : fwd.at
+    if (!back || back.kind !== 'ok' || backTo !== from) records.push({ raw: `discard ${backTo} no-return-path` })
+    else records.push({ raw: `icmp-time-exceeded ${from} from ${fwd.at}` })
+    records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? 'expired'}` })
+    return { ok: false, l2, records }
+  }
   if (fwd.kind !== 'ok') {
     records.push({ raw: `discard ${reached} ${fwd.kind === 'unreach' ? 'no-route' : 'no-l2-path'}` })
     records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? fwd.kind}` })

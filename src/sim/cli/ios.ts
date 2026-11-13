@@ -1,7 +1,7 @@
 // IOS-like CLI session for one switch.
 
 import { defaultSvi, defaultSwitchConfig, defaultVlanName, pickL2, RESERVED_VLANS } from '../config'
-import { arpMac, deliver, l3Ifs, ping } from '../net'
+import { arpMac, deliver, l3Ifs, ping, traceProbe } from '../net'
 import type { LabRuntime } from '../runtime'
 import type { ChannelMode, DhcpPool, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { canonIf, clone, ifNum, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
@@ -99,6 +99,9 @@ const userPatterns: P[] = [
   { p: 'exit', run: (x) => x.logout() },
   { p: 'logout', run: (x) => x.logout() },
   { p: 'ping <A.B.C.D:Ping destination address>', run: (x, a) => x.ping(a[1]!) },
+  // L5-i: tek satırlık seçenekler ve etkileşimli extended ping
+  { p: 'ping <A.B.C.D:Ping destination address> <LINE:repeat | size | source | timeout …>', run: (x, a) => x.pingOptions(a[1]!, a[2]!) },
+  { p: 'ping', run: (x) => x.extendedPing() },
   { p: 'traceroute <A.B.C.D:Trace route to destination address>', run: (x, a) => x.traceroute(a[1]!) },
   { p: 'terminal length <0-512:Number of lines on screen (0 for no pausing)>', run: () => {} },
   ...showPatterns(false),
@@ -1550,14 +1553,16 @@ export class IosSession {
     ]
   }
 
-  ping(ip: string): string[] {
+  ping(ip: string, o: { repeat?: number; size?: number; timeout?: number; src?: string } = {}): string[] {
     const d = this.rt.derived
-    const r = ping(d, this.dev, ip)
+    const repeat = o.repeat ?? 5
+    const r = ping(d, this.dev, ip, o.src ? { src: o.src } : {})
     this.rt.markSeen(r.forward?.hops ?? [], this.dev)
-    this.rt.countAcl(5, r.forward, r.back)
-    this.rt.recordNat(5, r.forward, r.back)
-    const head = ['Type escape sequence to abort.', `Sending 5, 100-byte ICMP Echos to ${ip}, timeout is 2 seconds:`]
-    if (r.reason === 'noip' && !l3Ifs(d, this.dev).length) return [...head, '.....', 'Success rate is 0 percent (0/5)']
+    this.rt.countAcl(repeat, r.forward, r.back)
+    this.rt.recordNat(repeat, r.forward, r.back)
+    const head = ['Type escape sequence to abort.', `Sending ${repeat}, ${o.size ?? 100}-byte ICMP Echos to ${ip}, timeout is ${o.timeout ?? 2} seconds:`]
+    if (o.src) head.push(`Packet sent with a source address of ${o.src} `)
+    if (r.reason === 'noip' && !l3Ifs(d, this.dev).length) return [...head, '.'.repeat(repeat), `Success rate is 0 percent (0/${repeat})`]
     let marks: string
     let ok = 0
     if (r.ok) {
@@ -1565,44 +1570,115 @@ export class IosSession {
       const cold = !this.rt.arp.has(key)
       this.rt.arp.add(key)
       this.rt.arpIncomplete.delete(key)
-      marks = cold ? '.!!!!' : '!!!!!'
-      ok = cold ? 4 : 5
+      marks = (cold ? '.' : '!') + '!'.repeat(repeat - 1)
+      ok = cold ? repeat - 1 : repeat
     } else {
       if (r.firstHopArp) {
         this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`)
         this.rt.arpIncomplete.delete(`${this.dev}>${r.firstHopArp.ip}`)
       }
       if (r.arpIncomplete) this.rt.arpIncomplete.add(`${this.dev}>${r.arpIncomplete.ip}`)
-      marks = r.reason === 'unreach' ? 'U.U.U' : '.....'
+      // U: unreachable, &: TTL expired (IOS ping çıktı kodları)
+      const c = r.reason === 'unreach' ? 'U' : r.reason === 'expired' ? '&' : '.'
+      marks = Array.from({ length: repeat }, (_, i) => (c === 'U' && i % 2 ? '.' : c)).join('')
     }
     this.rt.emit()
     return [
       ...head,
       marks,
-      `Success rate is ${ok * 20} percent (${ok}/5)` + (ok ? ', round-trip min/avg/max = 1/2/4 ms' : ''),
+      `Success rate is ${Math.floor((ok * 100) / repeat)} percent (${ok}/${repeat})` + (ok ? ', round-trip min/avg/max = 1/2/4 ms' : ''),
     ]
+  }
+
+  /** L5-i: `ping A.B.C.D [repeat N] [size N] [timeout N] [source A.B.C.D|<if>]` */
+  pingOptions(ip: string, rest: string): string[] {
+    const t = rest.trim().split(/\s+/)
+    const o: { repeat?: number; size?: number; timeout?: number; src?: string } = {}
+    for (let i = 0; i < t.length; i += 2) {
+      const k = t[i]!.toLowerCase()
+      const v = t[i + 1]
+      if (v === undefined) throw new CliError(['% Incomplete command.'])
+      const num = (lo: number, hi: number) => {
+        const n = Number(v)
+        if (!/^\d+$/.test(v) || n < lo || n > hi) throw new CliError(["% Invalid input detected at '^' marker."])
+        return n
+      }
+      if ('repeat'.startsWith(k) && k.length >= 1) o.repeat = num(1, 2147483647)
+      else if ('size'.startsWith(k) && k.length >= 2) o.size = num(36, 18024)
+      else if ('timeout'.startsWith(k) && k.length >= 1) o.timeout = num(0, 3600)
+      else if ('source'.startsWith(k) && k.length >= 2) {
+        const src = this.sourceAddr(v + (t[i + 2] && /^\d/.test(t[i + 2]!) ? t[++i]! : ''))
+        if (!src) throw new CliError(['% Invalid source address- IP address not on any of our up interfaces'])
+        o.src = src
+      } else throw new CliError(["% Invalid input detected at '^' marker."])
+    }
+    return this.ping(ip, o)
+  }
+
+  /** Kaynak: bu cihazın açık bir arayüzünün adresi ya da arayüz adı. */
+  private sourceAddr(v: string): string | null {
+    const ifs = l3Ifs(this.rt.derived, this.dev)
+    if (ipToInt(v) !== null) return ifs.some((i) => i.ip === v) ? v : null
+    const m = /^([A-Za-z-]+)\s*([\d/.:]+)$/.exec(v)
+    const name = m ? canonIf(m[1]!, m[2]!) : null
+    return ifs.find((i) => i.name === name)?.ip ?? null
+  }
+
+  /** L5-i: etkileşimli extended ping (IOS soruları; boş yanıt = köşeli parantezdeki varsayılan). */
+  extendedPing(): Out {
+    const o: { repeat?: number; size?: number; timeout?: number; src?: string } = {}
+    let target = ''
+    const bad = (msg: string): Out => [msg]
+    const steps: [string, (v: string) => Out | 'next' | 'run'][] = [
+      ['Protocol [ip]: ', (v) => (!v || v.toLowerCase() === 'ip' ? 'next' : bad('% Unknown protocol - "' + v + '", type "ping ?" for help'))],
+      ['Target IP address: ', (v) => (ipToInt(v) !== null ? ((target = v), 'next') : bad('% Bad IP address'))],
+      ['Repeat count [5]: ', (v) => (!v ? 'next' : /^\d+$/.test(v) && Number(v) >= 1 ? ((o.repeat = Number(v)), 'next') : bad('% A decimal number between 1 and 2147483647.'))],
+      ['Datagram size [100]: ', (v) => (!v ? 'next' : /^\d+$/.test(v) && Number(v) >= 36 && Number(v) <= 18024 ? ((o.size = Number(v)), 'next') : bad('% A decimal number between 36 and 18024.'))],
+      ['Timeout in seconds [2]: ', (v) => (!v ? 'next' : /^\d+$/.test(v) ? ((o.timeout = Number(v)), 'next') : bad('% A decimal number between 0 and 3600.'))],
+      ['Extended commands [n]: ', (v) => (/^y/i.test(v) ? 'next' : 'run')],
+      ['Source address or interface: ', (v) => {
+        if (!v) return 'next'
+        const src = this.sourceAddr(v.replace(/\s+/g, ''))
+        if (!src) return bad('% Invalid source address- IP address not on any of our up interfaces')
+        o.src = src
+        return 'next'
+      }],
+      // modellenmeyen ayrıntılar: varsayılan kabul edilir (doğrulanmadı: değiştirilmiş değerlerin etkisi)
+      ['Type of service [0]: ', () => 'next'],
+      ['Set DF bit in IP header? [no]: ', () => 'next'],
+      ['Validate reply data? [no]: ', () => 'next'],
+      ['Data pattern [0x0000ABCD]: ', () => 'next'],
+      ['Loose, Strict, Record, Timestamp, Verbose[none]: ', () => 'next'],
+      ['Sweep range of sizes [n]: ', () => 'run'],
+    ]
+    const step = (i: number): Out =>
+      this.ask(steps[i]![0], (line) => {
+        const r = steps[i]![1](line.trim())
+        if (r === 'run') return this.ping(target, o)
+        if (r === 'next') return step(i + 1)
+        return r
+      })
+    return step(0)
   }
 
   traceroute(ip: string): string[] {
     const d = this.rt.derived
-    // IOS traceroute: UDP probes to ports 33434+ (ACLs see UDP)
-    const r = deliver(d, this.dev, ip, { proto: 'udp', sport: 49152, dport: 33434 })
-    this.rt.markSeen(r.hops, this.dev)
-    this.rt.countAcl(1, r)
-    this.rt.recordNat(1, r)
+    // L5-i: IOS traceroute: her TTL için 3 UDP sondası (hedef port 33434'ten artar); router
+    // ICMP Time Exceeded, hedef port unreachable döner; en çok 30 atlama
     const out = ['Type escape sequence to abort.', `Tracing the route to ${ip}`, 'VRF info: (vrf in name/id, vrf out name/id)']
-    r.hops.forEach((h, i) => out.push(`  ${i + 1} ${h.ip} ${1 + i} msec ${i} msec ${1 + i} msec`))
-    if (r.kind === 'ok') {
-      if (!r.hops.length) out.push(`  1 ${ip} 0 msec 0 msec 0 msec`)
-      return out
+    for (let ttl = 1; ttl <= 30; ttl++) {
+      const p = traceProbe(d, this.dev, ip, ttl, 33434 + (ttl - 1) * 3)
+      this.rt.markSeen(p.forward.hops, this.dev)
+      this.rt.countAcl(3, p.forward, p.back)
+      this.rt.recordNat(3, p.forward, p.back)
+      const r = p.result
+      const t = String(ttl).padStart(3)
+      if (r.kind === 'none') out.push(`${t}  *  *  * `)
+      else if (r.kind === 'unreach') out.push(`${t} ${r.ip} !${r.code}  !${r.code}  !${r.code} `)
+      else out.push(`${t} ${r.ip} ${ttl} msec ${ttl - 1} msec ${ttl} msec`)
+      if (r.kind === 'dest' || r.kind === 'unreach') break
     }
-    if (r.kind === 'unreach') {
-      // L5-c: ACL deny → administratively prohibited (!A)
-      const m = r.filtered ? '!A' : '!H'
-      out.push(`  ${r.hops.length + 1} ${r.atIp} ${m}  ${m}  ${m}`)
-      return out
-    }
-    for (let i = r.hops.length + 1; i <= r.hops.length + 3; i++) out.push(`  ${i}  *  *  *`)
+    this.rt.emit()
     return out
   }
 

@@ -105,7 +105,11 @@ describe('genişletilmiş ACL', () => {
   it('isimli genişletilmiş liste ve traceroute !A', () => {
     const rt = createLab(lab([], ['ip access-list extended NOUDP', 'deny udp any any', 'permit ip any any', 'exit', 'interface g0/1', 'ip access-group NOUDP in']))
     expect(ping(rt, 'H1', '192.168.2.20')).toBe(true)
-    expect(run(rt, 'R1', 'traceroute 192.168.2.20')).toContain('2 10.0.0.2 !A  !A  !A')
+    // L5-i: TTL'li sondalar: TTL 1 sondası R2'nin giriş ACL'ine takılır → 1. atlamada !A (önceki
+    // kısayol R2'yi ayrı bir atlama sayıp !A'yı 2. satıra yazıyordu); IOS numarayı 3 sütuna yaslar
+    const tr = run(rt, 'R1', 'traceroute 192.168.2.20')
+    expect(tr).toMatch(/\n {2}1 10\.0\.0\.2 !A {2}!A {2}!A /)
+    expect(tr).not.toMatch(/\n {2}2 /)
   })
 
   it('geçersiz satırlar reddedilir (wildcard eksik, bilinmeyen protokol, numara aralığı)', () => {

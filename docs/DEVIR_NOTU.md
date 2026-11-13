@@ -30,7 +30,8 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | Plan: L7 sonrası işler (`SONRAKI_ISLER.md`) | #71 | birleşti |
 | L5-g sunucu HTTP servisi (TCP 80, `curl`) | #75 (main'den) | açık (birleşmeyi bekliyor) |
 | L5-h PKT IOS metin yolu (hoşgörülü mod) | #76 (#75'in dalından) | açık (birleşmeyi bekliyor) |
-| I-1 içe aktarma ve düzenleyici Labber'a | — | **başlandı, PR açılmadı** (WIP dalı `claude/i1-import-labber`; aşağıda) |
+| L5-i TTL, Time Exceeded, traceroute, extended ping | #L5I (#76'nın dalından) | açık (birleşmeyi bekliyor) |
+| I-1 içe aktarma ve düzenleyici Labber'a | — | sırada (L5-i'nin dalından; WIP dalı `claude/i1-import-labber` #76'dan) |
 
 Yeni zincir (kullanıcı talimatı): **L5-g** (main'den, #75) → **L5-h** (L5-g'nin dalından, #76) →
 **I-1** (L5-h'nin dalından). Her biri ayrı PR; hiçbiri birleştirilmez; CI'ı kullanıcı denetler.
@@ -39,8 +40,8 @@ I-1'in PR'ı açılınca durulur: L6 ve L7'ye başlanmaz.
 Eski motorda kalan içerik (`LAB_MOTOR_HARITASI.md`): yalnız `bgp-as` (BGP, kapsam dışı).
 İçe aktarılan `.pkt` ve düzenleyicide kurulan topolojiler I-1'e kadar eski motorda.
 
-**Durum (bu oturumun sonu):** zincirde açık PR'lar **#75 (L5-g, main'den) → #76 (L5-h, #75'in
-dalından; tabanı `claude/l5g-http`)**. #75 birleşince #76'nın tabanı `main`'e çevrilmeli. Hiçbiri
+**Durum:** zincirde açık PR'lar **#75 (L5-g, main'den) → #76 (L5-h, #75'in dalından) → #L5I
+(L5-i, #76'nın dalından)**. #75 birleşince #76'nın tabanı `main`'e çevrilmeli. Hiçbiri
 birleştirilmedi. I-1 için PR açılmadı: bağlam doldu ve tam hat yeşil değil (aşağıda). L6 ve L7'ye
 başlanmadı.
 
@@ -60,6 +61,13 @@ WIP dalı `claude/i1-import-labber` (#76'nın dalından, itildi, PR değil) şun
 
 Tam hatta 34 test dosyası düşüyor (55 PASS / 54 FAIL kontrol):
 `test_aglab_advanced_engines`, `test_aglab_cli_vlan`, `test_aglab_device_cli`, `test_aglab_dhcp_dns`, `test_aglab_endpoint_ports`, `test_aglab_frame_forwarding`, `test_aglab_icmp_ttl`, `test_aglab_icmp_unreachable`, `test_aglab_import`, `test_aglab_l2_router_trunk`, `test_aglab_large_topology`, `test_aglab_mac_learning`, `test_aglab_next_hop`, `test_aglab_persistence`, `test_aglab_pkt_config_context`, `test_aglab_pkt_dhcp_relay`, `test_aglab_pkt_dot1q`, `test_aglab_pkt_port_security`, `test_aglab_routed_frames`, `test_aglab_sim_embedded`, `test_aglab_simulation_mode`, `test_aglab_status`, `test_aglab_subinterfaces`, `test_aglab_svi_import`, `test_aglab_traceroute`, `test_aglab_trunk_defaults`, `test_aglab_unified_performance`, `test_aglab_unified_rc`, `test_aglab_v11_routing`, `test_aglab_v12_gateway`, `test_aglab_v13_router_ping`, `test_aglab_v15_local_ping`, `test_aglab_v17_ping_validation`, `test_aglab_v7`
+
+**Kullanıcı kararı (2. sınıf):** Labber'a eklendi (L5-i, ayrı PR, I-1'den önce): traceroute, `ping
+-T` + Time Exceeded, extended ping. Yönlendirilen çerçeve ve Simulation Mode testleri I-1'de
+Labber izine uyarlanacak. `show ethernet events` gerçek IOS değil: testi eski motor kararındaki
+topolojide kalır, L7'de silinir (UYUMLULUK_MATRISI "L5-i"). I-1 L5-i'nin dalından devam eder;
+3. sınıf (persistence ad hatası) düzeltilmeden I-1 tamamlanmış sayılmaz; 1. ve 4. sınıflar
+gerekçeyle uyarlanır, gevşetilmez.
 
 Düşüş sınıfları ve önerilen yol:
 1. **Eski motorun terminal metni.** Varsayılan topolojide ve içe aktarılan topolojilerde eski
@@ -500,6 +508,19 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
 - **Testler**: `tests/sim/cli-import.test.ts`; Python kabul testleri her dönüşümde
   `assert_cli_path_matches` (Node: `tests/sim_node_runner.cjs`); `pkt-sample-matrix.json`
   yeni vaka `synthetic-port-security-dynamic-port`.
+
+## L5-i — TTL, Time Exceeded, traceroute, extended ping (yapıldı, PR açık)
+
+- **Labber**: `deliver` `PacketSpec.ttl` → `Delivery.kind 'expired'` (transit router, giriş
+  ACL'inden sonra); `ping(d, from, dst, { ttl, src })` Time Exceeded dönüşüyle (`reason
+  'expired'`, `expiredFrom`); `traceProbe` (TTL'li UDP sondası; hop/dest/unreach/none).
+- **CLI**: IOS `traceroute` (TTL döngüsü, 30 atlama, `!H`/`!A`/`*`), `ping` seçenekleri ve
+  etkileşimli extended ping (`&` kodu), VPCS `ping -T/-c` ve `trace` (8 atlama).
+- **Simulation Mode**: `pingTrace(..., { ttl })` `ttl-expired`, `icmp-time-exceeded` kayıtları;
+  ürün `ping … -T N`'yi izde uygular.
+- **Testler**: `tests/sim/ttl-trace.test.ts`; `test_aglab_labber_terminal`
+  `test_ttl_traceroute_extended_ping`; `acl.test.ts`/`nat.test.ts` traceroute beklentileri
+  TTL'li sondaya göre (gerekçeli).
 
 ## Kurallar hatırlatması
 
