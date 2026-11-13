@@ -38,67 +38,69 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         )
         return "\n".join(page.locator("#ptTerminal > div").all_text_contents()[before:])
 
+    # I-1: içe aktarılan topoloji Labber'da. PC terminali VPCS: `trace <hedef> [-m N]` (UDP
+    # sondası; hedef "Destination port unreachable" ile yanıtlar — eski motorun Windows tarzı
+    # "Echo Reply"si yok). Router/switch IOS `traceroute`. Labber Simulation Mode izi yalnız
+    # ping'i kaydeder (UYUMLULUK_MATRISI L5-i); sondanın gerçek paket olduğu NAT tablosundan
+    # doğrulanır.
     def rows(output):
-        return [line for line in output.splitlines() if re.match(r"^\d+\s", line)]
+        return [line for line in output.splitlines() if re.match(r"^\s*\d+\s", line)]
 
+    PORT = "Destination port unreachable"
     load()
-    out = cmd("d3", "traceroute 192.168.2.2 max-hops 5")
+    out = cmd("d3", "trace 192.168.2.2 -m 5")
     hops = rows(out)
     assert (
         len(hops) == 3
         and "192.168.1.1" in hops[0]
         and "10.0.0.2" in hops[1]
-        and "192.168.2.2" in hops[2]
+        and "*192.168.2.2" in hops[2]
+        and PORT in hops[2]
     ), out
-    assert "Echo Reply" in hops[2] and "Hedefe ulaşılabilir" in out, out
-    events = cmd("d3", "show ethernet events")
-    assert (
-        "trace-probe ttl 1" in events
-        and "trace-probe ttl 3" in events
-        and "icmp-delivered d3" in events
-    ), events
     assert len(rows(cmd("d3", "trace 192.168.1.3"))) == 1
-    assert len(rows(cmd("d1", "tracert 10.0.0.2"))) == 1
+    cmd("d1", "enable")
+    tr = rows(cmd("d1", "traceroute 10.0.0.2"))
+    assert len(tr) == 1 and "10.0.0.2" in tr[0], tr  # IOS'ta `tracert` yok
     print(
-        "PASS: returned ICMP router hops, Echo Reply completion, aliases and local delivery",
+        "PASS: returned ICMP router hops, port-unreachable completion, IOS traceroute and local delivery",
         flush=True,
     )
-    # Drop only R2's Time Exceeded source, not the final Echo Reply from the host.
+    # R2 kaynaklı ICMP R1'in girişinde süzülür: 2. atlama sessiz, hedefin yanıtı yine gelir.
+    # (IOS: R2'nin çıkış ACL'i R2'nin kendi ürettiği ICMP'yi süzmez.)
     silent = copy.deepcopy(base)
-    r2 = silent["devices"][1]
-    r2["acls"] = [
+    r1 = silent["devices"][0]
+    r1["acls"] = [
         dict(
             id="101", action="deny", protocol="icmp", srcType="host", src="10.0.0.2", dstType="any"
         ),
         dict(id="101", action="permit", protocol="ip", srcType="any", dstType="any"),
     ]
-    r2["interfaces"]["g0/0"]["aclOut"] = "101"
+    r1["interfaces"]["g0/1"]["aclIn"] = "101"
     load(silent)
-    out = cmd("d3", "trace 192.168.2.2 max-hops 4")
+    out = cmd("d3", "trace 192.168.2.2 -m 4")
     hops = rows(out)
     assert (
         len(hops) == 3
-        and hops[1].strip() == "2  *"
+        and hops[1].strip() == "2     *  *  *"
         and "10.0.0.2" not in out
-        and "Echo Reply" in hops[2]
+        and PORT in hops[2]
     ), out
     print(
         "PASS: silent router stays hidden while a later reply still completes the trace", flush=True
     )
     load()
-    out = cmd("d3", "trace 192.168.2.2 max-hops 1")
-    assert len(rows(out)) == 1 and "doğrulanamadı" in out and "Echo Reply" not in out, out
-    # Unknown host on an existing destination LAN still exposes the reachable routers.
-    out = cmd("d3", "trace 192.168.2.99 max-hops 4")
+    out = cmd("d3", "trace 192.168.2.2 -m 1")
+    assert len(rows(out)) == 1 and PORT not in out, out
+    out = cmd("d3", "trace 192.168.2.99 -m 4")
     hops = rows(out)
     assert (
         len(hops) == 3
         and "192.168.1.1" in hops[0]
         and "10.0.0.2" in hops[1]
-        and "!H" in hops[2]
-        and "Hedefe ulaşılabilir" not in out
+        and "Destination host unreachable" in hops[2]
+        and PORT not in out
     ), out
-    # A forwarding loop must consume real TTL, not vanish at topology prevalidation.
+    # Yönlendirme döngüsü gerçek TTL tüketir
     loop = copy.deepcopy(base)
     loop["devices"][0]["staticRoutes"].append(
         dict(network="198.51.100.0", mask="255.255.255.0", nextHop="10.0.0.2", distance=1)
@@ -107,45 +109,42 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         dict(network="198.51.100.0", mask="255.255.255.0", nextHop="10.0.0.1", distance=1)
     )
     load(loop)
-    out = cmd("d3", "trace 198.51.100.2 max-hops 5")
+    out = cmd("d3", "trace 198.51.100.2 -m 5")
     hops = rows(out)
     assert (
         len(hops) == 5
         and "192.168.1.1" in hops[0]
         and "10.0.0.2" in hops[1]
-        and "192.168.1.1" in hops[2]
-        and "Echo Reply" not in out
+        and "10.0.0.1" in hops[2]
+        and PORT not in out
     ), out
     print("PASS: hop bound, unknown-host partial discovery and routing-loop TTL expiry", flush=True)
     before = page.locator("#ptTerminal > div").count()
     elapsed = page.evaluate(
-        "()=>{const t=performance.now();document.querySelector('#ptCliDevice').value='d3';document.querySelector('#ptCliInput').value='trace 198.51.100.2 max-hops 64';document.querySelector('#ptCliForm').requestSubmit();return performance.now()-t}"
+        "()=>{const t=performance.now();document.querySelector('#ptCliDevice').value='d3';document.querySelector('#ptCliInput').value='trace 198.51.100.2 -m 64';document.querySelector('#ptCliForm').requestSubmit();return performance.now()-t}"
     )
     out = "\n".join(page.locator("#ptTerminal > div").all_text_contents()[before:])
     hops = rows(out)
     assert len(hops) == 64 and "10.0.0.2" in hops[-1], out
     assert elapsed < 5000, elapsed
-    events = cmd("d3", "show ethernet events")
-    assert "Ek olay sayısı:" in events and len(events.splitlines()) <= 260, events
-    print(
-        "PASS: 64-hop loop bounded, event log capped; browser elapsed_ms",
-        round(elapsed, 1),
-        flush=True,
-    )
+    print("PASS: 64-hop loop bounded; browser elapsed_ms", round(elapsed, 1), flush=True)
     svi = copy.deepcopy(base)
     svi["devices"][6]["interfaces"]["vlan1"] = dict(
         ip="192.168.1.10", mask="255.255.255.0", enabled=True, vlan=1
     )
     svi["devices"][6]["gateway"] = "192.168.1.1"
     load(svi)
-    assert "Hedefe ulaşılabilir" in cmd("d7", "traceroute 192.168.2.2 max-hops 4")
+    cmd("d7", "enable")
+    tr = rows(cmd("d7", "traceroute 192.168.2.2"))
+    assert "192.168.2.2" in tr[-1] and "!H" not in tr[-1], tr
+    # VPCS: -m 1..255; geçersiz biçimler hata satırı
     for invalid in [
         "trace",
         "trace invalid",
         "trace 192.168.2.2 extra",
-        "trace 192.168.2.2 max-hops 0",
-        "trace 192.168.2.2 max-hops 65",
-        "trace 192.168.2.2 max-hops 1.5",
+        "trace 192.168.2.2 -m 0",
+        "trace 192.168.2.2 -m 256",
+        "trace 192.168.2.2 -m 1.5",
     ]:
         out = cmd("d3", invalid)
         assert "outerr" in (
@@ -153,18 +152,22 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         ), out
     print("PASS: SVI origin and strict trace command validation", flush=True)
     load()
-    assert len(rows(cmd("d3", "trace 192.168.2.1 max-hops 4"))) == 2
-    # A later missing route must not prevent earlier returned Time Exceeded replies.
+    assert len(rows(cmd("d3", "trace 192.168.2.1 -m 4"))) == 2
+    # Sonraki router'da rota yokluğu önceki Time Exceeded yanıtlarını engellemez
     missing = copy.deepcopy(base)
     missing["devices"][0]["staticRoutes"].append(
         dict(network="198.51.100.0", mask="255.255.255.0", nextHop="10.0.0.2", distance=1)
     )
     load(missing)
-    out = cmd("d3", "trace 198.51.100.2 max-hops 3")
+    out = cmd("d3", "trace 198.51.100.2 -m 3")
     hops = rows(out)
     assert (
-        len(hops) == 3 and "192.168.1.1" in hops[0] and "10.0.0.2" in hops[1] and "!N" in hops[2]
+        len(hops) == 3
+        and "192.168.1.1" in hops[0]
+        and "10.0.0.2" in hops[1]
+        and "Destination host unreachable" in hops[2]
     ), out
+    # PAT (L5-d) traceroute'u destekler: sondalar çevrilir, NAT tablosunda udp girdisi
     nat = copy.deepcopy(base)
     r1 = nat["devices"][0]
     r1["interfaces"]["g0/0"]["natRole"] = "inside"
@@ -182,12 +185,10 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         )
     ]
     load(nat)
-    out = cmd("d3", "trace 192.168.2.2 max-hops 4")
-    assert "henüz desteklenmiyor" in out and "Hedefe ulaşılabilir" not in out, out
-    assert "tablosu boş" in cmd("d1", "show ip nat translations")
-    print(
-        "PASS: local destination router TTL, later missing route and explicit unsupported NAT boundary",
-        flush=True,
-    )
+    out = cmd("d3", "trace 192.168.2.2 -m 4")
+    assert PORT in rows(out)[-1], out
+    cmd("d1", "enable")
+    assert "udp 10.0.0.1:" in cmd("d1", "show ip nat translations")
+    print("PASS: local destination router TTL, later missing route and PAT traceroute", flush=True)
     assert not errors, errors
     browser.close()

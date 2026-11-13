@@ -992,7 +992,8 @@ var AgLabSim = (() => {
       if (s.proto ? s.proto === pkt.proto && s.global === pkt.dst && s.gport === pkt.dport : s.global === pkt.dst)
         return { ...pkt, dst: s.local, ...s.proto ? { dport: s.lport } : {} };
     }
-    const ext = table.find((e) => e.dev === dev && e.proto === pkt.proto && e.insideGlobal === pkt.dst && e.gport === pkt.dport);
+    const icmpError = pkt.proto === "icmp" && (pkt.icmpType === "time-exceeded" || pkt.icmpType === "unreachable");
+    const ext = table.find((e) => e.dev === dev && (icmpError ? e.proto !== null : e.proto === pkt.proto) && e.insideGlobal === pkt.dst && e.gport === pkt.dport);
     if (ext) return { ...pkt, dst: ext.insideLocal, dport: ext.lport };
     const simple = table.find((e) => e.dev === dev && e.proto === null && e.insideGlobal === pkt.dst);
     return simple ? { ...pkt, dst: simple.insideLocal } : null;
@@ -1405,7 +1406,7 @@ var AgLabSim = (() => {
     let routers = 0;
     if (!l3Ifs(d, from).length) return { kind: "noip", hops };
     const { natPending, ttl: ttl0, ...fields } = spec;
-    let ipTtl = ttl0 ?? Infinity;
+    let ipTtl = ttl0 ?? 255;
     let pkt = { proto: "icmp", icmpType: "echo", ...fields, src: fields.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0].ip, dst };
     if (pkt.proto === "icmp" && pkt.sport === void 0 && pkt.icmpType === "echo") pkt.sport = 1;
     const table = () => [...d.natTable ?? [], ...natPending ?? [], ...nat];
@@ -1413,7 +1414,7 @@ var AgLabSim = (() => {
     let inIf = null;
     let natted = 0;
     const end = (r) => ({ ...r, acl, pkt, nat, natted });
-    for (let ttl = 0; ttl < 32; ttl++) {
+    for (let ttl = 0; ttl < 256; ttl++) {
       if (cur !== from && inIf && routing(cur)) {
         const back = natInbound(d, cur, inIf, pkt, table());
         if (back) {
@@ -5056,7 +5057,7 @@ var AgLabSim = (() => {
       if (!sameSubnet(c.ip, dst, c.prefix) && !c.gw) return [`host (${dst}) not reachable`, ""];
       this.rt.hostSends(this.dev);
       const d = this.rt.derived;
-      const r = ping(d, this.dev, dst, ttlOut !== void 0 ? { ttl: ttlOut } : {});
+      const r = ping(d, this.dev, dst, { ttl: ttlOut ?? 64 });
       this.rt.markSeen(r.forward?.hops ?? [], this.dev);
       this.rt.countAcl(count, r.forward, r.back);
       this.rt.recordNat(count, r.forward, r.back);

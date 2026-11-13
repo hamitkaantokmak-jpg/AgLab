@@ -417,7 +417,8 @@ export function deliver(d: Derived, from: string, dst: string, spec: PacketSpec 
   let routers = 0
   if (!l3Ifs(d, from).length) return { kind: 'noip', hops }
   const { natPending, ttl: ttl0, ...fields } = spec
-  let ipTtl = ttl0 ?? Infinity
+  // varsayılan: IP TTL üst değeri (döngüde paket TTL'le biter; tur sınırı aşağıda)
+  let ipTtl = ttl0 ?? 255
   let pkt: Packet = { proto: 'icmp', icmpType: 'echo', ...fields, src: fields.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0]!.ip, dst } as Packet
   if (pkt.proto === 'icmp' && pkt.sport === undefined && pkt.icmpType === 'echo') pkt.sport = 1
   const table = () => [...(d.natTable ?? []), ...(natPending ?? []), ...nat]
@@ -425,7 +426,7 @@ export function deliver(d: Derived, from: string, dst: string, spec: PacketSpec 
   let inIf: string | null = null
   let natted = 0
   const end = <T extends Delivery>(r: T): T => ({ ...r, acl, pkt, nat, natted })
-  for (let ttl = 0; ttl < 32; ttl++) {
+  for (let ttl = 0; ttl < 256; ttl++) {
     // L5-d: outside → inside: destination translated back on arrival (before routing)
     if (cur !== from && inIf && routing(cur)) {
       const back = natInbound(d, cur, inIf, pkt, table())

@@ -287,7 +287,8 @@ export class VpcsSession {
     // L5-e: the PC sends (ARP/ICMP): port security learns or flags its source MAC first
     this.rt.hostSends(this.dev)
     const d = this.rt.derived
-    const r = ping(d, this.dev, dst, ttlOut !== undefined ? { ttl: ttlOut } : {})
+    // VPCS varsayılan IP TTL'i 64
+    const r = ping(d, this.dev, dst, { ttl: ttlOut ?? 64 })
     this.rt.markSeen(r.forward?.hops ?? [], this.dev)
     this.rt.countAcl(count, r.forward, r.back)
     this.rt.recordNat(count, r.forward, r.back)
