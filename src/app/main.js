@@ -7463,6 +7463,7 @@ labLoadExperiment();
     validateTopologyData(obj);
     // Yeni içerik: önceki Labber oturumu biter; içerik Labber kararındaysa yeniden başlar.
     aglabLabber.stop();
+    if (typeof resetDeviceCliHistories === 'function') resetDeviceCliHistories();
     sourceArchiveData = obj.sourceArchive || null;
     importReportData = obj.importReport ? clone(obj.importReport) : null;
     const newDevices = JSON.parse(JSON.stringify(obj.devices)),
@@ -7660,6 +7661,7 @@ labLoadExperiment();
   }
   function reset() {
     aglabLabber.stop();
+    if (typeof resetDeviceCliHistories === 'function') resetDeviceCliHistories();
     academyClearSession();
     devices = [];
     links = [];
