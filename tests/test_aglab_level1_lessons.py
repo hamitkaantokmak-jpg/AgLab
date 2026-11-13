@@ -36,6 +36,7 @@ LESSONS = [
     ("nat", "natpat", "nat-pat.md", "nat-", "PAT'ın üç parçası", "Tablo ve istatistikle teşhis"),
     ("ospf", "ospf", "ospf.md", "ospf-", "Komşuluk şartları", "Teşhis sırası"),
     ("stp", "stp", "stp.md", "stp-", "Port rolleri", "RSTP ve koruma"),
+    ("l2sec", "l2sec", "l2-guvenlik.md", "psec-", "İhlal modları ve err-disabled", "err-disabled'dan çıkış"),
 ]
 PARTS = [
     "## 1. Neden önemli",

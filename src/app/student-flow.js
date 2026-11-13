@@ -15,6 +15,7 @@
       'intervlan': ['intervlan'],
       'physical': ['physical'],
       'ethernet': ['ethernet'],
+      'l2sec': ['l2sec'],
       'method': ['method'],
       'discovery': ['discovery'],
       'stp': ['stp'],

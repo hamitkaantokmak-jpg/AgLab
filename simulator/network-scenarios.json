@@ -30229,5 +30229,1469 @@
         }
       ]
     }
+  },
+  {
+    "id": "psec-new-pc",
+    "title": "Port security · Yeni bilgisayar takıldı, port kapandı",
+    "symptom": "Muhasebedeki eski bilgisayar (PC-2'nin yerinde duran) yenisiyle değiştirildi. Yeni PC-2 ağa hiç bağlanamıyor; switch'te Fa0/2'nin ışığı sönük. Diğer portlar sorunsuz.",
+    "cause": "Fa0/2'de port security açık, en çok 1 adres ve eski bilgisayarın MAC'i (0200.1111.2222) statik olarak yazılı; ihlal modu shutdown. Yeni PC'nin ilk çerçevesi ihlal sayıldı ve port err-disabled oldu (E1).",
+    "hints": [
+      "Port up değilse önce durumuna bak: show interfaces status ya da show port-security interface fa0/2.",
+      "err-disabled ve psecure-violation: port hangi MAC'i bekliyor? show running-config interface fa0/2.",
+      "Eski statik MAC'i kaldır (no switchport port-security mac-address 0200.1111.2222), sonra portu shutdown / no shutdown ile aç."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "fa0/4"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true,
+              "portSecurity": {
+                "enabled": true,
+                "max": 1,
+                "violation": "shutdown",
+                "macs": [
+                  "0200.1111.2222"
+                ]
+              },
+              "errdisabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/4": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 120,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.10.100",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 0,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "PC-1",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 160,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "PC-3",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.13",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 520,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "YAZICI",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.50",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 640,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-2",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 280,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/4",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface fa0/2",
+          "no switchport port-security mac-address 0200.1111.2222",
+          "shutdown",
+          "no shutdown",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-2",
+      "target": "192.168.10.100",
+      "checks": [
+        {
+          "fn": "errDisabled",
+          "args": [
+            "SW1",
+            "fa0/2"
+          ],
+          "expected": false,
+          "label": "SW1 Fa0/2 err-disabled değil"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-2",
+            "192.168.10.100"
+          ],
+          "expected": true,
+          "label": "PC-2 → SRV",
+          "field": "ok"
+        }
+      ]
+    }
+  },
+  {
+    "id": "psec-stale-errdisable",
+    "title": "Port security · Laptop gitti, port hâlâ kapalı",
+    "symptom": "Toplantı odasında biri PC-3'ün kablosunu çıkarıp kendi laptopunu takmış; port kapanmış. Laptop gitti, PC-3'ün kablosu geri takıldı, ama PC-3 hâlâ ağa bağlanamıyor.",
+    "cause": "Fa0/3 ihlal yüzünden err-disabled durumda kaldı. err-disabled port, ihlali yapan cihaz gitse de kendiliğinden açılmaz; elle (ya da errdisable recovery ile) açılması gerekir (E3).",
+    "hints": [
+      "Port ışığı sönük: show interfaces status'ta Fa0/3'ün durumu ne?",
+      "err-disabled bir port neden kendiliğinden açılmaz? show port-security interface fa0/3: Port Status.",
+      "Portu kapatıp aç: interface fa0/3 → shutdown → no shutdown."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "fa0/4"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true,
+              "portSecurity": {
+                "enabled": true,
+                "max": 1,
+                "violation": "shutdown",
+                "macs": []
+              },
+              "errdisabled": true
+            },
+            "fa0/4": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 120,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.10.100",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 0,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "PC-1",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 160,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "PC-3",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.13",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 520,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "YAZICI",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.50",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 640,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-2",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 280,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/4",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface fa0/3",
+          "shutdown",
+          "no shutdown",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-3",
+      "target": "192.168.10.100",
+      "checks": [
+        {
+          "fn": "errDisabled",
+          "args": [
+            "SW1",
+            "fa0/3"
+          ],
+          "expected": false,
+          "label": "SW1 Fa0/3 err-disabled değil"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-3",
+            "192.168.10.100"
+          ],
+          "expected": true,
+          "label": "PC-3 → SRV",
+          "field": "ok"
+        }
+      ]
+    }
+  },
+  {
+    "id": "psec-printer-typo",
+    "title": "Port security · Yazıcı sessizce kayboldu",
+    "symptom": "Yazıcının portuna port security eklendi. O günden beri kimse yazdıramıyor. Port up, ışık yanıyor, switch hiçbir uyarı vermiyor.",
+    "cause": "Fa0/4'e yazıcının MAC'i statik olarak yanlış yazılmış (0200.0000.0050; doğrusu 0200.0000.0005). En çok 1 adres dolu olduğu için yazıcının gerçek MAC'i kabul edilmiyor; ihlal modu protect olduğu için çerçeveler sayaçsız ve uyarısız düşüyor (E4).",
+    "hints": [
+      "Port up ama cihaz yok gibi: switch yazıcının çerçevelerini kabul ediyor mu?",
+      "show port-security interface fa0/4 ve show port-security address: hangi MAC izinli? Yazıcının gerçek MAC'i ne (yazıcıda show ip / etiket)?",
+      "Yanlış adresi kaldırıp doğrusunu yaz: no switchport port-security mac-address 0200.0000.0050 → switchport port-security mac-address 0200.0000.0005."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "fa0/4"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/4": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true,
+              "portSecurity": {
+                "enabled": true,
+                "max": 1,
+                "violation": "protect",
+                "macs": [
+                  "0200.0000.0050"
+                ]
+              }
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 120,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.10.100",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 0,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "PC-1",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 160,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "PC-3",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.13",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 520,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "YAZICI",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.50",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 640,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-2",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 280,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/4",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface fa0/4",
+          "no switchport port-security mac-address 0200.0000.0050",
+          "switchport port-security mac-address 0200.0000.0005",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-1",
+      "target": "192.168.10.50",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-1",
+            "192.168.10.50"
+          ],
+          "expected": true,
+          "label": "PC-1 → YAZICI",
+          "field": "ok"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "YAZICI",
+            "192.168.10.100"
+          ],
+          "expected": true,
+          "label": "YAZICI → SRV",
+          "field": "ok"
+        }
+      ]
+    }
+  },
+  {
+    "id": "psec-swapped-desks",
+    "title": "Port security · Masalar değişti, iki bilgisayar da kopuk",
+    "symptom": "Hafta sonu iki çalışanın masaları yer değiştirdi; bilgisayarlar yeni masadaki prize takıldı. Pazartesi PC-1 de PC-3 de ağa bağlanamıyor. Switch'te Fa0/1 ve Fa0/3'ün ışıkları sönük.",
+    "cause": "Fa0/1'de PC-1'in, Fa0/3'te PC-3'ün MAC'i statik olarak yazılı (en çok 1, shutdown). Bilgisayarlar yer değiştirince iki port da yabancı MAC gördü ve err-disabled oldu (E1).",
+    "hints": [
+      "İki port birden kapandıysa ikisinde ortak ne değişti?",
+      "show port-security address: hangi port hangi MAC'i bekliyor? show interfaces status: hangi bilgisayar hangi portta? (PC'lerde show ip ile MAC)",
+      "Statik MAC'leri yeni yerlerine göre değiştir (önce Fa0/3'teki 0200.0000.0004'ü kaldır), sonra iki portu shutdown / no shutdown ile aç."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "fa0/4"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true,
+              "portSecurity": {
+                "enabled": true,
+                "max": 1,
+                "violation": "shutdown",
+                "macs": [
+                  "0200.0000.0003"
+                ]
+              },
+              "errdisabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true,
+              "portSecurity": {
+                "enabled": true,
+                "max": 1,
+                "violation": "shutdown",
+                "macs": [
+                  "0200.0000.0004"
+                ]
+              },
+              "errdisabled": true
+            },
+            "fa0/4": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 120,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.10.100",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 0,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "PC-1",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 160,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "PC-3",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.13",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 520,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "YAZICI",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.50",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 640,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-2",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 280,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/4",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface fa0/3",
+          "no switchport port-security mac-address 0200.0000.0004",
+          "interface fa0/1",
+          "no switchport port-security mac-address 0200.0000.0003",
+          "switchport port-security mac-address 0200.0000.0004",
+          "shutdown",
+          "no shutdown",
+          "interface fa0/3",
+          "switchport port-security mac-address 0200.0000.0003",
+          "shutdown",
+          "no shutdown",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-1",
+      "target": "192.168.10.100",
+      "checks": [
+        {
+          "fn": "errDisabled",
+          "args": [
+            "SW1",
+            "fa0/1"
+          ],
+          "expected": false,
+          "label": "SW1 Fa0/1 err-disabled değil"
+        },
+        {
+          "fn": "errDisabled",
+          "args": [
+            "SW1",
+            "fa0/3"
+          ],
+          "expected": false,
+          "label": "SW1 Fa0/3 err-disabled değil"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-1",
+            "192.168.10.100"
+          ],
+          "expected": true,
+          "label": "PC-1 → SRV",
+          "field": "ok"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-3",
+            "192.168.10.100"
+          ],
+          "expected": true,
+          "label": "PC-3 → SRV",
+          "field": "ok"
+        }
+      ]
+    }
+  },
+  {
+    "id": "psec-two-faults",
+    "title": "Port security · Yazıcı ve toplantı odası birlikte",
+    "symptom": "Sabah iki şikâyet geldi: kimse yazdıramıyor ve toplantı odasındaki PC-3 ağa bağlanamıyor. Teknisyen PC-3'ün portunu açtı; yazıcı hâlâ çalışmıyor.",
+    "cause": "İki ayrı sorun: Fa0/3 eski bir ihlalden err-disabled kalmış (E3) ve Fa0/4'te yazıcının MAC'i yanlış yazılmış, protect modunda sessizce düşüyor (E4).",
+    "hints": [
+      "Her şikâyeti ayrı ele al ve her düzeltmeden sonra ikisini de test et.",
+      "show interfaces status ile kapalı portu, show port-security address ile izinli MAC'leri oku.",
+      "Fa0/3: shutdown / no shutdown. Fa0/4: yanlış MAC'i kaldır, 0200.0000.0005'i yaz."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2",
+            "fa0/3",
+            "fa0/4"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/3": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true,
+              "portSecurity": {
+                "enabled": true,
+                "max": 1,
+                "violation": "shutdown",
+                "macs": []
+              },
+              "errdisabled": true
+            },
+            "fa0/4": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true,
+              "portSecurity": {
+                "enabled": true,
+                "max": 1,
+                "violation": "protect",
+                "macs": [
+                  "0200.0000.0050"
+                ]
+              }
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 120,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.10.100",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 0,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "PC-1",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 160,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "PC-3",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.13",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 520,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "YAZICI",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.50",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 640,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-2",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 280,
+          "y": 300,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d2",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/3",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/4",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface fa0/3",
+          "shutdown",
+          "no shutdown",
+          "interface fa0/4",
+          "no switchport port-security mac-address 0200.0000.0050",
+          "switchport port-security mac-address 0200.0000.0005",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-3",
+      "target": "192.168.10.100",
+      "checks": [
+        {
+          "fn": "errDisabled",
+          "args": [
+            "SW1",
+            "fa0/3"
+          ],
+          "expected": false,
+          "label": "SW1 Fa0/3 err-disabled değil"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-3",
+            "192.168.10.100"
+          ],
+          "expected": true,
+          "label": "PC-3 → SRV",
+          "field": "ok"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-1",
+            "192.168.10.50"
+          ],
+          "expected": true,
+          "label": "PC-1 → YAZICI",
+          "field": "ok"
+        }
+      ]
+    }
   }
 ]

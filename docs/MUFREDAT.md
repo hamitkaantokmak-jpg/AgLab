@@ -73,7 +73,7 @@ CCNA v2.0 beş alana sahip: Ağ altyapısı ve bağlantı %25, Switching ve ağ 
 | 18 | FHRP: HSRP/VRRP durum okuma | IP routing | Motor | Doğrulanacak | P1 |
 | 19 | ACL (standart, genişletilmiş) | Güvenlik | Motor | Labber'da var (L5-c). Detaylı ders ve 5 senaryo var (`docs/dersler/acl.md`, `acl-*`) | P1 |
 | 20 | NAT/PAT | Servisler | Motor | Labber'da var (L5-d; modelde yalnız PAT). Detaylı ders ve 5 senaryo var (`docs/dersler/nat-pat.md`, `nat-*`) | P1 |
-| 21 | L2 güvenlik: port security, DHCP snooping, DAI, storm control, RA guard | Switching / güvenlik | Motor | Port security var; diğerleri yok | P1 |
+| 21 | L2 güvenlik: port security, DHCP snooping, DAI, storm control, RA guard | Switching / güvenlik | Motor | Port security var (dinamik adres sayımı hatalı); diğerleri yok. Detaylı ders ve 5 senaryo var (`docs/dersler/l2-guvenlik.md`, `psec-*`) | P1 |
 | 22 | Cihaz erişim güvenliği: SSH, AAA, SFTP/SCP | Güvenlik | Motor + okuma | Yok | P2 |
 | 23 | Ağ servisleri: DNS kayıt türleri, NTP, Syslog, SNMP | Servisler / operasyon | Okuma + motor (Syslog) | Kısmi | P2 |
 | 24 | Teşhis araçları: extended ping, traceroute, paket yakalama | Operasyon | Motor | Labber'da var (ping, extended ping, `source`, traceroute; Paket Dedektifi). Detaylı ders ve 5 senaryo var (`docs/dersler/teshis-araclari.md`, `diag-*`) | P1 |

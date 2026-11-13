@@ -148,6 +148,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `stp-no-secondary` | STP · Çekirdek düştü, kök erişim switch'ine kaçtı | **Labber** |
 | `stp-root-primary-access` | STP · Test sırasında yazılan root primary | **Labber** |
 | `stp-two-faults` | STP · Eski switch söküldü, satış hâlâ dolaşıyor | **Labber** |
+| `psec-new-pc` | Port security · Yeni bilgisayar takıldı, port kapandı | **Labber** |
+| `psec-stale-errdisable` | Port security · Laptop gitti, port hâlâ kapalı | **Labber** |
+| `psec-printer-typo` | Port security · Yazıcı sessizce kayboldu | **Labber** |
+| `psec-swapped-desks` | Port security · Masalar değişti, iki bilgisayar da kopuk | **Labber** |
+| `psec-two-faults` | Port security · Yazıcı ve toplantı odası birlikte | **Labber** |
 
 ## Labber labları (E)
 
@@ -189,9 +194,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 96 | 1 | 97 |
+| Ortak senaryolar | 101 | 1 | 102 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 149 | 1 | 150 |
+| Toplam | 154 | 1 | 155 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
