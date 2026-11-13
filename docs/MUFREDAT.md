@@ -65,18 +65,18 @@ CCNA v2.0 beş alana sahip: Ağ altyapısı ve bağlantı %25, Switching ve ağ 
 
 | # | Konu | CCNA v2.0 alanı | Pratik | Motor durumu | Öncelik |
 | --- | --- | --- | --- | --- | --- |
-| 13 | STP/RSTP, PortFast, BPDU/root guard | Switching | Motor | Kısmi (root seçimi var, guard'lar yok) | P1 |
-| 14 | EtherChannel (LACP) | Switching | Motor | Doğrulanacak | P1 |
-| 15 | OSPFv2 tek alan | IP routing | Motor + Gerçek Lab | Kısmi (komşuluk ve rota var; SPF/LSDB, timer yok) | P1 |
-| 16 | IPv6 adresleme, SLAAC, NDP, statik rota | Altyapı / routing | Motor | Doğrulanacak | P1 |
+| 13 | STP/RSTP, PortFast, BPDU/root guard | Switching | Motor | Labber'da var (PVST kök seçimi, öncelik, PortFast, BPDU Guard; Root Guard yok; modelde yalnız öncelik). Detaylı ders ve 5 senaryo var (`docs/dersler/stp.md`, `stp-*`) | P1 |
+| 14 | EtherChannel (LACP) | Switching | Motor | Labber'da var, AğLab modelinde yok. Okuma dersi var (`docs/dersler/etherchannel.md`); senaryolar model desteğiyle | P1 |
+| 15 | OSPFv2 tek alan | IP routing | Motor + Gerçek Lab | Labber'da var (komşuluk, DR/BDR, SPF, maliyet; modelde yalnız network/router-id). Detaylı ders ve 5 senaryo var (`docs/dersler/ospf.md`, `ospf-*`) | P1 |
+| 16 | IPv6 adresleme, SLAAC, NDP, statik rota | Altyapı / routing | Motor | Labber'da yok. Okuma dersi var (`docs/dersler/ipv6.md`); senaryolar motor desteğiyle | P1 |
 | 17 | OSPFv3 (IPv6) | IP routing | Gerçek Lab önce, sonra motor | Yok | P2 |
-| 18 | FHRP: HSRP/VRRP durum okuma | IP routing | Motor | Doğrulanacak | P1 |
-| 19 | ACL (standart, genişletilmiş) | Güvenlik | Motor | Kısmi, doğrulanacak | P1 |
-| 20 | NAT/PAT | Servisler | Motor | Kısmi, doğrulanacak | P1 |
-| 21 | L2 güvenlik: port security, DHCP snooping, DAI, storm control, RA guard | Switching / güvenlik | Motor | Port security var; diğerleri yok | P1 |
+| 18 | FHRP: HSRP/VRRP durum okuma | IP routing | Motor | Labber'da yok. Okuma dersi var (`docs/dersler/fhrp.md`, `fhrp`); senaryolar motor desteğiyle | P1 |
+| 19 | ACL (standart, genişletilmiş) | Güvenlik | Motor | Labber'da var (L5-c). Detaylı ders ve 5 senaryo var (`docs/dersler/acl.md`, `acl-*`) | P1 |
+| 20 | NAT/PAT | Servisler | Motor | Labber'da var (L5-d; modelde yalnız PAT). Detaylı ders ve 5 senaryo var (`docs/dersler/nat-pat.md`, `nat-*`) | P1 |
+| 21 | L2 güvenlik: port security, DHCP snooping, DAI, storm control, RA guard | Switching / güvenlik | Motor | Port security var (dinamik adres sayımı hatalı); diğerleri yok. Detaylı ders ve 5 senaryo var (`docs/dersler/l2-guvenlik.md`, `psec-*`) | P1 |
 | 22 | Cihaz erişim güvenliği: SSH, AAA, SFTP/SCP | Güvenlik | Motor + okuma | Yok | P2 |
 | 23 | Ağ servisleri: DNS kayıt türleri, NTP, Syslog, SNMP | Servisler / operasyon | Okuma + motor (Syslog) | Kısmi | P2 |
-| 24 | Teşhis araçları: extended ping, traceroute, paket yakalama | Operasyon | Motor | Traceroute ve Paket Dedektifi var; extended ping yok | P1 |
+| 24 | Teşhis araçları: extended ping, traceroute, paket yakalama | Operasyon | Motor | Labber'da var (ping, extended ping, `source`, traceroute; Paket Dedektifi). Detaylı ders ve 5 senaryo var (`docs/dersler/teshis-araclari.md`, `diag-*`) | P1 |
 | 25 | Kablosuz ağ temelleri | Altyapı | Okuma | Yok (motor kapsamı dışı) | P2 |
 | 26 | Otomasyon ve yapay zekâ: IaC, Ansible, ajan tabanlı yapay zekâ, prompt seçimi | Yapay zekâ ve operasyon | Okuma | Yok | P2 |
 

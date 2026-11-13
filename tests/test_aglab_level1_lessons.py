@@ -19,6 +19,7 @@ RECIPES = json.loads((ROOT / "simulator/network-scenarios.json").read_text(encod
 FLOW = (ROOT / "src/app/student-flow.js").read_text(encoding="utf-8")
 
 # (kurs kimliği, ayrıntı kimliği, belge, senaryo öneki, kısa kartta, ayrıntıda)
+# Senaryo öneki None: okuma dersi (senaryoları motor ya da AğLab modeli hazır olunca eklenecek).
 LESSONS = [
     ("discovery", "discovery", "cdp-lldp.md", "cdp-", "LLDP", "çizimi olmayan ağı çıkarmak"),
     ("dhcp", "dhcp", "dhcp.md", "dhcp-", "169.254", "adres nereden gelir"),
@@ -44,6 +45,24 @@ LESSONS = [
         "Yönetim adresi ve SSH",
         "İki yapılandırma",
     ),
+    # Seviye 2
+    ("commands", "diagnostics", "teshis-araclari.md", "diag-", "Extended ping", "Paket yakalama"),
+    ("acl", "acl", "acl.md", "acl-", "Wildcard ve sıra", "Sayaçlarla teşhis"),
+    ("nat", "natpat", "nat-pat.md", "nat-", "PAT'ın üç parçası", "Tablo ve istatistikle teşhis"),
+    ("ospf", "ospf", "ospf.md", "ospf-", "Komşuluk şartları", "Teşhis sırası"),
+    ("stp", "stp", "stp.md", "stp-", "Port rolleri", "RSTP ve koruma"),
+    (
+        "l2sec",
+        "l2sec",
+        "l2-guvenlik.md",
+        "psec-",
+        "İhlal modları ve err-disabled",
+        "err-disabled'dan çıkış",
+    ),
+    # Seviye 2 okuma dersleri (senaryolar motor/model hazır olunca)
+    ("etherchannel", "etherchannel", "etherchannel.md", None, "Mod çiftleri", "Bayraklarla teşhis"),
+    ("fhrp", "fhrp", "fhrp.md", None, "Sanal gateway", "Tek gateway sorunu"),
+    ("ipv6", "ipv6", "ipv6.md", None, "NDP ve SLAAC", "Router'da IPv6"),
 ]
 PARTS = [
     "## 1. Neden önemli",
@@ -55,6 +74,9 @@ PARTS = [
     "## 7. Kısa sınav",
     "## 8. Doğrulama notları",
 ]
+
+
+LEGACY_ONE_STEP = {"nat-pat", "ospf-area", "stp-loop"}
 
 
 class LevelOneLessonDataTests(unittest.TestCase):
@@ -88,7 +110,12 @@ class LevelOneLessonDataTests(unittest.TestCase):
 
     def test_lesson_scenarios_follow_template(self):
         for _, _, doc, prefix, _, _ in LESSONS:
-            rows = [r for r in RECIPES if r["id"].startswith(prefix)]
+            if prefix is None:  # okuma dersi: senaryo motor/model hazır olunca
+                continue
+            # eski tek adımlı senaryolar (ping doğrulamalı ya da topolojisi uygulamada kurulan), şablon dışı
+            rows = [
+                r for r in RECIPES if r["id"].startswith(prefix) and r["id"] not in LEGACY_ONE_STEP
+            ]
             text = (ROOT / "docs/dersler" / doc).read_text(encoding="utf-8")
             with self.subTest(prefix):
                 self.assertGreaterEqual(len(rows), 5)

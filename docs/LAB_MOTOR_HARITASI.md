@@ -123,6 +123,36 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `method-divide-at-gateway` | Yöntem · Kimse sunuculara ulaşamıyor | **Labber** |
 | `method-what-changed` | Yöntem · Gece bakımından sonra bütün kat kopuk | **Labber** |
 | `method-two-layers` | Yöntem · Bir hatayı bulunca durma | **Labber** |
+| `diag-trace-stops` | Teşhis · İz ikinci router'da kesiliyor | **Labber** |
+| `diag-return-source` | Teşhis · Router'dan ping gidiyor, PC'den gitmiyor | **Labber** |
+| `diag-routing-loop` | Teşhis · İz iki router arasında gidip geliyor | **Labber** |
+| `diag-dest-gateway` | Teşhis · İz son router'a varıyor, sonrası yıldız | **Labber** |
+| `diag-two-faults` | Teşhis · İki hata: önce unreachable, sonra sessizlik | **Labber** |
+| `acl-order` | ACL · Misafirler izinli sunucuya da ulaşamıyor | **Labber** |
+| `acl-implicit-deny` | ACL · Misafiri engelleyen kural muhasebeyi kesti | **Labber** |
+| `acl-wrong-direction` | ACL · Doğru liste, yanlış yön | **Labber** |
+| `acl-wildcard` | ACL · Yeni muhasebe PC'si sunucu odasına giremiyor | **Labber** |
+| `acl-two-faults` | ACL · İki hata: sıra ve yön | **Labber** |
+| `nat-missing-inside` | NAT · Şube internete çıkamıyor, çeviri tablosu boş | **Labber** |
+| `nat-acl-old-subnet` | NAT · Yeniden numaralandırmadan sonra internet yok | **Labber** |
+| `nat-roles-swapped` | NAT · inside ile outside yer değiştirmiş | **Labber** |
+| `nat-missing-rule` | NAT · Roller ve ACL var, çeviri yok | **Labber** |
+| `nat-two-faults` | NAT · Önce kimse, sonra bir kişi çıkamıyor | **Labber** |
+| `ospf-lan-wildcard` | OSPF · Komşuluk var, B şubesinin ağı yok | **Labber** |
+| `ospf-area-mismatch` | OSPF · R3 kimseyle komşu değil | **Labber** |
+| `ospf-subnet-mismatch` | OSPF · Kablo takılı, port up, komşuluk yok | **Labber** |
+| `ospf-static-overrides` | OSPF · OSPF rotayı biliyor ama kullanılmıyor | **Labber** |
+| `ospf-two-faults` | OSPF · Komşuluk geldi, ağ yine yok | **Labber** |
+| `stp-old-switch-root` | STP · Depodan gelen switch kök oldu | **Labber** |
+| `stp-vlan-priority-missing` | STP · VLAN 20'nin kökü yanlış çekirdekte | **Labber** |
+| `stp-no-secondary` | STP · Çekirdek düştü, kök erişim switch'ine kaçtı | **Labber** |
+| `stp-root-primary-access` | STP · Test sırasında yazılan root primary | **Labber** |
+| `stp-two-faults` | STP · Eski switch söküldü, satış hâlâ dolaşıyor | **Labber** |
+| `psec-new-pc` | Port security · Yeni bilgisayar takıldı, port kapandı | **Labber** |
+| `psec-stale-errdisable` | Port security · Laptop gitti, port hâlâ kapalı | **Labber** |
+| `psec-printer-typo` | Port security · Yazıcı sessizce kayboldu | **Labber** |
+| `psec-swapped-desks` | Port security · Masalar değişti, iki bilgisayar da kopuk | **Labber** |
+| `psec-two-faults` | Port security · Yazıcı ve toplantı odası birlikte | **Labber** |
 
 ## Labber labları (E)
 
@@ -164,9 +194,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 71 | 1 | 72 |
+| Ortak senaryolar | 101 | 1 | 102 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 124 | 1 | 125 |
+| Toplam | 154 | 1 | 155 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
