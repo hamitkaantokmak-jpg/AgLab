@@ -153,3 +153,15 @@ def assert_vpcs_ping(output, target, ok):
     "Success rate" satırı VPCS'te yoktur."""
     replies = output.count("84 bytes from " + target)
     assert replies == (5 if ok else 0), (ok, output[-1500:])
+
+
+def ping_succeeded(output, target):
+    """I-1: Labber terminal çıktısından ping sonucu. VPCS (PC): 5 adet ``84 bytes from <hedef>``.
+    IOS (router/switch): ilk ping'de ARP çözülürken ilk paket kaybolabilir (``.!!!!``, %80) —
+    gerçek IOS. Başarısızlık: VPCS'te hiç yanıt yok, IOS'ta %0."""
+    import re as _re
+
+    rates = _re.findall(r"Success rate is (\d+) percent", output)
+    if rates:
+        return int(rates[-1]) >= 80
+    return output.count("84 bytes from " + target) == 5

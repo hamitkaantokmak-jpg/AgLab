@@ -5,7 +5,13 @@ import json
 import tempfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
-from aglab_test_support import ROOT, launch_chromium, import_topology, assert_cli_path_matches
+from aglab_test_support import (
+    ROOT,
+    launch_chromium,
+    import_topology,
+    assert_cli_path_matches,
+    ping_succeeded,
+)
 from convert_pkt_to_aglab import convert
 from playwright.sync_api import sync_playwright
 
@@ -131,20 +137,22 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     def ping(success):
         before = page.locator("#ptTerminal").inner_text()
         output = command("d3", "ping 192.168.20.2")[len(before) :]
-        expected = "Success rate is 100 percent (5/5)" if success else "Success rate is 0 percent"
-        assert expected in output, output[-1600:]
+        # I-1: Labber; PC terminali VPCS
+        assert ping_succeeded(output, "192.168.20.2") == success, output[-1600:]
 
     ping(True)
     for text in ["enable", "configure terminal", "interface g0/0.200"]:
         command("d1", text)
     before = page.locator("#ptTerminal").inner_text()
     output = command("d1", "encapsulation dot1q 20")[len(before) :]
-    assert "802.1Q encapsulation dot1Q 20 yapılandırıldı." in output, output
+    # I-1: Labber (IOS) yapılandırma kipinde geri bildirim yazmaz; aynı alt arayüzde aynı VID hata değil
+    assert "%" not in output.split("encapsulation dot1q 20")[-1], output
     for invalid in [
         "encapsulation dot1q 20.5",
         "encapsulation dot1q 0",
         "encapsulation dot1q 4095",
-        "encapsulation dot1q 20 native",
+        # `encapsulation dot1q 20 native` IOS'ta geçerlidir (eski motor reddediyordu); burada
+        # çalıştırılmaz: native yapmak etiketi kaldırır ve bağlamı gerçekten değiştirirdi.
         "encapsulation dot1q 20 extra",
         "encapsulation dot1q",
         "encapsulation isl 20",
@@ -163,7 +171,10 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     ]:
         command("d1", text)
     output = command("d1", "show running-config")
-    assert "interface g0/0.5000" in output and "encapsulation dot1Q 30" in output, output[-2000:]
+    # IOS running-config tam arayüz adını yazar
+    assert (
+        "interface GigabitEthernet0/0.5000" in output and "encapsulation dot1Q 30" in output
+    ), output[-2000:]
     page.evaluate("showArea('lab')")
     page.locator("#uxMoreLabActions").click()
     with page.expect_download() as download:
@@ -212,7 +223,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     ]:
         command("d1", text)
     output = command("d1", "show running-config")
-    assert "interface g1/0.5000" in output, output[-2000:]
+    assert "interface GigabitEthernet1/0.5000" in output, output[-2000:]  # IOS tam ad
     command("d1", "configure terminal")
     for invalid in ["interface g9/9.20", "interface g1/0.4294967296", "interface g1/0.1.5"]:
         command("d1", invalid)

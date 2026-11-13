@@ -1,5 +1,7 @@
 """PT wired MAC provenance and port-security -> shared Ethernet ingress engine."""
 
+import re
+
 import base64
 import copy
 import json
@@ -8,7 +10,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium, assert_cli_path_matches
+from aglab_test_support import ROOT, launch_chromium, assert_cli_path_matches, ping_succeeded
 from convert_pkt_to_aglab import convert, PacketTracerError
 from test_aglab_pkt_config_context import topology
 
@@ -222,8 +224,9 @@ class PortSecurityImportTests(unittest.TestCase):
                             "3 cihaz, 2 bağlantı", page.locator("#ptTerminal").inner_text()[before:]
                         )
                         output = commands("d2", ["ping 10.10.10.2"])
-                        self.assertIn(
-                            "100 percent" if allowed == MAC1 else "0 percent (0/5)", output
+                        # I-1: Labber; PC terminali VPCS
+                        self.assertEqual(
+                            ping_succeeded(output, "10.10.10.2"), allowed == MAC1, output
                         )
                         iface = page.evaluate(
                             'academyEngine.snapshot().devices[0].interfaces["fa0/1"]'
@@ -245,7 +248,9 @@ class PortSecurityImportTests(unittest.TestCase):
                                     "end",
                                 ],
                             )
-                            self.assertIn("100 percent", commands("d2", ["ping 10.10.10.2"]))
+                            self.assertTrue(
+                                ping_succeeded(commands("d2", ["ping 10.10.10.2"]), "10.10.10.2")
+                            )
                         self.assertIn("02aa.0000.0011", commands("d1", ["show mac address-table"]))
                         expected = page.evaluate("academyEngine.snapshot().devices")
                         page.reload()
@@ -271,12 +276,19 @@ class PortSecurityImportTests(unittest.TestCase):
                 ]
             )
             page.evaluate("(t)=>academyEngine.load(t)", dynamic)
-            self.assertIn("100 percent", commands("d2", ["ping 10.10.10.2"]))
+            self.assertTrue(ping_succeeded(commands("d2", ["ping 10.10.10.2"]), "10.10.10.2"))
+            # I-1 (IOS, L5-e): dinamik öğrenilen güvenli MAC yapılandırmaya yazılmaz (yalnız
+            # sticky yazılır); `show port-security address`'te SecureDynamic olarak görünür.
             self.assertEqual(
                 page.evaluate(
                     'academyEngine.snapshot().devices[0].interfaces["fa0/1"].portSecurity.macs'
                 ),
-                [MAC1],
+                [],
+            )
+            commands("d1", ["enable"])
+            table = commands("d1", ["show port-security address"])
+            self.assertRegex(
+                table, r"10\s+" + re.escape(dotted(MAC1)) + r"\s+SecureDynamic\s+Fa0/1"
             )
             self.assertEqual(errors, [])
             browser.close()
