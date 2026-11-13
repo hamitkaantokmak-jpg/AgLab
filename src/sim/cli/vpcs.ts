@@ -1,5 +1,6 @@
 // VPCS-style console for a lab PC.
 
+import { httpGet, HTTP_PORT } from '../http'
 import { dnsLookup, dnsRecords, isApipa } from '../dhcp'
 import { arpMac, deliver, ping } from '../net'
 import type { LabRuntime } from '../runtime'
@@ -18,13 +19,14 @@ const HELP = [
   'ping <address>           Ping the network host',
   'trace <address>          Print the path packets take to network host',
   'nslookup <name>          Ask the DNS server for the address of a host name',
+  'curl [http://]<host>[:port][/path]  Fetch a web page (Labber addition: VPCS has no HTTP client)',
   'help, ?                  Print help',
   '',
 ]
 
 /** Extra commands of a lab server (PcDef.server). */
 const SERVER_HELP = [
-  'service dhcp|dns on|off  Start or stop a service of this server',
+  'service dhcp|dns|http on|off  Start or stop a service of this server',
   'show services            Print the services and their state',
   'show ip dhcp binding     Print the addresses this server leased',
   'show dns                 Print the host names this server resolves',
@@ -51,7 +53,7 @@ export class VpcsSession {
   }
 
   complete(line: string): string | null {
-    const cmds = ['ip', 'clear', 'show', 'ping', 'trace', 'nslookup', 'help', ...(this.def.server ? ['service'] : [])]
+    const cmds = ['ip', 'clear', 'show', 'ping', 'trace', 'nslookup', 'curl', 'help', ...(this.def.server ? ['service'] : [])]
     const t = line.trim()
     if (!t || t.includes(' ')) return null
     const m = cmds.filter((c) => c.startsWith(t))
@@ -83,6 +85,7 @@ export class VpcsSession {
       return ['IPv4 address/mask, gateway, DNS, and DHCP cleared']
     }
     if (c === 'nslookup') return args[0] ? this.nslookup(args[0]) : ['Incomplete command.']
+    if (c === 'curl') return args.length ? this.curl(args) : ["curl: try 'curl --help' for more information"]
     if (this.def.server) {
       const srv = this.server(c, args)
       if (srv) return srv
@@ -162,12 +165,49 @@ export class VpcsSession {
     return ['Server:  UnKnown', `Address:  ${r.server}`, '', `*** UnKnown can't find ${name}: Non-existent domain`, '']
   }
 
+  /**
+   * L5-g: `curl [http://]host[:port][/path]` (VPCS'te HTTP istemcisi yok; Labber eki). Çıktı
+   * curl biçiminde: sayfa gövdesi ya da `curl: (N) …` hatası. Ad DNS ile çözülür.
+   */
+  private curl(args: string[]): string[] {
+    const url = args.filter((a) => !a.startsWith('-')).pop()
+    if (!url) return ["curl: no URL specified!"]
+    const m = /^(?:(https?):\/\/)?([^/:]+)(?::(\d+))?(\/.*)?$/i.exec(url)
+    if (!m) return [`curl: (3) URL rejected: Malformed input to a URL function`]
+    if (m[1] && m[1].toLowerCase() === 'https') return ['curl: (1) Protocol "https" not supported (Labber: yalnız HTTP)']
+    const port = m[3] ? Number(m[3]) : HTTP_PORT
+    if (port < 1 || port > 65535) return [`curl: (3) URL rejected: Port number was not a decimal number between 0 and 65535`]
+    let host = m[2]!
+    if (ipToInt(host) === null) {
+      const r = dnsLookup(this.rt.derived, this.dev, host)
+      if (!r.ok) return [`curl: (6) Could not resolve host: ${host}`]
+      host = r.address
+    }
+    const c = this.rt.pcs[this.dev]!
+    if (!c.ip) return [`curl: (7) Failed to connect to ${host} port ${port}: Network is unreachable`]
+    this.rt.hostSends(this.dev)
+    const r = httpGet(this.rt.derived, this.dev, host, port)
+    this.rt.markSeen(r.forward?.hops ?? [], this.dev)
+    this.rt.countAcl(1, r.forward, r.back)
+    this.rt.recordNat(1, r.forward, r.back)
+    this.rt.emit()
+    if (r.ok) {
+      const name = (this.rt.topo.devices[r.server] as PcDef).name ?? r.server
+      return [`<html><head><title>${name}</title></head><body><h1>${name}</h1><p>Labber web server</p></body></html>`]
+    }
+    // doğrulanmadı: curl'ün süre değerleri ve ICMP unreachable karşılığı
+    if (r.reason === 'refused') return [`curl: (7) Failed to connect to ${host} port ${port} after 1 ms: Connection refused`]
+    if (r.reason === 'unreach') return [`curl: (7) Failed to connect to ${host} port ${port} after 1 ms: No route to host`]
+    if (r.reason === 'noroute' || r.reason === 'noip') return [`curl: (7) Failed to connect to ${host} port ${port} after 0 ms: Network is unreachable`]
+    return [`curl: (28) Failed to connect to ${host} port ${port} after 75000 ms: Connection timed out`]
+  }
+
   /** Server-only commands; null when the line is not one of them. */
   private server(c: string, args: string[]): string[] | null {
     const cfg = this.rt.pcs[this.dev]!
     const a = args.map((x) => x.toLowerCase())
     if (c === 'service') {
-      if ((a[0] !== 'dhcp' && a[0] !== 'dns') || (a[1] !== 'on' && a[1] !== 'off')) return ['Usage: service dhcp|dns on|off']
+      if ((a[0] !== 'dhcp' && a[0] !== 'dns' && a[0] !== 'http') || (a[1] !== 'on' && a[1] !== 'off')) return ['Usage: service dhcp|dns|http on|off']
       cfg.services = { ...(cfg.services ?? {}), [a[0]]: a[1] === 'on' }
       // a stopped DHCP service forgets its leases
       if (a[0] === 'dhcp' && a[1] === 'off') this.rt.dhcpClear(this.dev)
@@ -175,7 +215,7 @@ export class VpcsSession {
       return [`${a[0].toUpperCase()} service is ${a[1]}`]
     }
     if (c !== 'show') return null
-    if (a[0] === 'services') return ['Service     Status', ...(['dhcp', 'dns'] as const).map((k) => k.padEnd(12) + (cfg.services?.[k] ? 'on' : 'off')), '']
+    if (a[0] === 'services') return ['Service     Status', ...(['dhcp', 'dns', 'http'] as const).map((k) => k.padEnd(12) + (cfg.services?.[k] ? 'on' : 'off')), '']
     if (a[0] === 'ip' && a[1] === 'dhcp' && a[2] === 'binding') {
       const rows = this.rt.dhcp.filter((b) => b.server === this.dev)
       return ['IP address       Hardware address     Lease expiration', ...rows.map((b) => b.ip.padEnd(17) + b.mac.padEnd(21) + b.expires), '']

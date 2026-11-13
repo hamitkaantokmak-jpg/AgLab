@@ -264,3 +264,24 @@ yalnız aşağıdaki iki bilinen türde. `nat-pat` senaryosu Labber kararına ge
 | Switch | — | NAT yok: `ip nat`, `show/clear ip nat` switch'te `% Invalid input` | Kabul edildi. |
 | Simulation Mode | — | Her kablodaki IP adresleri NAT'tan sonraki değerleri gösterir; dönüş ping'in kendi (geri çevrilen) teslimatıdır | Kabul edildi. |
 | **Desteklenmiyor** | — | `ip nat outside source …`, `ip nat inside destination …`, route-map'li NAT, `ip nat pool … prefix-length`, `ip nat pool … type rotary`, `extendable`, `no-alias`, `add-route`, `ip nat translation timeout`, `clear ip nat translation` (tek girdi), `ip nat log`, NVI (`ip nat enable`), NAT64, router'ın kendi trafiğinin çevrilmesi | Komut `% Invalid input` verir. |
+
+## L5-g: Sunucu HTTP servisi (Labber kararları)
+
+Oracle paritesi: `tests/sim/http-parity.test.ts` bütün varyant birleşimlerinde (servis açık/
+kapalı × ACL listesi × uygulandığı arayüz ve yön × NAT var/yok) Labber'ın web erişim kararını
+eski motorun kararıyla karşılaştırır (`src/app/main.js` `curl`: ping denetimleri + gidişte
+TCP/80 ACL'i + NAT; `src/engine/acl.js`, `nat.js`). Farklar yalnız aşağıdaki iki bilinen türde.
+
+| Konu | Eski motor | Labber | Karar |
+|---|---|---|---|
+| Model | Server `services.http` | `PcConfig.services.http` (sunucu `PcDef.server`) | **Köprü iki yönde**; açık HTTP servisi artık eski motora düşürmez. |
+| Servisi aç/kapa | Server terminalinde `service http on\|off` | Sunucu oturumunda `service http on\|off`, `show services` | Kabul edildi (Labber eki; VPCS'te servis yok). |
+| İstemci komutu | PC'de `test http <ip>` ve `curl <ip>` | PC'de `curl [http://]host[:port][/path]`; çıktı curl biçiminde (sayfa gövdesi ya da `curl: (N) …`) | **VPCS'te HTTP istemcisi yoktur; `curl` Labber ekidir.** `test http` Labber'da yok. Ad DNS ile çözülür (`nslookup` ile aynı kural). |
+| Taşıma | Hedefte servis + ping + gidişte TCP/80 ACL'i + NAT | Gerçek TCP gidiş-dönüşü: SYN (kaynak port 49153 → 80) ACL ve NAT'tan geçer, yanıt (80 → 49153) geri döner | **Labber (IOS).** Dönüş yönündeki ACL de uygulanır (`eq 80` kaynak portu). |
+| ICMP'yi engelleyip TCP/80'e izin veren ACL | Web başarısız (önce ping istenir) | Web başarılı | **Labber (IOS).** Bilinen fark `legacy-http-needs-icmp`. |
+| NAT'lı yolda outside arayüzünün çıkış ACL'i | İç adresle değerlendirilir | Çevrilmiş kaynağı görür (NAT çıkış ACL'inden önce, L5-d) | **Labber (IOS).** Bilinen fark `outside-acl-sees-translated-source`. |
+| Servis kapalı / HTTP sunucusu olmayan cihaz / 80 dışı port | "TCP/80 başarısız" | Hedef RST döner: `curl: (7) … Connection refused` | **Labber.** **Doğrulanmadı:** router'ın (`no ip http server`) RST döndürmesi. |
+| ACL ya da rota yüzünden düşen istek | "HTTP başarısız: …" | Router ICMP unreachable döner: `curl: (7) … No route to host`; yanıt hiç gelmezse `curl: (28) … Connection timed out` | **Doğrulanmadı:** curl'ün süre değerleri ve ICMP "administratively prohibited" için gösterdiği ileti. |
+| NAT çevirisi | `natTranslations`'a `tcp` girdisi | `show ip nat translations`'ta `tcp …:49153 … :80` girdisi; statik TCP port çevirisi (`ip nat inside source static tcp L 80 G 80`) dışarıdan erişimi sağlar | Kabul edildi. **Doğrulanmadı:** istemcinin geçici kaynak portu (gerçekte rastgele). |
+| Sayaçlar | — | `curl` ACL eşleşme sayacına bağlantı başına 1 ekler | **Doğrulanmadı:** gerçek TCP oturumunun paket sayısı (SYN, ACK, veri) sayılmaz. |
+| **Desteklenmiyor** | — | HTTPS (`curl https://…` açık hata verir), HTTP başlıkları/yöntemleri (`-I`, `-X`), sayfa içeriğinin düzenlenmesi, router'da `ip http server`, Simulation Mode'da TCP/HTTP paketleri (iz yalnız ICMP), eski metin senaryolarının `test http` komutu (L6) | Görünür hata ya da `Bad command`. |

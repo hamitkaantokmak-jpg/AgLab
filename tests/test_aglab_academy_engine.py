@@ -260,7 +260,15 @@ class AcademyEngineTests(unittest.TestCase):
 
     def test_unsupported_runtime_topology_is_error_not_fallback(self):
         self.start("AGL-022")
-        # L4'ten beri Router Labber'da; servisleri açık sunucu (şablon) L5'e kadar yok.
+        # L5-g'den beri arayüzle eklenebilen bütün cihazlar (servisli Server dahil) Labber'da;
+        # arayüzden desteklenmeyen öğe üretilemiyor. Koruma, eklenen sunucuya gerçek köprünün
+        # desteklemediği bir alan (BGP) verilerek sınanır: rapor köprünün kendisinden gelir.
+        self.page.evaluate(
+            "() => { const sim = AgLabSim; window.AgLabSim = { ...sim, toLabber: (t, ...r) => {"
+            " const c = JSON.parse(JSON.stringify(t));"
+            " for (const d of c.devices) if (d.type === 'Server') d.bgp = { asn: 65001 };"
+            " return sim.toLabber(c, ...r) } } }"
+        )
         self.page.click('[data-pt-add="Server"]')
         result = self.page.evaluate("academy.check()")
         self.assertEqual(result["engine"], "labber")

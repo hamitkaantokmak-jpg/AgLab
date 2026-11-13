@@ -10596,9 +10596,9 @@ labLoadExperiment();
     srv.mask = '255.255.255.0';
     // L5-d: genel adres alanındaki sunucunun özel ağa rotası yoktur (ağ geçidi yok): NAT'sız
     // 192.168.1.10 kaynaklı paket sunucuya ulaşır ama yanıt dönemez (gerçek IOS davranışı).
-    // Sunucu yalnız ICMP hedefi; HTTP servisi Labber'da yok ve senaryoda kullanılmıyordu.
+    // L5-g: sunucunun HTTP servisi (TCP 80) Labber'da; PC'den `curl 203.0.113.8` ile denenir.
     srv.gateway = '';
-    srv.services = {};
+    srv.services = { http: true };
     [swIn, swOut].forEach((sw) => {
       sw.vlans = [1, 10];
       Object.entries(sw.interfaces).forEach(([n, i]) => {
@@ -10706,8 +10706,7 @@ labLoadExperiment();
     srv.ip = '10.10.20.2';
     srv.mask = '255.255.255.0';
     srv.gateway = '10.10.20.1';
-    // L5-b: senaryo yalnız DHCP servisini kullanır; şablonun DNS/HTTP servisleri kapalıdır
-    // (HTTP Labber'da modellenmez; açık kalsaydı içerik eski motorda açılırdı).
+    // L5-b: senaryo yalnız DHCP servisini kullanır; şablonun DNS/HTTP servisleri kapalıdır.
     srv.services = { dhcp: true, dns: false, http: false };
     links = [
       { a: pc.id, b: sw1.id, portA: 'eth0', portB: 'fa0/1', up: true },

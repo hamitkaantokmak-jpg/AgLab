@@ -349,9 +349,10 @@ describe('köprü: DHCP/DNS (L5-b)', () => {
       expect(r.engineDecision, name).toBe('legacy')
       expect(r.rejected.map((x) => x.reason).join('\n'), name).toMatch(reason)
     }
-    const http = relayTrunk()
-    http.devices[4]!.services = { dhcp: true, http: true }
-    expect(toLabber(http).report.reasons.join()).toMatch(/HTTP/)
+    // L5-g: HTTP Labber'da (bkz. "köprü: HTTP (L5-g)"); bilinmeyen servis raporlanır
+    const ftp = relayTrunk()
+    ftp.devices[4]!.services = { dhcp: true, ftp: true }
+    expect(toLabber(ftp).report.reasons.join()).toMatch(/Bilinmeyen sunucu servisleri Labber'da yok: ftp/)
     const pcSvc = relayTrunk()
     pcSvc.devices[0]!.services = { dhcp: true }
     expect(toLabber(pcSvc).report.engineDecision).toBe('legacy')
@@ -436,6 +437,25 @@ describe('köprü: ACL (L5-c)', () => {
       runScript(rt, 'r2', 'configure terminal\n' + line + '\nend')
       expect(() => toAglab(rt, withAcl()), line).toThrow(BridgeError)
     }
+  })
+})
+
+describe('köprü: HTTP (L5-g)', () => {
+  it('services.http Labber\'a eşlenir, CLI ile değişince geri yazılır; gidiş-dönüş birebir', () => {
+    const t = routed()
+    t.devices[3]!.services = { dhcp: false, dns: false, http: true }
+    const r = toLabber(t)
+    expect(r.report.engineDecision, JSON.stringify(r.report)).toBe('labber')
+    expect(r.pcs['srv']!.services).toEqual({ http: true })
+    expect(roundTrip(t)).toEqual(t)
+    const rt = createRuntime(r)
+    expect(rt.query().http('pc1', '192.168.20.20').ok).toBe(false)
+    t.devices[2]!.staticRoutes = [{ network: '192.168.10.0', mask: '255.255.255.0', nextHop: '10.0.12.1', distance: 1 }]
+    const rt2 = createRuntime(toLabber(t))
+    expect(rt2.query().http('pc1', '192.168.20.20').ok).toBe(true)
+    ;(createSession(rt2, 'srv') as VpcsSession).exec('service http off')
+    expect(rt2.query().http('pc1', '192.168.20.20')).toMatchObject({ ok: false, reason: 'refused' })
+    expect(toAglab(rt2, t).devices[3]!.services).toEqual({ dhcp: false, dns: false, http: false })
   })
 })
 
@@ -731,7 +751,8 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
     ['SVI\'da DHCP relay', (t) => (t.devices[2]!.interfaces!['vlan10'] = { ip: '192.168.10.1', mask: '255.255.255.0', vlan: 10, helperAddress: '10.0.0.9' }), /DHCP relay/],
     // L5-c: router ACL'i desteklenir (bkz. "köprü: ACL (L5-c)"); switch üzerindeki ACL eşlenmez
     ['switch ACL', (t) => (t.devices[2]!.acls = []), /ACL/],
-    ['servisi açık Server', (t) => t.devices.push({ id: 's1', name: 'S1', type: 'Server', ports: ['eth0'], services: { http: true } }), /servisleri/],
+    // L5-g: HTTP desteklenir; bilinmeyen servis açıksa raporlanır
+    ['bilinmeyen servisi açık Server', (t) => t.devices.push({ id: 's1', name: 'S1', type: 'Server', ports: ['eth0'], services: { ftp: true } }), /servisleri/],
     ['bilinmeyen cihaz tipi', (t) => t.devices.push({ id: 'c1', name: 'C1', type: 'Cloud', ports: [] }), /Cloud cihaz tipi/],
     ['switch\'te statik rota', (t) => (t.devices[2]!.staticRoutes = [{ network: '0.0.0.0', mask: '0.0.0.0', nextHop: '1.1.1.1', distance: 5 }]), /statik rota/],
     ['router OSPF passive', (t) => t.devices.push({ ...router({}), ospf: { pid: 1, networks: [], passive: ['g0/0'] } }), /OSPF alanı/],

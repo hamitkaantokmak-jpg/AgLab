@@ -5084,6 +5084,32 @@ var AgLabSim = (() => {
     return out;
   }
 
+  // src/sim/http.ts
+  var HTTP_PORT = 80;
+  var HTTP_CLIENT_PORT = 49153;
+  function httpListening(d, dev) {
+    const def = d.topo.devices[dev];
+    return !!def && def.kind === "pc" && !!def.server && !!d.pcs[dev]?.services?.http && !d.hw.off.has(dev);
+  }
+  function httpGet(d, from, dst, port = HTTP_PORT) {
+    if (d.hw.off.has(from)) return { ok: false, reason: "off" };
+    const fwd = deliver(d, from, dst, { proto: "tcp", sport: HTTP_CLIENT_PORT, dport: port });
+    if (fwd.kind === "noip") return { ok: false, reason: "noip", forward: fwd };
+    if (fwd.kind === "noroute") return { ok: false, reason: "noroute", forward: fwd };
+    const src = fwd.pkt?.src ?? sourceIp(d, from, dst);
+    if (fwd.kind === "unreach") {
+      const back2 = deliver(d, fwd.at, src, { proto: "icmp", icmpType: "unreachable", src: fwd.atIp, dport: fwd.pkt?.sport, natPending: fwd.nat });
+      return back2.kind === "ok" ? { ok: false, reason: "unreach", unreachFrom: fwd.atIp, forward: fwd, back: back2 } : { ok: false, reason: "timeout", forward: fwd, back: back2 };
+    }
+    if (fwd.kind !== "ok") return { ok: false, reason: "timeout", forward: fwd };
+    const server = fwd.hops[fwd.hops.length - 1]?.dev ?? from;
+    const back = deliver(d, server, src, { proto: "tcp", src: fwd.pkt.dst, sport: fwd.pkt.dport, dport: fwd.pkt.sport, natPending: fwd.nat });
+    const backTo = back.hops[back.hops.length - 1]?.dev ?? server;
+    if (back.kind !== "ok" || backTo !== from) return { ok: false, reason: "timeout", forward: fwd, back };
+    if (port !== HTTP_PORT || !httpListening(d, server)) return { ok: false, reason: "refused", forward: fwd, back };
+    return { ok: true, server, forward: fwd, back };
+  }
+
   // src/sim/cli/vpcs.ts
   var HELP2 = [
     "",
@@ -5097,11 +5123,12 @@ var AgLabSim = (() => {
     "ping <address>           Ping the network host",
     "trace <address>          Print the path packets take to network host",
     "nslookup <name>          Ask the DNS server for the address of a host name",
+    "curl [http://]<host>[:port][/path]  Fetch a web page (Labber addition: VPCS has no HTTP client)",
     "help, ?                  Print help",
     ""
   ];
   var SERVER_HELP = [
-    "service dhcp|dns on|off  Start or stop a service of this server",
+    "service dhcp|dns|http on|off  Start or stop a service of this server",
     "show services            Print the services and their state",
     "show ip dhcp binding     Print the addresses this server leased",
     "show dns                 Print the host names this server resolves",
@@ -5123,7 +5150,7 @@ var AgLabSim = (() => {
       return this.name + "> ";
     }
     complete(line) {
-      const cmds = ["ip", "clear", "show", "ping", "trace", "nslookup", "help", ...this.def.server ? ["service"] : []];
+      const cmds = ["ip", "clear", "show", "ping", "trace", "nslookup", "curl", "help", ...this.def.server ? ["service"] : []];
       const t = line.trim();
       if (!t || t.includes(" ")) return null;
       const m = cmds.filter((c) => c.startsWith(t));
@@ -5151,6 +5178,7 @@ var AgLabSim = (() => {
         return ["IPv4 address/mask, gateway, DNS, and DHCP cleared"];
       }
       if (c === "nslookup") return args[0] ? this.nslookup(args[0]) : ["Incomplete command."];
+      if (c === "curl") return args.length ? this.curl(args) : ["curl: try 'curl --help' for more information"];
       if (this.def.server) {
         const srv = this.server(c, args);
         if (srv) return srv;
@@ -5224,19 +5252,54 @@ var AgLabSim = (() => {
       if (r.reason === "timeout") return ["DNS request timed out.", "    timeout was 2 seconds.", "*** Request to UnKnown timed-out", ""];
       return ["Server:  UnKnown", `Address:  ${r.server}`, "", `*** UnKnown can't find ${name}: Non-existent domain`, ""];
     }
+    /**
+     * L5-g: `curl [http://]host[:port][/path]` (VPCS'te HTTP istemcisi yok; Labber eki). Çıktı
+     * curl biçiminde: sayfa gövdesi ya da `curl: (N) …` hatası. Ad DNS ile çözülür.
+     */
+    curl(args) {
+      const url = args.filter((a) => !a.startsWith("-")).pop();
+      if (!url) return ["curl: no URL specified!"];
+      const m = /^(?:(https?):\/\/)?([^/:]+)(?::(\d+))?(\/.*)?$/i.exec(url);
+      if (!m) return [`curl: (3) URL rejected: Malformed input to a URL function`];
+      if (m[1] && m[1].toLowerCase() === "https") return ['curl: (1) Protocol "https" not supported (Labber: yalnız HTTP)'];
+      const port = m[3] ? Number(m[3]) : HTTP_PORT;
+      if (port < 1 || port > 65535) return [`curl: (3) URL rejected: Port number was not a decimal number between 0 and 65535`];
+      let host = m[2];
+      if (ipToInt(host) === null) {
+        const r2 = dnsLookup(this.rt.derived, this.dev, host);
+        if (!r2.ok) return [`curl: (6) Could not resolve host: ${host}`];
+        host = r2.address;
+      }
+      const c = this.rt.pcs[this.dev];
+      if (!c.ip) return [`curl: (7) Failed to connect to ${host} port ${port}: Network is unreachable`];
+      this.rt.hostSends(this.dev);
+      const r = httpGet(this.rt.derived, this.dev, host, port);
+      this.rt.markSeen(r.forward?.hops ?? [], this.dev);
+      this.rt.countAcl(1, r.forward, r.back);
+      this.rt.recordNat(1, r.forward, r.back);
+      this.rt.emit();
+      if (r.ok) {
+        const name = this.rt.topo.devices[r.server].name ?? r.server;
+        return [`<html><head><title>${name}</title></head><body><h1>${name}</h1><p>Labber web server</p></body></html>`];
+      }
+      if (r.reason === "refused") return [`curl: (7) Failed to connect to ${host} port ${port} after 1 ms: Connection refused`];
+      if (r.reason === "unreach") return [`curl: (7) Failed to connect to ${host} port ${port} after 1 ms: No route to host`];
+      if (r.reason === "noroute" || r.reason === "noip") return [`curl: (7) Failed to connect to ${host} port ${port} after 0 ms: Network is unreachable`];
+      return [`curl: (28) Failed to connect to ${host} port ${port} after 75000 ms: Connection timed out`];
+    }
     /** Server-only commands; null when the line is not one of them. */
     server(c, args) {
       const cfg = this.rt.pcs[this.dev];
       const a = args.map((x) => x.toLowerCase());
       if (c === "service") {
-        if (a[0] !== "dhcp" && a[0] !== "dns" || a[1] !== "on" && a[1] !== "off") return ["Usage: service dhcp|dns on|off"];
+        if (a[0] !== "dhcp" && a[0] !== "dns" && a[0] !== "http" || a[1] !== "on" && a[1] !== "off") return ["Usage: service dhcp|dns|http on|off"];
         cfg.services = { ...cfg.services ?? {}, [a[0]]: a[1] === "on" };
         if (a[0] === "dhcp" && a[1] === "off") this.rt.dhcpClear(this.dev);
         this.rt.commit();
         return [`${a[0].toUpperCase()} service is ${a[1]}`];
       }
       if (c !== "show") return null;
-      if (a[0] === "services") return ["Service     Status", ...["dhcp", "dns"].map((k) => k.padEnd(12) + (cfg.services?.[k] ? "on" : "off")), ""];
+      if (a[0] === "services") return ["Service     Status", ...["dhcp", "dns", "http"].map((k) => k.padEnd(12) + (cfg.services?.[k] ? "on" : "off")), ""];
       if (a[0] === "ip" && a[1] === "dhcp" && a[2] === "binding") {
         const rows = this.rt.dhcp.filter((b) => b.server === this.dev);
         return ["IP address       Hardware address     Lease expiration", ...rows.map((b) => b.ip.padEnd(17) + b.mac.padEnd(21) + b.expires), ""];
@@ -5810,6 +5873,10 @@ var AgLabSim = (() => {
     }
     ping(from, ip) {
       return ping(this.d, from, ip);
+    }
+    /** L5-g: HTTP (TCP 80) isteği; tabloya/sayaçlara yazmaz. */
+    http(from, ip, port) {
+      return httpGet(this.d, from, ip, port);
     }
     pcIp(pc) {
       return this.d.pcs[pc]?.ip ?? null;
@@ -8413,7 +8480,6 @@ write memory`
     ospf: "Switch üzerinde OSPF AğLab modelinde yok",
     bgp: "BGP Labber'da yok (L5)",
     services: "Sunucu servisleri yalnız Server cihazında modellenir",
-    http: "Sunucu servisleri içinde HTTP Labber'da yok (L5)",
     startupConfig: "Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)",
     portSecurity: "Port security Labber'da yok (L5)",
     errdisabled: "Port security err-disable durumu Labber'da yok (L5)",
@@ -8838,8 +8904,8 @@ write memory`
         else
           for (const [name, on] of Object.entries(services ?? {})) {
             if (typeof on !== "boolean") reject(id, `services.${name}`, "Servis durumu true/false olmalı");
-            else if (name !== "dhcp" && name !== "dns" && on)
-              unsupported(id, `services.${name}`, name === "http" ? FEATURE_REASON["http"] : "Bilinmeyen sunucu servisleri Labber'da yok: " + name);
+            else if (name !== "dhcp" && name !== "dns" && name !== "http" && on)
+              unsupported(id, `services.${name}`, "Bilinmeyen sunucu servisleri Labber'da yok: " + name);
           }
       }
       if (d.type === "Router") {
@@ -8875,8 +8941,8 @@ write memory`
         }
         if (d.type === "Server") {
           const sv = d.services ?? {};
-          if (sv["dhcp"] === true || sv["dns"] === true)
-            pcs[id].services = { ...sv["dhcp"] === true ? { dhcp: true } : {}, ...sv["dns"] === true ? { dns: true } : {} };
+          const on = ["dhcp", "dns", "http"].filter((k) => sv[k] === true);
+          if (on.length) pcs[id].services = Object.fromEntries(on.map((k) => [k, true]));
         }
         const mac = resolveMac ? intToDotted(macToInt(resolveMac(d))) : "0000.0000.0000";
         claimMac(id, mac);
@@ -9152,7 +9218,7 @@ write memory`
         if (d.type === "Server") {
           const prev = d.services ?? {};
           const next = { ...prev };
-          for (const k of ["dhcp", "dns"]) {
+          for (const k of ["dhcp", "dns", "http"]) {
             const on = !!pc.services?.[k];
             if (k in prev || on) next[k] = on;
           }
@@ -20865,9 +20931,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
     srv.mask = '255.255.255.0';
     // L5-d: genel adres alanındaki sunucunun özel ağa rotası yoktur (ağ geçidi yok): NAT'sız
     // 192.168.1.10 kaynaklı paket sunucuya ulaşır ama yanıt dönemez (gerçek IOS davranışı).
-    // Sunucu yalnız ICMP hedefi; HTTP servisi Labber'da yok ve senaryoda kullanılmıyordu.
+    // L5-g: sunucunun HTTP servisi (TCP 80) Labber'da; PC'den `curl 203.0.113.8` ile denenir.
     srv.gateway = '';
-    srv.services = {};
+    srv.services = { http: true };
     [swIn, swOut].forEach((sw) => {
       sw.vlans = [1, 10];
       Object.entries(sw.interfaces).forEach(([n, i]) => {
@@ -20975,8 +21041,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
     srv.ip = '10.10.20.2';
     srv.mask = '255.255.255.0';
     srv.gateway = '10.10.20.1';
-    // L5-b: senaryo yalnız DHCP servisini kullanır; şablonun DNS/HTTP servisleri kapalıdır
-    // (HTTP Labber'da modellenmez; açık kalsaydı içerik eski motorda açılırdı).
+    // L5-b: senaryo yalnız DHCP servisini kullanır; şablonun DNS/HTTP servisleri kapalıdır.
     srv.services = { dhcp: true, dns: false, http: false };
     links = [
       { a: pc.id, b: sw1.id, portA: 'eth0', portB: 'fa0/1', up: true },

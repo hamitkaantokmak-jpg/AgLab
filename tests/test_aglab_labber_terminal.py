@@ -345,6 +345,57 @@ class LabberTerminalTests(unittest.TestCase):
             any(line.startswith("icmp") for line in self.type("show ip nat translations"))
         )
 
+    def test_http_from_terminal(self):
+        """L5-g: nat-pat'ta WEB-PUBLIC'in HTTP servisi. NAT'sız curl zaman aşımı; PAT ile sayfa gelir
+        ve tcp çevirisi yazılır; servis kapatılınca bağlantı reddedilir; ACL web'i engelleyince
+        No route to host."""
+        self.load("nat-pat")
+        self.device("PC-01")
+        out = self.type("curl 203.0.113.8")
+        self.assertTrue(any("Connection timed out" in line for line in out), out)
+        self.device("R1")
+        for line in [
+            "enable",
+            "configure terminal",
+            "ip nat inside source list 1 interface g0/1 overload",
+            "end",
+        ]:
+            self.type(line)
+        self.device("PC-01")
+        out = self.type("curl http://203.0.113.8/")
+        self.assertTrue(any("<title>WEB-PUBLIC</title>" in line for line in out), out)
+        self.device("R1")
+        rows = [
+            " ".join(line.split())
+            for line in self.type("show ip nat translations")
+            if line.startswith("tcp")
+        ]
+        self.assertEqual(
+            rows, ["tcp 203.0.113.1:49153 192.168.1.10:49153 203.0.113.8:80 203.0.113.8:80"]
+        )
+        self.device("WEB-PUBLIC")
+        self.assertIn("HTTP service is off", self.type("service http off"))
+        self.device("PC-01")
+        out = self.type("curl 203.0.113.8")
+        self.assertTrue(any("Connection refused" in line for line in out), out)
+        self.device("WEB-PUBLIC")
+        self.type("service http on")
+        self.device("R1")
+        for line in [
+            "configure terminal",
+            "access-list 101 deny tcp any any eq www",
+            "access-list 101 permit ip any any",
+            "interface g0/0",
+            "ip access-group 101 in",
+            "end",
+        ]:
+            self.type(line)
+        self.device("PC-01")
+        out = self.type("curl 203.0.113.8")
+        self.assertTrue(any("No route to host" in line for line in out), out)
+        out = self.type("ping 203.0.113.8")
+        self.assertTrue(any("bytes from 203.0.113.8" in line for line in out), out)
+
     def test_legacy_content_keeps_legacy_terminal(self):
         # L5-d'den beri NAT/PAT da Labber'da; eski motorda yalnız BGP senaryosu kaldı.
         self.load("bgp-as")
