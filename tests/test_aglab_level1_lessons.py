@@ -32,6 +32,7 @@ LESSONS = [
     ("devicemgmt", "devicemgmt", "cihaz-yonetimi.md", "mgmt-", "Yönetim adresi ve SSH", "İki yapılandırma"),
     # Seviye 2
     ("commands", "diagnostics", "teshis-araclari.md", "diag-", "Extended ping", "Paket yakalama"),
+    ("acl", "acl", "acl.md", "acl-", "Wildcard ve sıra", "Sayaçlarla teşhis"),
 ]
 PARTS = [
     "## 1. Neden önemli",

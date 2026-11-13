@@ -128,6 +128,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `diag-routing-loop` | Teşhis · İz iki router arasında gidip geliyor | **Labber** |
 | `diag-dest-gateway` | Teşhis · İz son router'a varıyor, sonrası yıldız | **Labber** |
 | `diag-two-faults` | Teşhis · İki hata: önce unreachable, sonra sessizlik | **Labber** |
+| `acl-order` | ACL · Misafirler izinli sunucuya da ulaşamıyor | **Labber** |
+| `acl-implicit-deny` | ACL · Misafiri engelleyen kural muhasebeyi kesti | **Labber** |
+| `acl-wrong-direction` | ACL · Doğru liste, yanlış yön | **Labber** |
+| `acl-wildcard` | ACL · Yeni muhasebe PC'si sunucu odasına giremiyor | **Labber** |
+| `acl-two-faults` | ACL · İki hata: sıra ve yön | **Labber** |
 
 ## Labber labları (E)
 
@@ -169,9 +174,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 76 | 1 | 77 |
+| Ortak senaryolar | 81 | 1 | 82 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 129 | 1 | 130 |
+| Toplam | 134 | 1 | 135 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

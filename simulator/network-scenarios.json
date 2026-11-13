@@ -21766,5 +21766,1779 @@
         }
       ]
     }
+  },
+  {
+    "id": "acl-order",
+    "title": "ACL · Misafirler izinli sunucuya da ulaşamıyor",
+    "symptom": "Kural: misafir ağı (192.168.20.0/24) sunucuya (192.168.100.10) yalnız web (HTTP) ve ping ile ulaşabilir, başka hiçbir şeye ulaşamaz. Misafirler sunucuya hiç ulaşamıyor. ACL'de web ve ping için izin satırları var.",
+    "cause": "MISAFIR listesinde ilk satır (10) misafir ağından her şeyi engelliyor; izin satırları (20, 30) hiç eşleşmiyor. İlk eşleşen kural uygulanır (E1).",
+    "hints": [
+      "ACL satırları yukarıdan aşağı okunur; ilk eşleşen satır kazanır.",
+      "R1'de show access-lists MISAFIR: hangi satırın sayacı artıyor? Web isteği hangi satıra takılıyor?",
+      "Geniş deny satırını kaldır ya da izinleri onun önüne al: ip access-list extended MISAFIR → no 10 (geri kalanı örtük deny engeller)."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 380,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 160,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW3",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 600,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 160,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 600,
+          "y": 340,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "http": true
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d4",
+          "portA": "g0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "pending": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip access-list extended MISAFIR",
+          "10 deny ip 192.168.20.0 0.0.0.255 any",
+          "20 permit tcp 192.168.20.0 0.0.0.255 host 192.168.100.10 eq www",
+          "30 permit icmp 192.168.20.0 0.0.0.255 host 192.168.100.10",
+          "exit",
+          "interface g0/1",
+          "ip access-group MISAFIR in",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip access-list extended MISAFIR",
+          "no 10",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-20",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "http",
+          "args": [
+            "PC-20",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "Misafir → SRV web (izinli)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-20",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "Misafir → SRV ping (izinli)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-20",
+            "192.168.10.11"
+          ],
+          "field": "ok",
+          "expected": false,
+          "label": "Misafir → muhasebe (engelli kalmalı)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-10",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "Muhasebe → SRV ping"
+        }
+      ]
+    }
+  },
+  {
+    "id": "acl-implicit-deny",
+    "title": "ACL · Misafiri engelleyen kural muhasebeyi kesti",
+    "symptom": "Muhasebenin misafir ağına erişmemesi için R1 g0/0'a bir ACL uygulandı. O andan beri muhasebe sunucuya da, hiçbir yere de ulaşamıyor.",
+    "cause": "MUHASEBE listesinde yalnız deny satırı var; listenin sonundaki örtük deny geri kalan bütün trafiği engelliyor (E2).",
+    "hints": [
+      "Bir ACL'de hiçbir satıra uymayan paketin başına ne gelir?",
+      "R1'de show access-lists MUHASEBE: kaç satır var? Sunucuya giden trafik hangi satıra uyuyor?",
+      "Listenin sonuna izin satırı ekle: ip access-list extended MUHASEBE → permit ip any any."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 380,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 160,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW3",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 600,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 160,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 600,
+          "y": 340,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "http": true
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d4",
+          "portA": "g0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "pending": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip access-list extended MUHASEBE",
+          "deny ip 192.168.10.0 0.0.0.255 192.168.20.0 0.0.0.255",
+          "exit",
+          "interface g0/0",
+          "ip access-group MUHASEBE in",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip access-list extended MUHASEBE",
+          "permit ip any any",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-10",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-10",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "Muhasebe → SRV ping"
+        },
+        {
+          "fn": "http",
+          "args": [
+            "PC-10",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "Muhasebe → SRV web"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-10",
+            "192.168.20.11"
+          ],
+          "field": "ok",
+          "expected": false,
+          "label": "Muhasebe → misafir (engelli kalmalı)"
+        }
+      ]
+    }
+  },
+  {
+    "id": "acl-wrong-direction",
+    "title": "ACL · Doğru liste, yanlış yön",
+    "symptom": "MISAFIR listesi kurala uygun yazıldı (misafir sunucuya yalnız web ve ping) ve R1 g0/1'e uygulandı. Misafirler sunucuya ulaşamıyor; muhasebe de misafir ağındaki yazıcı testine ping atamıyor.",
+    "cause": "Liste g0/1'e out yönünde uygulanmış: misafirden gelen trafiği değil, misafire giden trafiği süzüyor. Sunucunun yanıtı da (kaynağı 192.168.100.10) hiçbir satıra uymadığı için engelleniyor (E3).",
+    "hints": [
+      "in: arayüze girerken; out: arayüzden çıkarken. Misafirden gelen paket g0/1'e girer mi, çıkar mı?",
+      "R1'de show ip interface g0/1 ya da show running-config interface g0/1: liste hangi yönde?",
+      "Yönü düzelt: interface g0/1 → no ip access-group MISAFIR out → ip access-group MISAFIR in."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 380,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 160,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW3",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 600,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 160,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 600,
+          "y": 340,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "http": true
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d4",
+          "portA": "g0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "pending": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip access-list extended MISAFIR",
+          "permit tcp 192.168.20.0 0.0.0.255 host 192.168.100.10 eq www",
+          "permit icmp 192.168.20.0 0.0.0.255 host 192.168.100.10",
+          "deny ip any any",
+          "exit",
+          "interface g0/1",
+          "ip access-group MISAFIR out",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface g0/1",
+          "no ip access-group MISAFIR out",
+          "ip access-group MISAFIR in",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-20",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "http",
+          "args": [
+            "PC-20",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "Misafir → SRV web (izinli)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-20",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "Misafir → SRV ping (izinli)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-20",
+            "192.168.10.11"
+          ],
+          "field": "ok",
+          "expected": false,
+          "label": "Misafir → muhasebe (engelli kalmalı)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-10",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "Muhasebe → SRV ping"
+        }
+      ]
+    }
+  },
+  {
+    "id": "acl-wildcard",
+    "title": "ACL · Yeni muhasebe PC'si sunucu odasına giremiyor",
+    "symptom": "Kural: sunucu ağına yalnız muhasebe (192.168.10.0/24) ulaşabilir; R1 g0/2'de standart ACL 10 var. Muhasebe ağı geçen ay /25'ten /24'e büyütüldü. Eski muhasebe PC'leri sunucuya ulaşıyor, yeni gelen PC-10 (192.168.10.150) ulaşamıyor.",
+    "cause": "ACL 10 hâlâ eski /25 için yazılmış: permit 192.168.10.0 0.0.0.127 yalnız .0–.127'yi kapsıyor; .150 örtük deny'e takılıyor (E4).",
+    "hints": [
+      "Wildcard hangi adres aralığını kapsıyor? 0.0.0.127 kaç adres demek?",
+      "show access-lists 10: satır 192.168.10.150'yi kapsıyor mu? Ağın yeni maskesi ne?",
+      "Listeyi /24'e göre yeniden yaz: no access-list 10 → access-list 10 permit 192.168.10.0 0.0.0.255."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 380,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 160,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW3",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 600,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.150",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 160,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 600,
+          "y": 340,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "http": true
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d4",
+          "portA": "g0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "pending": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "access-list 10 permit 192.168.10.0 0.0.0.127",
+          "interface g0/2",
+          "ip access-group 10 out",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "no access-list 10",
+          "access-list 10 permit 192.168.10.0 0.0.0.255",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-10",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-10",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "Muhasebe (.150) → SRV"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-20",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": false,
+          "label": "Misafir → SRV (engelli kalmalı)"
+        }
+      ]
+    }
+  },
+  {
+    "id": "acl-two-faults",
+    "title": "ACL · İki hata: sıra ve yön",
+    "symptom": "Misafir kuralı (sunucuya yalnız web ve ping) yeni uygulandı. Misafirler sunucuya ulaşamıyor; teknisyen yönü düzeltti, yine ulaşamıyor.",
+    "cause": "İki hata: MISAFIR g0/1'e out yönünde uygulanmış (E3) ve listenin ilk satırı misafir ağından her şeyi engelliyor (E1).",
+    "hints": [
+      "Her düzeltmeden sonra aynı testi tekrarla ve sayaçlara bak.",
+      "show running-config interface g0/1 ile yönü, show access-lists MISAFIR ile satır sırasını kontrol et.",
+      "Yönü in yap; geniş deny satırını (10) kaldır."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 380,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 160,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW3",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 600,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 160,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 600,
+          "y": 340,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "http": true
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d4",
+          "portA": "g0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "pending": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip access-list extended MISAFIR",
+          "10 deny ip 192.168.20.0 0.0.0.255 any",
+          "20 permit tcp 192.168.20.0 0.0.0.255 host 192.168.100.10 eq www",
+          "30 permit icmp 192.168.20.0 0.0.0.255 host 192.168.100.10",
+          "exit",
+          "interface g0/1",
+          "ip access-group MISAFIR out",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface g0/1",
+          "no ip access-group MISAFIR out",
+          "ip access-group MISAFIR in",
+          "exit",
+          "ip access-list extended MISAFIR",
+          "no 10",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-20",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "http",
+          "args": [
+            "PC-20",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "Misafir → SRV web (izinli)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-20",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "Misafir → SRV ping (izinli)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-20",
+            "192.168.10.11"
+          ],
+          "field": "ok",
+          "expected": false,
+          "label": "Misafir → muhasebe (engelli kalmalı)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-10",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "Muhasebe → SRV ping"
+        }
+      ]
+    }
   }
 ]
