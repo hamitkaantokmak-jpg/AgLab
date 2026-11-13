@@ -47,6 +47,13 @@ KNOWN_DIFFS = {
     ("ip-gw-outside-subnet", "başlangıç", "PC-11", "PC-13"),
     ("ip-gw-outside-subnet", "başlangıç", "PC-12", "PC-13"),
     ("ip-gw-outside-subnet", "başlangıç", "YAZICI", "PC-13"),
+    # ec-on-vs-lacp: SW1 channel-group "on", SW2 LACP active. Eski motor EtherChannel'ı modellemez
+    # (iki trunk bağlantı gibi taşır); Labber/IOS'ta LACP tarafı LACPDU göremediği için üyeleri
+    # kanala almaz ve katlar arası trafik geçmez.
+    ("ec-on-vs-lacp", "başlangıç", "PC-110", "PC-210"),
+    ("ec-on-vs-lacp", "başlangıç", "PC-210", "PC-110"),
+    ("ec-on-vs-lacp", "başlangıç", "PC-120", "PC-220"),
+    ("ec-on-vs-lacp", "başlangıç", "PC-220", "PC-120"),
     # IP çakışması: .12'nin ARP'sini LAPTOP kazanır; PC-B'ye yanıt dönmez
     ("eth-duplicate-ip", "başlangıç", "PC-B", "PC-A"),
     ("eth-duplicate-ip", "başlangıç", "PC-B", "PC-C"),
