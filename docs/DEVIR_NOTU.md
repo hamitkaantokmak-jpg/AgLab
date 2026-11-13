@@ -35,12 +35,12 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | I-1 içe aktarma ve düzenleyici Labber'a | #81 (main'den, dal `claude/i1-workspace-labber`) | birleşti |
 | FHRP (HSRP + VRRP) Labber'da | #82 (#81'in dalından) | birleşti |
 | Seviye 1/2 dersleri (paralel iş) | #78, #79 | birleşti |
-| L6 motor kullanmayan eski içerik | L6_PR (main'den, dal `claude/l6-legacy-content`) | açık (birleşmeyi bekliyor) |
+| L6 motor kullanmayan eski içerik | #84 (main'den, dal `claude/l6-legacy-content`) | açık (birleşmeyi bekliyor) |
 
-**Durum:** #75–#82 birleşti. **L6 PR'ı L6_PR** açık (taban `main`); birleştirilmedi. L7'ye
+**Durum:** #75–#82 birleşti. **L6 PR'ı #84** açık (taban `main`); birleştirilmedi. L7'ye
 başlanmadı; kullanıcı talimatı olmadan başlanmaz.
 
-### L6 (L6_PR) özeti
+### L6 (#84) özeti
 
 - Sorun Çöz'ün 25 eski metin senaryosu kaldırıldı; `TROUBLESHOOT_TASKS` (aynı kimlik ve sıra)
   her görevi Labber karşılığına açar, `bgp` kavramsal alıştırmadır. İlerleme: `aglab-passed-final`
