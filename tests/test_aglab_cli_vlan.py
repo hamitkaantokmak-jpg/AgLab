@@ -56,9 +56,9 @@ with sync_playwright() as p:
     cmd("exit")
     out = cmd("do show running-config")
     assert "switchport trunk allowed vlan 1" in out, out[-2000:]
-    assert "switchport trunk allowed vlan 1," not in out.split("FastEthernet0/3")[1][:300], out[
-        -2000:
-    ]
+    out = cmd("do show interfaces fa0/3 switchport")
+    tail = out.split("do show interfaces fa0/3 switchport")[-1]
+    assert re.search(r"Trunking VLANs Enabled: 1(?![0-9,])", tail), tail[-800:]
     assert not errs, errs
     b.close()
 print("PASS: trunk VLAN list set/range/add/remove/running-config; browser errors=0")
