@@ -133,6 +133,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `acl-wrong-direction` | ACL · Doğru liste, yanlış yön | **Labber** |
 | `acl-wildcard` | ACL · Yeni muhasebe PC'si sunucu odasına giremiyor | **Labber** |
 | `acl-two-faults` | ACL · İki hata: sıra ve yön | **Labber** |
+| `nat-missing-inside` | NAT · Şube internete çıkamıyor, çeviri tablosu boş | **Labber** |
+| `nat-acl-old-subnet` | NAT · Yeniden numaralandırmadan sonra internet yok | **Labber** |
+| `nat-roles-swapped` | NAT · inside ile outside yer değiştirmiş | **Labber** |
+| `nat-missing-rule` | NAT · Roller ve ACL var, çeviri yok | **Labber** |
+| `nat-two-faults` | NAT · Önce kimse, sonra bir kişi çıkamıyor | **Labber** |
 
 ## Labber labları (E)
 
@@ -174,9 +179,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 81 | 1 | 82 |
+| Ortak senaryolar | 86 | 1 | 87 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 134 | 1 | 135 |
+| Toplam | 139 | 1 | 140 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

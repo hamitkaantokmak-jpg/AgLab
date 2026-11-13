@@ -72,7 +72,7 @@ CCNA v2.0 beş alana sahip: Ağ altyapısı ve bağlantı %25, Switching ve ağ 
 | 17 | OSPFv3 (IPv6) | IP routing | Gerçek Lab önce, sonra motor | Yok | P2 |
 | 18 | FHRP: HSRP/VRRP durum okuma | IP routing | Motor | Doğrulanacak | P1 |
 | 19 | ACL (standart, genişletilmiş) | Güvenlik | Motor | Labber'da var (L5-c). Detaylı ders ve 5 senaryo var (`docs/dersler/acl.md`, `acl-*`) | P1 |
-| 20 | NAT/PAT | Servisler | Motor | Kısmi, doğrulanacak | P1 |
+| 20 | NAT/PAT | Servisler | Motor | Labber'da var (L5-d; modelde yalnız PAT). Detaylı ders ve 5 senaryo var (`docs/dersler/nat-pat.md`, `nat-*`) | P1 |
 | 21 | L2 güvenlik: port security, DHCP snooping, DAI, storm control, RA guard | Switching / güvenlik | Motor | Port security var; diğerleri yok | P1 |
 | 22 | Cihaz erişim güvenliği: SSH, AAA, SFTP/SCP | Güvenlik | Motor + okuma | Yok | P2 |
 | 23 | Ağ servisleri: DNS kayıt türleri, NTP, Syslog, SNMP | Servisler / operasyon | Okuma + motor (Syslog) | Kısmi | P2 |

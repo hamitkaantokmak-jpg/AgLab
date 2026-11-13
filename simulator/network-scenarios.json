@@ -23540,5 +23540,1740 @@
         }
       ]
     }
+  },
+  {
+    "id": "nat-missing-inside",
+    "title": "NAT · Şube internete çıkamıyor, çeviri tablosu boş",
+    "symptom": "Router değiştirildi, yapılandırma eski router'dan kopyalandı. Şubeden internetteki sunucuya (198.51.100.10) ulaşılamıyor; R1'den ping başarılı. show ip nat translations boş.",
+    "cause": "LAN arayüzünde (g0/0) ip nat inside eksik. Paket outside'a inside olarak işaretlenmemiş bir arayüzden geldiği için çevrilmiyor; özel kaynak adresiyle çıkıyor, ISP yanıtı geri getiremiyor (E1).",
+    "hints": [
+      "R1'in ping'i 203.0.113.2 kaynağıyla gider; PC'lerinki özel adresle. İnternet özel adrese yanıt verebilir mi?",
+      "show ip nat translations boşsa çeviri hiç tetiklenmiyor. NAT için hangi üç parça gerekir: inside, outside, kural?",
+      "show ip interface ya da show running-config: g0/0'da ip nat inside var mı? interface g0/0 → ip nat inside."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "203.0.113.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "0.0.0.0",
+              "mask": "0.0.0.0",
+              "nextHop": "203.0.113.1"
+            }
+          ],
+          "x": 260,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "ISP",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "203.0.113.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "198.51.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 560,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 260,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW-ISP",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 180,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 340,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "WEB",
+          "type": "Server",
+          "enabled": true,
+          "ip": "198.51.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "198.51.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 560,
+          "y": 340,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "http": true
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "pending": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "access-list 1 permit 192.168.10.0 0.0.0.255",
+          "interface g0/1",
+          "ip nat outside",
+          "exit",
+          "ip nat inside source list 1 interface g0/1 overload",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface g0/0",
+          "ip nat inside",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-11",
+      "target": "198.51.100.10",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → WEB (internet)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-12",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-12 → WEB (internet)"
+        },
+        {
+          "fn": "http",
+          "args": [
+            "PC-11",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → WEB sayfası"
+        }
+      ]
+    }
+  },
+  {
+    "id": "nat-acl-old-subnet",
+    "title": "NAT · Yeniden numaralandırmadan sonra internet yok",
+    "symptom": "Şube ağı 192.168.1.0/24'ten 192.168.10.0/24'e taşındı. O günden beri kimse internete çıkamıyor. NAT arayüz rolleri ve kural yerinde.",
+    "cause": "NAT kuralının kullandığı ACL 1 hâlâ eski ağı (192.168.1.0) eşliyor; yeni adresler çevrilecek trafik sayılmıyor (E2).",
+    "hints": [
+      "NAT kuralı hangi trafiği çevireceğini neye bakarak seçer?",
+      "show running-config | include nat ve show access-lists 1: ACL hangi ağı eşliyor?",
+      "ACL'yi yeni ağa göre yeniden yaz: no access-list 1 → access-list 1 permit 192.168.10.0 0.0.0.255."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "203.0.113.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "0.0.0.0",
+              "mask": "0.0.0.0",
+              "nextHop": "203.0.113.1"
+            }
+          ],
+          "x": 260,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "ISP",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "203.0.113.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "198.51.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 560,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 260,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW-ISP",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 180,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 340,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "WEB",
+          "type": "Server",
+          "enabled": true,
+          "ip": "198.51.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "198.51.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 560,
+          "y": 340,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "http": true
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "pending": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "access-list 1 permit 192.168.1.0 0.0.0.255",
+          "interface g0/0",
+          "ip nat inside",
+          "exit",
+          "interface g0/1",
+          "ip nat outside",
+          "exit",
+          "ip nat inside source list 1 interface g0/1 overload",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "no access-list 1",
+          "access-list 1 permit 192.168.10.0 0.0.0.255",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-11",
+      "target": "198.51.100.10",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → WEB (internet)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-12",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-12 → WEB (internet)"
+        },
+        {
+          "fn": "http",
+          "args": [
+            "PC-11",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → WEB sayfası"
+        }
+      ]
+    }
+  },
+  {
+    "id": "nat-roles-swapped",
+    "title": "NAT · inside ile outside yer değiştirmiş",
+    "symptom": "Yeni kurulan şube router'ında NAT yapılandırıldı; kimse internete çıkamıyor. ACL ve kural doğru görünüyor.",
+    "cause": "ip nat inside WAN arayüzüne (g0/1), ip nat outside LAN arayüzüne (g0/0) yazılmış. Trafik inside → outside yönünde geçmediği için çevrilmiyor (E3).",
+    "hints": [
+      "inside: çevrilecek özel adreslerin bulunduğu taraf; outside: internete bakan taraf.",
+      "R1'de show ip interface g0/0 ve g0/1 ya da show running-config: hangi arayüz hangi rolde?",
+      "Rolleri değiştir: g0/0'da no ip nat outside → ip nat inside; g0/1'de no ip nat inside → ip nat outside."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "203.0.113.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "0.0.0.0",
+              "mask": "0.0.0.0",
+              "nextHop": "203.0.113.1"
+            }
+          ],
+          "x": 260,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "ISP",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "203.0.113.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "198.51.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 560,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 260,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW-ISP",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 180,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 340,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "WEB",
+          "type": "Server",
+          "enabled": true,
+          "ip": "198.51.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "198.51.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 560,
+          "y": 340,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "http": true
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "pending": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "access-list 1 permit 192.168.10.0 0.0.0.255",
+          "interface g0/0",
+          "ip nat outside",
+          "exit",
+          "interface g0/1",
+          "ip nat inside",
+          "exit",
+          "ip nat inside source list 1 interface g0/1 overload",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface g0/0",
+          "no ip nat outside",
+          "ip nat inside",
+          "exit",
+          "interface g0/1",
+          "no ip nat inside",
+          "ip nat outside",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-11",
+      "target": "198.51.100.10",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → WEB (internet)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-12",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-12 → WEB (internet)"
+        },
+        {
+          "fn": "http",
+          "args": [
+            "PC-11",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → WEB sayfası"
+        }
+      ]
+    }
+  },
+  {
+    "id": "nat-missing-rule",
+    "title": "NAT · Roller ve ACL var, çeviri yok",
+    "symptom": "Şubede internet yok. Teknisyen \"NAT'ı yaptım\" diyor: arayüzlerde ip nat inside/outside, access-list 1 de var. show ip nat translations boş.",
+    "cause": "ip nat inside source satırı yazılmamış; ACL ile çıkış arayüzünü bağlayan kural yok (E4).",
+    "hints": [
+      "Roller ve ACL tek başına bir şey yapmaz; bunları birbirine bağlayan bir satır gerekir.",
+      "show running-config | include ip nat: ip nat inside source … satırı var mı?",
+      "ip nat inside source list 1 interface g0/1 overload."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "203.0.113.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "0.0.0.0",
+              "mask": "0.0.0.0",
+              "nextHop": "203.0.113.1"
+            }
+          ],
+          "x": 260,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "ISP",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "203.0.113.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "198.51.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 560,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 260,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW-ISP",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 180,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 340,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "WEB",
+          "type": "Server",
+          "enabled": true,
+          "ip": "198.51.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "198.51.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 560,
+          "y": 340,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "http": true
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "pending": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "access-list 1 permit 192.168.10.0 0.0.0.255",
+          "interface g0/0",
+          "ip nat inside",
+          "exit",
+          "interface g0/1",
+          "ip nat outside",
+          "exit",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip nat inside source list 1 interface g0/1 overload",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-11",
+      "target": "198.51.100.10",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → WEB (internet)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-12",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-12 → WEB (internet)"
+        },
+        {
+          "fn": "http",
+          "args": [
+            "PC-11",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → WEB sayfası"
+        }
+      ]
+    }
+  },
+  {
+    "id": "nat-two-faults",
+    "title": "NAT · Önce kimse, sonra bir kişi çıkamıyor",
+    "symptom": "Şubede kimse internete çıkamıyor. Bir düzeltmeden sonra PC-11 çıkıyor ama yeni gelen PC-12 (192.168.10.150) hâlâ çıkamıyor.",
+    "cause": "İki hata: WAN arayüzünde ip nat outside eksik (E1) ve ACL 1 yalnız 192.168.10.0/25'i kapsıyor (0.0.0.127); .150 çevrilmiyor (E2).",
+    "hints": [
+      "Herkesi etkileyen hatayla başla: inside, outside ve kural yerinde mi?",
+      "Bir kişi hâlâ çıkamıyorsa o adres çevrilecek trafiğe dahil mi? show access-lists 1.",
+      "g0/1'e ip nat outside; ACL 1'i 0.0.0.255 ile yeniden yaz."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "203.0.113.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "0.0.0.0",
+              "mask": "0.0.0.0",
+              "nextHop": "203.0.113.1"
+            }
+          ],
+          "x": 260,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "ISP",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "203.0.113.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "198.51.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 560,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 260,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW-ISP",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 180,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.150",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 340,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "WEB",
+          "type": "Server",
+          "enabled": true,
+          "ip": "198.51.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "198.51.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 560,
+          "y": 340,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "http": true
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "pending": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "access-list 1 permit 192.168.10.0 0.0.0.127",
+          "interface g0/0",
+          "ip nat inside",
+          "exit",
+          "ip nat inside source list 1 interface g0/1 overload",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface g0/1",
+          "ip nat outside",
+          "exit",
+          "no access-list 1",
+          "access-list 1 permit 192.168.10.0 0.0.0.255",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-11",
+      "target": "198.51.100.10",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → WEB"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-12",
+            "198.51.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-12 (.150) → WEB"
+        }
+      ]
+    }
   }
 ]

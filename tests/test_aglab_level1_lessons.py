@@ -33,6 +33,7 @@ LESSONS = [
     # Seviye 2
     ("commands", "diagnostics", "teshis-araclari.md", "diag-", "Extended ping", "Paket yakalama"),
     ("acl", "acl", "acl.md", "acl-", "Wildcard ve sıra", "Sayaçlarla teşhis"),
+    ("nat", "natpat", "nat-pat.md", "nat-", "PAT'ın üç parçası", "Tablo ve istatistikle teşhis"),
 ]
 PARTS = [
     "## 1. Neden önemli",
@@ -44,6 +45,9 @@ PARTS = [
     "## 7. Kısa sınav",
     "## 8. Doğrulama notları",
 ]
+
+
+LEGACY_ONE_STEP = {"nat-pat"}
 
 
 class LevelOneLessonDataTests(unittest.TestCase):
@@ -77,7 +81,8 @@ class LevelOneLessonDataTests(unittest.TestCase):
 
     def test_lesson_scenarios_follow_template(self):
         for _, _, doc, prefix, _, _ in LESSONS:
-            rows = [r for r in RECIPES if r["id"].startswith(prefix)]
+            # nat-pat: topolojisi uygulamada kurulan eski tek adımlı senaryo, şablon dışı
+            rows = [r for r in RECIPES if r["id"].startswith(prefix) and r["id"] not in LEGACY_ONE_STEP]
             text = (ROOT / "docs/dersler" / doc).read_text(encoding="utf-8")
             with self.subTest(prefix):
                 self.assertGreaterEqual(len(rows), 5)
