@@ -147,13 +147,21 @@ class EngineChoiceTests(unittest.TestCase):
     def test_unsupported_runtime_topology_is_an_error_not_a_fallback(self):
         self.load("access-vlan")
         self.assertFalse(self.page.evaluate("aglabSharedEngine.goal()"))
-        # L4'ten beri Router Labber'da; servisleri açık sunucu (şablon: DHCP/DNS/HTTP) L5'e kadar yok.
+        # L5-g'den beri arayüzle eklenebilen bütün cihazlar (servisli Server dahil) Labber'da;
+        # arayüzden desteklenmeyen öğe üretilemiyor. Koruma, eklenen sunucuya gerçek köprünün
+        # desteklemediği bir alan (BGP) verilerek sınanır: rapor köprünün kendisinden gelir.
+        self.page.evaluate(
+            "() => { const sim = AgLabSim; window.AgLabSim = { ...sim, toLabber: (t, ...r) => {"
+            " const c = JSON.parse(JSON.stringify(t));"
+            " for (const d of c.devices) if (d.type === 'Server') d.bgp = { asn: 65001 };"
+            " return sim.toLabber(c, ...r) } } }"
+        )
         self.page.click('[data-pt-add="Server"]')
         error = self.page.evaluate(
             "() => { try { aglabSharedEngine.goal(); return null } catch (e) { return e.message } }"
         )
         self.assertIn("Motor değiştirilmez", error)
-        self.assertIn("Sunucu servisleri", error)
+        self.assertIn("BGP", error)
         # karar değişmez, rozet Labber kalır
         self.assertEqual(self.page.evaluate("aglabSharedEngine.engine()")["engine"], "labber")
         target = self.page.evaluate("aglabSharedEngine.target()")
