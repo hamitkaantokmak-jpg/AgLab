@@ -1,4 +1,4 @@
-import json, tempfile
+import json, re, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from aglab_test_support import ROOT, launch_chromium, import_topology
@@ -23,11 +23,16 @@ with sync_playwright() as p:
             """cmd=>{document.querySelector('#ptCliDevice').value='d1';document.querySelector('#ptCliInput').value=cmd;document.querySelector('#ptCliForm').requestSubmit()}""",
             cmd,
         )
-        return page.locator("#ptTerminal").inner_text()
+        return "\n".join(page.locator("#ptTerminal > div").all_text_contents())
 
     load(top)
+    # I-1: içe aktarılan topoloji Labber'da; IOS biçimi: "C  192.168.1.0/24 is directly connected"
+    CONNECTED = re.compile(
+        r"^C\s+192\.168\.1\.0/24 is directly connected, GigabitEthernet0/0", re.M
+    )
+    cli("enable")
     out = cli("show ip route")
-    assert "C 192.168.1.0/24" in out, out[-1500:]
+    assert CONNECTED.search(out), out[-1500:]
     broken = json.loads(json.dumps(top))
     link = next(
         l
@@ -36,10 +41,14 @@ with sync_playwright() as p:
     )
     link["up"] = False
     load(broken)
+    cli("enable")
     out = cli("show ip route")
-    assert "C 192.168.1.0/24" not in out.split("Codes: C - connected")[-1], out[-1500:]
+    assert not CONNECTED.search(out.split("show ip route")[-1]), out[-1500:]
     out = cli("show ip interface brief")
-    assert "g0/0            192.168.1.1     down     down" in out, out[-1500:]
+    assert re.search(
+        r"GigabitEthernet0/0\s+192\.168\.1\.1\s+YES manual down\s+down",
+        out.split("show ip interface brief")[-1],
+    ), out[-1500:]
     assert not errors, errors
     browser.close()
 print("PASS v11: connected route removed after link down, CLI status consistent")

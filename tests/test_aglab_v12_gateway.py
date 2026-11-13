@@ -22,17 +22,20 @@ with sync_playwright() as p:
         page.evaluate(
             """()=>{document.querySelector('#ptCliDevice').value='d3';document.querySelector('#ptCliInput').value='ping 192.168.2.2';document.querySelector('#ptCliForm').requestSubmit()}"""
         )
-        out = page.locator("#ptTerminal").inner_text()
+        out = "\n".join(page.locator("#ptTerminal > div").all_text_contents()[-8:])
         assert expected in out, (expected, out[-1300:])
 
-    check(lambda t: None, "Success rate is 100 percent (5/5)")
+    # I-1: içe aktarılan topoloji Labber'da; PC terminali VPCS. Başarı: 5 yanıt; kaynakta ağ
+    # geçidi yoksa VPCS "host (<hedef>) not reachable" der; hedefin ağ geçidi yoksa yanıt dönmez
+    # (her istek zaman aşımı).
+    check(lambda t: None, "84 bytes from 192.168.2.2 icmp_seq=5")
     check(
         lambda t: next(d for d in t["devices"] if d["id"] == "d3").update(gateway=""),
-        "varsayılan gateway yapılandırılmamış",
+        "host (192.168.2.2) not reachable",
     )
     check(
         lambda t: next(d for d in t["devices"] if d["id"] == "d5").update(gateway=""),
-        "dönüş trafiği için varsayılan gateway",
+        "192.168.2.2 icmp_seq=5 timeout",
     )
     assert not errors, errors
     b.close()

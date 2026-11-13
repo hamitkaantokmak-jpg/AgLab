@@ -4455,7 +4455,7 @@ var AgLabSim = (() => {
       const repeat = o.repeat ?? 5;
       const r = ping(d, this.dev, ip2, o.src ? { src: o.src } : {});
       const firstKey = `${this.dev}>${r.firstHopArp?.ip ?? ip2}`;
-      const coldArp = !this.rt.arp.has(firstKey);
+      const coldArp = (r.forward?.hops.length ?? 0) > 0 && !this.rt.arp.has(firstKey);
       this.rt.markSeen(r.forward?.hops ?? [], this.dev);
       this.rt.countAcl(repeat, r.forward, r.back);
       this.rt.recordNat(repeat, r.forward, r.back);

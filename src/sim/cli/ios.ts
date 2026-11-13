@@ -1559,7 +1559,8 @@ export class IosSession {
     const r = ping(d, this.dev, ip, o.src ? { src: o.src } : {})
     // ilk atlamanın ARP durumu gönderimden önce (markSeen ARP girdisini ekler)
     const firstKey = `${this.dev}>${r.firstHopArp?.ip ?? ip}`
-    const coldArp = !this.rt.arp.has(firstKey)
+    // MotorBulgusu (I-1): kendi adresine ping ARP gerektirmez (atlama yok) — ilk paket kaybolmaz
+    const coldArp = (r.forward?.hops.length ?? 0) > 0 && !this.rt.arp.has(firstKey)
     this.rt.markSeen(r.forward?.hops ?? [], this.dev)
     this.rt.countAcl(repeat, r.forward, r.back)
     this.rt.recordNat(repeat, r.forward, r.back)
