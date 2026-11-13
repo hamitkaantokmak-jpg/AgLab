@@ -64,6 +64,9 @@ function labberLabRestore(value) {
   $p('labberLabEngine').textContent =
     'Motor: Labber — lab tanımı doğrudan Labber’da kurulur (köprü kullanılmaz); terminal, hedefler ve Simulation Mode Labber motorunda.';
   $p('labberLabEngine').dataset.engine = 'labber';
+  // I-1: çalışma alanı rozeti
+  $p('workspaceEngine').textContent = $p('labberLabEngine').textContent;
+  $p('workspaceEngine').dataset.engine = 'labber';
   panel.replaceChildren();
   const head = document.createElement('h4');
   head.textContent = def.title;

@@ -7419,6 +7419,37 @@ labLoadExperiment();
     );
     return Math.max(1, Number(obj.nextId) || 1, ...suffixes);
   }
+  /**
+   * I-1: çalışma alanı (içe aktarılan, kayıtlı ya da düzenleyicide kurulan topoloji) için motor
+   * kararı. Sorun Çöz ve Akademi ile aynı mekanizma: köprü topolojiyi ifade edebiliyorsa Labber,
+   * edemiyorsa eski motor; rozet nedeni gösterir. Karar yüklemede bir kez verilir; sonraki
+   * düzenleyici değişiklikleri çalışma zamanını yeniden kurar, motor değişmez (labber-session).
+   * PKT içe aktarımında (switch/router runningConfig metni varsa) çalışma zamanı IOS metin
+   * yoluyla (L5-h, AgLabSim.cliImport) kurulur. Akademi labı ve Labber labı kendi oturumunu
+   * kurar; onlara dokunulmaz.
+   */
+  function workspaceDecideEngine() {
+    if (typeof AgLabSim === 'undefined' || typeof aglabLabber === 'undefined') return null;
+    if ((typeof academyActive !== 'undefined' && academyActive) || aglabLabber.lab()) return null;
+    aglabLabber.stop();
+    const topo = aglabEngineChoice.snapshot();
+    const decision = aglabEngineChoice.decide(topo);
+    aglabEngineChoice.renderBadge(null, decision);
+    if (decision.engine !== 'labber') return decision;
+    const text = devices.some(
+      (d) =>
+        (d.type === 'Switch' || d.type === 'Router') &&
+        typeof d.config?.runningConfig === 'string' &&
+        d.config.runningConfig.trim(),
+    );
+    if (text) {
+      const cli = AgLabSim.cliImport({ ...topo, importReport: importReportData });
+      aglabLabber.start(cli.runtime);
+    } else aglabLabber.start();
+    updatePrompt();
+    return decision;
+  }
+  window.aglabWorkspace = { decide: () => workspaceDecideEngine() };
   function importTopology(obj) {
     validateTopologyData(obj);
     // Yeni içerik: önceki Labber oturumu biter; içerik Labber kararındaysa yeniden başlar.
@@ -7441,6 +7472,7 @@ labLoadExperiment();
     currentInterface = '';
     academyRestoreSession(obj.academySession || null);
     labberLabRestore(obj.labberLab || null);
+    workspaceDecideEngine();
     render();
     syncSelects();
     updateInspector();
@@ -7656,6 +7688,7 @@ labLoadExperiment();
       { a: r.id, b: srv.id, portA: 'g0/1', portB: 'eth0', up: true },
     ];
     selected = pc1.id;
+    workspaceDecideEngine();
     render();
     syncSelects();
     updateInspector();
@@ -11223,6 +11256,7 @@ labLoadExperiment();
       selected = devices.some((d) => d.id === obj.selected) ? obj.selected : devices[0]?.id || '';
       academyRestoreSession(obj.academySession || null);
       labberLabRestore(obj.labberLab || null);
+      workspaceDecideEngine();
       render();
       syncSelects();
       updateInspector();
