@@ -9899,10 +9899,38 @@ write memory`
     }
     return steps;
   }
+  function pingDiagnosis(rt, from, dst, r) {
+    if (r.ok) return null;
+    const d = rt.derived;
+    if (r.reason === "off") return "Kaynak cihaz kapalı.";
+    if (r.reason === "noip") return "Kaynakta geçerli IPv4 adresi yok.";
+    if (r.reason === "noroute") return `Kaynakta ${dst} için yol yok (aynı alt ağda değil ve ağ geçidi yok).`;
+    if (r.reason === "unreach") return `${r.unreachFrom} ${dst} için rota bulamadı ya da ACL engelledi (ICMP unreachable).`;
+    if (r.reason === "expired") return `TTL ${r.expiredFrom} üzerinde bitti (ICMP Time Exceeded).`;
+    const at = d.topo.pcAttach[from];
+    if (at) {
+      const lp = d.lportOfPhys[pk(at.dev, at.port)];
+      if (lp?.inactive) return `VLAN ${lp.cfg.accessVlan} ${at.dev} üzerinde tanımlı değil (${at.port} inactive).`;
+      const vlan = lp && lp.opMode === "access" ? lp.cfg.accessVlan : null;
+      if (vlan !== null) {
+        for (const ports2 of Object.values(d.lports))
+          for (const p of ports2)
+            if (p.active && p.opMode === "trunk" && !p.peerIsPc && p.peerDev && !p.routed && !allows(p.cfg, vlan))
+              return `VLAN ${vlan}, ${p.dev} ${p.name} trunk'ında izinli değil (switchport trunk allowed vlan).`;
+      }
+    }
+    return "Yanıt gelmedi: hedefe ya da dönüşte kaynağa katman 2 yolu veya dönüş rotası yok.";
+  }
   function pingTrace(rt, from, dst, portName = (_dev, port) => port, opts = {}) {
     const d = rt.derived;
     const r = ping(d, from, dst, opts.ttl !== void 0 ? { ttl: opts.ttl } : {});
     const records = [];
+    const pushDiag = () => {
+      const reason = pingDiagnosis(rt, from, dst, r);
+      if (!reason) return;
+      const first = records.findIndex((x) => x.raw.startsWith("discard ") || x.raw.startsWith("icmp-undelivered "));
+      records.splice(first < 0 ? records.length : first, 0, { raw: "diagnostic " + JSON.stringify({ source: from, reason, origin: "adapter-derived" }) });
+    };
     let frameNo = 0;
     let l2 = true;
     const ifOf = (dev, ip2) => l3Ifs(d, dev).find((i) => i.ip === ip2) ?? null;
@@ -9957,6 +9985,7 @@ write memory`
     const src = sourceIp(d, from, dst);
     if (!fwd || !src) {
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "noroute"}` });
+      pushDiag();
       return { ok: false, l2: true, records };
     }
     const reached = walk2("icmp-request", from, fwd.hops, src, dst, opts.ttl ?? 64);
@@ -9967,11 +9996,13 @@ write memory`
       if (!back2 || back2.kind !== "ok" || backTo2 !== from) records.push({ raw: `discard ${backTo2} no-return-path` });
       else records.push({ raw: `icmp-time-exceeded ${from} from ${fwd.at}` });
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "expired"}` });
+      pushDiag();
       return { ok: false, l2, records };
     }
     if (fwd.kind !== "ok") {
       records.push({ raw: `discard ${reached} ${fwd.kind === "unreach" ? "no-route" : "no-l2-path"}` });
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? fwd.kind}` });
+      pushDiag();
       return { ok: false, l2, records };
     }
     const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from;
@@ -9981,6 +10012,7 @@ write memory`
     if (!r.ok || back.kind !== "ok" || backTo !== from) {
       records.push({ raw: `discard ${backTo} no-return-path` });
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "timeout"}` });
+      pushDiag();
       return { ok: false, l2, records };
     }
     records.push({ raw: `icmp-delivered ${from} from ${replier}` });
