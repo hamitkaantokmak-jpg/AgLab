@@ -30,7 +30,7 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | Plan: L7 sonrası işler (`SONRAKI_ISLER.md`) | #71 | birleşti |
 | L5-g sunucu HTTP servisi (TCP 80, `curl`) | #75 (main'den) | açık (birleşmeyi bekliyor) |
 | L5-h PKT IOS metin yolu (hoşgörülü mod) | #76 (#75'in dalından) | açık (birleşmeyi bekliyor) |
-| L5-i TTL, Time Exceeded, traceroute, extended ping | #L5I (#76'nın dalından) | açık (birleşmeyi bekliyor) |
+| L5-i TTL, Time Exceeded, traceroute, extended ping | #77 (#76'nın dalından) | açık (birleşmeyi bekliyor) |
 | I-1 içe aktarma ve düzenleyici Labber'a | — | sırada (L5-i'nin dalından; WIP dalı `claude/i1-import-labber` #76'dan) |
 
 Yeni zincir (kullanıcı talimatı): **L5-g** (main'den, #75) → **L5-h** (L5-g'nin dalından, #76) →
@@ -40,7 +40,7 @@ I-1'in PR'ı açılınca durulur: L6 ve L7'ye başlanmaz.
 Eski motorda kalan içerik (`LAB_MOTOR_HARITASI.md`): yalnız `bgp-as` (BGP, kapsam dışı).
 İçe aktarılan `.pkt` ve düzenleyicide kurulan topolojiler I-1'e kadar eski motorda.
 
-**Durum:** zincirde açık PR'lar **#75 (L5-g, main'den) → #76 (L5-h, #75'in dalından) → #L5I
+**Durum:** zincirde açık PR'lar **#75 (L5-g, main'den) → #76 (L5-h, #75'in dalından) → #77
 (L5-i, #76'nın dalından)**. #75 birleşince #76'nın tabanı `main`'e çevrilmeli. Hiçbiri
 birleştirilmedi. I-1 için PR açılmadı: bağlam doldu ve tam hat yeşil değil (aşağıda). L6 ve L7'ye
 başlanmadı.
