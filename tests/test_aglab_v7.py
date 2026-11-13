@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from playwright.sync_api import sync_playwright
 from aglab_test_support import ROOT, launch_chromium
 
@@ -36,9 +37,12 @@ with sync_playwright() as p:
             "show ip interface brief",
         ],
     )
-    assert "Arayüz IP adresi kaldırıldı." in out
-    out = run(pc, ["ip address 10.9.0.2 255.0.255.0"])
-    assert "geçerli subnet maskesi" in out
+    # I-1: varsayılan çalışma alanı Labber'da. IOS `no ip address` sonrası bilgi satırı yazmaz;
+    # `show ip interface brief` arayüzü "unassigned … unset" gösterir.
+    assert re.search(r"GigabitEthernet0/0\s+unassigned\s+YES unset", out), out[-1500:]
+    # PC terminali VPCS: `ip <adres> <maske>`; bitişik olmayan maske reddedilir (Invalid netmask)
+    out = run(pc, ["ip 10.9.0.2 255.0.255.0"])
+    assert "Invalid netmask" in out, out[-500:]
     out = run(
         sw,
         [
@@ -49,7 +53,8 @@ with sync_playwright() as p:
             "switchport trunk allowed vlan add",
         ],
     )
-    assert "VLAN listesi eksik" in out
+    # IOS: liste verilmeyen `allowed vlan add` eksik komuttur
+    assert "% Incomplete command." in out, out[-500:]
     assert not errors, errors
     b.close()
 print("PASS v7 3 CLI checks + zero page errors")

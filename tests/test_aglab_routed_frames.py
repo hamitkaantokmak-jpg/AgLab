@@ -3,7 +3,7 @@
 import json, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, legacy_engine, ping_succeeded
 
 module = (ROOT / "simulator/routed-ethernet.js").read_text()
 assert (
@@ -122,29 +122,43 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         )
         return "\n".join(page.locator("#ptTerminal > div").all_text_contents()[before:])
 
+    # I-1: içe aktarılan topoloji Labber'da. PC terminali VPCS, router/switch IOS; olaylar Labber
+    # Simulation Mode izinden (aglabLabberSession.trace). Labber izi ARP çerçevesi üretmez (L3-b);
+    # komşu ARP'si `show arp` (VPCS) / `show ip arp` (IOS) tablolarından doğrulanır.
     def ping(device, target, success=True):
         out = cmd(device, "ping " + target)
-        assert ("100 percent (5/5)" if success else "0 percent (0/5)") in out, out
+        assert ping_succeeded(out, target) == success, out
+
+    def events():
+        return "\n".join(
+            e.get("raw", "") for e in page.evaluate("aglabLabberSession.trace()")["events"]
+        )
 
     load()
     ping("d1", "192.168.2.2")
-    events = cmd("d1", "show ethernet events")
-    assert "arp-request" in events and "forward d5" in events and "forward d6" in events, events
-    assert "next-hop 10.0.0.2 ip 192.168.1.2 -> 192.168.2.2" in events, events
-    assert "next-hop 192.168.2.2 ip 192.168.1.2 -> 192.168.2.2" in events, events
-    for frame in events.split("frame "):
-        if frame.startswith("arp-request src d5 "):
-            assert "receive d1" not in frame, frame
+    ev = events()
+    assert "receive d5 icmp-request" in ev and "receive d6 icmp-request" in ev, ev
+    assert "ttl-forward d5 64 -> 63" in ev and "ttl-forward d6 63 -> 62" in ev, ev
+    assert "receive d2 icmp-request" in ev and "icmp-delivered d1 from d2" in ev, ev
     arp = cmd("d1", "show arp")
     assert "192.168.1.1" in arp and "192.168.2.2" not in arp, arp
-    arp = cmd("d5", "show arp")
+    cmd("d5", "enable")
+    arp = cmd("d5", "show ip arp")
     assert "10.0.0.2" in arp and "192.168.2.2" not in arp, arp
-    arp = cmd("d6", "show arp")
-    assert "192.168.2.2" in arp, arp
+    cmd("d6", "enable")
+    assert "192.168.2.2" in cmd("d6", "show ip arp")
+    # sıcak FDB: ikinci ping'de çerçeve hedefe unicast gider, d7'ye taşmaz
     ping("d1", "192.168.2.2")
-    events = cmd("d1", "show ethernet events")
-    assert "arp-request" not in events and "receive d7" not in events, events
+    assert "receive d7" not in events(), events()
     print("PASS: real per-hop ARP, routed request/reply and warm FDB unicast", flush=True)
+    # "Paket adımı" ve bayat FDB (taşınan host) eski motorda sınanır: Labber iletimi FDB'den değil
+    # topolojiden hesaplar (MOTOR_BULGULARI "açık": bayat FDB modellenmiyor).
+    legacy = legacy_engine(obj)
+    path.write_text(json.dumps(legacy))
+    page.locator("#ptImportFile").set_input_files(str(path))
+    page.wait_for_function("()=>!aglabLabberSession.active()")
+    legacy_ping = lambda d, t: cmd(d, "ping " + t)
+    assert "100 percent (5/5)" in legacy_ping("d1", "192.168.2.2")
     page.evaluate(
         "document.querySelector('#ptSource').value='d1';document.querySelector('#ptTarget').value='d2';for(let i=0;i<7;i++)document.querySelector('#ptPacketStep').click()"
     )
@@ -154,22 +168,20 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         "PASS: Packet Step completion preserves real neighbor ARP instead of synthetic remote entries",
         flush=True,
     )
-    # Keep the upstream FDB egress physically active while moving the final host.
     page.evaluate(
         "document.querySelector('#ptSource').value='d8';document.querySelector('#ptTarget').value='d2';document.querySelector('#ptRemoveLink').click()"
     )
     page.evaluate(
         "document.querySelector('#ptSource').value='d4';document.querySelector('#ptTarget').value='d2';document.querySelector('#ptMakeLink').click()"
     )
-    ping("d1", "192.168.2.2", False)
-    events = cmd("d1", "show ethernet events")
-    assert "icmp-request" in events and "receive d2" not in events, events
-    ping("d2", "192.168.2.1")
-    ping("d1", "192.168.2.2")
+    assert "0 percent (0/5)" in legacy_ping("d1", "192.168.2.2")
+    assert "100 percent" in legacy_ping("d2", "192.168.2.1")
+    assert "100 percent" in legacy_ping("d1", "192.168.2.2")
     print(
-        "PASS: routed ping obeys a stale FDB egress and recovers after source learning", flush=True
+        "PASS: legacy: routed ping obeys a stale FDB egress and recovers after source learning",
+        flush=True,
     )
-    # Logical management SVI is an Ethernet endpoint without a fabricated physical port.
+    # Yönetim SVI'si (Labber): yerel/uzak teslim, ağ geçidi ARP'si, shutdown ve geri dönüş
     obj["devices"][3]["interfaces"]["vlan10"] = dict(
         ip="192.168.2.10", mask="255.255.255.0", enabled=True, vlan=10
     )
@@ -178,16 +190,17 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     ping("d1", "192.168.2.10")
     ping("d4", "192.168.1.2")
     ping("d2", "192.168.2.10")
-    arp = cmd("d4", "show arp")
+    cmd("d4", "enable")
+    arp = cmd("d4", "show ip arp")
     assert "192.168.2.1" in arp and "192.168.1.2" not in arp, arp
-    for c in ["enable", "configure terminal", "interface vlan 10", "shutdown", "end"]:
+    for c in ["configure terminal", "interface vlan 10", "shutdown", "end"]:
         cmd("d4", c)
     ping("d1", "192.168.2.10", False)
     for c in ["configure terminal", "interface vlan 10", "no shutdown", "end"]:
         cmd("d4", c)
     ping("d1", "192.168.2.10")
     print("PASS: local/remote SVI frame delivery, gateway ARP and shutdown recovery", flush=True)
-    # Preserve the existing translated PAT model while explicitly declining a new frame-delivery claim.
+    # PAT (L5-d): Labber çerçeveleri çevrilmiş adresle taşır; dönüş rotası olmayan R2 yine yanıtlar
     r1 = obj["devices"][4]
     r1["interfaces"]["g0/0"]["natRole"] = "inside"
     r1["interfaces"]["g0/1"]["natRole"] = "outside"
@@ -206,11 +219,9 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     obj["devices"][5]["staticRoutes"] = []
     load()
     ping("d1", "192.168.2.2")
-    events = cmd("d1", "show ethernet events")
-    assert "legacy-nat" in events and "frame icmp-request" not in events, events
-    print(
-        "PASS: existing PAT result preserved and explicitly marked as legacy, not frame-verified",
-        flush=True,
-    )
+    assert "receive d6 icmp-request" in events() and "frame icmp-request" in events()
+    cmd("d5", "enable")
+    assert "icmp 10.0.0.1:" in cmd("d5", "show ip nat translations").replace("  ", " ")
+    print("PASS: PAT frames carried with translated source (Labber)", flush=True)
     assert not errors, errors
     browser.close()

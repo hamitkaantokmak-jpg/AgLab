@@ -46,7 +46,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         return "\n".join(out)
 
     for i, pc in enumerate(pcs, 1):
-        cli(pc["id"], [f"ip address 10.0.0.{i} 255.255.255.0"])
+        # I-1: düzenleyicideki topoloji Labber'da; PC terminali VPCS (`ip <adres> <maske>`)
+        cli(pc["id"], [f"ip 10.0.0.{i} 255.255.255.0"])
     for sw in switches:
         cli(
             sw["id"],
@@ -65,7 +66,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
                 "end",
             ],
         )
-    assert "100 percent" in cli(pcs[0]["id"], ["ping 10.0.0.2"])
+    # VPCS ping: 5 adet "84 bytes from"
+    assert cli(pcs[0]["id"], ["ping 10.0.0.2"]).count("84 bytes from 10.0.0.2") == 5
     assert page.evaluate('([s,t])=>aglabEngines.run("aglab-js",s,t)', [pcs[0]["id"], pcs[1]["id"]])[
         "ok"
     ]
@@ -82,8 +84,10 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         switches[0]["id"],
         ["configure terminal", "interface fa0/2", "switchport trunk allowed vlan 20", "end"],
     )
+    # VPCS ping açıklama yazmaz: yanıt yok, her istek zaman aşımı. VLAN teşhisi aşağıda Paket
+    # Dedektifi'nden doğrulanır.
     failed = cli(pcs[0]["id"], ["ping 10.0.0.2"])
-    assert "0 percent" in failed and ("VLAN" in failed or "vlan" in failed), failed
+    assert "bytes from" not in failed and failed.count("timeout") == 5, failed
     page.click("#packetDetectiveRefresh")
     # Early preflight diagnostics are explicitly derived, not invented wire events.
     assert "VLAN" in page.locator("#packetDetectiveDiagnosis").inner_text()
@@ -98,7 +102,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             "end",
         ],
     )
-    assert "100 percent" in cli(pcs[0]["id"], ["ping 10.0.0.2"])
+    assert cli(pcs[0]["id"], ["ping 10.0.0.2"]).count("84 bytes from 10.0.0.2") == 5
     page.click("#packetDetectiveRefresh")
     assert "Adım 1" in page.locator("#packetDetectiveStatus").inner_text()
     page.click("#ptSave")
@@ -128,6 +132,11 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     sys.path.insert(0, str(ROOT / "real-lab"))
     from shared_topology import convert
 
+    # I-1: VPCS `ip <adres> <maske>` (ağ geçidisiz) PC'nin ağ geçidini sıfırlar (gerçek VPCS);
+    # eski PC CLI'si eskisini bırakıyordu. Dönüştürücünün ağ geçidini açıkça reddetmesi yine
+    # sınanır: ağ geçidi dışa aktarılan JSON'a konur.
+    assert all(d["gateway"] == "" for d in operator["devices"] if d["type"] == "PC"), operator
+    next(d for d in operator["devices"] if d["type"] == "PC")["gateway"] = "10.0.0.254"
     try:
         convert(operator)
     except ValueError as error:

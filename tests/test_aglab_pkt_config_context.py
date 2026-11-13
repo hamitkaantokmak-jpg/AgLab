@@ -5,7 +5,7 @@ import json
 import unittest
 import tempfile
 from unittest.mock import patch
-from aglab_test_support import HTML, launch_chromium, assert_cli_path_matches
+from aglab_test_support import HTML, launch_chromium, assert_cli_path_matches, ping_succeeded
 from convert_pkt_to_aglab import main, PacketTracerError
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -270,7 +270,8 @@ class ConfigContextTests(unittest.TestCase):
                             document.querySelector('#ptCliForm').requestSubmit();return terminal.innerText.slice(before);
                         }""")
 
-                    self.assertIn("100 percent" if expected else "0 percent (0/5)", ping())
+                    # I-1: Labber (PC VPCS / IOS) ping sonucu
+                    self.assertEqual(ping_succeeded(ping(), "10.10.10.2"), expected)
                     if not expected:
                         page.evaluate("""()=>{
                             document.querySelector('#ptCliDevice').value='d1';
@@ -280,7 +281,7 @@ class ConfigContextTests(unittest.TestCase):
                                 document.querySelector('#ptCliForm').requestSubmit();
                             }
                         }""")
-                        self.assertIn("100 percent", ping())
+                        self.assertTrue(ping_succeeded(ping(), "10.10.10.2"))
                     self.assertEqual(
                         page.evaluate("academyEngine.snapshot().devices[0].config.runningConfig"),
                         "\n".join(common + extra),
@@ -326,7 +327,18 @@ class ConfigContextTests(unittest.TestCase):
             page = browser.new_page()
             page.goto(HTML.as_uri())
             page.evaluate("(t)=>academyEngine.load(t)", obj)
-            for target, expected in [("10.0.0.1", "100 percent"), ("192.0.2.1", "0 percent (0/5)")]:
+            # I-1: Labber (IOS). Kablosuz router arayüzü down'dır; IOS down arayüzün adresine
+            # (kendi adresi de olsa) ping atamaz. Birincil adresin korunduğu `show ip interface
+            # brief`'ten, ikincil adresin modellenmediği (yok sayılmadığı, raporlandığı) adres
+            # sütunundan doğrulanır; iki adrese ping de başarısızdır.
+            page.evaluate(
+                """()=>{document.querySelector('#ptCliDevice').value='d1';
+                for(const c of ['enable','show ip interface brief']){document.querySelector('#ptCliInput').value=c;document.querySelector('#ptCliForm').requestSubmit()}}"""
+            )
+            brief = "\n".join(page.locator("#ptTerminal > div").all_text_contents())
+            self.assertRegex(brief, r"GigabitEthernet0/0\s+10\.0\.0\.1\s+YES manual down\s+down")
+            self.assertNotIn("192.0.2.1", brief.split("show ip interface brief")[-1])
+            for target, expected in [("10.0.0.1", False), ("192.0.2.1", False)]:
                 result = page.evaluate(
                     """target=>{
                     const terminal=document.querySelector('#ptTerminal');const before=terminal.innerText.length;
@@ -336,7 +348,7 @@ class ConfigContextTests(unittest.TestCase):
                 }""",
                     target,
                 )
-                self.assertIn(expected, result)
+                self.assertEqual(ping_succeeded(result, target), expected, result)
             browser.close()
 
 

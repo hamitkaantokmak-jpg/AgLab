@@ -369,7 +369,8 @@ export type Delivery = (
   | { kind: 'ok'; hops: Hop[]; routersCrossed: number }
   | { kind: 'noroute'; hops: Hop[] }
   | { kind: 'unreach'; at: string; atIp: string; hops: Hop[]; filtered?: AclHit }
-  | { kind: 'timeout'; hops: Hop[] }
+  /** suppressedAt: ICMP hatası RFC 1812 gereği üretilmedi (çok yöncü/yayın hedef) */
+  | { kind: 'timeout'; hops: Hop[]; suppressedAt?: string }
   | { kind: 'noip'; hops: Hop[] }
   /** L5-i: TTL ran out on a router (it answers ICMP Time Exceeded from its ingress address) */
   | { kind: 'expired'; at: string; atIp: string; hops: Hop[] }
@@ -416,7 +417,8 @@ export function deliver(d: Derived, from: string, dst: string, spec: PacketSpec 
   let routers = 0
   if (!l3Ifs(d, from).length) return { kind: 'noip', hops }
   const { natPending, ttl: ttl0, ...fields } = spec
-  let ipTtl = ttl0 ?? Infinity
+  // varsayılan: IP TTL üst değeri (döngüde paket TTL'le biter; tur sınırı aşağıda)
+  let ipTtl = ttl0 ?? 255
   let pkt: Packet = { proto: 'icmp', icmpType: 'echo', ...fields, src: fields.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0]!.ip, dst } as Packet
   if (pkt.proto === 'icmp' && pkt.sport === undefined && pkt.icmpType === 'echo') pkt.sport = 1
   const table = () => [...(d.natTable ?? []), ...(natPending ?? []), ...nat]
@@ -424,7 +426,7 @@ export function deliver(d: Derived, from: string, dst: string, spec: PacketSpec 
   let inIf: string | null = null
   let natted = 0
   const end = <T extends Delivery>(r: T): T => ({ ...r, acl, pkt, nat, natted })
-  for (let ttl = 0; ttl < 32; ttl++) {
+  for (let ttl = 0; ttl < 256; ttl++) {
     // L5-d: outside → inside: destination translated back on arrival (before routing)
     if (cur !== from && inIf && routing(cur)) {
       const back = natInbound(d, cur, inIf, pkt, table())
@@ -445,11 +447,20 @@ export function deliver(d: Derived, from: string, dst: string, spec: PacketSpec 
     const r = lookup(d, cur, pkt.dst)
     if (!r) {
       if (cur === from) return end({ kind: 'noroute', hops })
+      // RFC 1812 / IOS: çok yöncü ve yayın hedefleri için ICMP hatası üretilmez
+      if (noIcmpError(d, cur, pkt.dst)) return end({ kind: 'timeout', hops, suppressedAt: cur })
       const at = hops[hops.length - 1]!
       return end({ kind: 'unreach', at: cur, atIp: at.ip, hops })
     }
     const target = arpResolve(d, r.out, r.nh)
-    if (!target) return end({ kind: 'timeout', hops })
+    if (!target) {
+      // MotorBulgusu (I-1): router bağlı ağda ARP'yi çözemezse kaynağa ICMP host unreachable
+      // döner (IOS). ARP girdisi önbellekteyse (hedef sonradan kapandı) çerçeve gönderilir ve
+      // yanıt gelmez (sessiz). Kaynağın kendi ARP başarısızlığı her zaman sessizdir.
+      if (cur !== from && routing(cur) && !noIcmpError(d, cur, pkt.dst) && !d.arpCache?.has(`${cur}>${r.nh}`))
+        return end({ kind: 'unreach', at: cur, atIp: hops[hops.length - 1]!.ip, hops })
+      return end({ kind: 'timeout', hops, ...(cur !== from && routing(cur) && noIcmpError(d, cur, pkt.dst) ? { suppressedAt: cur } : {}) })
+    }
     if (cur !== from && routing(cur) && inIf) {
       // L5-d: inside → outside: source translated after routing, before the outbound ACL
       const o = natOutbound(d, cur, inIf, r.out.name, pkt, table())
@@ -472,6 +483,14 @@ export function deliver(d: Derived, from: string, dst: string, spec: PacketSpec 
     cur = target.dev
   }
   return end({ kind: 'timeout', hops })
+}
+
+/** RFC 1812: çok yöncü, sınırlı yayın ve bu router'ın bağlı ağlarından birinin yayın adresi. */
+export function noIcmpError(d: Derived, dev: string, dst: string): boolean {
+  const n = ipToInt(dst)
+  if (n === null) return false
+  if (n >>> 0 >= 0xe0000000) return true // 224.0.0.0/4 ve üstü (255.255.255.255 dahil)
+  return l3Ifs(d, dev).some((i) => i.prefix < 31 && ((ipToInt(i.ip)! | ~prefixMaskInt(i.prefix)) >>> 0) === n >>> 0)
 }
 
 /** Route choice for dst: outgoing interface and the next hop it is handed to (no ARP). */

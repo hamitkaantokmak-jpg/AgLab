@@ -94,8 +94,10 @@ describe('11: PC show arp', () => {
     const arp = vpcs(rt, 'PC1', 'show arp').join('\n')
     expect(arp).toContain('52:54:00:01:00:40  192.168.10.1 expires in 120 seconds')
     expect(arp).not.toContain('192.168.20.13')
-    // diğer PC'nin tablosu etkilenmez
-    expect(vpcs(rt, 'PC2', 'show arp')).toEqual(['', 'arp table is empty', ''])
+    // I-1 (RFC 826): yanıt veren PC2 isteyen PC1'i ARP önbelleğine alır (yanıtı ona göndermek için
+    // çözmüştür); ping'e karışmayan PC3 ise yalnız ağ geçidini görür, PC1'i değil
+    expect(vpcs(rt, 'PC2', 'show arp')).toEqual(['', '00:50:79:66:00:01  192.168.10.11 expires in 120 seconds ', ''])
+    expect(vpcs(rt, 'PC3', 'show arp').join('\n')).not.toContain('192.168.10.11')
   })
 
   it('yanıtsız hedef ARP tablosuna girmez', () => {
@@ -243,5 +245,75 @@ describe('14: LabQuery yardımcıları', () => {
     expect(rt.query().ping('PC1', '192.168.20.13').replier).toBe('PC3')
     expect(rt.query().ping('PC1', '192.168.10.1').replier).toBe('SW1')
     expect(rt.query().ping('PC1', '192.168.10.99').replier).toBeUndefined()
+  })
+})
+
+describe('MAC yaşlanması (IOS aging-time 300 s; I-1 motor bulgusu)', () => {
+  it('dinamik girdi 300 s trafik görmezse düşer; trafik tazeler', async () => {
+    const { AgingSet, MAC_AGING_SECONDS } = await import('../../src/sim/runtime')
+    const real = Date.now
+    let now = 1_000_000
+    Date.now = () => now
+    try {
+      const s = new AgingSet()
+      s.add('0200.0000.0001')
+      now += MAC_AGING_SECONDS * 1000 - 1
+      s.expire()
+      expect(s.has('0200.0000.0001')).toBe(true)
+      s.add('0200.0000.0001') // trafik tazeler
+      now += MAC_AGING_SECONDS * 1000 - 1
+      s.expire()
+      expect(s.has('0200.0000.0001')).toBe(true)
+      now += 1
+      s.expire()
+      expect(s.has('0200.0000.0001')).toBe(false)
+    } finally {
+      Date.now = real
+    }
+  })
+})
+
+describe('access VLAN değişikliği porttaki dinamik MAC girdilerini siler (I-1 motor bulgusu)', () => {
+  it('PC MAC\'i eski VLAN girdisiyle yeni VLAN\'da görünmez; yeni trafikte yeni VLAN\'da öğrenilir', async () => {
+    const { createLab, runScript } = await import('../../src/sim/index')
+    const { ports } = await import('../../src/sim/util')
+    const rt = createLab({
+      id: 'mv', title: '', summary: '', level: 'İleri', tags: [], brief: [], objectives: [], solution: {}, view: { w: 1, h: 1 },
+      devices: [
+        { id: 'SW1', kind: 'switch', model: 'WS-C2960-24TT-L', mac: '5254.0001.0000', ports: ports('Fa0/1-2'), x: 0, y: 0 },
+        { id: 'PC1', kind: 'pc', mac: '0050.0000.0001', x: 0, y: 0 },
+        { id: 'PC2', kind: 'pc', mac: '0050.0000.0002', x: 0, y: 0 },
+      ],
+      links: [{ a: ['PC1', 'eth0'], b: ['SW1', 'FastEthernet0/1'] }, { a: ['PC2', 'eth0'], b: ['SW1', 'FastEthernet0/2'] }],
+      initialConfig: { SW1: 'vlan 10\nvlan 20\ninterface range fa0/1 - 2\nswitchport mode access\nswitchport access vlan 10' },
+      initialPcs: { PC1: { ip: '10.0.0.1', prefix: 24, gw: null }, PC2: { ip: '10.0.0.2', prefix: 24, gw: null } },
+    })
+    const dyn = () => runScript(rt, 'SW1', 'show mac address-table').filter((l) => l.includes('DYNAMIC'))
+    expect(rt.query().ping('PC1', '10.0.0.2').ok).toBe(true)
+    rt.markSeen(rt.query().ping('PC1', '10.0.0.2').forward!.hops, 'PC1')
+    expect(dyn().some((l) => l.includes('0050.0000.0001') && /^\s*10\s/.test(l))).toBe(true)
+    runScript(rt, 'SW1', 'configure terminal\ninterface fa0/1\nswitchport access vlan 20\nend')
+    expect(dyn().some((l) => l.includes('0050.0000.0001'))).toBe(false)
+  })
+})
+
+describe('clear mac address-table dynamic yalnız o switch\'i temizler (I-1 motor bulgusu)', () => {
+  it('SW1 temizlenir, SW2 tablosu kalır; yeni trafik SW1\'e yeniden öğretir', async () => {
+    const { createLab, runScript } = await import('../../src/sim/index')
+    const { ports } = await import('../../src/sim/util')
+    const sw = (id: string, n: number) => ({ id, kind: 'switch' as const, model: 'WS-C2960-24TT-L', mac: `5254.000${n}.0000`, ports: ports('Fa0/1-2'), x: 0, y: 0 })
+    const rt = createLab({
+      id: 'mc', title: '', summary: '', level: 'İleri', tags: [], brief: [], objectives: [], solution: {}, view: { w: 1, h: 1 },
+      devices: [sw('SW1', 1), sw('SW2', 2), { id: 'PC1', kind: 'pc', mac: '0050.0000.0001', x: 0, y: 0 }, { id: 'PC2', kind: 'pc', mac: '0050.0000.0002', x: 0, y: 0 }],
+      links: [{ a: ['PC1', 'eth0'], b: ['SW1', 'FastEthernet0/1'] }, { a: ['SW1', 'FastEthernet0/2'], b: ['SW2', 'FastEthernet0/2'] }, { a: ['PC2', 'eth0'], b: ['SW2', 'FastEthernet0/1'] }],
+      initialPcs: { PC1: { ip: '10.0.0.1', prefix: 24, gw: null }, PC2: { ip: '10.0.0.2', prefix: 24, gw: null } },
+    })
+    const has = (dev: string) => runScript(rt, dev, 'show mac address-table').some((l) => l.includes('DYNAMIC') && l.includes('0050.0000.0001'))
+    rt.markSeen(rt.query().ping('PC1', '10.0.0.2').forward!.hops, 'PC1')
+    expect([has('SW1'), has('SW2')]).toEqual([true, true])
+    runScript(rt, 'SW1', 'clear mac address-table dynamic')
+    expect([has('SW1'), has('SW2')]).toEqual([false, true])
+    rt.markSeen(rt.query().ping('PC1', '10.0.0.2').forward!.hops, 'PC1')
+    expect(has('SW1')).toBe(true)
   })
 })

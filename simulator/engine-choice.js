@@ -33,9 +33,13 @@ const aglabEngineChoice = (() => {
       : 'Eski motor — nedeni: ' + decision.reasons.join('; ');
   }
   function renderBadge(el, decision) {
-    if (!el) return;
-    el.textContent = badgeText(decision);
-    el.dataset.engine = decision.engine;
+    // I-1: çalışma alanı rozeti her zaman geçerli içeriğin motorunu gösterir
+    const ws = typeof document !== 'undefined' ? document.getElementById('workspaceEngine') : null;
+    for (const x of [el, ws]) {
+      if (!x) continue;
+      x.textContent = badgeText(decision);
+      x.dataset.engine = decision.engine;
+    }
   }
   /**
    * Labber çalışma zamanı: içerik oturumu varsa onun kalıcı çalışma zamanı (terminal ile

@@ -54,6 +54,38 @@ export interface SavedState {
   natMisses?: number
 }
 
+/** IOS `mac address-table aging-time` varsayılanı (saniye). */
+export const MAC_AGING_SECONDS = 300
+
+/**
+ * MotorBulgusu (I-1, test_aglab_mac_learning): Labber'da dinamik MAC girdileri yaşlanmıyordu.
+ * IOS dinamik girdiyi son çerçeveden 300 s sonra siler; girdi her trafikte tazelenir.
+ */
+export class AgingSet extends Set<string> {
+  private at = new Map<string, number>()
+  override add(mac: string): this {
+    this.at?.set(mac, Date.now())
+    return super.add(mac)
+  }
+  override delete(mac: string): boolean {
+    this.at.delete(mac)
+    return super.delete(mac)
+  }
+  override clear(): void {
+    this.at?.clear()
+    super.clear()
+  }
+  /** Süresi dolan dinamik girdileri siler (okunurken: show mac, değerlendirme). */
+  expire(now = Date.now()): void {
+    for (const mac of [...this]) {
+      const t = this.at.get(mac)
+      // kayıttan yüklenen girdinin zamanı yok: yükleme anından sayılır
+      if (t === undefined) this.at.set(mac, now)
+      else if (now - t >= MAC_AGING_SECONDS * 1000) this.delete(mac)
+    }
+  }
+}
+
 export class LabRuntime {
   topo: Topo
   running: Record<string, SwitchConfig> = {}
@@ -61,7 +93,10 @@ export class LabRuntime {
   pcs: Record<string, PcConfig> = {}
   derived!: Derived
   logs: LogLine[] = []
-  seen = new Set<string>()
+  /** MACs learned by switches (sources of real traffic); dynamic entries age out (IOS: 300 s) */
+  seen = new AgingSet()
+  /** I-1: switch başına `clear mac address-table dynamic` ile gizlenen adresler */
+  clearedOn = new Map<string, Set<string>>()
   arp = new Set<string>()
   /** 'dev>ip' ARP requests that went unanswered (shown as Incomplete) */
   arpIncomplete = new Set<string>()
@@ -130,6 +165,7 @@ export class LabRuntime {
     this.derived = this.recompute()
     for (const sw of this.topo.switches) this.startup[sw.id] = clone(this.running[sw.id]!)
     this.seen.clear()
+    this.clearedOn.clear()
     this.arp.clear()
     this.arpIncomplete.clear()
     this.logs = []
@@ -165,6 +201,7 @@ export class LabRuntime {
   commit() {
     const prev = this.derived
     this.derived = this.recompute()
+    this.flushRevlannedPorts(prev)
     this.diffLogs(prev, this.derived)
     this.emit()
   }
@@ -221,6 +258,7 @@ export class LabRuntime {
       d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw)
     }
     d.natTable = this.natTable
+    d.arpCache = this.arp
     return d
   }
 
@@ -275,6 +313,25 @@ export class LabRuntime {
   }
 
   /**
+   * MotorBulgusu (I-1, test_aglab_mac_learning): IOS, portun access/native VLAN'ı ya da
+   * çalışma kipi değişince o portta öğrenilmiş dinamik girdileri siler; adres yeni VLAN'da
+   * ancak yeniden trafik gönderince öğrenilir. Labber eski girdiyi yeni VLAN'da gösteriyordu.
+   */
+  private portSig = new Map<string, string>()
+  private flushRevlannedPorts(_prev: Derived) {
+    const next = new Map<string, string>()
+    for (const [dev, lps] of Object.entries(this.derived.lports))
+      for (const lp of lps) next.set(`${dev}|${lp.name}`, `${lp.opMode}/${lp.cfg.accessVlan}/${lp.cfg.nativeVlan}`)
+    for (const [k, v] of next) {
+      const old = this.portSig.get(k)
+      if (old === undefined || old === v) continue
+      const [dev, name] = k.split('|') as [string, string]
+      for (const e of macTable(this.derived, dev, this.seen)) if (e.port === name) this.seen.delete(e.mac)
+    }
+    this.portSig = next
+  }
+
+  /**
    * Forget MACs a switch learned on this port. The learned set is lab-wide, so those
    * addresses are relearned everywhere on their next frame (real switches age the
    * entries on other switches out after 300 s).
@@ -314,6 +371,7 @@ export class LabRuntime {
 
   /** Read-only queries on the current state, including learned MAC addresses. */
   query(): LabQuery {
+    this.seen.expire()
     return new LabQuery(this.derived, this.startup, this.seen, this.dhcp)
   }
 
@@ -442,12 +500,49 @@ export class LabRuntime {
 
   markSeen(hops: Hop[], from: string) {
     if (!hops.length) return
-    for (const h of hops) {
-      this.seen.add(h.outIf.mac)
-      const owner = l3Ifs(this.derived, h.dev).find((i) => i.ip === h.ip)
-      if (owner) this.seen.add(owner.mac)
-    }
-    void from
+    hops.forEach((h, i) => {
+      this.learn(h.outIf.mac)
+      const owner = l3Ifs(this.derived, h.dev).find((x) => x.ip === h.ip)
+      if (owner) this.learn(owner.mac)
+      // I-1: gönderen (kaynak ya da önceki router) bu atlamanın adresini ARP ile çözdü
+      const prev = i === 0 ? from : hops[i - 1]!.dev
+      this.arp.add(`${prev}>${h.ip}`)
+      this.arpIncomplete.delete(`${prev}>${h.ip}`)
+    })
+  }
+
+  /**
+   * MotorBulgusu (I-1, test_aglab_next_hop): switch'ler yalnız gidiş çerçevelerinden öğreniyordu.
+   * Gerçek switch dönüş çerçevelerinin kaynak MAC'ini de öğrenir (asimetrik yolda farklı router).
+   */
+  markExchange(from: string, forward?: Delivery, back?: Delivery) {
+    if (forward) this.markSeen(forward.hops, from)
+    if (!back) return
+    const replier =
+      forward?.kind === 'ok' ? (forward.hops[forward.hops.length - 1]?.dev ?? from) : forward && 'at' in forward ? forward.at : null
+    if (replier) this.markSeen(back.hops, replier)
+  }
+
+  /** Yeni çerçeve: adres yeniden öğrenilir (temizlenmiş switch'lerde de). */
+  private learn(mac: string) {
+    this.seen.add(mac)
+    for (const hidden of this.clearedOn.values()) hidden.delete(mac)
+  }
+
+  /**
+   * MotorBulgusu (I-1): `clear mac address-table dynamic` yalnız o switch'in tablosunu
+   * temizler (IOS); öğrenilmiş küme lab geneli olduğu için switch başına gizlenir, adres yeni
+   * trafikte yeniden görünür (doğrulanmadı: trafiğin o switch'ten geçip geçmediği ayrımı yok).
+   */
+  clearMacs(dev: string) {
+    this.clearedOn.set(dev, new Set(this.seen))
+  }
+
+  /** Bir switch'in gördüğü öğrenilmiş adresler (temizlenenler hariç). */
+  seenOn(dev: string): Set<string> {
+    this.seen.expire()
+    const hidden = this.clearedOn.get(dev)
+    return hidden?.size ? new Set([...this.seen].filter((m) => !hidden.has(m))) : this.seen
   }
 
   hostname(dev: string): string {
@@ -501,7 +596,7 @@ export class LabRuntime {
     this.running = clone(s.running)
     this.startup = clone(s.startup)
     this.pcs = clone(s.pcs)
-    this.seen = new Set(s.seen)
+    this.seen = new AgingSet(s.seen)
     this.arp = new Set(s.arp)
     this.arpIncomplete = new Set(s.arpIncomplete ?? [])
     this.errdis = new Set(s.errdis ?? [])

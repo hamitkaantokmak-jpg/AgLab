@@ -719,7 +719,7 @@ export function showMac(rt: LabRuntime, dev: string, only?: string): string[] {
     mac,
     line: ` All    ${mac}    STATIC      CPU`,
   }))
-  for (const e of macTable(d, dev, rt.seen))
+  for (const e of macTable(d, dev, rt.seenOn(dev)))
     rows.push({ mac: e.mac, line: padL(e.vlan, 4) + '    ' + pad(e.mac, 18) + pad('DYNAMIC', 12) + shortIf(e.port) })
   const shown = only ? rows.filter((r) => r.mac === only) : rows
   o.push(...shown.map((r) => r.line))

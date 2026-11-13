@@ -1,6 +1,6 @@
 """Shared transit LAN must follow selected next-hop, including recursive and return paths."""
 
-import copy, json, tempfile
+import copy, re, json, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from aglab_test_support import ROOT, launch_chromium
@@ -105,9 +105,16 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         )
         return "\n".join(page.locator("#ptTerminal > div").all_text_contents()[before:])
 
+    # I-1: içe aktarılan topoloji Labber'da. PC (d1, d2) terminali VPCS: başarı 5 yanıt satırı;
+    # router/switch IOS: ilk ping'de ARP için ilk paket kaybolabilir (".!!!!", %80).
+    def ok(out, target="192.168.2.2"):
+        if "Success rate is" in out:
+            return bool(re.search(r"Success rate is (80|100) percent", out))
+        return out.count("84 bytes from " + target) == 5
+
     def ping(success, device="d1"):
         out = cmd(device, "ping 192.168.2.2")
-        assert ("100 percent (5/5)" if success else "0 percent (0/5)") in out, out
+        assert ok(out) == success, out
 
     load(base)
     ping(False)
@@ -121,9 +128,13 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     hairpin["devices"][4]["staticRoutes"] = [route("192.168.2.0", "10.0.0.2")]
     load(hairpin)
     ping(True)
+    # R3'ün 192.168.1.0/24 rotası yok: Time Exceeded'i dönemez (2. atlama sessiz); iz hedefte biter
     trace = cmd("d1", "trace 192.168.2.2")
-    assert "2  *" in trace and "d5" not in trace and "Hedefe ulaşılabilir" in trace, trace
-    assert "ttl-expired d5" in cmd("d1", "show ethernet events")
+    assert re.search(r"^ 2 +\*  \*  \*$", trace, re.M) and "10.0.0.3" not in trace, trace
+    assert "Destination port unreachable" in trace, trace
+    cmd("d1", "ping 192.168.2.2 -T 2")
+    raw = [e.get("raw", "") for e in page.evaluate("aglabLabberSession.trace()")["events"]]
+    assert "ttl-expired d5" in raw, raw
     print(
         "PASS: dead selected next-hop rejected; valid selected path and same-LAN hairpin followed",
         flush=True,
@@ -136,7 +147,9 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     reverse["devices"][4]["staticRoutes"] = [route("192.168.1.0", "10.0.0.1")]
     load(reverse)
     ping(True)
-    assert "0200.0000.0005" in cmd("d6", "show mac address-table")
+    # dönüş R3'ten geçer: switch R3'ün g0/0 MAC'ini öğrenir (IOS arayüz MAC'i)
+    mac_rows = cmd("d6", "show mac address-table")
+    assert "0200.0000.0501" in mac_rows, mac_rows
     # An ACL on a reverse-only router must apply to the actual asymmetric reply.
     for c in [
         "enable",
@@ -148,7 +161,11 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     ]:
         cmd("d5", c)
     ping(False)
-    assert "ACL 101" in cmd("d1", "ping 192.168.2.2")
+    # süzülen paket R2'nin yanıtıdır: R3'ün ICMP bildirimi yanıtın kaynağına (d2) gider, d1 yalnız
+    # zaman aşımı görür. Süzme R3'ün ACL sayacında görünür.
+    assert re.search(r"deny\s+icmp any any \(\d+ match", cmd("d5", "show access-lists")), cmd(
+        "d5", "show access-lists"
+    )
     for c in ["configure terminal", "interface g0/0", "no ip access-group 101 in", "end"]:
         cmd("d5", c)
     ping(True)
@@ -192,11 +209,13 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     gateway = copy.deepcopy(good)
     gateway["devices"][0]["gateway"] = ""
     load(gateway)
-    assert "0 percent (0/5)" in cmd("d1", "ping 10.0.0.2")
-    assert "100 percent" in cmd("d1", "ping 192.168.1.1")
+    # VPCS: ağ geçidi yokken uzak hedef "host (…) not reachable"; yerel router adresi yanıt verir
+    assert "host (10.0.0.2) not reachable" in cmd("d1", "ping 10.0.0.2")
+    assert ok(cmd("d1", "ping 192.168.1.1"), "192.168.1.1")
     gateway["devices"][0]["gateway"] = "10.0.0.2"
     load(gateway)
-    assert "0 percent (0/5)" in cmd("d1", "ping 10.0.0.2")
+    # bağlı ağda olmayan ağ geçidi kullanılamaz
+    assert "bytes from" not in cmd("d1", "ping 10.0.0.2")
     # Logical subinterface numbers are not the dot1Q wire VLAN or physical ingress port.
     tagged = copy.deepcopy(good)
     for index, physical, logical, ip in [
@@ -248,10 +267,10 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     svi["devices"][4]["staticRoutes"] = [route("192.168.2.0", "10.0.0.2")]
     load(svi)
     svi_output = cmd("d2", "ping 10.0.0.6")
-    assert "100 percent" in svi_output, svi_output
+    assert ok(svi_output, "10.0.0.6"), svi_output
     ping(True, "d6")
     rows = cmd("d6", "show mac address-table")
-    assert any("0200.0000.0005" in line and "fa0/3" in line for line in rows.splitlines()), rows
+    assert any("0200.0000.0501" in line and "Fa0/3" in line for line in rows.splitlines()), rows
     print("PASS: asymmetric management SVI gateway and gateway MAC port", flush=True)
     assert not errors, errors
     browser.close()

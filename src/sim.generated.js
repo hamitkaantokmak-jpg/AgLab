@@ -676,7 +676,8 @@ var AgLabSim = (() => {
     const self = (b) => ({ rootPrio: b.prio, rootMac: b.mac, cost: 0, sPrio: b.prio, sMac: b.mac, sPort: 0 });
     const best = {};
     for (const [dev, b] of Object.entries(bridges)) best[dev] = { vec: self(b), via: null };
-    for (let iter = 0; iter < 64; iter++) {
+    const rounds = Object.keys(bridges).length + 1;
+    for (let iter = 0; iter < rounds; iter++) {
       let changed = false;
       const next = {};
       for (const [dev, b] of Object.entries(bridges)) {
@@ -991,7 +992,8 @@ var AgLabSim = (() => {
       if (s.proto ? s.proto === pkt.proto && s.global === pkt.dst && s.gport === pkt.dport : s.global === pkt.dst)
         return { ...pkt, dst: s.local, ...s.proto ? { dport: s.lport } : {} };
     }
-    const ext = table.find((e) => e.dev === dev && e.proto === pkt.proto && e.insideGlobal === pkt.dst && e.gport === pkt.dport);
+    const icmpError = pkt.proto === "icmp" && (pkt.icmpType === "time-exceeded" || pkt.icmpType === "unreachable");
+    const ext = table.find((e) => e.dev === dev && (icmpError ? e.proto !== null : e.proto === pkt.proto) && e.insideGlobal === pkt.dst && e.gport === pkt.dport);
     if (ext) return { ...pkt, dst: ext.insideLocal, dport: ext.lport };
     const simple = table.find((e) => e.dev === dev && e.proto === null && e.insideGlobal === pkt.dst);
     return simple ? { ...pkt, dst: simple.insideLocal } : null;
@@ -1404,7 +1406,7 @@ var AgLabSim = (() => {
     let routers = 0;
     if (!l3Ifs(d, from).length) return { kind: "noip", hops };
     const { natPending, ttl: ttl0, ...fields } = spec;
-    let ipTtl = ttl0 ?? Infinity;
+    let ipTtl = ttl0 ?? 255;
     let pkt = { proto: "icmp", icmpType: "echo", ...fields, src: fields.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0].ip, dst };
     if (pkt.proto === "icmp" && pkt.sport === void 0 && pkt.icmpType === "echo") pkt.sport = 1;
     const table = () => [...d.natTable ?? [], ...natPending ?? [], ...nat];
@@ -1412,7 +1414,7 @@ var AgLabSim = (() => {
     let inIf = null;
     let natted = 0;
     const end = (r) => ({ ...r, acl, pkt, nat, natted });
-    for (let ttl = 0; ttl < 32; ttl++) {
+    for (let ttl = 0; ttl < 256; ttl++) {
       if (cur !== from && inIf && routing(cur)) {
         const back = natInbound(d, cur, inIf, pkt, table());
         if (back) {
@@ -1430,11 +1432,16 @@ var AgLabSim = (() => {
       const r = lookup(d, cur, pkt.dst);
       if (!r) {
         if (cur === from) return end({ kind: "noroute", hops });
+        if (noIcmpError(d, cur, pkt.dst)) return end({ kind: "timeout", hops, suppressedAt: cur });
         const at = hops[hops.length - 1];
         return end({ kind: "unreach", at: cur, atIp: at.ip, hops });
       }
       const target = arpResolve(d, r.out, r.nh);
-      if (!target) return end({ kind: "timeout", hops });
+      if (!target) {
+        if (cur !== from && routing(cur) && !noIcmpError(d, cur, pkt.dst) && !d.arpCache?.has(`${cur}>${r.nh}`))
+          return end({ kind: "unreach", at: cur, atIp: hops[hops.length - 1].ip, hops });
+        return end({ kind: "timeout", hops, ...cur !== from && routing(cur) && noIcmpError(d, cur, pkt.dst) ? { suppressedAt: cur } : {} });
+      }
       if (cur !== from && routing(cur) && inIf) {
         const o = natOutbound(d, cur, inIf, r.out.name, pkt, table());
         if (o === "drop") return end({ kind: "timeout", hops, natMiss: true });
@@ -1456,6 +1463,12 @@ var AgLabSim = (() => {
       cur = target.dev;
     }
     return end({ kind: "timeout", hops });
+  }
+  function noIcmpError(d, dev, dst) {
+    const n = ipToInt(dst);
+    if (n === null) return false;
+    if (n >>> 0 >= 3758096384) return true;
+    return l3Ifs(d, dev).some((i) => i.prefix < 31 && (ipToInt(i.ip) | ~prefixMaskInt(i.prefix)) >>> 0 === n >>> 0);
   }
   function nextHop(d, dev, dst) {
     return lookup(d, dev, dst)?.nh ?? null;
@@ -2692,7 +2705,7 @@ var AgLabSim = (() => {
       mac,
       line: ` All    ${mac}    STATIC      CPU`
     }));
-    for (const e of macTable(d, dev, rt.seen))
+    for (const e of macTable(d, dev, rt.seenOn(dev)))
       rows.push({ mac: e.mac, line: padL(e.vlan, 4) + "    " + pad(e.mac, 18) + pad("DYNAMIC", 12) + shortIf(e.port) });
     const shown = only ? rows.filter((r) => r.mac === only) : rows;
     o.push(...shown.map((r) => r.line));
@@ -3160,7 +3173,7 @@ var AgLabSim = (() => {
     {
       p: "clear mac address-table dynamic",
       run: (x) => {
-        x.rt.seen.clear();
+        x.rt.clearMacs(x.dev);
         x.rt.emit();
       }
     },
@@ -4441,7 +4454,9 @@ var AgLabSim = (() => {
       const d = this.rt.derived;
       const repeat = o.repeat ?? 5;
       const r = ping(d, this.dev, ip2, o.src ? { src: o.src } : {});
-      this.rt.markSeen(r.forward?.hops ?? [], this.dev);
+      const firstKey = `${this.dev}>${r.firstHopArp?.ip ?? ip2}`;
+      const coldArp = (r.forward?.hops.length ?? 0) > 0 && !this.rt.arp.has(firstKey);
+      this.rt.markExchange(this.dev, r.forward, r.back);
       this.rt.countAcl(repeat, r.forward, r.back);
       this.rt.recordNat(repeat, r.forward, r.back);
       const head = ["Type escape sequence to abort.", `Sending ${repeat}, ${o.size ?? 100}-byte ICMP Echos to ${ip2}, timeout is ${o.timeout ?? 2} seconds:`];
@@ -4450,8 +4465,8 @@ var AgLabSim = (() => {
       let marks;
       let ok = 0;
       if (r.ok) {
-        const key = `${this.dev}>${r.firstHopArp?.ip ?? ip2}`;
-        const cold = !this.rt.arp.has(key);
+        const key = firstKey;
+        const cold = coldArp;
         this.rt.arp.add(key);
         this.rt.arpIncomplete.delete(key);
         marks = (cold ? "." : "!") + "!".repeat(repeat - 1);
@@ -4798,7 +4813,7 @@ var AgLabSim = (() => {
     "clear ip                 Clear IP address, mask and gateway",
     "show [arp|ip]            Print the information of the VPC",
     "ping <address> [-c count] [-T ttl]  Ping the network host",
-    "trace <address>          Print the path packets take to network host",
+    "trace <address> [-m ttl] Print the path packets take to network host",
     "nslookup <name>          Ask the DNS server for the address of a host name",
     "curl [http://]<host>[:port][/path]  Fetch a web page (Labber addition: VPCS has no HTTP client)",
     "help, ?                  Print help",
@@ -4863,7 +4878,12 @@ var AgLabSim = (() => {
       if (c === "show" && (!args[0] || args[0] === "ip")) return this.showIp();
       if (c === "show" && args[0] === "arp") return this.showArp();
       if (c === "ping" && args[0]) return this.pingCmd(args);
-      if ((c === "trace" || c === "tracert" || c === "traceroute") && args[0]) return this.trace(args[0]);
+      if ((c === "trace" || c === "tracert" || c === "traceroute") && args[0]) {
+        if (args.length === 1) return this.trace(args[0]);
+        const m = args[1] === "-m" && /^\d+$/.test(args[2] ?? "") && args.length === 3 ? Number(args[2]) : NaN;
+        if (!(m >= 1 && m <= 255)) return [`Invalid options: ${args.slice(1).join(" ")}`];
+        return this.trace(args[0], m);
+      }
       return ['Bad command: "' + line + '". Use ? for help.'];
     }
     ip(args) {
@@ -4951,7 +4971,7 @@ var AgLabSim = (() => {
       if (!c.ip) return [`curl: (7) Failed to connect to ${host} port ${port}: Network is unreachable`];
       this.rt.hostSends(this.dev);
       const r = httpGet(this.rt.derived, this.dev, host, port);
-      this.rt.markSeen(r.forward?.hops ?? [], this.dev);
+      this.rt.markExchange(this.dev, r.forward, r.back);
       this.rt.countAcl(1, r.forward, r.back);
       this.rt.recordNat(1, r.forward, r.back);
       this.rt.emit();
@@ -5037,8 +5057,8 @@ var AgLabSim = (() => {
       if (!sameSubnet(c.ip, dst, c.prefix) && !c.gw) return [`host (${dst}) not reachable`, ""];
       this.rt.hostSends(this.dev);
       const d = this.rt.derived;
-      const r = ping(d, this.dev, dst, ttlOut !== void 0 ? { ttl: ttlOut } : {});
-      this.rt.markSeen(r.forward?.hops ?? [], this.dev);
+      const r = ping(d, this.dev, dst, { ttl: ttlOut ?? 64 });
+      this.rt.markExchange(this.dev, r.forward, r.back);
       this.rt.countAcl(count, r.forward, r.back);
       this.rt.recordNat(count, r.forward, r.back);
       if (r.firstHopArp) this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`);
@@ -5055,13 +5075,13 @@ var AgLabSim = (() => {
       }
       return ["", ...out, ""];
     }
-    trace(dst) {
+    trace(dst, maxHops = 8) {
       if (ipToInt(dst) === null) return [`Cannot resolve ${dst}`];
       const c = this.rt.pcs[this.dev];
       if (!c.ip) return ["No gateway found"];
       this.rt.hostSends(this.dev);
-      const out = [`trace to ${dst}, 8 hops max, press Ctrl+C to stop`];
-      for (let ttl = 1; ttl <= 8; ttl++) {
+      const out = [`trace to ${dst}, ${maxHops} hops max, press Ctrl+C to stop`];
+      for (let ttl = 1; ttl <= maxHops; ttl++) {
         const p = traceProbe(this.rt.derived, this.dev, dst, ttl, 33434 + ttl - 1);
         this.rt.markSeen(p.forward.hops, this.dev);
         this.rt.countAcl(1, p.forward, p.back);
@@ -5643,6 +5663,33 @@ var AgLabSim = (() => {
   };
 
   // src/sim/runtime.ts
+  var MAC_AGING_SECONDS = 300;
+  var AgingSet = class extends Set {
+    constructor() {
+      super(...arguments);
+      __publicField(this, "at", /* @__PURE__ */ new Map());
+    }
+    add(mac) {
+      this.at?.set(mac, Date.now());
+      return super.add(mac);
+    }
+    delete(mac) {
+      this.at.delete(mac);
+      return super.delete(mac);
+    }
+    clear() {
+      this.at?.clear();
+      super.clear();
+    }
+    /** Süresi dolan dinamik girdileri siler (okunurken: show mac, değerlendirme). */
+    expire(now = Date.now()) {
+      for (const mac of [...this]) {
+        const t = this.at.get(mac);
+        if (t === void 0) this.at.set(mac, now);
+        else if (now - t >= MAC_AGING_SECONDS * 1e3) this.delete(mac);
+      }
+    }
+  };
   var LabRuntime = class {
     constructor(def, applyInitial) {
       this.def = def;
@@ -5653,7 +5700,10 @@ var AgLabSim = (() => {
       __publicField(this, "pcs", {});
       __publicField(this, "derived");
       __publicField(this, "logs", []);
-      __publicField(this, "seen", /* @__PURE__ */ new Set());
+      /** MACs learned by switches (sources of real traffic); dynamic entries age out (IOS: 300 s) */
+      __publicField(this, "seen", new AgingSet());
+      /** I-1: switch başına `clear mac address-table dynamic` ile gizlenen adresler */
+      __publicField(this, "clearedOn", /* @__PURE__ */ new Map());
       __publicField(this, "arp", /* @__PURE__ */ new Set());
       /** 'dev>ip' ARP requests that went unanswered (shown as Incomplete) */
       __publicField(this, "arpIncomplete", /* @__PURE__ */ new Set());
@@ -5684,6 +5734,12 @@ var AgLabSim = (() => {
       __publicField(this, "seq", 0);
       __publicField(this, "t0", Date.now());
       __publicField(this, "listeners", /* @__PURE__ */ new Set());
+      /**
+       * MotorBulgusu (I-1, test_aglab_mac_learning): IOS, portun access/native VLAN'ı ya da
+       * çalışma kipi değişince o portta öğrenilmiş dinamik girdileri siler; adres yeni VLAN'da
+       * ancak yeniden trafik gönderince öğrenilir. Labber eski girdiyi yeni VLAN'da gösteriyordu.
+       */
+      __publicField(this, "portSig", /* @__PURE__ */ new Map());
       this.topo = buildTopo(def);
       this.reset();
     }
@@ -5716,6 +5772,7 @@ var AgLabSim = (() => {
       this.derived = this.recompute();
       for (const sw of this.topo.switches) this.startup[sw.id] = clone(this.running[sw.id]);
       this.seen.clear();
+      this.clearedOn.clear();
       this.arp.clear();
       this.arpIncomplete.clear();
       this.logs = [];
@@ -5746,6 +5803,7 @@ var AgLabSim = (() => {
     commit() {
       const prev = this.derived;
       this.derived = this.recompute();
+      this.flushRevlannedPorts(prev);
       this.diffLogs(prev, this.derived);
       this.emit();
     }
@@ -5797,6 +5855,7 @@ var AgLabSim = (() => {
         d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw);
       }
       d.natTable = this.natTable;
+      d.arpCache = this.arp;
       return d;
     }
     /**
@@ -5846,6 +5905,18 @@ var AgLabSim = (() => {
       this.commit();
       return true;
     }
+    flushRevlannedPorts(_prev) {
+      const next = /* @__PURE__ */ new Map();
+      for (const [dev, lps] of Object.entries(this.derived.lports))
+        for (const lp of lps) next.set(`${dev}|${lp.name}`, `${lp.opMode}/${lp.cfg.accessVlan}/${lp.cfg.nativeVlan}`);
+      for (const [k, v] of next) {
+        const old = this.portSig.get(k);
+        if (old === void 0 || old === v) continue;
+        const [dev, name] = k.split("|");
+        for (const e of macTable(this.derived, dev, this.seen)) if (e.port === name) this.seen.delete(e.mac);
+      }
+      this.portSig = next;
+    }
     /**
      * Forget MACs a switch learned on this port. The learned set is lab-wide, so those
      * addresses are relearned everywhere on their next frame (real switches age the
@@ -5884,6 +5955,7 @@ var AgLabSim = (() => {
     }
     /** Read-only queries on the current state, including learned MAC addresses. */
     query() {
+      this.seen.expire();
       return new LabQuery(this.derived, this.startup, this.seen, this.dhcp);
     }
     /**
@@ -5997,12 +6069,43 @@ var AgLabSim = (() => {
     }
     markSeen(hops, from) {
       if (!hops.length) return;
-      for (const h of hops) {
-        this.seen.add(h.outIf.mac);
-        const owner = l3Ifs(this.derived, h.dev).find((i) => i.ip === h.ip);
-        if (owner) this.seen.add(owner.mac);
-      }
-      void from;
+      hops.forEach((h, i) => {
+        this.learn(h.outIf.mac);
+        const owner = l3Ifs(this.derived, h.dev).find((x) => x.ip === h.ip);
+        if (owner) this.learn(owner.mac);
+        const prev = i === 0 ? from : hops[i - 1].dev;
+        this.arp.add(`${prev}>${h.ip}`);
+        this.arpIncomplete.delete(`${prev}>${h.ip}`);
+      });
+    }
+    /**
+     * MotorBulgusu (I-1, test_aglab_next_hop): switch'ler yalnız gidiş çerçevelerinden öğreniyordu.
+     * Gerçek switch dönüş çerçevelerinin kaynak MAC'ini de öğrenir (asimetrik yolda farklı router).
+     */
+    markExchange(from, forward, back) {
+      if (forward) this.markSeen(forward.hops, from);
+      if (!back) return;
+      const replier = forward?.kind === "ok" ? forward.hops[forward.hops.length - 1]?.dev ?? from : forward && "at" in forward ? forward.at : null;
+      if (replier) this.markSeen(back.hops, replier);
+    }
+    /** Yeni çerçeve: adres yeniden öğrenilir (temizlenmiş switch'lerde de). */
+    learn(mac) {
+      this.seen.add(mac);
+      for (const hidden of this.clearedOn.values()) hidden.delete(mac);
+    }
+    /**
+     * MotorBulgusu (I-1): `clear mac address-table dynamic` yalnız o switch'in tablosunu
+     * temizler (IOS); öğrenilmiş küme lab geneli olduğu için switch başına gizlenir, adres yeni
+     * trafikte yeniden görünür (doğrulanmadı: trafiğin o switch'ten geçip geçmediği ayrımı yok).
+     */
+    clearMacs(dev) {
+      this.clearedOn.set(dev, new Set(this.seen));
+    }
+    /** Bir switch'in gördüğü öğrenilmiş adresler (temizlenenler hariç). */
+    seenOn(dev) {
+      this.seen.expire();
+      const hidden = this.clearedOn.get(dev);
+      return hidden?.size ? new Set([...this.seen].filter((m) => !hidden.has(m))) : this.seen;
     }
     hostname(dev) {
       return this.running[dev]?.hostname ?? dev;
@@ -6051,7 +6154,7 @@ var AgLabSim = (() => {
       this.running = clone(s.running);
       this.startup = clone(s.startup);
       this.pcs = clone(s.pcs);
-      this.seen = new Set(s.seen);
+      this.seen = new AgingSet(s.seen);
       this.arp = new Set(s.arp);
       this.arpIncomplete = new Set(s.arpIncomplete ?? []);
       this.errdis = new Set(s.errdis ?? []);
@@ -8195,6 +8298,7 @@ write memory`
     helperAddress: "DHCP relay (helperAddress) yalnız router arayüzünde ve alt arayüzünde eşlenir"
   };
   var sortNum = (a, b) => a - b;
+  var ALL_VLANS2 = Array.from({ length: 4094 }, (_, i) => i + 1);
   function needsEncapFor(model) {
     return /3560/.test(model);
   }
@@ -8969,13 +9073,14 @@ write memory`
       if (d.stpPriorities !== void 0 || Object.keys(prios).length) d.stpPriorities = prios;
       const back = portNames[id] ?? {};
       d.interfaces = d.interfaces ?? {};
-      for (const [canon, phys] of Object.entries(cfg.ifaces)) {
+      for (const [canon, raw] of Object.entries(cfg.ifaces)) {
         const name = back[canon];
         if (!name) continue;
+        const prevMode = d.interfaces[name]?.mode;
+        const phys = raw.mode === "dynamic-auto" && (prevMode === void 0 || prevMode === "access") ? { ...raw, mode: "access", allowed: raw.allowed ?? (d.interfaces[name]?.allowed ?? [1]) } : raw;
         if (phys.mode !== "access" && phys.mode !== "trunk") fail(`${canon} modu ${phys.mode}`);
         if (phys.channel) fail(`${canon} channel-group`);
         if (phys.routed) fail(`${canon} routed port`);
-        if (phys.allowed === null) fail(`${canon} "allowed vlan all"`);
         if (phys.portfast) fail(`${canon} portfast`);
         if (phys.nonegotiate) fail(`${canon} nonegotiate`);
         if (phys.description) fail(`${canon} description`);
@@ -8991,7 +9096,7 @@ write memory`
         };
         put("mode", phys.mode, "access");
         put("vlan", phys.accessVlan, def.accessVlan);
-        put("allowed", phys.allowed, []);
+        put("allowed", phys.allowed ?? ALL_VLANS2, []);
         put("nativeVlan", phys.nativeVlan, def.nativeVlan);
         put("enabled", !phys.shutdown, true);
         const ps = phys.portSecurity;
@@ -9253,10 +9358,39 @@ write memory`
     }
     return steps;
   }
+  function pingDiagnosis(rt, from, dst, r) {
+    if (r.ok) return null;
+    const d = rt.derived;
+    if (r.reason === "off") return "Kaynak cihaz kapalı.";
+    if (r.reason === "noip") return "Kaynakta geçerli IPv4 adresi yok.";
+    if (r.reason === "noroute") return `Kaynakta ${dst} için yol yok (aynı alt ağda değil ve ağ geçidi yok).`;
+    if (r.reason === "unreach") return `${r.unreachFrom} ${dst} için rota bulamadı ya da ACL engelledi (ICMP unreachable).`;
+    if (r.reason === "expired") return `TTL ${r.expiredFrom} üzerinde bitti (ICMP Time Exceeded).`;
+    const at = d.topo.pcAttach[from];
+    if (at) {
+      const lp = d.lportOfPhys[pk(at.dev, at.port)];
+      if (lp?.inactive) return `VLAN ${lp.cfg.accessVlan} ${at.dev} üzerinde tanımlı değil (${at.port} inactive).`;
+      const vlan = lp && lp.opMode === "access" ? lp.cfg.accessVlan : null;
+      if (vlan !== null) {
+        for (const ports2 of Object.values(d.lports))
+          for (const p of ports2)
+            if (p.active && p.opMode === "trunk" && !p.peerIsPc && p.peerDev && !p.routed && !allows(p.cfg, vlan))
+              return `VLAN ${vlan}, ${p.dev} ${p.name} trunk'ında izinli değil (switchport trunk allowed vlan).`;
+      }
+    }
+    return "Yanıt gelmedi: hedefe ya da dönüşte kaynağa katman 2 yolu veya dönüş rotası yok.";
+  }
   function pingTrace(rt, from, dst, portName = (_dev, port) => port, opts = {}) {
     const d = rt.derived;
     const r = ping(d, from, dst, opts.ttl !== void 0 ? { ttl: opts.ttl } : {});
     const records = [];
+    let unreachCode = 1;
+    const pushDiag = () => {
+      const reason = pingDiagnosis(rt, from, dst, r);
+      if (!reason) return;
+      const first = records.findIndex((x) => x.raw.startsWith("discard ") || x.raw.startsWith("icmp-undelivered "));
+      records.splice(first < 0 ? records.length : first, 0, { raw: "diagnostic " + JSON.stringify({ source: from, reason, origin: "adapter-derived" }) });
+    };
     let frameNo = 0;
     let l2 = true;
     const ifOf = (dev, ip2) => l3Ifs(d, dev).find((i) => i.ip === ip2) ?? null;
@@ -9280,7 +9414,7 @@ write memory`
           arp: null,
           // L5-d: NAT'tan sonra kablodaki adresler (hop.src/dst)
           ipv4: { sourceIp: hop.src ?? srcIp, destinationIp: hop.dst ?? dstIp, ttl, protocol: 1 },
-          icmp: { type: kind === "icmp-request" ? 8 : kind === "icmp-time-exceeded" ? 11 : 0, code: 0 }
+          icmp: kind === "icmp-unreachable" ? { type: 3, code: unreachCode } : { type: kind === "icmp-request" ? 8 : kind === "icmp-time-exceeded" ? 11 : 0, code: 0 }
         };
         const ev = { frameId, frame };
         records.push({ raw: `frame ${kind} src ${sender} dst ${frame.destinationMac} vlan ${frame.vlan}`, ...ev });
@@ -9311,6 +9445,7 @@ write memory`
     const src = sourceIp(d, from, dst);
     if (!fwd || !src) {
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "noroute"}` });
+      pushDiag();
       return { ok: false, l2: true, records };
     }
     const reached = walk2("icmp-request", from, fwd.hops, src, dst, opts.ttl ?? 64);
@@ -9321,11 +9456,25 @@ write memory`
       if (!back2 || back2.kind !== "ok" || backTo2 !== from) records.push({ raw: `discard ${backTo2} no-return-path` });
       else records.push({ raw: `icmp-time-exceeded ${from} from ${fwd.at}` });
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "expired"}` });
+      pushDiag();
       return { ok: false, l2, records };
     }
+    if (fwd.kind === "unreach") {
+      unreachCode = fwd.filtered ? 13 : 1;
+      records.push({ raw: `discard ${fwd.at} ${fwd.filtered ? "acl" : "no-route"}` });
+      const back2 = r.back;
+      const backTo2 = back2 ? walk2("icmp-unreachable", fwd.at, back2.hops, fwd.atIp, src, 255) : fwd.at;
+      if (back2 && back2.kind === "ok" && backTo2 === from) records.push({ raw: `icmp-unreachable ${from} from ${fwd.at} code ${unreachCode}` });
+      else records.push({ raw: `discard ${backTo2} no-return-path` });
+      records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "unreach"}` });
+      pushDiag();
+      return { ok: false, l2, records };
+    }
+    if (fwd.kind === "timeout" && fwd.suppressedAt) records.push({ raw: `icmp-error-suppressed ${fwd.suppressedAt}` });
     if (fwd.kind !== "ok") {
-      records.push({ raw: `discard ${reached} ${fwd.kind === "unreach" ? "no-route" : "no-l2-path"}` });
+      records.push({ raw: `discard ${reached} no-l2-path` });
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? fwd.kind}` });
+      pushDiag();
       return { ok: false, l2, records };
     }
     const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from;
@@ -9335,6 +9484,7 @@ write memory`
     if (!r.ok || back.kind !== "ok" || backTo !== from) {
       records.push({ raw: `discard ${backTo} no-return-path` });
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "timeout"}` });
+      pushDiag();
       return { ok: false, l2, records };
     }
     records.push({ raw: `icmp-delivered ${from} from ${replier}` });

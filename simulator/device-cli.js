@@ -1,7 +1,10 @@
 // Reuse the existing CLI and command engine in a device-local, non-modal window.
 var ptDeviceCliState = null;
 var ptDeviceCliClickCandidate = null;
-var ptDeviceCommandHistories = new WeakMap();
+// I-1: cihaz kimliğiyle anahtarlanır. Labber oturumu her komuttan sonra görünümü yeniden yazar
+// (toAglab yeni cihaz nesneleri döndürür); nesne anahtarı geçmişi kaybediyordu. Yeni topoloji
+// (içe aktarma, sıfırlama) geçmişi resetDeviceCliHistories ile temizler.
+var ptDeviceCommandHistories = new Map();
 var ptDeviceHistoryDevice = null;
 function deviceCliDragExceeded(start, event, x, y) {
   return (
@@ -10,11 +13,18 @@ function deviceCliDragExceeded(start, event, x, y) {
 }
 function selectDeviceCliHistory(id) {
   const device = get(id);
-  if (!device || ptDeviceHistoryDevice === device) return;
+  if (!device || ptDeviceHistoryDevice === device.id) return;
   if (ptDeviceHistoryDevice) ptDeviceCommandHistories.set(ptDeviceHistoryDevice, ptCommandHistory);
-  ptCommandHistory = ptDeviceCommandHistories.get(device) || [];
+  ptCommandHistory = ptDeviceCommandHistories.get(device.id) || [];
   ptHistoryIndex = ptCommandHistory.length;
-  ptDeviceHistoryDevice = device;
+  ptDeviceHistoryDevice = device.id;
+}
+/** Yeni topoloji: cihaz başına komut geçmişleri sıfırlanır. */
+function resetDeviceCliHistories() {
+  ptDeviceCommandHistories = new Map();
+  ptDeviceHistoryDevice = null;
+  ptCommandHistory = [];
+  ptHistoryIndex = 0;
 }
 // A device drag owns its touch gesture; scrolling elsewhere on the page remains native.
 const deviceCliGestureStyle = document.createElement('style');

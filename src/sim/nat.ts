@@ -102,7 +102,10 @@ export function natInbound(d: Derived, dev: string, inIf: string, pkt: Packet, t
     if (s.proto ? s.proto === pkt.proto && s.global === pkt.dst && s.gport === pkt.dport : s.global === pkt.dst)
       return { ...pkt, dst: s.local, ...(s.proto ? { dport: s.lport } : {}) }
   }
-  const ext = table.find((e) => e.dev === dev && e.proto === pkt.proto && e.insideGlobal === pkt.dst && e.gport === pkt.dport)
+  // MotorBulgusu (I-1): ICMP hata iletisi (Time Exceeded, unreachable) içindeki özgün UDP/TCP
+  // başlığına göre çevrilir (RFC 5508); dport = özgün kaynak portu/kimliği
+  const icmpError = pkt.proto === 'icmp' && (pkt.icmpType === 'time-exceeded' || pkt.icmpType === 'unreachable')
+  const ext = table.find((e) => e.dev === dev && (icmpError ? e.proto !== null : e.proto === pkt.proto) && e.insideGlobal === pkt.dst && e.gport === pkt.dport)
   if (ext) return { ...pkt, dst: ext.insideLocal, dport: ext.lport }
   const simple = table.find((e) => e.dev === dev && e.proto === null && e.insideGlobal === pkt.dst)
   return simple ? { ...pkt, dst: simple.insideLocal } : null

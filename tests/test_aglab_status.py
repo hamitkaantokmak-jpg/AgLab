@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from playwright.sync_api import sync_playwright
 from aglab_test_support import ROOT, launch_chromium, import_topology
 
@@ -16,7 +17,7 @@ with sync_playwright() as p:
             """([device,cmd])=>{document.querySelector('#ptCliDevice').value=device;document.querySelector('#ptCliInput').value=cmd;document.querySelector('#ptCliForm').requestSubmit()}""",
             [device, cmd],
         )
-        return page.locator("#ptTerminal").inner_text()
+        return "\n".join(page.locator("#ptTerminal > div").all_text_contents())
 
     # Find a connected router port and an unused port from imported topology
     import json
@@ -26,8 +27,11 @@ with sync_playwright() as p:
     print("Router", r["id"], list(r["interfaces"]))
     out = command(r["id"], "show ip interface brief")
     print(out[-1100:])
-    assert "g0/0            192.168.1.1     up     up" in out
-    assert "g0/2            unassigned      administratively down     down" in out
+    # I-1: içe aktarılan topoloji Labber'da; IOS `show ip interface brief` biçimi
+    assert re.search(r"GigabitEthernet0/0\s+192\.168\.1\.1\s+YES manual up\s+up", out), out[-900:]
+    assert re.search(
+        r"GigabitEthernet0/2\s+unassigned\s+YES unset\s+administratively down down", out
+    ), out[-900:]
     # Reimport a topology with the cable administratively disabled in the link model.
     import tempfile
 
@@ -44,7 +48,10 @@ with sync_playwright() as p:
         broken_path = f.name
     import_topology(page, broken_path)
     out = command(r["id"], "show ip interface brief")
-    assert "g0/0            192.168.1.1     down     down" in out, out[-900:]
+    assert re.search(
+        r"GigabitEthernet0/0\s+192\.168\.1\.1\s+YES manual down\s+down",
+        out.split("show ip interface brief")[-1],
+    ), out[-900:]
     assert not errors, errors
     b.close()
 print("PASS: interface brief distinguishes down from up")

@@ -138,7 +138,7 @@ const privPatterns: P[] = [
   {
     p: 'clear mac address-table dynamic',
     run: (x) => {
-      x.rt.seen.clear()
+      x.rt.clearMacs(x.dev)
       x.rt.emit()
     },
   },
@@ -1557,7 +1557,11 @@ export class IosSession {
     const d = this.rt.derived
     const repeat = o.repeat ?? 5
     const r = ping(d, this.dev, ip, o.src ? { src: o.src } : {})
-    this.rt.markSeen(r.forward?.hops ?? [], this.dev)
+    // ilk atlamanın ARP durumu gönderimden önce (markSeen ARP girdisini ekler)
+    const firstKey = `${this.dev}>${r.firstHopArp?.ip ?? ip}`
+    // MotorBulgusu (I-1): kendi adresine ping ARP gerektirmez (atlama yok) — ilk paket kaybolmaz
+    const coldArp = (r.forward?.hops.length ?? 0) > 0 && !this.rt.arp.has(firstKey)
+    this.rt.markExchange(this.dev, r.forward, r.back)
     this.rt.countAcl(repeat, r.forward, r.back)
     this.rt.recordNat(repeat, r.forward, r.back)
     const head = ['Type escape sequence to abort.', `Sending ${repeat}, ${o.size ?? 100}-byte ICMP Echos to ${ip}, timeout is ${o.timeout ?? 2} seconds:`]
@@ -1566,8 +1570,8 @@ export class IosSession {
     let marks: string
     let ok = 0
     if (r.ok) {
-      const key = `${this.dev}>${r.firstHopArp?.ip ?? ip}`
-      const cold = !this.rt.arp.has(key)
+      const key = firstKey
+      const cold = coldArp
       this.rt.arp.add(key)
       this.rt.arpIncomplete.delete(key)
       marks = (cold ? '.' : '!') + '!'.repeat(repeat - 1)

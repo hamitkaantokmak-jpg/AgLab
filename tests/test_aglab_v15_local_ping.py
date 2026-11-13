@@ -30,17 +30,20 @@ with sync_playwright() as p:
         )
         return page.locator("#ptTerminal").inner_text()[len(before) :]
 
+    # I-1: içe aktarılan topoloji Labber'da (IOS). Kendi adresine ping ARP gerektirmez: %100.
     normal = run(base, "d1", "10.0.0.1")
     assert "Success rate is 100 percent" in normal, normal[-700:]
     off = json.loads(json.dumps(base))
     next(d for d in off["devices"] if d["id"] == "d1")["enabled"] = False
     output = run(off, "d1", "10.0.0.1")
-    assert "Kaynak veya hedef cihaz kapalı" in output, output[-700:]
+    # kapalı cihazın konsolu yanıt vermez
+    assert "Cihaz kapalı; konsol yanıt vermiyor" in output, output[-700:]
     shut = json.loads(json.dumps(base))
     r = next(d for d in shut["devices"] if d["id"] == "d1")
     r["interfaces"]["g0/1"]["enabled"] = False
     output = run(shut, "d1", "10.0.0.1")
-    assert "Hedef router arayüzü" in output, output[-700:]
+    # IOS: shutdown arayüzün adresi etkin değildir; kendi adresine ping başarısız
+    assert "Success rate is 0 percent (0/5)" in output, output[-700:]
     assert not errors, errors
     browser.close()
 print("PASS v15: local ping active, powered off, interface shutdown; JS errors 0")

@@ -109,6 +109,7 @@ const FEATURE_REASON: Record<string, string> = {
 }
 
 const sortNum = (a: number, b: number) => a - b
+const ALL_VLANS = Array.from({ length: 4094 }, (_, i) => i + 1)
 
 /** Labber'ın 3560 ailesi gibi trunk için önce encapsulation isteyen modelleri. */
 export function needsEncapFor(model: string): boolean {
@@ -929,13 +930,20 @@ export function toAglab(
     // Arayüzler
     const back = portNames[id] ?? {}
     d.interfaces = d.interfaces ?? {}
-    for (const [canon, phys] of Object.entries(cfg.ifaces)) {
+    for (const [canon, raw] of Object.entries(cfg.ifaces)) {
       const name = back[canon]
       if (!name) continue
+      // I-1: AğLab modelinde DTP yok. IOS varsayılanı `dynamic auto` olan port (PKT IOS metin
+      // yolu, L5-h) AğLab'da `access` gösterimiyle tutulur (dönüştürücüyle aynı eşleme); özgün
+      // kayıt access değilse ya da `dynamic desirable` ise açık hata.
+      const prevMode = d.interfaces[name]?.mode
+      const phys =
+        raw.mode === 'dynamic-auto' && (prevMode === undefined || prevMode === 'access')
+          ? { ...raw, mode: 'access' as const, allowed: raw.allowed ?? ((d.interfaces[name]?.allowed as number[] | undefined) ?? [1]) }
+          : raw
       if (phys.mode !== 'access' && phys.mode !== 'trunk') fail(`${canon} modu ${phys.mode}`)
       if (phys.channel) fail(`${canon} channel-group`)
       if (phys.routed) fail(`${canon} routed port`)
-      if (phys.allowed === null) fail(`${canon} "allowed vlan all"`)
       if (phys.portfast) fail(`${canon} portfast`)
       if (phys.nonegotiate) fail(`${canon} nonegotiate`)
       if (phys.description) fail(`${canon} description`)
@@ -951,7 +959,8 @@ export function toAglab(
       }
       put('mode', phys.mode, 'access')
       put('vlan', phys.accessVlan, def.accessVlan)
-      put('allowed', phys.allowed, [])
+      // I-1: Labber'ın "allowed vlan all"u (null) AğLab'da 1-4094 listesidir (dönüştürücüyle aynı)
+      put('allowed', phys.allowed ?? ALL_VLANS, [])
       put('nativeVlan', phys.nativeVlan, def.nativeVlan)
       put('enabled', !phys.shutdown, true)
       // L5-e: yapılandırılmış güvenli MAC'ler (dinamik öğrenilenler yazılmaz; IOS gibi kalıcı değil)

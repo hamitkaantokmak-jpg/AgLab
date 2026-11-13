@@ -91,18 +91,27 @@ const aglabLabber = (() => {
       '). Motor değiştirilmez; değerlendirme yapılamadı.'
     );
   }
-  /** Labber kararındaki içerik yüklendi: güncel AğLab topolojisinden kalıcı çalışma zamanı. */
-  function start() {
+  /**
+   * Labber kararındaki içerik yüklendi: güncel AğLab topolojisinden kalıcı çalışma zamanı.
+   * I-1: `prebuilt` verilirse (PKT içe aktarımı: runningConfig'ten IOS metin yoluyla kurulmuş
+   * çalışma zamanı, L5-h) o kullanılır; motor kararı yine köprüden.
+   */
+  function start(prebuilt) {
     const r = AgLabSim.toLabber(topology());
     if (r.report.engineDecision !== 'labber') throw new Error(brokenMessage(r.report.reasons));
     state = {
-      rt: AgLabSim.createRuntime(r),
+      rt: prebuilt || AgLabSim.createRuntime(r),
       sessions: {},
       logSeq: {},
       key: key(),
       broken: null,
       writeError: null,
     };
+    // I-1: IOS metin yolundan kurulan durum AğLab görünümüne yazılır (kayıt, denetçi)
+    if (prebuilt) {
+      writeBack();
+      if (state.writeError) say(state.writeError, 'outerr');
+    }
   }
   /**
    * Labber labı (src/labs, E): lab tanımı (LabDef) köprü kullanılmadan doğrudan

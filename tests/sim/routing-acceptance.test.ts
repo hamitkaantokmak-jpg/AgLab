@@ -177,9 +177,9 @@ describe('kabul paritesi: iki router örneği (v11, v13, traceroute, icmp)', () 
 })
 
 describe('bilinen farklar (UYUMLULUK_MATRISI, L4)', () => {
-  it('olmayan host: eski motor Host Unreachable (code 1) döner, Labber zaman aşımı', () => {
-    // Eski motor son router'ın ARP başarısızlığında ICMP Host Unreachable üretir
-    // (test_aglab_icmp_unreachable.py). Labber ARP'si yanıtsız kalan paketi düşürür.
-    expect(ping(sample(), 'd3', '192.168.2.99')).toMatchObject({ ok: false, reason: 'timeout' })
+  it('olmayan host: son router ARP\'yi çözemez, ICMP Host Unreachable döner (IOS; eski motorla aynı)', () => {
+    // I-1 motor bulgusu: Labber önceden paketi sessizce düşürüyordu (zaman aşımı). IOS bağlı ağda
+    // ARP çözülemeyince kaynağa host unreachable (kod 1) gönderir (test_aglab_icmp_unreachable.py).
+    expect(ping(sample(), 'd3', '192.168.2.99')).toMatchObject({ ok: false, reason: 'unreach', unreachFrom: '10.0.0.2' })
   })
 })
