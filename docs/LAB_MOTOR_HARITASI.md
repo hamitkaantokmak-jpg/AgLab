@@ -143,6 +143,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `ospf-subnet-mismatch` | OSPF · Kablo takılı, port up, komşuluk yok | **Labber** |
 | `ospf-static-overrides` | OSPF · OSPF rotayı biliyor ama kullanılmıyor | **Labber** |
 | `ospf-two-faults` | OSPF · Komşuluk geldi, ağ yine yok | **Labber** |
+| `stp-old-switch-root` | STP · Depodan gelen switch kök oldu | **Labber** |
+| `stp-vlan-priority-missing` | STP · VLAN 20'nin kökü yanlış çekirdekte | **Labber** |
+| `stp-no-secondary` | STP · Çekirdek düştü, kök erişim switch'ine kaçtı | **Labber** |
+| `stp-root-primary-access` | STP · Test sırasında yazılan root primary | **Labber** |
+| `stp-two-faults` | STP · Eski switch söküldü, satış hâlâ dolaşıyor | **Labber** |
 
 ## Labber labları (E)
 
@@ -184,9 +189,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 91 | 1 | 92 |
+| Ortak senaryolar | 96 | 1 | 97 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 144 | 1 | 145 |
+| Toplam | 149 | 1 | 150 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

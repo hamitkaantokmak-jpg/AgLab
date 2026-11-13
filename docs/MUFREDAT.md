@@ -65,7 +65,7 @@ CCNA v2.0 beş alana sahip: Ağ altyapısı ve bağlantı %25, Switching ve ağ 
 
 | # | Konu | CCNA v2.0 alanı | Pratik | Motor durumu | Öncelik |
 | --- | --- | --- | --- | --- | --- |
-| 13 | STP/RSTP, PortFast, BPDU/root guard | Switching | Motor | Kısmi (root seçimi var, guard'lar yok) | P1 |
+| 13 | STP/RSTP, PortFast, BPDU/root guard | Switching | Motor | Labber'da var (PVST kök seçimi, öncelik, PortFast, BPDU Guard; Root Guard yok; modelde yalnız öncelik). Detaylı ders ve 5 senaryo var (`docs/dersler/stp.md`, `stp-*`) | P1 |
 | 14 | EtherChannel (LACP) | Switching | Motor | Doğrulanacak | P1 |
 | 15 | OSPFv2 tek alan | IP routing | Motor + Gerçek Lab | Labber'da var (komşuluk, DR/BDR, SPF, maliyet; modelde yalnız network/router-id). Detaylı ders ve 5 senaryo var (`docs/dersler/ospf.md`, `ospf-*`) | P1 |
 | 16 | IPv6 adresleme, SLAAC, NDP, statik rota | Altyapı / routing | Motor | Doğrulanacak | P1 |

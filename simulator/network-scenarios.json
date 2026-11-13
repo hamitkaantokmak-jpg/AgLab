@@ -27570,5 +27570,2664 @@
         }
       ]
     }
+  },
+  {
+    "id": "stp-old-switch-root",
+    "title": "STP · Depodan gelen switch kök oldu",
+    "symptom": "Katlar arasına depodan eski bir switch (SW-ESKI) takıldı. O günden beri iki erişim switch'i arasındaki trafik çekirdek yerine eski switch'ten geçiyor; çekirdekten gelen bağlantılardan biri bloklu. Bağlantı çalışıyor ama yavaş.",
+    "cause": "SW-ESKI'de eski bir laboratuvardan kalma spanning-tree önceliği 4096 var; CORE1'in önceliği 24576. En düşük köprü kimliği kazandığı için SW-ESKI bütün VLAN'larda kök oldu (E1).",
+    "hints": [
+      "STP'de kök kim? Kök köprü bütün yolların merkezidir.",
+      "SW-A'da show spanning-tree vlan 10: Root ID'nin önceliği ve adresi kime ait? Kök portu hangisi?",
+      "Kökü geri almak için SW-ESKI'nin önceliğini kaldır: no spanning-tree vlan 1,10,20 priority (ya da CORE1'i daha düşük yap)."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW-A",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 240,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SW-B",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 240,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "CORE1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "stpPriority": 24576,
+          "x": 200,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "CORE2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "stpPriority": 28672,
+          "x": 560,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-A10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10,
+          "x": 140,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-A20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 20,
+          "x": 260,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "PC-B10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10,
+          "x": 500,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d8",
+          "name": "PC-B20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 20,
+          "x": 620,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d9",
+          "name": "SW-ESKI",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "stpPriority": 4096,
+          "x": 380,
+          "y": 300,
+          "w": 112,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "gi0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "gi0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d2",
+          "portA": "gi0/3",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "gi0/2",
+          "portB": "gi0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d2",
+          "portA": "gi0/3",
+          "portB": "gi0/2",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d8",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d9",
+          "b": "d1",
+          "portA": "gi0/1",
+          "portB": "gi0/3",
+          "up": true
+        },
+        {
+          "a": "d9",
+          "b": "d2",
+          "portA": "gi0/2",
+          "portB": "gi0/3",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW-ESKI",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "no spanning-tree vlan 1,10,20 priority",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-A10",
+      "target": "192.168.10.12",
+      "checks": [
+        {
+          "fn": "stpRoot",
+          "args": [
+            1
+          ],
+          "expected": "CORE1",
+          "label": "VLAN 1 kök köprüsü CORE1"
+        },
+        {
+          "fn": "stpRoot",
+          "args": [
+            10
+          ],
+          "expected": "CORE1",
+          "label": "VLAN 10 kök köprüsü CORE1"
+        },
+        {
+          "fn": "stpRoot",
+          "args": [
+            20
+          ],
+          "expected": "CORE1",
+          "label": "VLAN 20 kök köprüsü CORE1"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-A10",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-A10 → PC-B10 (VLAN 10)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-A20",
+            "192.168.20.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-A20 → PC-B20 (VLAN 20)"
+        }
+      ]
+    }
+  },
+  {
+    "id": "stp-vlan-priority-missing",
+    "title": "STP · VLAN 20'nin kökü yanlış çekirdekte",
+    "symptom": "Tasarımda bütün VLAN'ların kökü CORE1, yedeği CORE2. Satış VLAN'ı (20) eklendiğinden beri show spanning-tree vlan 20 kökün CORE2 olduğunu gösteriyor ve satış trafiği CORE2 üzerinden gidiyor; muhasebe (VLAN 10) normal.",
+    "cause": "CORE1'de öncelik yalnız VLAN 1 ve 10 için yazılmış. VLAN 20'de CORE1 varsayılan 32768'de kaldı; yedek önceliği (28672) olan CORE2 kök oldu (E2).",
+    "hints": [
+      "PVST'de her VLAN'ın kendi ağacı ve kendi kökü vardır.",
+      "show spanning-tree vlan 20 ve vlan 10: kökler aynı switch mi? CORE1'de show running-config | include spanning-tree.",
+      "CORE1 → spanning-tree vlan 20 priority 24576."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW-A",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 240,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SW-B",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 240,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "CORE1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "stpPriorities": {
+            "1": 24576,
+            "10": 24576
+          },
+          "x": 200,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "CORE2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "stpPriority": 28672,
+          "x": 560,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-A10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10,
+          "x": 140,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-A20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 20,
+          "x": 260,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "PC-B10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10,
+          "x": 500,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d8",
+          "name": "PC-B20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 20,
+          "x": 620,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "gi0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "gi0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d2",
+          "portA": "gi0/3",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "gi0/2",
+          "portB": "gi0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d2",
+          "portA": "gi0/3",
+          "portB": "gi0/2",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d8",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "CORE1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "spanning-tree vlan 20 priority 24576",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-A10",
+      "target": "192.168.10.12",
+      "checks": [
+        {
+          "fn": "stpRoot",
+          "args": [
+            1
+          ],
+          "expected": "CORE1",
+          "label": "VLAN 1 kök köprüsü CORE1"
+        },
+        {
+          "fn": "stpRoot",
+          "args": [
+            10
+          ],
+          "expected": "CORE1",
+          "label": "VLAN 10 kök köprüsü CORE1"
+        },
+        {
+          "fn": "stpRoot",
+          "args": [
+            20
+          ],
+          "expected": "CORE1",
+          "label": "VLAN 20 kök köprüsü CORE1"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-A10",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-A10 → PC-B10 (VLAN 10)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-A20",
+            "192.168.20.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-A20 → PC-B20 (VLAN 20)"
+        }
+      ]
+    }
+  },
+  {
+    "id": "stp-no-secondary",
+    "title": "STP · Çekirdek düştü, kök erişim switch'ine kaçtı",
+    "symptom": "CORE1 arızalı ve kapalı; değişim bekleniyor. Bu sürede kök köprü CORE2 olmalıydı ama show spanning-tree kökün SW-A olduğunu gösteriyor.",
+    "cause": "CORE2'ye yedek kök önceliği verilmemiş (32768). CORE1 düşünce eşit öncelikteki switch'lerden en küçük MAC'li SW-A kök oldu (E3).",
+    "hints": [
+      "Birincil kök düşerse kimin kök olacağı önceden belirlenir mi?",
+      "CORE2'de show spanning-tree vlan 10: Bridge ID önceliği ne?",
+      "CORE2 → spanning-tree vlan 1,10,20 root secondary (öncelik 28672)."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW-A",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 240,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SW-B",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 240,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "CORE1",
+          "type": "Switch",
+          "enabled": false,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "stpPriority": 24576,
+          "x": 200,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "CORE2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-A10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10,
+          "x": 140,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-A20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 20,
+          "x": 260,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "PC-B10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10,
+          "x": 500,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d8",
+          "name": "PC-B20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 20,
+          "x": 620,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "gi0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "gi0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d2",
+          "portA": "gi0/3",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "gi0/2",
+          "portB": "gi0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d2",
+          "portA": "gi0/3",
+          "portB": "gi0/2",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d8",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "CORE2",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "spanning-tree vlan 1,10,20 root secondary",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-A10",
+      "target": "192.168.10.12",
+      "checks": [
+        {
+          "fn": "stpRoot",
+          "args": [
+            1
+          ],
+          "expected": "CORE2",
+          "label": "VLAN 1 kök köprüsü CORE2"
+        },
+        {
+          "fn": "stpRoot",
+          "args": [
+            10
+          ],
+          "expected": "CORE2",
+          "label": "VLAN 10 kök köprüsü CORE2"
+        },
+        {
+          "fn": "stpRoot",
+          "args": [
+            20
+          ],
+          "expected": "CORE2",
+          "label": "VLAN 20 kök köprüsü CORE2"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-A10",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-A10 → PC-B10 (VLAN 10)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-A20",
+            "192.168.20.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-A20 → PC-B20 (VLAN 20)"
+        }
+      ]
+    }
+  },
+  {
+    "id": "stp-root-primary-access",
+    "title": "STP · Test sırasında yazılan root primary",
+    "symptom": "Geçen hafta SW-B'de bir test yapıldı. O günden beri muhasebe (VLAN 10) trafiği SW-B üzerinden dolaşıyor; satış (VLAN 20) normal.",
+    "cause": "SW-B'de test sırasında spanning-tree vlan 10 root primary çalıştırılmış ve kaldırılmamış; SW-B'nin VLAN 10 önceliği CORE1'inkinden düşük (20480) (E1).",
+    "hints": [
+      "Yalnız bir VLAN etkileniyorsa o VLAN'ın kökü nerede?",
+      "show spanning-tree vlan 10: Root ID kime ait? SW-B'de show running-config | include spanning-tree.",
+      "SW-B → no spanning-tree vlan 10 root (ya da no spanning-tree vlan 10 priority)."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW-A",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 240,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SW-B",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "stpPriorities": {
+            "10": 20480
+          },
+          "x": 560,
+          "y": 240,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "CORE1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "stpPriority": 24576,
+          "x": 200,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "CORE2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "stpPriority": 28672,
+          "x": 560,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-A10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10,
+          "x": 140,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-A20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 20,
+          "x": 260,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "PC-B10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10,
+          "x": 500,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d8",
+          "name": "PC-B20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 20,
+          "x": 620,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "gi0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "gi0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d2",
+          "portA": "gi0/3",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "gi0/2",
+          "portB": "gi0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d2",
+          "portA": "gi0/3",
+          "portB": "gi0/2",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d8",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW-B",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "no spanning-tree vlan 10 priority",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-A10",
+      "target": "192.168.10.12",
+      "checks": [
+        {
+          "fn": "stpRoot",
+          "args": [
+            1
+          ],
+          "expected": "CORE1",
+          "label": "VLAN 1 kök köprüsü CORE1"
+        },
+        {
+          "fn": "stpRoot",
+          "args": [
+            10
+          ],
+          "expected": "CORE1",
+          "label": "VLAN 10 kök köprüsü CORE1"
+        },
+        {
+          "fn": "stpRoot",
+          "args": [
+            20
+          ],
+          "expected": "CORE1",
+          "label": "VLAN 20 kök köprüsü CORE1"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-A10",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-A10 → PC-B10 (VLAN 10)"
+        }
+      ]
+    }
+  },
+  {
+    "id": "stp-two-faults",
+    "title": "STP · Eski switch söküldü, satış hâlâ dolaşıyor",
+    "symptom": "Depodan gelen eski switch kök olmuştu. Önceliği kaldırıldı; muhasebe artık çekirdekten gidiyor ama satış (VLAN 20) hâlâ erişim switch'i üzerinden dolaşıyor.",
+    "cause": "İki hata: SW-ESKI'de öncelik 4096 (E1) ve CORE1'de VLAN 20 önceliği eksik (E2).",
+    "hints": [
+      "Her düzeltmeden sonra bütün VLAN'larda kökü yeniden kontrol et.",
+      "show spanning-tree vlan 10 ve vlan 20: kökler kim?",
+      "SW-ESKI'de önceliği kaldır; CORE1'de spanning-tree vlan 20 priority 24576."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "SW-A",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 240,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SW-B",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 240,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "CORE1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "stpPriorities": {
+            "1": 24576,
+            "10": 24576
+          },
+          "x": 200,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "CORE2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2",
+            "gi0/3"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/3": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "stpPriority": 28672,
+          "x": 560,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-A10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10,
+          "x": 140,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-A20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 20,
+          "x": 260,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "PC-B10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 10,
+          "x": 500,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d8",
+          "name": "PC-B20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 20,
+          "x": 620,
+          "y": 360,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d9",
+          "name": "SW-ESKI",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "gi0/2"
+          ],
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 1,
+              "allowed": [
+                1,
+                10,
+                20
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "stpPriority": 4096,
+          "x": 380,
+          "y": 300,
+          "w": 112,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "gi0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d1",
+          "portA": "gi0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d2",
+          "portA": "gi0/3",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d1",
+          "portA": "gi0/2",
+          "portB": "gi0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d2",
+          "portA": "gi0/3",
+          "portB": "gi0/2",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d1",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d8",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d9",
+          "b": "d1",
+          "portA": "gi0/1",
+          "portB": "gi0/3",
+          "up": true
+        },
+        {
+          "a": "d9",
+          "b": "d2",
+          "portA": "gi0/2",
+          "portB": "gi0/3",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "SW-ESKI",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "no spanning-tree vlan 1,10,20 priority",
+          "end"
+        ]
+      },
+      {
+        "device": "CORE1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "spanning-tree vlan 20 priority 24576",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-A10",
+      "target": "192.168.10.12",
+      "checks": [
+        {
+          "fn": "stpRoot",
+          "args": [
+            1
+          ],
+          "expected": "CORE1",
+          "label": "VLAN 1 kök köprüsü CORE1"
+        },
+        {
+          "fn": "stpRoot",
+          "args": [
+            10
+          ],
+          "expected": "CORE1",
+          "label": "VLAN 10 kök köprüsü CORE1"
+        },
+        {
+          "fn": "stpRoot",
+          "args": [
+            20
+          ],
+          "expected": "CORE1",
+          "label": "VLAN 20 kök köprüsü CORE1"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-A10",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-A10 → PC-B10 (VLAN 10)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-A20",
+            "192.168.20.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-A20 → PC-B20 (VLAN 20)"
+        }
+      ]
+    }
   }
 ]

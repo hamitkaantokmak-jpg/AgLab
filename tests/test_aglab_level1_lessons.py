@@ -35,6 +35,7 @@ LESSONS = [
     ("acl", "acl", "acl.md", "acl-", "Wildcard ve sıra", "Sayaçlarla teşhis"),
     ("nat", "natpat", "nat-pat.md", "nat-", "PAT'ın üç parçası", "Tablo ve istatistikle teşhis"),
     ("ospf", "ospf", "ospf.md", "ospf-", "Komşuluk şartları", "Teşhis sırası"),
+    ("stp", "stp", "stp.md", "stp-", "Port rolleri", "RSTP ve koruma"),
 ]
 PARTS = [
     "## 1. Neden önemli",
@@ -48,7 +49,7 @@ PARTS = [
 ]
 
 
-LEGACY_ONE_STEP = {"nat-pat", "ospf-area"}
+LEGACY_ONE_STEP = {"nat-pat", "ospf-area", "stp-loop"}
 
 
 class LevelOneLessonDataTests(unittest.TestCase):
