@@ -21,6 +21,7 @@ FLOW = (ROOT / "src/app/student-flow.js").read_text(encoding="utf-8")
 # (kurs kimliği, ayrıntı kimliği, belge, senaryo öneki, kısa kartta, ayrıntıda)
 LESSONS = [
     ("discovery", "discovery", "cdp-lldp.md", "cdp-", "LLDP", "çizimi olmayan ağı çıkarmak"),
+    ("dhcp", "dhcp", "dhcp.md", "dhcp-", "169.254", "adres nereden gelir"),
 ]
 PARTS = [
     "## 1. Neden önemli",

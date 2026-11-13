@@ -8401,5 +8401,2168 @@
         }
       ]
     }
+  },
+  {
+    "id": "dhcp-no-helper",
+    "title": "DHCP · Yeni açılan 2. kat 169.254 alıyor",
+    "symptom": "2. kat ağı (192.168.20.0/24) yeni devreye alındı. Oradaki bilgisayarlar 169.254.x.x adresi alıyor ve hiçbir yere ulaşamıyor. 1. kat sorunsuz; DHCP sunucusu SRV (192.168.100.10) sunucu odasında çalışıyor.",
+    "cause": "R1'in 2. kata bakan Gi0/1 arayüzünde ip helper-address yok; DHCP isteği yayın olduğu için router'dan geçmiyor (E1).",
+    "hints": [
+      "169.254 \"DHCP sunucusundan cevap gelmedi\" demektir. Sunucu ile istemci aynı ağda mı?",
+      "DHCP isteği yayındır, router yayınları geçirmez. 2. kattaki isteği sunucuya kim taşıyacak?",
+      "R1'de show running-config interface g0/1: helper-address var mı? Ekledikten sonra PC'de ip dhcp ile yeniden iste."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 380,
+          "y": 40,
+          "w": 112,
+          "h": 72,
+          "dhcpPools": [
+            {
+              "name": "KAT1",
+              "network": "192.168.10.0",
+              "mask": "255.255.255.0",
+              "defaultRouter": "192.168.10.1",
+              "dnsServer": "192.168.100.10"
+            }
+          ],
+          "dhcpExcluded": [
+            {
+              "start": "192.168.10.1",
+              "end": "192.168.10.20"
+            }
+          ]
+        },
+        {
+          "id": "d2",
+          "name": "SW-KAT1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW-KAT2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW-SRV",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "dhcp": true,
+            "dns": true
+          }
+        },
+        {
+          "id": "d6",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.21",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 120,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dns": "192.168.100.10",
+          "dhcpLease": true
+        },
+        {
+          "id": "d7",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 240,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        },
+        {
+          "id": "d8",
+          "name": "PC-21",
+          "type": "PC",
+          "enabled": true,
+          "ip": "169.254.1.8",
+          "mask": "255.255.0.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 520,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        },
+        {
+          "id": "d9",
+          "name": "PC-22",
+          "type": "PC",
+          "enabled": true,
+          "ip": "169.254.1.9",
+          "mask": "255.255.0.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 640,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d4",
+          "portA": "g0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d8",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d9",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface g0/1",
+          "ip helper-address 192.168.100.10",
+          "end"
+        ]
+      },
+      {
+        "device": "PC-21",
+        "commands": [
+          "ip dhcp"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-21",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "dhcpLease",
+          "args": [
+            "PC-21"
+          ],
+          "field": "server",
+          "expected": "SRV",
+          "label": "PC-21 adresini SRV'den (relay ile) aldı"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-21",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-21 → SRV"
+        }
+      ]
+    }
+  },
+  {
+    "id": "dhcp-wrong-helper",
+    "title": "DHCP · Relay var ama 2. kat yine adres alamıyor",
+    "symptom": "2. kattaki bilgisayarlar 169.254.x.x alıyor. Ağ yöneticisi \"relay'i dün ekledim\" diyor. 1. kat sorunsuz.",
+    "cause": "R1 Gi0/1'deki helper-address 192.168.100.10 yerine 192.168.100.100 yazılmış; o adreste DHCP sunucusu yok (E2).",
+    "hints": [
+      "Relay tanımlı olması yetmez; istek gerçekten doğru sunucuya gidiyor mu?",
+      "R1'de show running-config interface g0/1 ile helper adresini oku, sonra o adrese ping at.",
+      "Yanlış satırı no ip helper-address ile kaldır, doğrusunu yaz; PC'de ip dhcp ile yeniden iste."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true,
+              "helperAddress": "192.168.100.100"
+            },
+            "g0/2": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 380,
+          "y": 40,
+          "w": 112,
+          "h": 72,
+          "dhcpPools": [
+            {
+              "name": "KAT1",
+              "network": "192.168.10.0",
+              "mask": "255.255.255.0",
+              "defaultRouter": "192.168.10.1",
+              "dnsServer": "192.168.100.10"
+            }
+          ],
+          "dhcpExcluded": [
+            {
+              "start": "192.168.10.1",
+              "end": "192.168.10.20"
+            }
+          ]
+        },
+        {
+          "id": "d2",
+          "name": "SW-KAT1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW-KAT2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW-SRV",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "dhcp": true,
+            "dns": true
+          }
+        },
+        {
+          "id": "d6",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.21",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 120,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dns": "192.168.100.10",
+          "dhcpLease": true
+        },
+        {
+          "id": "d7",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 240,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        },
+        {
+          "id": "d8",
+          "name": "PC-21",
+          "type": "PC",
+          "enabled": true,
+          "ip": "169.254.1.8",
+          "mask": "255.255.0.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 520,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        },
+        {
+          "id": "d9",
+          "name": "PC-22",
+          "type": "PC",
+          "enabled": true,
+          "ip": "169.254.1.9",
+          "mask": "255.255.0.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 640,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d4",
+          "portA": "g0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d8",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d9",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface g0/1",
+          "no ip helper-address 192.168.100.100",
+          "ip helper-address 192.168.100.10",
+          "end"
+        ]
+      },
+      {
+        "device": "PC-21",
+        "commands": [
+          "ip dhcp"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-21",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "dhcpLease",
+          "args": [
+            "PC-21"
+          ],
+          "field": "server",
+          "expected": "SRV",
+          "label": "PC-21 adresini SRV'den aldı"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-21",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-21 → SRV"
+        }
+      ]
+    }
+  },
+  {
+    "id": "dhcp-pool-gateway",
+    "title": "DHCP · Adres var, dışarı çıkış yok",
+    "symptom": "1. kattaki bilgisayarlar DHCP'den adres alıyor ve birbirine ulaşıyor. Ama hiçbiri sunucu odasına (192.168.100.10) ya da 2. kata ulaşamıyor. Geçen hafta R1'in DHCP havuzu düzenlenmişti.",
+    "cause": "R1'deki KAT1 havuzunda default-router 192.168.10.254 yazılmış; gateway 192.168.10.1 (E3).",
+    "hints": [
+      "Adres alınıyorsa DHCP çalışıyor. Ama DHCP yalnız adres değil, gateway ve DNS de dağıtır.",
+      "PC-11'de show ip: GATEWAY satırı ne? 192.168.10.254'te bir cihaz var mı?",
+      "R1'de havuzu düzelt (ip dhcp pool KAT1 → default-router), sonra PC'de ip dhcp ile yeni bilgileri al."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true,
+              "helperAddress": "192.168.100.10"
+            },
+            "g0/2": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 380,
+          "y": 40,
+          "w": 112,
+          "h": 72,
+          "dhcpPools": [
+            {
+              "name": "KAT1",
+              "network": "192.168.10.0",
+              "mask": "255.255.255.0",
+              "defaultRouter": "192.168.10.254",
+              "dnsServer": "192.168.100.10"
+            }
+          ],
+          "dhcpExcluded": [
+            {
+              "start": "192.168.10.1",
+              "end": "192.168.10.20"
+            }
+          ]
+        },
+        {
+          "id": "d2",
+          "name": "SW-KAT1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW-KAT2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW-SRV",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "dhcp": true,
+            "dns": true
+          }
+        },
+        {
+          "id": "d6",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.21",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.254",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 120,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dns": "192.168.100.10",
+          "dhcpLease": true
+        },
+        {
+          "id": "d7",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 240,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        },
+        {
+          "id": "d8",
+          "name": "PC-21",
+          "type": "PC",
+          "enabled": true,
+          "ip": "169.254.1.8",
+          "mask": "255.255.0.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 520,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        },
+        {
+          "id": "d9",
+          "name": "PC-22",
+          "type": "PC",
+          "enabled": true,
+          "ip": "169.254.1.9",
+          "mask": "255.255.0.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 640,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d4",
+          "portA": "g0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d8",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d9",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip dhcp pool KAT1",
+          "default-router 192.168.10.1",
+          "end"
+        ]
+      },
+      {
+        "device": "PC-11",
+        "commands": [
+          "ip dhcp"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-11",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "dhcpLease",
+          "args": [
+            "PC-11"
+          ],
+          "field": "server",
+          "expected": "R1",
+          "label": "PC-11 adresini R1'in havuzundan aldı"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → SRV"
+        }
+      ]
+    }
+  },
+  {
+    "id": "dhcp-excluded-all",
+    "title": "DHCP · Eski bilgisayarlar çalışıyor, yeni gelen adres alamıyor",
+    "symptom": "1. kata yeni bir bilgisayar (PC-12) kuruldu ve 169.254.x.x aldı. Kattaki eski bilgisayar (PC-11) sorunsuz çalışıyor. Sabah R1'e \"yazıcılar için birkaç adres ayırdım\" denmişti.",
+    "cause": "ip dhcp excluded-address 192.168.10.1 192.168.10.254 yazılmış: havuzun bütün adresleri dışlanmış, verilecek adres kalmamış (E4).",
+    "hints": [
+      "Eski bilgisayar çalışıyorsa sunucu ve yol sağlam; yeni istemciye neden adres verilmiyor?",
+      "R1'de show ip dhcp pool ve show running-config | include excluded: hangi aralık dışlanmış?",
+      "Yanlış dışlamayı kaldır, yalnız gereken aralığı (192.168.10.1–20) dışla; PC-12'de ip dhcp."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true,
+              "helperAddress": "192.168.100.10"
+            },
+            "g0/2": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 380,
+          "y": 40,
+          "w": 112,
+          "h": 72,
+          "dhcpPools": [
+            {
+              "name": "KAT1",
+              "network": "192.168.10.0",
+              "mask": "255.255.255.0",
+              "defaultRouter": "192.168.10.1",
+              "dnsServer": "192.168.100.10"
+            }
+          ],
+          "dhcpExcluded": [
+            {
+              "start": "192.168.10.1",
+              "end": "192.168.10.254"
+            }
+          ]
+        },
+        {
+          "id": "d2",
+          "name": "SW-KAT1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW-KAT2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW-SRV",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "dhcp": true,
+            "dns": true
+          }
+        },
+        {
+          "id": "d6",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.21",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 120,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dns": "192.168.100.10",
+          "dhcpLease": true
+        },
+        {
+          "id": "d7",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "169.254.1.7",
+          "mask": "255.255.0.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 240,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        },
+        {
+          "id": "d8",
+          "name": "PC-21",
+          "type": "PC",
+          "enabled": true,
+          "ip": "169.254.1.8",
+          "mask": "255.255.0.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 520,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        },
+        {
+          "id": "d9",
+          "name": "PC-22",
+          "type": "PC",
+          "enabled": true,
+          "ip": "169.254.1.9",
+          "mask": "255.255.0.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 640,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d4",
+          "portA": "g0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d8",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d9",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "no ip dhcp excluded-address 192.168.10.1 192.168.10.254",
+          "ip dhcp excluded-address 192.168.10.1 192.168.10.20",
+          "end"
+        ]
+      },
+      {
+        "device": "PC-12",
+        "commands": [
+          "ip dhcp"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-12",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "dhcpLease",
+          "args": [
+            "PC-12"
+          ],
+          "field": "server",
+          "expected": "R1",
+          "label": "PC-12 adresini R1'in havuzundan aldı"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-12",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-12 → SRV"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 hâlâ çalışıyor"
+        }
+      ]
+    }
+  },
+  {
+    "id": "dhcp-two-faults",
+    "title": "DHCP · İki kat, iki farklı belirti",
+    "symptom": "2. kat 169.254.x.x alıyor. 1. kat adres alıyor ama sunucu odasına ulaşamıyor. İkisi de aynı gece yapılan R1 değişikliğinden sonra başladı.",
+    "cause": "R1 Gi0/1'de helper-address yok (E1) ve KAT1 havuzunda default-router yanlış (E3).",
+    "hints": [
+      "Belirtiler farklı: biri adres hiç alamıyor, öteki adres alıp dışarı çıkamıyor. Tek hata ikisini açıklar mı?",
+      "2. kat için relay'e, 1. kat için PC'nin aldığı gateway'e bak.",
+      "İki düzeltmeden sonra iki kattan da birer PC'de ip dhcp ile yeniden iste."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 380,
+          "y": 40,
+          "w": 112,
+          "h": 72,
+          "dhcpPools": [
+            {
+              "name": "KAT1",
+              "network": "192.168.10.0",
+              "mask": "255.255.255.0",
+              "defaultRouter": "192.168.10.254",
+              "dnsServer": "192.168.100.10"
+            }
+          ],
+          "dhcpExcluded": [
+            {
+              "start": "192.168.10.1",
+              "end": "192.168.10.20"
+            }
+          ]
+        },
+        {
+          "id": "d2",
+          "name": "SW-KAT1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW-KAT2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW-SRV",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 180,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "dhcp": true,
+            "dns": true
+          }
+        },
+        {
+          "id": "d6",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.21",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.254",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 120,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dns": "192.168.100.10",
+          "dhcpLease": true
+        },
+        {
+          "id": "d7",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 240,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        },
+        {
+          "id": "d8",
+          "name": "PC-21",
+          "type": "PC",
+          "enabled": true,
+          "ip": "169.254.1.8",
+          "mask": "255.255.0.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 520,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        },
+        {
+          "id": "d9",
+          "name": "PC-22",
+          "type": "PC",
+          "enabled": true,
+          "ip": "169.254.1.9",
+          "mask": "255.255.0.0",
+          "gateway": "",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 640,
+          "y": 320,
+          "w": 104,
+          "h": 72,
+          "dhcpLease": true
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d4",
+          "portA": "g0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d8",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d9",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "interface g0/1",
+          "ip helper-address 192.168.100.10",
+          "exit",
+          "ip dhcp pool KAT1",
+          "default-router 192.168.10.1",
+          "end"
+        ]
+      },
+      {
+        "device": "PC-21",
+        "commands": [
+          "ip dhcp"
+        ]
+      },
+      {
+        "device": "PC-11",
+        "commands": [
+          "ip dhcp"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-21",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "dhcpLease",
+          "args": [
+            "PC-21"
+          ],
+          "field": "server",
+          "expected": "SRV",
+          "label": "PC-21 adresini SRV'den aldı"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-21",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-21 → SRV"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → SRV"
+        }
+      ]
+    }
   }
 ]

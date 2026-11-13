@@ -93,6 +93,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `cdp-gateway-typo` | CDP/LLDP · Kimse gateway'e ulaşamıyor, kablo sağlam | **Labber** |
 | `cdp-no-neighbor` | CDP/LLDP · 1. kat kendi içinde çalışıyor, dışarı çıkamıyor | **Labber** |
 | `cdp-two-faults` | CDP/LLDP · İki hata birden: belgelenmemiş değişiklikler | **Labber** |
+| `dhcp-no-helper` | DHCP · Yeni açılan 2. kat 169.254 alıyor | **Labber** |
+| `dhcp-wrong-helper` | DHCP · Relay var ama 2. kat yine adres alamıyor | **Labber** |
+| `dhcp-pool-gateway` | DHCP · Adres var, dışarı çıkış yok | **Labber** |
+| `dhcp-excluded-all` | DHCP · Eski bilgisayarlar çalışıyor, yeni gelen adres alamıyor | **Labber** |
+| `dhcp-two-faults` | DHCP · İki kat, iki farklı belirti | **Labber** |
 
 ## Labber labları (E)
 
@@ -134,9 +139,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 41 | 1 | 42 |
+| Ortak senaryolar | 46 | 1 | 47 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 94 | 1 | 95 |
+| Toplam | 99 | 1 | 100 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
