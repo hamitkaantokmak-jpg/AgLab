@@ -1,4 +1,4 @@
-# Devir notu — Labber entegrasyonu (L5-g → L5-h → I-1)
+# Devir notu — Labber entegrasyonu (I-1 → FHRP)
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
@@ -28,120 +28,44 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L5-c ACL | #73 | birleşti |
 | L5-d NAT/PAT; `nat-pat` | #74 | birleşti |
 | Plan: L7 sonrası işler (`SONRAKI_ISLER.md`) | #71 | birleşti |
-| L5-g sunucu HTTP servisi (TCP 80, `curl`) | #75 (main'den) | açık (birleşmeyi bekliyor) |
-| L5-h PKT IOS metin yolu (hoşgörülü mod) | #76 (#75'in dalından) | açık (birleşmeyi bekliyor) |
-| L5-i TTL, Time Exceeded, traceroute, extended ping | #77 (#76'nın dalından) | açık (birleşmeyi bekliyor) |
-| I-1 içe aktarma ve düzenleyici Labber'a | — | **sürüyor, PR açılmadı** — WIP dalı `claude/i1-workspace-labber` (#77'nin dalından; aşağıda) |
+| L5-g sunucu HTTP servisi (TCP 80, `curl`) | #75 (main'den) | birleşti |
+| L5-h PKT IOS metin yolu (hoşgörülü mod) | #76 (#75'in dalından) | birleşti |
+| L5-i TTL, Time Exceeded, traceroute, extended ping | #77 (#76'nın dalından) | birleşti |
+| EtherChannel AğLab modelinde (paralel iş) | #80 (main'den) | açık (birleşmeyi bekliyor) |
+| I-1 içe aktarma ve düzenleyici Labber'a | #81 (main'den, dal `claude/i1-workspace-labber`) | açık (birleşmeyi bekliyor) |
+| FHRP (HSRP + VRRP) Labber'da | — | sıradaki iş (aşağıda) |
 
-Yeni zincir (kullanıcı talimatı): **L5-g** (main'den, #75) → **L5-h** (L5-g'nin dalından, #76) →
-**I-1** (L5-h'nin dalından). Her biri ayrı PR; hiçbiri birleştirilmez; CI'ı kullanıcı denetler.
-I-1'in PR'ı açılınca durulur: L6 ve L7'ye başlanmaz.
+**Durum:** #75–#77 birleşti. **I-1 PR'ı #81** açık (taban `main`; #80 EtherChannel birleşmediği için
+onun üstüne kurulmadı). Hiçbir PR birleştirilmedi. L6 ve L7'ye başlanmadı. Sıradaki iş **FHRP**
+(HSRP + VRRP), ayrı PR. Her PR'dan önce `main` çekilir; #80 birleşmişse onun üstüne kurulur
+(`src/sim-bridge/bridge.ts`, `src/app/main.js` çakışmasında iki tarafın kodu korunur).
 
-Eski motorda kalan içerik (`LAB_MOTOR_HARITASI.md`): yalnız `bgp-as` (BGP, kapsam dışı).
-İçe aktarılan `.pkt` ve düzenleyicide kurulan topolojiler I-1'e kadar eski motorda.
+### I-1 (#81) özeti
 
-**Durum:** zincirde açık PR'lar **#75 (L5-g, main'den) → #76 (L5-h, #75'in dalından) → #77
-(L5-i, #76'nın dalından)**. #75 birleşince #76'nın tabanı `main`'e çevrilmeli. Hiçbiri
-birleştirilmedi. I-1 için PR açılmadı: bağlam doldu ve tam hat yeşil değil (aşağıda). L6 ve L7'ye
-başlanmadı.
+- Çalışma alanı (içe aktarma, kayıt, `reset`, Serbest Çalışma) `workspaceDecideEngine` ile köprü
+  kararını alır; Akademi labı, Labber labı ve Sorun Çöz senaryosu yüklenirken atlanır
+  (senaryonun kendi kararı; tek çalışma zamanı).
+- PKT IOS metin yolu yalnız metin güncelse (fark yok, hostname = ad, AğLab görünümü = JSON).
+- Kayıt kaybı (3. sınıf) düzeldi: `dynamic auto` → AğLab `access` gösterimi.
+- Motor ve ürün bulguları: [MOTOR_BULGULARI.md](MOTOR_BULGULARI.md). Kararlar:
+  UYUMLULUK_MATRISI "I-1".
+- 34 test Labber çıktısına gerekçeyle uyarlandı. `test_aglab_frame_forwarding` ve
+  `test_aglab_routed_frames`'in bayat FDB/"Paket adımı" bölümü eski motor kararındaki topolojide
+  (`tests/aglab_test_support.py` `legacy_engine`); L7'de eski motorla silinir.
+- `test_aglab_simulation_mode`: `freeze()` `pause_at` yarışı giderildi; 5 seri + yük altında 5
+  paralel koşu geçti.
+- Yerel: `python run_pipeline.py` 91/91, vitest 566/566, `tsc`, Prettier, black, Python 3.11
+  derlemesi temiz.
 
-### I-1 için kalan adımlar (sıradaki iş)
+### FHRP için (sıradaki iş, kullanıcı talimatı)
 
-**WIP dalı `claude/i1-workspace-labber`** (#77'nin, yani L5-i'nin dalından; itildi, PR değil). Eski
-`claude/i1-import-labber` dalı artık kullanılmıyor. Dalda olanlar:
-- `workspaceDecideEngine()` (`src/app/main.js`): `importTopology`, kayıtlı çalışmanın açılışı ve
-  `reset()` sonunda Sorun Çöz/Akademi ile aynı motor kararı veriliyor; çalışma alanı rozeti
-  `#workspaceEngine`. Akademi labı ve Labber labı atlanıyor.
-- **PKT IOS metin yolu yalnız metin güncelse kullanılıyor:** `cliImport` farkı (`diffs`, `extended`)
-  yoksa ve hostname'ler cihaz adlarıyla aynıysa CLI çalışma zamanı kullanılıyor. Aksi halde
-  (kayıttan sonra düzenlenmiş çalışma) yapısal yol kullanılıyor ve kullanıcının düzenlemesi korunuyor.
-  CLI durumu oturum başlarken AğLab görünümüne yazılıyor (`aglabLabber.start(prebuilt)` →
-  `writeBack`).
-- **3. sınıf (kalıcılık) düzeltildi:** Kök neden, CLI yolunun `dynamic auto` portlarının `toAglab`'da
-  BridgeError vermesiydi. Bu yüzden hiçbir terminal değişikliği görünüme ve kayda yazılmıyordu
-  (hostname, VLAN 77 …). Artık `dynamic auto` port, özgün kayıt `access` ya da yoksa AğLab'da
-  `access` gösterimiyle yazılıyor (L5-h karşılaştırmasıyla aynı eşleme; açık `dynamic desirable`
-  hâlâ hata). `test_aglab_persistence` ad/VLAN/port denetimlerini geçiyor; ping denetimi VPCS
-  çıktısına uyarlandı (dalda).
-
-**Kalan:** aşağıdaki test dosyaları Labber çıktısına gerekçeyle uyarlanmalı (1. ve 4. sınıf;
-gevşetme yok). Satırdaki denetim ilk düşen satırdır; dosyada başka denetimler de olabilir.
-
-| Test | İlk düşen denetim |
-|---|---|
-| `test_aglab_advanced_engines` | `assert "100 percent" in cli(pcs[0]["id"], ["ping 10.0.0.2"])` |
-| `test_aglab_cli_vlan` | `assert "Allowed VLANs: 1,10,12,20" in out, out[-2000:]` |
-| `test_aglab_device_cli` | `AssertionError(` |
-| `test_aglab_dhcp_dns` | `self.assertFalse(self.page.evaluate("aglabLabberSession.active()"))` |
-| `test_aglab_endpoint_ports` | `assert (` |
-| `test_aglab_frame_forwarding` | `assert "unknown-unicast" in events, events` |
-| `test_aglab_icmp_ttl` | `assert ("100 percent (5/5)" if success else "0 percent (0/5)") in out, out` |
-| `test_aglab_icmp_unreachable` | `assert len(hops)` |
-| `test_aglab_import` | `assert cli_test.returncode` |
-| `test_aglab_l2_router_trunk` | `assert ("100 percent (5/5)" if expected else "0 percent (0/5)") in out, out` |
-| `test_aglab_large_topology` | `assert (` |
-| `test_aglab_mac_learning` | `assert any(line.split()[0]` |
-| `test_aglab_next_hop` | `assert ("100 percent (5/5)" if success else "0 percent (0/5)") in out, out` |
-| `test_aglab_pkt_config_context` | `self.assertIn("100 percent" if expected else "0 percent (0/5)", ping())` |
-| `test_aglab_pkt_dhcp_relay` | `self.assertTrue(pc["dhcpLease"])` |
-| `test_aglab_pkt_dot1q` | `assert expected in output, output[-1600:]` |
-| `test_aglab_pkt_port_security` | `self.assertIn(` |
-| `test_aglab_routed_frames` | `assert ("100 percent (5/5)" if success else "0 percent (0/5)") in out, out` |
-| `test_aglab_sim_embedded` | `self.assertEqual(` |
-| `test_aglab_simulation_mode` | `assert "100 percent" in cmd(a, ["ping 10.0.0.2"])` |
-| `test_aglab_status` | `assert "g0/0            192.168.1.1     up     up" in out` |
-| `test_aglab_subinterfaces` | `assert "g0/0.20         192.168.20.1    up     up" in out, out[-1300:]` |
-| `test_aglab_svi_import` | `assert ("100 percent" if index` |
-| `test_aglab_traceroute` | `AssertionError: PC1> traceroute 192.168.2.2 max-hops 5` |
-| `test_aglab_trunk_defaults` | `assert (` |
-| `test_aglab_unified_performance` | `AssertionError(` |
-| `test_aglab_unified_rc` | `AssertionError(` |
-| `test_aglab_v11_routing` | `assert "C 192.168.1.0/24" in out, out[-1500:]` |
-| `test_aglab_v12_gateway` | `assert expected in out, (expected, out[-1300:])` |
-| `test_aglab_v13_router_ping` | `assert "Success rate is 100 percent" in good, good[-1300:]` |
-| `test_aglab_v15_local_ping` | `assert "Success rate is 100 percent" in normal, normal[-700:]` |
-| `test_aglab_v17_ping_validation` | `assert "IPv4" in result, (ip, result[-500:])` |
-| `test_aglab_v7` | `assert "Arayüz IP adresi kaldırıldı." in out` |
-
-Uyarlama notları:
-- **PC ping:** PC terminali VPCS. `Success rate is 100 percent (5/5)` yerine 5 adet
-  `84 bytes from <ip>`; başarısızlıkta `icmp_seq=N timeout` ya da `Destination host unreachable`.
-- **Router/switch IOS ping:** Labber ilk ping'de ARP için `.!!!!` (%80) verir (IOS). %100 bekleyen
-  denetimler ikinci ping'le ya da `!!!!` içermesiyle yazılmalı (`test_aglab_svi_import`,
-  `test_aglab_v15_local_ping`).
-- **`ping … ttl N` (eski PC sözdizimi):** VPCS `ping <ip> -T N` (L5-i).
-- **`trace … max-hops N`:** VPCS'te `-m`. `!N` yerine IOS/VPCS `!H` / `code:1` (UYUMLULUK_MATRISI
-  L4/L5-i).
-- **Eski Türkçe iletiler ve eski `show` biçimleri:** `test_aglab_v7` "Arayüz IP adresi
-  kaldırıldı.", `test_aglab_status` / `test_aglab_subinterfaces` `show ip interface brief`
-  sütunları, `test_aglab_v11_routing` `C 192.168.1.0/24`, `test_aglab_cli_vlan` "Allowed VLANs:"
-  (eski `show interfaces trunk`). Aynı arıza Labber'ın IOS çıktısından doğrulanmalı.
-- **Eski motorda kalacak:** `test_aglab_frame_forwarding` (`show ethernet events`, kullanıcı
-  kararı). Testin topolojisi eski motor kararında olmalı: köprünün desteklemediği bir alan
-  (ör. router `bgp`) eklenerek içe aktarılır; neden UYUMLULUK_MATRISI "L5-i"de yazılı.
-- **4. sınıf:** `test_aglab_sim_embedded` AgLabSim erişim kümeleri (çalışma alanı artık `toLabber`,
-  `createRuntime`, `cliImport` kullanıyor) ve `test_aglab_dhcp_dns` (varsayılan çalışma alanının
-  eski motorda olduğunu varsayıyor).
-- **İncelenmeli (olası gerçek hata):**
-  - `test_aglab_v17_ping_validation`: "Kayıtlı topoloji geçersiz … güvenli başlangıç topolojisi
-    açıldı". Kayıt geri yüklemesinde `workspaceDecideEngine` bir istisna atıyor olabilir.
-  - `test_aglab_pkt_dhcp_relay`: `dhcpLease` yazılmıyor. Labber DHCP kirası geri yazımı ya da
-    eski `ipconfig /renew` komutu.
-  - `test_aglab_l2_router_trunk`: router g0/0'a ping zaman aşımı. Router'ın L2 trunk/alt arayüz
-    eşlemesi CLI yolunda ya da yapısal yolda farklı olabilir.
-  - `test_aglab_mac_learning`: `show mac address-table` satır biçimi ya da öğrenme farkı.
-- **Simulation Mode / yönlendirilen çerçeveler** (`test_aglab_routed_frames`,
-  `test_aglab_simulation_mode`, `test_aglab_icmp_ttl`, `test_aglab_traceroute`,
-  `test_aglab_icmp_unreachable`): Labber izi (`aglabLabberSession.trace()`, L3-b/L5-i kayıt adları)
-  üzerinden yazılmalı.
-
-Kabul (kullanıcı talimatı):
-- Örnek .pkt Labber'da açılır ve uçtan uca ping'ler geçer.
-- Desteklenmeyen özellikli topoloji eski motorda açılır ve rozet nedenini gösterir.
-- `restore_pkt_from_aglab_json.py` testi geçer.
-- Kayıtlı çalışmalar açılır; kayıt biçimi değişmez (L7).
-
-Sonra dur: L6 ve L7'ye başlama.
+HSRP (`standby <grp> ip|priority|preempt|track … decrement`, `track <n> interface <if>
+line-protocol`, v1 MAC `0000.0c07.acXX`, `show standby [brief]`) ve VRRP (`vrrp <grp>
+ip|priority`, preempt varsayılan açık, sahip 255, MAC `0000.5e00.01XX`, `show vrrp brief`). AğLab
+router arayüz alanları `hsrp: [...]`, `vrrp: [...]` iki yönde; `validateTopologyData` reddetmez;
+LabQuery `fhrpActive` + `SHARED_QUERY_FNS`. Testler: seçim, preempt farkı, track devri, grup
+uyuşmazlığında iki Active, güç kesintisi, PC trafiği yeni aktiften. `build_html.py` +
+`build_lab_engine_map.py`, bütün testler, PR (birleştirme yok).
 
 
 Kalan PR'ların kapsamı (kullanıcı talimatı):
