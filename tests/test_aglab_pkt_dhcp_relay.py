@@ -252,7 +252,9 @@ class DhcpRelayImportTests(unittest.TestCase):
                     )
                     # PT server service/pool import is outside scope; activate the existing service via CLI.
                     commands("d3", ["service dhcp on"])
-                    output = commands("d2", ["ipconfig /renew"])
+                    # I-1: içe aktarılan topoloji Labber'da; PC terminali VPCS. Windows'un
+                    # `ipconfig /renew`'u yerine VPCS'in DHCP istemcisi `ip dhcp` kullanılır.
+                    output = commands("d2", ["ip dhcp"])
                     self.assertEqual(
                         bool(page.evaluate("academyEngine.snapshot().devices[1].dhcpLease")),
                         expected,
@@ -268,6 +270,10 @@ class DhcpRelayImportTests(unittest.TestCase):
                                 "enable",
                                 "configure terminal",
                                 "interface " + ("g0/0.10" if tagged else "g0/0"),
+                                # I-1 (Labber, IOS): helper eklemek yanlışını silmez (IOS birden
+                                # çok helper tutar); AğLab modeli tek helper tuttuğu için önce
+                                # yanlış hedef kaldırılır (`no ip helper-address` hepsini siler).
+                                "no ip helper-address",
                                 "ip helper-address " + SERVER,
                                 "no shutdown",
                                 "exit",
@@ -287,12 +293,15 @@ class DhcpRelayImportTests(unittest.TestCase):
                                     "end",
                                 ],
                             )
-                        commands("d2", ["ipconfig /renew"])
+                        commands("d2", ["ip dhcp"])
                     pc = page.evaluate("academyEngine.snapshot().devices[1]")
                     self.assertTrue(pc["dhcpLease"])
                     self.assertEqual(pc["gateway"], "192.168.10.1")
                     self.assertTrue(pc["ip"].startswith("192.168.10."))
-                    self.assertIn("100 percent", commands("d2", ["ping " + SERVER]))
+                    # VPCS ping: 5 yanıt satırı ("84 bytes from …")
+                    self.assertEqual(
+                        commands("d2", ["ping " + SERVER]).count("84 bytes from " + SERVER), 5
+                    )
                     state = page.evaluate("academyEngine.snapshot().devices")
                     page.reload()
                     self.assertEqual(page.evaluate("academyEngine.snapshot().devices"), state)

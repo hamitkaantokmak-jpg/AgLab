@@ -17,7 +17,7 @@ import unittest
 
 from playwright.sync_api import sync_playwright
 
-from aglab_test_support import HTML, launch_chromium
+from aglab_test_support import HTML, launch_chromium, legacy_engine
 
 FIX = ["enable", "configure terminal", "interface gi0/1", "switchport trunk allowed vlan 10,20"]
 
@@ -143,8 +143,10 @@ class DhcpDnsTests(unittest.TestCase):
         self.run_on("SW-01", FIX)
         self.run_on("PC-01", ["ip dhcp"])
         labber_solved = self.view("PC-01")
-        # içe aktarılan topoloji eski motordadır; eski CLI aynı sözdizimini (`ip dhcp`) kabul eder
-        self.page.evaluate("(t) => academyEngine.load(t)", topology)
+        # I-1'den beri içe aktarılan topoloji de motor kararına tabi (bu topoloji Labber'a gider);
+        # parite için aynı topoloji eski motor kararıyla yüklenir (legacy_engine: köprünün eşlemediği
+        # bir alan). Eski CLI aynı sözdizimini (`ip dhcp`) kabul eder.
+        self.page.evaluate("(t) => academyEngine.load(t)", legacy_engine(topology))
         self.assertFalse(self.page.evaluate("aglabLabberSession.active()"))
         pc = lambda: self.page.evaluate(
             "academyEngine.snapshot().devices.find((d) => d.name === 'PC-01')"

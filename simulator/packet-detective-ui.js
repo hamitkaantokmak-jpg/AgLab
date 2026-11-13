@@ -254,14 +254,15 @@
     raw.textContent = step.raw;
     markDevice(step.device);
     markForwardEdge(step);
-    simulate.disabled = eventSource !== 'aglab-js' || !step.eventId;
+    simulate.disabled = !engineSource() || !step.eventId;
     if (reviewed)
       document.dispatchEvent(
         new CustomEvent('aglab:packet-event-viewed', {
           detail: {
             origin: eventSource,
             raw: step.raw,
-            trace: allEvents.legacy || allEvents.events.map((e) => e.raw),
+            // Labber izinde eski motor günlüğü boştur; iz olayların kendisidir.
+            trace: allEvents.legacy?.length ? allEvents.legacy : allEvents.events.map((e) => e.raw),
           },
         }),
       );
@@ -282,10 +283,16 @@
       node.setAttribute('aria-label', 'Sorun kaydıyla ilişkili seçili cihaz');
     }
   };
+  // Simülatörün kendi izi: kaynağı izin kendisinden gelir. I-1: Labber çalışma alanında iz
+  // Labber olay adaptöründendir ve öyle etiketlenir (eski motor adı kullanılmaz).
+  function useEngineTrace(trace) {
+    allEvents = trace;
+    eventSource = trace.origin === 'labber' ? 'labber' : 'aglab-js';
+    eventOrigin = eventSource === 'labber' ? 'Labber motoru' : 'AğLab simülasyon motoru';
+  }
+  const engineSource = () => eventSource === 'aglab-js' || eventSource === 'labber';
   refresh.onclick = () => {
-    eventSource = 'aglab-js';
-    eventOrigin = 'AğLab simülasyon motoru';
-    allEvents = readEthernetTrace();
+    useEngineTrace(readEthernetTrace());
     snapshot = filtered();
     index = 0;
     render(true);
@@ -319,12 +326,10 @@
   document.addEventListener('aglab:detective-select', (event) => {
     const request = event.detail;
     if (!request || typeof request.eventId !== 'string') return;
-    if (eventSource !== 'aglab-js' || allEvents.generation !== request.generation) {
+    if (!engineSource() || allEvents.generation !== request.generation) {
       const current = readEthernetTrace();
       if (current.generation !== request.generation) return;
-      allEvents = current;
-      eventSource = 'aglab-js';
-      eventOrigin = 'AğLab simülasyon motoru';
+      useEngineTrace(current);
     }
     filter.value = 'all';
     snapshot = allEvents;

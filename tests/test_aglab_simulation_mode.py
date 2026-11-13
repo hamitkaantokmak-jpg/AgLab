@@ -3,7 +3,7 @@
 import ast, copy, datetime, json, math, os, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from aglab_test_support import ROOT, TESTS_DIR, launch_chromium, import_topology
+from aglab_test_support import ROOT, TESTS_DIR, launch_chromium, import_topology, ping_succeeded
 
 OUT = Path(os.environ.get("AGLAB_TEST_ARTIFACT_DIR", ROOT / "dist"))
 OUT.mkdir(exist_ok=True, parents=True)
@@ -169,10 +169,21 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     def freeze():
         """Tuvali yerleştir, sonra animasyon saatini durdur; yalnız run_for ile ilerler."""
         settle_canvas()
-        now_ms = page.evaluate("Date.now()")
-        page.clock.pause_at(
-            datetime.datetime.fromtimestamp(now_ms / 1000 + 0.1, datetime.timezone.utc)
-        )
+        # pause_at gelecekte bir an ister. Yük altında Date.now() okuması ile pause_at arasında
+        # 100 ms'den fazla geçebiliyordu ("Cannot fast-forward to the past"). Saat her denemede
+        # yeniden okunur ve pay büyütülür. Donma anında oynayan animasyon yoktur (İleri/Oynat
+        # freeze'den sonra basılır), bu yüzden pay ilerlemeyi değiştirmez.
+        for margin in (0.1, 0.3, 1.0, 3.0):
+            now_ms = page.evaluate("Date.now()")
+            try:
+                page.clock.pause_at(
+                    datetime.datetime.fromtimestamp(now_ms / 1000 + margin, datetime.timezone.utc)
+                )
+                return
+            except Exception as error:
+                if "fast-forward to the past" not in str(error):
+                    raise
+        raise AssertionError("animasyon saati dondurulamadı")
 
     def thaw():
         page.clock.resume()
@@ -191,6 +202,12 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             output.extend(page.locator("#ptTerminal > div").all_text_contents()[before:])
         page.keyboard.press("Escape")
         return "\n".join(output)
+
+    # I-1: serbest çalışma alanı Labber'da; PC terminali VPCS (özet satırı yok: beş "84 bytes
+    # from" başarı, "timeout"/"not reachable" başarısızlık).
+    def ping(id, target, extra=""):
+        out = cmd(id, ["ping " + target + extra])
+        return ping_succeeded(out, target)
 
     def connect(a, b):
         page.select_option("#ptSource", a)
@@ -235,17 +252,17 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     a, b = hosts[0]["id"], hosts[1]["id"]
     connect(a, sw["id"])
     connect(b, sw["id"])
-    cmd(a, ["ip address 10.0.0.1 255.255.255.0"])
-    cmd(b, ["ip address 10.0.0.2 255.255.255.0"])
+    # I-1: PC terminali VPCS; VPCS adres sözdizimi `ip <adres> <maske>` ("ip address" IOS'tur)
+    cmd(a, ["ip 10.0.0.1 255.255.255.0"])
+    cmd(b, ["ip 10.0.0.2 255.255.255.0"])
     good = page.evaluate("academyEngine.snapshot()")
-    assert "100 percent" in cmd(a, ["ping 10.0.0.2"])
+    assert ping(a, "10.0.0.2")
     cold = trace()
     print("PASS setup and actual ping trace", len(cold["events"]), flush=True)
-    assert any(
-        e.get("frame", {}).get("arp", {}).get("senderIp") == "10.0.0.1"
-        for e in cold["events"]
-        if e.get("frame", {}).get("arp")
-    )
+    # I-1: iz Labber olay adaptöründen gelir; Labber ARP çerçevesi üretmez (L3-b, bildirilir).
+    # İlk ping'in ARP çözümü VPCS ARP tablosunda kanıtlanır (`show arp`, gerçek VPCS komutu).
+    assert cold["origin"] == "labber" and "ARP çerçeveleri gösterilmez" in cold["note"], cold
+    assert "10.0.0.2" in cmd(a, ["show arp"])
     assert any(e["kind"] == "wire" for e in cold["events"])
     assert not state()["active"]
     baseline = page.evaluate(
@@ -347,7 +364,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     cdp.send("Emulation.setPageScaleFactor", {"pageScaleFactor": 2})
     aligned()
     cdp.send("Emulation.setPageScaleFactor", {"pageScaleFactor": 1})
-    assert "10.0.0.1" in cmd(a, ["ipconfig"])
+    assert "10.0.0.1" in cmd(a, ["show ip"])  # VPCS: ipconfig yok, `show ip`
     assert state()["active"]
     page.select_option("#simulationSpeed", "4")
     freeze()
@@ -363,15 +380,17 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     assert state()["cursor"] == -1
     select_event(1)
     assert "10.0.0.1" in page.locator("#simulationFields").inner_text()
-    assert "0x0806" in page.locator("#simulationFields").inner_text()
+    # I-1: Labber izinde ilk kablo olayı ICMP (IPv4, 0x0800) çerçevesidir; ARP çerçevesi yok (L3-b)
+    assert "0x0800" in page.locator("#simulationFields").inner_text()
     chosen = state()["event"]["eventId"]
     page.click("#simulationExplain")
-    assert "AğLab simülasyon motoru" in page.locator("#packetDetectiveStatus").inner_text()
+    # I-1: çalışma alanı Labber'da; Paket Dedektifi izin kaynağını doğru adlandırır
+    assert "Labber motoru" in page.locator("#packetDetectiveStatus").inner_text()
     page.click("#packetDetectiveSimulate")
     assert state()["event"]["eventId"] == chosen
     page.locator("#simulationModeBar").evaluate('(n)=>n.scrollIntoView({block:"start"})')
     page.screenshot(path=str(OUT / "simulation-desktop.png"))
-    assert "100 percent" in cmd(a, ["ping 10.0.0.2"])
+    assert ping(a, "10.0.0.2")
     same_capture()
     assert not any(
         e.get("frame", {}).get("protocol") == "ARP" for e in trace()["events"]
@@ -403,27 +422,27 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     expect(page.locator("#packetDetectiveSimulate")).to_be_disabled()
     assert page.evaluate("JSON.stringify(aglabSimulation.trace())") == before_native
     # Failure and repair must reflect actual diagnostics, never fabricated drops.
-    cmd(b, ["ip address 10.0.1.2 255.255.255.0"])
+    cmd(b, ["ip 10.0.1.2 255.255.255.0"])
     assert state()["stale"]
-    assert "0 percent" in cmd(a, ["ping 10.0.0.2"])
+    assert not ping(a, "10.0.0.2")
     same_capture()
     failed = trace()
     diagnostic = next(i for i, e in enumerate(failed["events"]) if e["kind"] == "diagnostic")
     select_event(diagnostic)
     assert "Motor tanısı" in page.locator("#simulationFields").inner_text()
     expect(page.locator("#simulationOverlay")).not_to_be_visible()
-    cmd(b, ["ip address 10.0.0.2 255.255.255.0"])
-    assert "100 percent" in cmd(a, ["ping 10.0.0.2"])
+    cmd(b, ["ip 10.0.0.2 255.255.255.0"])
+    assert ping(a, "10.0.0.2")
     port = next(
         l["portA"] if l["a"] == sw["id"] else l["portB"]
         for l in good["links"]
         if b in (l["a"], l["b"])
     )
     cmd(sw["id"], ["enable", "conf t", "interface " + port, "switchport access vlan 20", "end"])
-    assert "0 percent" in cmd(a, ["ping 10.0.0.2"])
+    assert not ping(a, "10.0.0.2")
     assert not any(e["kind"] == "wire" and e["edge"]["b"] == b for e in trace()["events"])
     cmd(sw["id"], ["enable", "conf t", "interface " + port, "switchport access vlan 10", "end"])
-    assert "100 percent" in cmd(a, ["ping 10.0.0.2"])
+    assert ping(a, "10.0.0.2")
     same_capture()
     report["scenarios"].append(
         "IP failure/repair; VLAN isolation/repair; stale trace stops; no fabricated diagnostic drop point"
@@ -431,12 +450,13 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     shared = json.loads((ROOT / "real-lab/examples/shared-vlan10.aglab.json").read_text())
     load(shared)
     pcs = [d for d in shared["devices"] if d["type"] == "PC"]
-    assert "100 percent" in cmd(pcs[0]["id"], ["ping " + pcs[1]["ip"]])
+    assert ping(pcs[0]["id"], pcs[1]["ip"])
     same_capture()
     report["scenarios"].append("Two-PC two-switch VLAN10/trunk trace")
     one = routed()
     load(one)
-    assert "0 percent" in cmd("P1", ["ping 10.2.0.2 ttl 1"])
+    # I-1: VPCS'te TTL `-T N`; R1 TTL 1'i düşürür ve ICMP Time Exceeded döner (VPCS `*R ...`)
+    assert "TTL expired in transit" in cmd("P1", ["ping 10.2.0.2 -T 1"])
     ttl = trace()
     drop = next(
         i
@@ -446,7 +466,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     select_event(drop)
     assert state()["event"]["device"] == "R1"
     assert page.locator("#simulationPacket").get_attribute("fill") == "#b91c1c"
-    assert "100 percent" in cmd("P1", ["ping 10.2.0.2"])
+    assert ping("P1", "10.2.0.2")
     assert any(
         e.get("frame", {}).get("ipv4", {}).get("ttl") == 63
         for e in trace()["events"]
@@ -457,17 +477,17 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     )
     two = routed(True)
     load(two)
-    assert "100 percent" in cmd("P1", ["ping 10.2.0.2"])
+    assert ping("P1", "10.2.0.2")
     cmd("R1", ["enable", "conf t", "no ip route 10.2.0.0 255.255.255.0 10.255.0.2", "end"])
-    assert "0 percent" in cmd("P1", ["ping 10.2.0.2"])
+    assert not ping("P1", "10.2.0.2")
     same_capture()
     cmd("R1", ["enable", "conf t", "ip route 10.2.0.0 255.255.255.0 10.255.0.2", "end"])
-    assert "100 percent" in cmd("P1", ["ping 10.2.0.2"])
+    assert ping("P1", "10.2.0.2")
     report["scenarios"].append("Two-router static route failure/repair")
     escaped = copy.deepcopy(good)
     next(d for d in escaped["devices"] if d["id"] == a)["name"] = "<img src=bad onerror=alert(1)>"
     load(escaped)
-    assert "100 percent" in cmd(a, ["ping 10.0.0.2"])
+    assert ping(a, "10.0.0.2")
     assert page.locator("#simulationPanel img").count() == 0
     assert "<img src=bad" in page.locator("#simulationRows").inner_text()
     report["scenarios"].append("Untrusted names remain text; native reports cannot populate replay")
@@ -620,7 +640,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     page.click('[data-area="lab"]')
     page.click("#ux14Free")
     load(good)
-    assert "100 percent" in cmd(a, ["ping 10.0.0.2"])
+    assert ping(a, "10.0.0.2")
     page.locator("#simulationMode").tap()
     expect(page.locator("#simulationAnimation")).not_to_be_checked()
     expect(page.locator("#simulationAnimation")).to_be_disabled()
@@ -629,7 +649,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     assert not page.locator("#simulationEvents").evaluate("(d)=>d.open")
     page.locator("#simulationEvents summary").tap()
     page.locator('#simulationRows tr[data-pos="1"] button').tap()
-    assert "0x0806" in page.locator("#simulationFields").inner_text()
+    assert "0x0800" in page.locator("#simulationFields").inner_text()  # Labber: ICMP çerçevesi
     page.locator('#ptCanvas g[data-id="' + a + '"]').tap()
     expect(page.locator("#ptCliDevice")).to_have_value(a)
     page.keyboard.press("Escape")

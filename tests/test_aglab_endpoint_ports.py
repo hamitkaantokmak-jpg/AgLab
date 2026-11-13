@@ -6,7 +6,7 @@ import json
 import tempfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, assert_vpcs_ping
 from convert_pkt_to_aglab import convert
 from playwright.sync_api import sync_playwright
 
@@ -117,9 +117,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             document.querySelector('#ptCliForm').requestSubmit();
         }""")
         output = page.locator("#ptTerminal").inner_text()[len(before) :]
-        assert (
-            "Success rate is 100 percent" if success else "Success rate is 0 percent"
-        ) in output, output
+        # I-1: topoloji Labber'da; PC terminali VPCS
+        assert_vpcs_ping(output, "192.168.2.2", success)
     assert not errors, errors
     browser.close()
 print(
