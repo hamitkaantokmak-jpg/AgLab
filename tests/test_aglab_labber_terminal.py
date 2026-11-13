@@ -305,6 +305,46 @@ class LabberTerminalTests(unittest.TestCase):
         self.assertTrue(any(x.strip().endswith("*  *  *") for x in out), out)
         self.assertFalse(any("Destination port unreachable" in x for x in out), out)
 
+    def test_etherchannel_from_terminal(self):
+        """EtherChannel AğLab modelinde: Labber senaryosunda terminalden kurulan kanal "kayda
+        yazılamadı" uyarısı vermez; görünümde channelGroup ve po<N> olur; askıya alınan üye
+        show etherchannel summary'de görünür; aynı topoloji motor kararında Labber kalır."""
+        self.load("vlan-wrong-access")
+        view = self.page.evaluate("aglabSharedEngine.view()")
+        ids = {d["name"]: d["id"] for d in view["devices"]}
+        uplink = next(l for l in view["links"] if {l["a"], l["b"]} == {ids["SW1"], ids["SW2"]})
+        port = {uplink["a"]: uplink["portA"], uplink["b"]: uplink["portB"]}
+        for name, mode in [("SW1", "active"), ("SW2", "passive")]:
+            self.device(name)
+            for line in [
+                "enable",
+                "configure terminal",
+                "interface " + port[ids[name]],
+                "channel-group 1 mode " + mode,
+                "end",
+            ]:
+                out = self.type(line)
+                self.assertFalse(any("yazılamadı" in x for x in out), out)
+        self.device("SW1")
+        out = self.type("show etherchannel summary")
+        self.assertTrue(any("Po1(SU)" in x and "LACP" in x for x in out), out)
+        view = self.page.evaluate("aglabSharedEngine.view()")
+        sw1 = next(d for d in view["devices"] if d["name"] == "SW1")
+        self.assertEqual(
+            sw1["interfaces"][port[ids["SW1"]]]["channelGroup"], {"id": 1, "mode": "active"}
+        )
+        self.assertIn("po1", sw1["interfaces"])
+        self.assertEqual(
+            self.page.evaluate("t => aglabEngineChoice.decide(t).engine", view), "labber"
+        )
+        # izinli liste farkı: üye askıya alınır (s), kanal düşer
+        self.type("configure terminal")
+        self.type("interface " + port[ids["SW1"]])
+        self.type("switchport trunk allowed vlan 1")
+        self.type("end")
+        out = self.type("show etherchannel summary")
+        self.assertTrue(any("(s)" in x for x in out), out)
+
     def test_acl_from_terminal(self):
         """L5-c: terminalden standart ACL; yanlış yönde etkisiz, doğru yönde PC-01 trafiğini keser,
         sayaçlar `show access-lists`'te, uygulanan liste `show ip interface`'te."""

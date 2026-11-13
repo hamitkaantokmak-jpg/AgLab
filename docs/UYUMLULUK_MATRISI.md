@@ -321,6 +321,22 @@ modellediği alanlarda karşılaştırılır. Kabul testleri (`test_aglab_import
 | Simulation Mode | Eski iz (`ttl-expired`, `ttl-forward`) | Labber izi aynı kayıt adlarıyla: `ttl-forward <router> N -> N-1`, `ttl-expired <router>`, `icmp-time-exceeded` çerçeveleri (ICMP tip 11), `icmp-time-exceeded <kaynak> from <router>` | Kabul edildi. |
 | `show ethernet events` | Var | **Eklenmez** | Gerçek IOS komutu değil; eski motor kararındaki topolojide kalır, L7'de silinir. |
 
+Çalışma alanındaki (içe aktarılan/düzenleyici) eski testler (`test_aglab_icmp_ttl`, `test_aglab_traceroute`, `test_aglab_routed_frames`, `test_aglab_simulation_mode`) bu PR'da eski motorda kalır (çalışma alanı I-1'e kadar eski motorda); I-1'de Labber izine uyarlanır.
+
+## EtherChannel AğLab modelinde (köprü kararları)
+
+Labber EtherChannel'ı zaten modelliyordu (`channel-group N mode on|active|passive|desirable|auto`,
+Port-channel, `show etherchannel summary`, `LabQuery.etherchannel`); köprü bunu AğLab modelinde
+ifade edemediği için `toAglab` duruyordu ("kayda yazılamadı"). Artık iki yönde eşlenir.
+
+| Konu | AğLab | Labber | Karar |
+|---|---|---|---|
+| Üyelik | Switch fiziksel arayüzünde `channelGroup: {id: 1-48, mode}` | `PhysIfConfig.channel` | **Köprü iki yönde.** Grupta farklı protokol (LACP/PAgP/on) **reddedilir** (IOS "Channel protocol mismatch"). |
+| Port-channel | Switch arayüzü `po<N>`: `mode`, `vlan`, `allowed`, `nativeVlan`, `enabled` | `SwitchConfig.pos[N]` | **Köprü iki yönde.** Kaydı olmayan grupta Port-channel ilk üyenin ayarlarından oluşur (IOS `channel-group` gibi). Numara 1-48 dışında reddedilir; bilinmeyen alan `unsupported`. Port-channel silinince `po<N>` ve üyelerin `channelGroup` alanı da silinir. |
+| Askıya alınan üye | Üyenin kendi `allowed`/mod alanları yazılır | Port-channel ile uyuşmayan üye `(s)` | Labber kararı; gidiş-dönüşte durum aynı kalır (`tests/sim/etherchannel-bridge.test.ts`). |
+| AğLab'da ifade edilemeyen | — | Port-channel'da `dynamic` mod, "allowed vlan all", `nonegotiate`, `portfast`, açıklama; routed EtherChannel | `toAglab` `BridgeError` (sessiz kayıp yok). |
+| Eski motor | `validateTopologyData` alanları kabul eder (biçim denetimiyle) | — | Eski motor kanal davranışını simüle etmez; kanal içeren geçerli topoloji köprüde ifade edildiği için motor kararı Labber'dır. Geçersiz kanal alanı reddedilirse karar eski motor olur ve rozet nedeni gösterir. |
+| Senaryo hedefi | — | `SHARED_QUERY_FNS` `etherchannel` (dev, grup → `{up, protocol, bundled}`) | Kabul edildi. |
 L5-i PR'ında çalışma alanı testleri eski motordaydı; I-1 bunları Labber izine uyarladı (aşağıdaki I-1 bölümü).
 
 ## I-1: içe aktarma ve düzenleyici Labber'da (Labber kararları)

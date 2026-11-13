@@ -7039,6 +7039,8 @@ labLoadExperiment();
       'aclOut',
       'portSecurity',
       'errdisabled',
+      // EtherChannel üyeliği {id, mode}; Port-channel arayüzü `po<N>` (Labber modeller)
+      'channelGroup',
       // FHRP: HSRP/VRRP grupları. Ayrıntılı denetim köprüde (toLabber): geçersiz grup içeriği
       // reddedilmez, köprü raporu nedeniyle motor kararına gider.
       'hsrp',
@@ -7113,6 +7115,24 @@ labLoadExperiment();
             Number(iface.vlan) > 4094)
         )
           throw new Error('Arayüz VLAN değeri geçersiz: ' + d.id + '/' + ifName);
+        if (
+          iface.channelGroup !== undefined &&
+          (!iface.channelGroup ||
+            typeof iface.channelGroup !== 'object' ||
+            Object.keys(iface.channelGroup).some((k) => !['id', 'mode'].includes(k)) ||
+            !Number.isInteger(iface.channelGroup.id) ||
+            iface.channelGroup.id < 1 ||
+            iface.channelGroup.id > 48 ||
+            !['on', 'active', 'passive', 'desirable', 'auto'].includes(iface.channelGroup.mode))
+        )
+          throw new Error('EtherChannel channelGroup geçersiz: ' + d.id + '/' + ifName);
+        if (
+          /^po\d+$/i.test(ifName) &&
+          (d.type !== 'Switch' || !(Number(ifName.slice(2)) >= 1 && Number(ifName.slice(2)) <= 48))
+        )
+          throw new Error(
+            "Port-channel arayüzü yalnız switch'te ve 1-48 olmalı: " + d.id + '/' + ifName,
+          );
         if (iface.natRole !== undefined && !['inside', 'outside'].includes(iface.natRole))
           throw new Error('NAT arayüz rolü inside/outside olmalı: ' + d.id + '/' + ifName);
         if (

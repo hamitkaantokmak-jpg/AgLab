@@ -109,6 +109,8 @@ const SHARED_QUERY_FNS = new Set([
   // L5-b
   'dhcpLease',
   'dnsLookup',
+  // EtherChannel: Port-channel durumu (up, protocol, bundled) — show etherchannel summary
+  'etherchannel',
   // FHRP: router arayüzü grupta HSRP Active / VRRP Master mı
   'fhrpActive',
 ]);

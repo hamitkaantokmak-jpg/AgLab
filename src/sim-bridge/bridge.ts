@@ -9,7 +9,7 @@
 // aracı kullanır.
 
 import AgLabMacAddress from '../../simulator/mac-address.js'
-import { defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED_VLANS } from '../sim/config'
+import { defaultL2, defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED_VLANS } from '../sim/config'
 import { LabRuntime } from '../sim/runtime'
 import { isApipa } from '../sim/dhcp'
 import { aclKind, normAddr } from '../sim/acl'
@@ -84,7 +84,11 @@ const OSPF_FIELDS = new Set(['pid', 'routerId', 'networks'])
 // Server: PC gibi bir uç; L5-b'den beri DHCP ve DNS servisleri modellenir (HTTP L5-d'ye kadar yok).
 const SERVER_FIELDS = new Set([...PC_FIELDS, 'services'])
 // L5-e: `portSecurity {enabled, max, violation, macs}` ve `errdisabled` (port security ihlali)
-const PHYS_FIELDS = new Set(['mode', 'vlan', 'allowed', 'nativeVlan', 'enabled', 'portSecurity', 'errdisabled'])
+// EtherChannel: üye portta `channelGroup {id, mode}`, switch'te `po<N>` (Port-channel) arayüzü
+const PHYS_FIELDS = new Set(['mode', 'vlan', 'allowed', 'nativeVlan', 'enabled', 'portSecurity', 'errdisabled', 'channelGroup'])
+const PO_FIELDS = new Set(['mode', 'vlan', 'allowed', 'nativeVlan', 'enabled'])
+const CHANNEL_MODES = ['on', 'active', 'passive', 'desirable', 'auto'] as const
+const channelProto = (m: string) => (m === 'on' ? 'on' : m === 'active' || m === 'passive' ? 'lacp' : 'pagp')
 const PS_FIELDS = ['enabled', 'max', 'violation', 'macs']
 /** AğLab MAC yazımı (`02:00:00:00:00:fe`) ⇄ Labber (`0200.0000.00fe`). */
 const colonMac = (dotted: string) => dotted.replace(/\./g, '').match(/../g)!.join(':')
@@ -763,7 +767,16 @@ export function toLabber(input: AglabTopology): BridgeResult {
       else if (value !== null) cfg.stpPriority[String(n)] = value
     }
     // Arayüzler
+    /** EtherChannel: `po<N>` kayıtları üyelerden sonra işlenir (üyeden Port-channel türetilmez) */
+    const poRecords: [string, number, AglabInterface][] = []
     for (const [name, iface] of Object.entries(ifaces)) {
+      const po = /^po(\d+)$/i.exec(name)
+      if (po) {
+        const n = Number(po[1])
+        if (!Number.isInteger(n) || n < 1 || n > 48) reject(id, name, 'Port-channel numarası 1-48 olmalı')
+        else poRecords.push([name, n, iface])
+        continue
+      }
       if (/^vlan\d+$/i.test(name)) {
         const v = vlanId(name.slice(4))
         if (v === null) {
@@ -832,7 +845,58 @@ export function toLabber(input: AglabTopology): BridgeResult {
         if (typeof iface.errdisabled !== 'boolean') reject(id, `${name}.errdisabled`, 'errdisabled true/false olmalı')
         else if (iface.errdisabled) errdis.push(`${id}|${c}`)
       }
+      if (iface['channelGroup'] !== undefined && iface['channelGroup'] !== null) {
+        const g = iface['channelGroup'] as Record<string, unknown>
+        const gid = g?.['id']
+        if (
+          typeof g !== 'object' || Object.keys(g).some((k) => k !== 'id' && k !== 'mode') ||
+          !Number.isInteger(gid) || (gid as number) < 1 || (gid as number) > 48 || !CHANNEL_MODES.includes(g['mode'] as never)
+        )
+          reject(id, `${name}.channelGroup`, 'channelGroup {id: 1-48, mode: on|active|passive|desirable|auto} olmalı')
+        else phys.channel = { id: gid as number, mode: g['mode'] as (typeof CHANNEL_MODES)[number] }
+      }
       cfg.ifaces[c] = phys
+    }
+    // EtherChannel: bir gruptaki üyeler aynı protokolü kullanır (IOS "Channel protocol mismatch")
+    const groups = new Map<number, string>()
+    for (const [c, phys] of Object.entries(cfg.ifaces)) {
+      if (!phys.channel) continue
+      const p = channelProto(phys.channel.mode)
+      const prev = groups.get(phys.channel.id)
+      if (prev !== undefined && prev !== p) reject(id, `${c}.channelGroup`, `Port-channel ${phys.channel.id} üyelerinde protokol uyuşmazlığı`)
+      groups.set(phys.channel.id, p)
+    }
+    for (const [name, n, iface] of poRecords) {
+      for (const key of Object.keys(iface))
+        if (!PO_FIELDS.has(key)) unsupported(id, `interfaces.${name}.${key}`, 'Labber\'da karşılığı olmayan Port-channel alanı')
+      const mode = iface.mode ?? 'access'
+      if (mode !== 'access' && mode !== 'trunk') {
+        reject(id, `${name}.mode`, 'Bilinmeyen port modu: ' + mode)
+        continue
+      }
+      const access = vlanId(iface.vlan ?? 1)
+      const native = vlanId(iface.nativeVlan ?? 1)
+      const allowed = (iface.allowed ?? []).map(vlanId)
+      if (access === null || native === null || allowed.some((x) => x === null)) {
+        reject(id, name, 'Geçersiz Port-channel VLAN değeri')
+        continue
+      }
+      cfg.pos[String(n)] = {
+        ...defaultL2(),
+        shutdown: iface.enabled === false,
+        mode,
+        accessVlan: access,
+        nativeVlan: native,
+        allowed: [...new Set(allowed as number[])].sort(sortNum),
+        encapDot1q: mode === 'trunk' && !!sw.needsEncap,
+      }
+    }
+    // Port-channel kaydı olmayan grup: IOS ilk üyenin ayarlarından oluşturur (channel-group)
+    for (const [c, phys] of Object.entries(cfg.ifaces)) {
+      if (!phys.channel || cfg.pos[String(phys.channel.id)]) continue
+      const { channel: _c, routed: _r, ip: _i, l3: _l, bpduguard: _b, portSecurity: _p, cdp: _cd, lldpTx: _t, lldpRx: _x, ...l2 } = phys
+      cfg.pos[String(phys.channel.id)] = { ...defaultL2(), ...l2, shutdown: false, description: '' }
+      void [_c, _r, _i, _l, _b, _p, _cd, _t, _x, c]
     }
     // AğLab'da arayüz kaydı olmayan port: access, VLAN 1 (Labber varsayılanı dynamic-auto).
     for (const c of canonPorts)
@@ -990,7 +1054,28 @@ export function toAglab(
       throw new BridgeError(`${id}: ${what} AğLab modelinde ifade edilemiyor`)
     }
     if (cfg.hostname !== (d.name || id)) d.name = cfg.hostname
-    if (cfg.pos && Object.keys(cfg.pos).length) fail('Port-channel')
+    // EtherChannel: Port-channel arayüzleri `po<N>` olarak (özgün kayıt alanları korunur)
+    d.interfaces = d.interfaces ?? {}
+    for (const name of Object.keys(d.interfaces)) {
+      const m = /^po(\d+)$/i.exec(name)
+      if (m && !cfg.pos[String(Number(m[1]))]) delete d.interfaces[name]
+    }
+    for (const [n, po] of Object.entries(cfg.pos)) {
+      if (po.mode !== 'access' && po.mode !== 'trunk') fail(`Port-channel${n} modu ${po.mode}`)
+      if (po.allowed === null) fail(`Port-channel${n} "allowed vlan all"`)
+      if (po.nonegotiate) fail(`Port-channel${n} nonegotiate`)
+      if (po.portfast) fail(`Port-channel${n} portfast`)
+      if (po.description) fail(`Port-channel${n} description`)
+      const key = Object.keys(d.interfaces).find((k) => /^po\d+$/i.test(k) && Number(k.slice(2)) === Number(n)) ?? `po${n}`
+      const prev = d.interfaces[key]
+      const next: AglabInterface = prev ? { ...prev } : {}
+      next.mode = po.mode
+      next.vlan = po.accessVlan
+      next.allowed = [...po.allowed!]
+      next.nativeVlan = po.nativeVlan
+      next.enabled = !po.shutdown
+      d.interfaces[key] = next
+    }
     if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail('Loopback')
     if (cfg.ospf) fail('OSPF')
     if (cfg.routes.length) fail('statik rota')
@@ -1034,7 +1119,6 @@ export function toAglab(
           ? { ...raw, mode: 'access' as const, allowed: raw.allowed ?? ((d.interfaces[name]?.allowed as number[] | undefined) ?? [1]) }
           : raw
       if (phys.mode !== 'access' && phys.mode !== 'trunk') fail(`${canon} modu ${phys.mode}`)
-      if (phys.channel) fail(`${canon} channel-group`)
       if (phys.routed) fail(`${canon} routed port`)
       if (phys.portfast) fail(`${canon} portfast`)
       if (phys.nonegotiate) fail(`${canon} nonegotiate`)
@@ -1066,6 +1150,9 @@ export function toAglab(
         const on = rt.errdis.has(`${id}|${canon}`)
         if ((prev && 'errdisabled' in prev) || on) iface['errdisabled'] = on
       }
+      // EtherChannel üyeliği
+      if (phys.channel) iface['channelGroup'] = { id: phys.channel.id, mode: phys.channel.mode }
+      else delete iface['channelGroup']
       if (prev || Object.keys(iface).length) d.interfaces[name] = iface
     }
     for (const [v, svi] of Object.entries(cfg.svis)) {

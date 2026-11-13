@@ -8621,7 +8621,10 @@ write memory`
   var STATIC_ROUTE_FIELDS = /* @__PURE__ */ new Set(["network", "mask", "nextHop", "distance"]);
   var OSPF_FIELDS = /* @__PURE__ */ new Set(["pid", "routerId", "networks"]);
   var SERVER_FIELDS = /* @__PURE__ */ new Set([...PC_FIELDS, "services"]);
-  var PHYS_FIELDS = /* @__PURE__ */ new Set(["mode", "vlan", "allowed", "nativeVlan", "enabled", "portSecurity", "errdisabled"]);
+  var PHYS_FIELDS = /* @__PURE__ */ new Set(["mode", "vlan", "allowed", "nativeVlan", "enabled", "portSecurity", "errdisabled", "channelGroup"]);
+  var PO_FIELDS = /* @__PURE__ */ new Set(["mode", "vlan", "allowed", "nativeVlan", "enabled"]);
+  var CHANNEL_MODES = ["on", "active", "passive", "desirable", "auto"];
+  var channelProto = (m) => m === "on" ? "on" : m === "active" || m === "passive" ? "lacp" : "pagp";
   var PS_FIELDS = ["enabled", "max", "violation", "macs"];
   var colonMac = (dotted) => dotted.replace(/\./g, "").match(/../g).join(":");
   var SVI_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "vlan"]);
@@ -9269,7 +9272,15 @@ write memory`
         if (n === null) reject(id, `stpPriorities.${v}`, "Geçersiz VLAN kimliği");
         else if (value !== null) cfg.stpPriority[String(n)] = value;
       }
+      const poRecords = [];
       for (const [name, iface] of Object.entries(ifaces)) {
+        const po = /^po(\d+)$/i.exec(name);
+        if (po) {
+          const n = Number(po[1]);
+          if (!Number.isInteger(n) || n < 1 || n > 48) reject(id, name, "Port-channel numarası 1-48 olmalı");
+          else poRecords.push([name, n, iface]);
+          continue;
+        }
         if (/^vlan\d+$/i.test(name)) {
           const v = vlanId(name.slice(4));
           if (v === null) {
@@ -9334,7 +9345,53 @@ write memory`
           if (typeof iface.errdisabled !== "boolean") reject(id, `${name}.errdisabled`, "errdisabled true/false olmalı");
           else if (iface.errdisabled) errdis.push(`${id}|${c}`);
         }
+        if (iface["channelGroup"] !== void 0 && iface["channelGroup"] !== null) {
+          const g = iface["channelGroup"];
+          const gid = g?.["id"];
+          if (typeof g !== "object" || Object.keys(g).some((k) => k !== "id" && k !== "mode") || !Number.isInteger(gid) || gid < 1 || gid > 48 || !CHANNEL_MODES.includes(g["mode"]))
+            reject(id, `${name}.channelGroup`, "channelGroup {id: 1-48, mode: on|active|passive|desirable|auto} olmalı");
+          else phys.channel = { id: gid, mode: g["mode"] };
+        }
         cfg.ifaces[c] = phys;
+      }
+      const groups = /* @__PURE__ */ new Map();
+      for (const [c, phys] of Object.entries(cfg.ifaces)) {
+        if (!phys.channel) continue;
+        const p = channelProto(phys.channel.mode);
+        const prev = groups.get(phys.channel.id);
+        if (prev !== void 0 && prev !== p) reject(id, `${c}.channelGroup`, `Port-channel ${phys.channel.id} üyelerinde protokol uyuşmazlığı`);
+        groups.set(phys.channel.id, p);
+      }
+      for (const [name, n, iface] of poRecords) {
+        for (const key of Object.keys(iface))
+          if (!PO_FIELDS.has(key)) unsupported(id, `interfaces.${name}.${key}`, "Labber'da karşılığı olmayan Port-channel alanı");
+        const mode = iface.mode ?? "access";
+        if (mode !== "access" && mode !== "trunk") {
+          reject(id, `${name}.mode`, "Bilinmeyen port modu: " + mode);
+          continue;
+        }
+        const access = vlanId(iface.vlan ?? 1);
+        const native = vlanId(iface.nativeVlan ?? 1);
+        const allowed = (iface.allowed ?? []).map(vlanId);
+        if (access === null || native === null || allowed.some((x) => x === null)) {
+          reject(id, name, "Geçersiz Port-channel VLAN değeri");
+          continue;
+        }
+        cfg.pos[String(n)] = {
+          ...defaultL2(),
+          shutdown: iface.enabled === false,
+          mode,
+          accessVlan: access,
+          nativeVlan: native,
+          allowed: [...new Set(allowed)].sort(sortNum),
+          encapDot1q: mode === "trunk" && !!sw.needsEncap
+        };
+      }
+      for (const [c, phys] of Object.entries(cfg.ifaces)) {
+        if (!phys.channel || cfg.pos[String(phys.channel.id)]) continue;
+        const { channel: _c, routed: _r, ip: _i, l3: _l, bpduguard: _b, portSecurity: _p, cdp: _cd, lldpTx: _t, lldpRx: _x, ...l2 } = phys;
+        cfg.pos[String(phys.channel.id)] = { ...defaultL2(), ...l2, shutdown: false, description: "" };
+        void [_c, _r, _i, _l, _b, _p, _cd, _t, _x, c];
       }
       for (const c of canonPorts)
         if (!Object.keys(ifaces).some((n) => canonPort(n) === c)) {
@@ -9469,7 +9526,27 @@ write memory`
         throw new BridgeError(`${id}: ${what} AğLab modelinde ifade edilemiyor`);
       };
       if (cfg.hostname !== (d.name || id)) d.name = cfg.hostname;
-      if (cfg.pos && Object.keys(cfg.pos).length) fail("Port-channel");
+      d.interfaces = d.interfaces ?? {};
+      for (const name of Object.keys(d.interfaces)) {
+        const m = /^po(\d+)$/i.exec(name);
+        if (m && !cfg.pos[String(Number(m[1]))]) delete d.interfaces[name];
+      }
+      for (const [n, po] of Object.entries(cfg.pos)) {
+        if (po.mode !== "access" && po.mode !== "trunk") fail(`Port-channel${n} modu ${po.mode}`);
+        if (po.allowed === null) fail(`Port-channel${n} "allowed vlan all"`);
+        if (po.nonegotiate) fail(`Port-channel${n} nonegotiate`);
+        if (po.portfast) fail(`Port-channel${n} portfast`);
+        if (po.description) fail(`Port-channel${n} description`);
+        const key = Object.keys(d.interfaces).find((k) => /^po\d+$/i.test(k) && Number(k.slice(2)) === Number(n)) ?? `po${n}`;
+        const prev = d.interfaces[key];
+        const next = prev ? { ...prev } : {};
+        next.mode = po.mode;
+        next.vlan = po.accessVlan;
+        next.allowed = [...po.allowed];
+        next.nativeVlan = po.nativeVlan;
+        next.enabled = !po.shutdown;
+        d.interfaces[key] = next;
+      }
       if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail("Loopback");
       if (cfg.ospf) fail("OSPF");
       if (cfg.routes.length) fail("statik rota");
@@ -9504,7 +9581,6 @@ write memory`
         const prevMode = d.interfaces[name]?.mode;
         const phys = raw.mode === "dynamic-auto" && (prevMode === void 0 || prevMode === "access") ? { ...raw, mode: "access", allowed: raw.allowed ?? (d.interfaces[name]?.allowed ?? [1]) } : raw;
         if (phys.mode !== "access" && phys.mode !== "trunk") fail(`${canon} modu ${phys.mode}`);
-        if (phys.channel) fail(`${canon} channel-group`);
         if (phys.routed) fail(`${canon} routed port`);
         if (phys.portfast) fail(`${canon} portfast`);
         if (phys.nonegotiate) fail(`${canon} nonegotiate`);
@@ -9534,6 +9610,8 @@ write memory`
           const on = rt.errdis.has(`${id}|${canon}`);
           if (prev && "errdisabled" in prev || on) iface["errdisabled"] = on;
         }
+        if (phys.channel) iface["channelGroup"] = { id: phys.channel.id, mode: phys.channel.mode };
+        else delete iface["channelGroup"];
         if (prev || Object.keys(iface).length) d.interfaces[name] = iface;
       }
       for (const [v, svi2] of Object.entries(cfg.svis)) {
