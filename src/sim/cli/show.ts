@@ -50,7 +50,36 @@ function l3Lines(ip: IpAddr | null | undefined, o: L3Opts | undefined, noIpLine:
   if (o?.ospfPrio !== undefined) out.push(' ip ospf priority ' + o.ospfPrio)
   if (o?.ospfArea) out.push(` ip ospf ${o.ospfArea.pid} area ${o.ospfArea.area}`)
   if (o?.ospfCost) out.push(' ip ospf cost ' + o.ospfCost)
+  out.push(...fhrpLines(o))
   return out
+}
+
+/** FHRP interface lines (IOS: per group, address then priority/preempt/track; VRRP preempt
+ *  is on by default and appears only as `no vrrp N preempt`). */
+function fhrpLines(o: L3Opts | undefined): string[] {
+  const out: string[] = []
+  for (const g of o?.hsrp ?? []) {
+    if (g.ip) out.push(` standby ${g.group} ip ${g.ip}`)
+    if (g.priority !== undefined && g.priority !== 100) out.push(` standby ${g.group} priority ${g.priority}`)
+    if (g.preempt) out.push(` standby ${g.group} preempt`)
+    for (const t of g.tracks ?? []) {
+      const dec = t.decrement !== undefined ? t.decrement : null
+      if (t.obj !== undefined) out.push(` standby ${g.group} track ${t.obj}` + (dec !== null ? ` decrement ${dec}` : ''))
+      else out.push(` standby ${g.group} track ${t.iface}` + (dec !== null ? ` ${dec}` : ''))
+    }
+  }
+  for (const g of o?.vrrp ?? []) {
+    if (g.ip) out.push(` vrrp ${g.group} ip ${g.ip}`)
+    if (g.priority !== undefined && g.priority !== 100) out.push(` vrrp ${g.group} priority ${g.priority}`)
+    if (g.preempt === false) out.push(` no vrrp ${g.group} preempt`)
+  }
+  return out
+}
+
+/** FHRP: `track N interface <if> line-protocol` objects (global). */
+function trackLines(c: SwitchConfig): string[] {
+  const ids = Object.keys(c.tracks ?? {}).map(Number).sort((a, b) => a - b)
+  return ids.flatMap((n) => ['track ' + n + ' interface ' + c.tracks![String(n)]!.iface + ' line-protocol', '!'])
 }
 
 /** `ip route` line; the distance is shown only when it is not the default 1. */
@@ -77,7 +106,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   o.push('!', 'version 15.4', 'service timestamps debug datetime msec', 'service timestamps log datetime msec', 'no service password-encryption', '!')
   o.push('hostname ' + c.hostname, '!', 'boot-start-marker', 'boot-end-marker', '!', 'no aaa new-model')
   if (!c.ipRouting) o.push('no ip routing')
-  o.push('!', ...dhcpLines(c), '!')
+  o.push('!', ...dhcpLines(c), '!', ...trackLines(c))
   for (const n of Object.keys(c.loopbacks ?? {}).map(Number).sort((a, b) => a - b)) {
     const l = c.loopbacks![String(n)]!
     o.push('interface Loopback' + n)
@@ -153,7 +182,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   o.push('hostname ' + c.hostname, '!', 'boot-start-marker', 'boot-end-marker', '!', 'no aaa new-model')
   o.push('system mtu routing 1500')
   if (c.ipRouting) o.push('ip routing')
-  o.push('!', ...dhcpLines(c), '!', 'vtp mode transparent', '!')
+  o.push('!', ...dhcpLines(c), '!', ...trackLines(c), 'vtp mode transparent', '!')
   o.push('spanning-tree mode ' + c.stpMode, 'spanning-tree extend system-id')
   const byPrio = new Map<number, number[]>()
   for (const [v, p] of Object.entries(c.stpPriority)) byPrio.set(p, [...(byPrio.get(p) ?? []), Number(v)])

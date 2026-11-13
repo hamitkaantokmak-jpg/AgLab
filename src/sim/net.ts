@@ -1,5 +1,6 @@
 // L2 reachability and L3 forwarding on top of the derived state.
 
+import { fhrpOwns, fhrpTarget } from './fhrp'
 import { crossVlan, egress, ingress, peerOf, portForwards, type Derived, type DupIp, type LPort } from './engine'
 import { aclDecide, l3OptsOf, type Packet } from './acl'
 import { natAliases, natInbound, natOutbound, type NatEntry } from './nat'
@@ -316,7 +317,7 @@ function lookup(d: Derived, dev: string, dst: string): { out: L3If; nh: string }
 }
 
 export function owns(d: Derived, dev: string, ip: string): boolean {
-  return l3Ifs(d, dev).some((i) => i.ip === ip)
+  return l3Ifs(d, dev).some((i) => i.ip === ip) || fhrpOwns(d, dev, ip)
 }
 
 const domainCache = new WeakMap<Derived, Map<string, Domain>>()
@@ -332,6 +333,10 @@ function domainOf(d: Derived, n: Node): Domain {
 export function arpResolve(d: Derived, from: L3If, ip: string): L3If | null {
   if (!from.node) return null
   const dom = domainOf(d, from.node)
+  // FHRP: the Active/Master answers for the virtual address with the virtual MAC (also the
+  // VRRP address owner)
+  const virt = fhrpTarget(d, ip, (n) => dom.nodes.has(nk(n)))
+  if (virt) return virt
   for (const i of allL3Ifs(d)) {
     if (i.ip !== ip || !i.node) continue
     if (dom.nodes.has(nk(i.node))) return i

@@ -109,6 +109,8 @@ const SHARED_QUERY_FNS = new Set([
   // L5-b
   'dhcpLease',
   'dnsLookup',
+  // FHRP: router arayüzü grupta HSRP Active / VRRP Master mı
+  'fhrpActive',
 ]);
 /**
  * Bir hedef satırı: { fn, args, field?, expected, label? }. Bağımsız değişkenlerde cihaz

@@ -7020,6 +7020,8 @@ labLoadExperiment();
         'startupConfig',
         'ospf',
         'bgp',
+        // FHRP: izlenen nesneler (`track N interface … line-protocol`); ayrıntılı denetim köprüde
+        'tracks',
       ]);
     const interfaceKeys = new Set([
       'ip',
@@ -7037,6 +7039,10 @@ labLoadExperiment();
       'aclOut',
       'portSecurity',
       'errdisabled',
+      // FHRP: HSRP/VRRP grupları. Ayrıntılı denetim köprüde (toLabber): geçersiz grup içeriği
+      // reddedilmez, köprü raporu nedeniyle motor kararına gider.
+      'hsrp',
+      'vrrp',
     ]);
     const linkKeys = new Set(['a', 'b', 'portA', 'portB', 'up']);
     for (const d of obj.devices) {

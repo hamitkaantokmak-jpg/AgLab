@@ -1,5 +1,12 @@
 // IOS-style help strings for keywords (shown by '?').
 export const HELP: Record<string, string> = {
+  // FHRP
+  standby: 'HSRP interface configuration commands',
+  vrrp: 'VRRP Interface configuration commands',
+  track: 'Object tracking configuration commands',
+  preempt: 'Overthrow lower priority Active routers',
+  decrement: 'Priority decrement',
+  'line-protocol': 'Track interface line-protocol',
   // exec
   enable: 'Turn on privileged commands',
   disable: 'Turn off privileged commands',
