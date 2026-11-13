@@ -223,7 +223,7 @@
 </details>
 </section>
 <section class="workspace" id="area-troubleshoot">
-<div class="lab-heading"><div><div class="eyebrow">03 · SORUN ÇÖZ</div><h2>Belirtilerden arızayı teşhis et</h2><p>Çözüm komutu doğrudan verilmez. Belirtiyi araştır, teşhis koy, ayarı düzelt ve test ederek doğrula.</p></div></div>
+<div class="lab-heading"><div><div class="eyebrow">03 · SORUN ÇÖZ</div><h2>Belirtilerden arızayı teşhis et</h2><p>Çözüm komutu doğrudan verilmez. Görev Labber motorundaki gerçek topolojide açılır: belirtiyi araştır, düzelt ve test ederek doğrula.</p></div></div>
 <details class="ux-extra-tools" id="uxTopologyAudit"><summary><span><b>Kendi topolojimden arıza görevi oluştur</b><small>Önce Lab'da ağ denetimi yaptıysan kullan</small></span></summary><div class="ux-extra-body">
 <section class="panel" id="topologyTaskCard" style="padding:16px;margin-bottom:17px">
   <div class="panel-head" style="padding:0 0 12px;border:0"><div><h3>Kendi topolojinden sorun çözme görevi</h3><span>Lab denetim bulgularını teşhis görevine dönüştür</span></div><button id="loadTopologyTask">Son denetimi yükle</button></div>
@@ -234,43 +234,12 @@
 </div></details>
 <div class="layout">
   <aside class="panel">
-    <div class="panel-head"><h3>Arıza senaryoları</h3><span id="countText">13 görev</span></div>
+    <div class="panel-head"><h3>Arıza senaryoları</h3><span id="countText">25 görev</span></div>
     <div class="scenario-list" id="scenarioList"></div>
-    <div class="side-foot">İlerleme bu tarayıcıda saklanır. Ortak motorlu görevler ancak başarılı Lab ping’iyle tamamlanır.</div>
+    <div class="side-foot">İlerleme bu tarayıcıda saklanır. Labber görevleri Lab bölümünde gerçek ağda doğrulanınca tamamlanır; kavramsal alıştırmalar motor kullanmaz.</div>
   </aside>
   <main class="maincol">
     <section class="panel mission" id="mission"></section>
-    <section class="panel topology">
-      <h3 class="section-title">Ağ topolojisi <small id="topoCaption">Mantıksal görünüm</small></h3>
-      <svg viewBox="0 0 760 142" role="img" aria-label="Bilgisayar, switch, router, DNS ve internet topolojisi">
-        <defs><linearGradient id="ng" x1="0" x2="1"><stop stop-color="#6ba8ff"/><stop offset="1" stop-color="#63e1d0"/></linearGradient></defs>
-        <line id="l1" class="link ok" x1="112" y1="66" x2="205" y2="66"/><line id="l2" class="link ok" x1="300" y1="66" x2="390" y2="66"/><line id="l3" class="link ok" x1="485" y1="66" x2="575" y2="66"/>
-        <g transform="translate(17 37)"><rect class="node" width="95" height="58" rx="10"/><text class="node-label" x="47" y="24">PC-01</text><text class="node-sub" id="pcIp" x="47" y="42">192.168.1.20</text></g>
-        <g transform="translate(205 37)"><rect class="node" width="95" height="58" rx="10"/><text class="node-label" x="47" y="25">SW-01</text><text class="node-sub" x="47" y="42">Layer 2</text></g>
-        <g transform="translate(390 37)"><rect class="node-accent" width="95" height="58" rx="10"/><text class="node-label" x="47" y="24">R1</text><text class="node-sub" id="gwIp" x="47" y="42">192.168.1.1</text></g>
-        <g transform="translate(575 37)"><rect class="node" width="95" height="58" rx="10"/><text class="node-label" x="47" y="24">DNS / WAN</text><text class="node-sub" x="47" y="42">Dış ağ</text></g>
-        <text id="topoStatus" x="380" y="125" fill="#9eacc7" font-size="11" text-anchor="middle">Bağlantılar normal görünüyor</text>
-      </svg>
-      <div class="legend"><span><i class="dot"></i>Çalışan bağlantı</span><span><i class="dot red"></i>Arıza belirtisi</span></div>
-    </section>
-    <div class="workgrid">
-      <section class="panel terminal-panel">
-        <div class="panel-head"><h3>İstemci terminali</h3><span>Windows benzeri CLI</span></div>
-        <div class="terminal" id="terminal" aria-live="polite"></div>
-        <form class="prompt" id="cmdForm"><label>PC-01 &gt;</label><input id="command" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Terminal komutu" placeholder="help yazıp Enter'a bas"><button class="primary send" type="submit">Çalıştır ↵</button></form>
-        <div class="cmdbar"><button data-cmd="ipconfig">ipconfig</button><button data-cmd="ping 192.168.1.1">ping gateway</button><button data-cmd="ping 8.8.8.8">ping 8.8.8.8</button><button data-cmd="nslookup example.com">nslookup</button><button data-cmd="arp -a">arp -a</button><button data-cmd="show vlan brief">show vlan brief</button><button data-cmd="show interfaces trunk">show interfaces trunk</button><button data-cmd="show mac address-table">show mac address-table</button><button data-cmd="trace 192.168.1.11">trace</button><button data-cmd="clear">clear</button></div>
-      </section>
-      <section class="panel guide">
-        <h3>Görev rehberi</h3><p>Önce komutlarla kanıt topla, ardından teşhisini seç. Doğru teşhis tek başına yetmez; ağı düzeltip tekrar test et.</p>
-        <button class="hintbtn" id="hintBtn"><b>İpucu al</b><span id="hintCount">0 / 3</span></button>
-        <div class="hints" id="hints"></div>
-        <div class="divider"></div>
-        <h3>1 · Teşhis koy</h3><div class="options" id="options"></div><div id="diagnosis" class="diagnose-result"></div>
-        <div class="divider"></div>
-        <h3>2 · Düzelt ve doğrula</h3><p id="fixText">Sorunu düzelttikten sonra ilgili komutla yeniden test et.</p>
-      </section>
-    </div>
-    <section class="panel bottom"><p>Öğrenme döngüsü: <span class="kbd">gözlemle</span> → <span class="kbd">hipotez kur</span> → <span class="kbd">düzelt</span> → <span class="kbd">doğrula</span></p><div class="actions"><button id="resetBtn">Senaryoyu sıfırla</button><button class="primary" id="nextBtn" disabled>Sonraki senaryo →</button></div></section>
   </main>
 </div>
 </section>
