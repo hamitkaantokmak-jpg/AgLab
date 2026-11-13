@@ -447,7 +447,7 @@ html[data-theme="light"] input,html[data-theme="light"] select,html[data-theme="
     </section>
 </div></details>
     <div class="pt-workgrid">
-      <div class="pt-canvas-wrap"><div class="pt-canvas-title"><b>Logical Workspace</b><span id="ptCanvasStatus">6 cihaz · 5 bağlantı</span></div><svg id="ptCanvas" viewBox="0 0 850 420" role="img" aria-label="Sürüklenebilir ağ topolojisi"></svg><div class="pt-legend"><span><i class="pt-dot up"></i>Bağlantı var</span><span><i class="pt-dot down"></i>Bağlantı yok / port kapalı</span><span>Cihaza tıkla: CLI açılır. Taşımak için sürükle. Kablo modunda iki cihaz seç.</span></div></div>
+      <div class="pt-canvas-wrap"><div class="pt-canvas-title"><b>Logical Workspace</b><span id="ptCanvasStatus">6 cihaz · 5 bağlantı</span></div><div id="workspaceEngine" class="engine-badge" role="status" style="margin:4px 0 6px;font-size:12px;font-weight:600">Motor: topoloji yüklenince belirlenir.</div><svg id="ptCanvas" viewBox="0 0 850 420" role="img" aria-label="Sürüklenebilir ağ topolojisi"></svg><div class="pt-legend"><span><i class="pt-dot up"></i>Bağlantı var</span><span><i class="pt-dot down"></i>Bağlantı yok / port kapalı</span><span>Cihaza tıkla: CLI açılır. Taşımak için sürükle. Kablo modunda iki cihaz seç.</span></div></div>
       <aside class="pt-side">
         <div class="pt-device-card"><div class="pt-card-head"><b>Seçili cihaz</b><span id="ptDeviceType">PC</span></div><h4 id="ptSelectedName">PC-01</h4><div class="pt-device-info" id="ptDeviceInfo"></div><div id="ptAuditFocus" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid #a85f24;background:#392515;color:#ffd5a8;border-radius:8px;font-size:11px"></div><div class="pt-rename"><input id="ptRenameInput" placeholder="Yeni cihaz adı"><button id="ptRenameBtn">Adlandır</button></div></div>
         <div class="pt-device-card pt-cli-card"><div class="pt-card-head"><b>CLI · Komut satırı</b><select id="ptCliDevice"></select></div><div class="pt-cli-help">Cisco benzeri komutlar: <code>enable</code>, <code>conf t</code>, <code>interface g0/1</code>, <code>show running-config</code></div><div class="pt-terminal-tools"><span class="pt-terminal-hint">↑ / ↓ komut geçmişi · Ctrl+L temizle</span><button type="button" id="ptClearTerminal" title="Terminal çıktısını temizle (Ctrl+L)">Terminali temizle</button></div><div class="pt-terminal" id="ptTerminal" aria-live="polite"></div><form id="ptCliForm" class="pt-cli-form"><span id="ptPrompt">PC-01&gt;</span><input id="ptCliInput" autocomplete="off" spellcheck="false" placeholder="help · ↑/↓ geçmiş"><button class="primary">Enter</button></form><div class="pt-shortcuts"><button data-pt-cmd="help">help</button><button data-pt-cmd="show running-config">show run</button><button data-pt-cmd="show ip interface brief">show ip int brief</button><button data-pt-cmd="ping 192.168.1.1">ping gateway</button><button data-pt-cmd="ping 192.168.1.11">ping PC-02</button><button data-pt-cmd="trace 192.168.1.11">trace PC-02</button><button id="ptPacketStep">Paket adımı →</button><button data-pt-cmd="show arp">show arp</button><button data-pt-cmd="show mac address-table">show mac</button><button data-pt-cmd="show interfaces status">port durumu</button><button data-pt-cmd="show spanning-tree">STP</button></div></div>
@@ -17974,6 +17974,37 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
     );
     return Math.max(1, Number(obj.nextId) || 1, ...suffixes);
   }
+  /**
+   * I-1: çalışma alanı (içe aktarılan, kayıtlı ya da düzenleyicide kurulan topoloji) için motor
+   * kararı. Sorun Çöz ve Akademi ile aynı mekanizma: köprü topolojiyi ifade edebiliyorsa Labber,
+   * edemiyorsa eski motor; rozet nedeni gösterir. Karar yüklemede bir kez verilir; sonraki
+   * düzenleyici değişiklikleri çalışma zamanını yeniden kurar, motor değişmez (labber-session).
+   * PKT içe aktarımında (switch/router runningConfig metni varsa) çalışma zamanı IOS metin
+   * yoluyla (L5-h, AgLabSim.cliImport) kurulur. Akademi labı ve Labber labı kendi oturumunu
+   * kurar; onlara dokunulmaz.
+   */
+  function workspaceDecideEngine() {
+    if (typeof AgLabSim === 'undefined' || typeof aglabLabber === 'undefined') return null;
+    if ((typeof academyActive !== 'undefined' && academyActive) || aglabLabber.lab()) return null;
+    aglabLabber.stop();
+    const topo = aglabEngineChoice.snapshot();
+    const decision = aglabEngineChoice.decide(topo);
+    aglabEngineChoice.renderBadge(null, decision);
+    if (decision.engine !== 'labber') return decision;
+    const text = devices.some(
+      (d) =>
+        (d.type === 'Switch' || d.type === 'Router') &&
+        typeof d.config?.runningConfig === 'string' &&
+        d.config.runningConfig.trim(),
+    );
+    if (text) {
+      const cli = AgLabSim.cliImport({ ...topo, importReport: importReportData });
+      aglabLabber.start(cli.runtime);
+    } else aglabLabber.start();
+    updatePrompt();
+    return decision;
+  }
+  window.aglabWorkspace = { decide: () => workspaceDecideEngine() };
   function importTopology(obj) {
     validateTopologyData(obj);
     // Yeni içerik: önceki Labber oturumu biter; içerik Labber kararındaysa yeniden başlar.
@@ -17996,6 +18027,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
     currentInterface = '';
     academyRestoreSession(obj.academySession || null);
     labberLabRestore(obj.labberLab || null);
+    workspaceDecideEngine();
     render();
     syncSelects();
     updateInspector();
@@ -18211,6 +18243,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
       { a: r.id, b: srv.id, portA: 'g0/1', portB: 'eth0', up: true },
     ];
     selected = pc1.id;
+    workspaceDecideEngine();
     render();
     syncSelects();
     updateInspector();
@@ -25083,12 +25116,16 @@ const aglabLabber = (() => {
       '). Motor değiştirilmez; değerlendirme yapılamadı.'
     );
   }
-  /** Labber kararındaki içerik yüklendi: güncel AğLab topolojisinden kalıcı çalışma zamanı. */
-  function start() {
+  /**
+   * Labber kararındaki içerik yüklendi: güncel AğLab topolojisinden kalıcı çalışma zamanı.
+   * I-1: `prebuilt` verilirse (PKT içe aktarımı: runningConfig'ten IOS metin yoluyla kurulmuş
+   * çalışma zamanı, L5-h) o kullanılır; motor kararı yine köprüden.
+   */
+  function start(prebuilt) {
     const r = AgLabSim.toLabber(topology());
     if (r.report.engineDecision !== 'labber') throw new Error(brokenMessage(r.report.reasons));
     state = {
-      rt: AgLabSim.createRuntime(r),
+      rt: prebuilt || AgLabSim.createRuntime(r),
       sessions: {},
       logSeq: {},
       key: key(),
@@ -25476,9 +25513,13 @@ const aglabEngineChoice = (() => {
       : 'Eski motor — nedeni: ' + decision.reasons.join('; ');
   }
   function renderBadge(el, decision) {
-    if (!el) return;
-    el.textContent = badgeText(decision);
-    el.dataset.engine = decision.engine;
+    // I-1: çalışma alanı rozeti her zaman geçerli içeriğin motorunu gösterir
+    const ws = typeof document !== 'undefined' ? document.getElementById('workspaceEngine') : null;
+    for (const x of [el, ws]) {
+      if (!x) continue;
+      x.textContent = badgeText(decision);
+      x.dataset.engine = decision.engine;
+    }
   }
   /**
    * Labber çalışma zamanı: içerik oturumu varsa onun kalıcı çalışma zamanı (terminal ile
@@ -32121,6 +32162,9 @@ function labberLabRestore(value) {
   $p('labberLabEngine').textContent =
     'Motor: Labber — lab tanımı doğrudan Labber’da kurulur (köprü kullanılmaz); terminal, hedefler ve Simulation Mode Labber motorunda.';
   $p('labberLabEngine').dataset.engine = 'labber';
+  // I-1: çalışma alanı rozeti
+  $p('workspaceEngine').textContent = $p('labberLabEngine').textContent;
+  $p('workspaceEngine').dataset.engine = 'labber';
   panel.replaceChildren();
   const head = document.createElement('h4');
   head.textContent = def.title;
@@ -36576,6 +36620,7 @@ academyRenderEngineScope();
       selected = devices.some((d) => d.id === obj.selected) ? obj.selected : devices[0]?.id || '';
       academyRestoreSession(obj.academySession || null);
       labberLabRestore(obj.labberLab || null);
+      workspaceDecideEngine();
       render();
       syncSelects();
       updateInspector();
