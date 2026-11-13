@@ -258,6 +258,7 @@ export class LabRuntime {
       d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw)
     }
     d.natTable = this.natTable
+    d.arpCache = this.arp
     return d
   }
 
@@ -499,12 +500,15 @@ export class LabRuntime {
 
   markSeen(hops: Hop[], from: string) {
     if (!hops.length) return
-    for (const h of hops) {
+    hops.forEach((h, i) => {
       this.learn(h.outIf.mac)
-      const owner = l3Ifs(this.derived, h.dev).find((i) => i.ip === h.ip)
+      const owner = l3Ifs(this.derived, h.dev).find((x) => x.ip === h.ip)
       if (owner) this.learn(owner.mac)
-    }
-    void from
+      // I-1: gönderen (kaynak ya da önceki router) bu atlamanın adresini ARP ile çözdü
+      const prev = i === 0 ? from : hops[i - 1]!.dev
+      this.arp.add(`${prev}>${h.ip}`)
+      this.arpIncomplete.delete(`${prev}>${h.ip}`)
+    })
   }
 
   /** Yeni çerçeve: adres yeniden öğrenilir (temizlenmiş switch'lerde de). */

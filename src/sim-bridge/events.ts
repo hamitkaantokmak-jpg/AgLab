@@ -26,7 +26,7 @@ export interface TraceEdge {
 
 export interface TraceFrame {
   protocol: 'ICMP'
-  kind: 'icmp-request' | 'icmp-reply' | 'icmp-time-exceeded'
+  kind: 'icmp-request' | 'icmp-reply' | 'icmp-time-exceeded' | 'icmp-unreachable'
   sourceMac: string
   destinationMac: string
   vlan: number
@@ -159,6 +159,7 @@ export function pingTrace(
   const d = rt.derived
   const r = ping(d, from, dst, opts.ttl !== undefined ? { ttl: opts.ttl } : {})
   const records: TraceRecord[] = []
+  let unreachCode = 1
   const pushDiag = () => {
     const reason = pingDiagnosis(rt, from, dst, r)
     // tanı ilk düşme kaydından önce (Paket Dedektifi ilk sorunu özetler); `icmp-undelivered` son kalır
@@ -172,7 +173,7 @@ export function pingTrace(
 
   /** Bir teslimatın atlamaları; döndürdüğü: son ulaşılan cihaz. */
   const walk = (
-    kind: 'icmp-request' | 'icmp-reply' | 'icmp-time-exceeded',
+    kind: 'icmp-request' | 'icmp-reply' | 'icmp-time-exceeded' | 'icmp-unreachable',
     start: string,
     hops: Hop[],
     srcIp: string,
@@ -198,7 +199,10 @@ export function pingTrace(
         arp: null,
         // L5-d: NAT'tan sonra kablodaki adresler (hop.src/dst)
         ipv4: { sourceIp: hop.src ?? srcIp, destinationIp: hop.dst ?? dstIp, ttl, protocol: 1 },
-        icmp: { type: kind === 'icmp-request' ? 8 : kind === 'icmp-time-exceeded' ? 11 : 0, code: 0 },
+        icmp:
+          kind === 'icmp-unreachable'
+            ? { type: 3, code: unreachCode }
+            : { type: kind === 'icmp-request' ? 8 : kind === 'icmp-time-exceeded' ? 11 : 0, code: 0 },
       }
       const ev = { frameId, frame }
       records.push({ raw: `frame ${kind} src ${sender} dst ${frame.destinationMac} vlan ${frame.vlan}`, ...ev })
@@ -245,8 +249,21 @@ export function pingTrace(
     pushDiag()
     return { ok: false, l2, records }
   }
+  if (fwd.kind === 'unreach') {
+    // I-1: router ICMP Destination Unreachable'ı kaynağa gönderir (13: ACL, 1: rota/ARP yok)
+    unreachCode = fwd.filtered ? 13 : 1
+    records.push({ raw: `discard ${fwd.at} ${fwd.filtered ? 'acl' : 'no-route'}` })
+    const back = r.back
+    const backTo = back ? walk('icmp-unreachable', fwd.at, back.hops, fwd.atIp, src, 255) : fwd.at
+    if (back && back.kind === 'ok' && backTo === from) records.push({ raw: `icmp-unreachable ${from} from ${fwd.at} code ${unreachCode}` })
+    else records.push({ raw: `discard ${backTo} no-return-path` })
+    records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? 'unreach'}` })
+    pushDiag()
+    return { ok: false, l2, records }
+  }
+  if (fwd.kind === 'timeout' && fwd.suppressedAt) records.push({ raw: `icmp-error-suppressed ${fwd.suppressedAt}` })
   if (fwd.kind !== 'ok') {
-    records.push({ raw: `discard ${reached} ${fwd.kind === 'unreach' ? 'no-route' : 'no-l2-path'}` })
+    records.push({ raw: `discard ${reached} no-l2-path` })
     records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? fwd.kind}` })
     pushDiag()
     return { ok: false, l2, records }

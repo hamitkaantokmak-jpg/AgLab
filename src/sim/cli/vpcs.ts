@@ -17,7 +17,7 @@ const HELP = [
   'clear ip                 Clear IP address, mask and gateway',
   'show [arp|ip]            Print the information of the VPC',
   'ping <address> [-c count] [-T ttl]  Ping the network host',
-  'trace <address>          Print the path packets take to network host',
+  'trace <address> [-m ttl] Print the path packets take to network host',
   'nslookup <name>          Ask the DNS server for the address of a host name',
   'curl [http://]<host>[:port][/path]  Fetch a web page (Labber addition: VPCS has no HTTP client)',
   'help, ?                  Print help',
@@ -93,7 +93,13 @@ export class VpcsSession {
     if (c === 'show' && (!args[0] || args[0] === 'ip')) return this.showIp()
     if (c === 'show' && args[0] === 'arp') return this.showArp()
     if (c === 'ping' && args[0]) return this.pingCmd(args)
-    if ((c === 'trace' || c === 'tracert' || c === 'traceroute') && args[0]) return this.trace(args[0])
+    if ((c === 'trace' || c === 'tracert' || c === 'traceroute') && args[0]) {
+      // VPCS: `trace <hedef> [-m ttl]` (en çok atlama; varsayılan 8)
+      if (args.length === 1) return this.trace(args[0])
+      const m = args[1] === '-m' && /^\d+$/.test(args[2] ?? '') && args.length === 3 ? Number(args[2]) : NaN
+      if (!(m >= 1 && m <= 255)) return [`Invalid options: ${args.slice(1).join(' ')}`]
+      return this.trace(args[0], m)
+    }
     return ['Bad command: "' + line + '". Use ? for help.']
   }
 
@@ -301,14 +307,14 @@ export class VpcsSession {
     return ['', ...out, '']
   }
 
-  private trace(dst: string): string[] {
+  private trace(dst: string, maxHops = 8): string[] {
     if (ipToInt(dst) === null) return [`Cannot resolve ${dst}`]
     const c = this.rt.pcs[this.dev]!
     if (!c.ip) return ['No gateway found']
     this.rt.hostSends(this.dev)
     // L5-i: VPCS trace: her TTL için UDP sondası (doğrulanmadı: kaynak/hedef port), en çok 8 atlama
-    const out = [`trace to ${dst}, 8 hops max, press Ctrl+C to stop`]
-    for (let ttl = 1; ttl <= 8; ttl++) {
+    const out = [`trace to ${dst}, ${maxHops} hops max, press Ctrl+C to stop`]
+    for (let ttl = 1; ttl <= maxHops; ttl++) {
       const p = traceProbe(this.rt.derived, this.dev, dst, ttl, 33434 + ttl - 1)
       this.rt.markSeen(p.forward.hops, this.dev)
       this.rt.countAcl(1, p.forward, p.back)

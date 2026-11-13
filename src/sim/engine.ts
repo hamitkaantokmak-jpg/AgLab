@@ -123,6 +123,8 @@ export interface Derived {
   dups: DupIp[]
   /** L5-d: dynamic NAT translations (owned by the runtime; read by deliver()) */
   natTable?: NatEntry[]
+  /** I-1: ARP önbelleği ('dev>ip'; runtime'ınki): sıcak girdide ARP başarısızlığı sessizdir */
+  arpCache?: Set<string>
 }
 
 const protoOf = (m: ChannelMode): 'LACP' | 'PAgP' | '-' =>

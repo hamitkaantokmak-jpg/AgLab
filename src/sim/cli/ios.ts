@@ -1557,6 +1557,9 @@ export class IosSession {
     const d = this.rt.derived
     const repeat = o.repeat ?? 5
     const r = ping(d, this.dev, ip, o.src ? { src: o.src } : {})
+    // ilk atlamanın ARP durumu gönderimden önce (markSeen ARP girdisini ekler)
+    const firstKey = `${this.dev}>${r.firstHopArp?.ip ?? ip}`
+    const coldArp = !this.rt.arp.has(firstKey)
     this.rt.markSeen(r.forward?.hops ?? [], this.dev)
     this.rt.countAcl(repeat, r.forward, r.back)
     this.rt.recordNat(repeat, r.forward, r.back)
@@ -1566,8 +1569,8 @@ export class IosSession {
     let marks: string
     let ok = 0
     if (r.ok) {
-      const key = `${this.dev}>${r.firstHopArp?.ip ?? ip}`
-      const cold = !this.rt.arp.has(key)
+      const key = firstKey
+      const cold = coldArp
       this.rt.arp.add(key)
       this.rt.arpIncomplete.delete(key)
       marks = (cold ? '.' : '!') + '!'.repeat(repeat - 1)
