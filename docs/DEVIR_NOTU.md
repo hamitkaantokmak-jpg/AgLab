@@ -70,7 +70,8 @@ açılmasına dayanır); PR tabanı `claude/i1-workspace-labber`. #81 birleşinc
 - Ürün: `validateTopologyData` alanları kabul eder; `SHARED_QUERY_FNS` += `fhrpActive`; eski motor
   kararında rozet "HSRP/VRRP eski motorda modellenmez".
 - Testler: `tests/sim/fhrp.test.ts` (22), `tests/test_aglab_fhrp.py` (7 bölüm). Doğrulanmayanlar
-  UYUMLULUK_MATRISI "FHRP"de (aynı grup farklı VIP, syslog ara durumları, VIP alt ağ denetimi).
+  UYUMLULUK_MATRISI "FHRP"de (syslog ara durumları, VIP alt ağ denetimi). Aynı grup + farklı VIP: HSRP tek
+  seçim + `%HSRP-4-DIFFVIP1`, VRRP iki Master (kullanıcı düzeltmesi).
 
 
 Kalan PR'ların kapsamı (kullanıcı talimatı):

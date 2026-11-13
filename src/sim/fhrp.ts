@@ -139,7 +139,10 @@ export function computeFhrp(d: Derived, prevActive: Map<string, string>): FhrpSt
             preempt: owner || (proto === 'hsrp' ? !!g.preempt : g.preempt !== false), owner, tracks, state: 'Init', key: '',
           }
           // participates only with an address, a virtual address and a working interface
-          if (iface && node && g.ip) m.key = `${proto}|${g.group}|${g.ip}|${domainKey(d, node)}`
+          // HSRP: aynı yayın alanı + grup numarası bir gruptur; VIP'i farklı olan router hello'ları
+          // kabul eder, seçime katılır ve %HSRP-4-DIFFVIP1 yazar. VRRP: VIP listesi uyuşmayan ilan
+          // düşürülür (RFC 3768 7.1), VIP grup anahtarının parçasıdır.
+          if (iface && node && g.ip) m.key = proto === 'hsrp' ? `hsrp|${g.group}|${domainKey(d, node)}` : `vrrp|${g.group}|${g.ip}|${domainKey(d, node)}`
           members.push(m)
         }
       }
@@ -164,7 +167,8 @@ export function computeFhrp(d: Derived, prevActive: Map<string, string>): FhrpSt
         m.state = 'Standby'
       } else m.state = proto === 'hsrp' ? 'Listen' : 'Backup'
     }
-    groups.push({ key, proto, group: best.group, vip: best.vip!, members: list, active, standby })
+    // grubun VIP'i Active'inkidir (VIP ARP'sini ve ping'ini Active yanıtlar)
+    groups.push({ key, proto, group: best.group, vip: active.vip!, members: list, active, standby })
   }
   for (const k of [...prevActive.keys()]) if (!byKey.has(k)) prevActive.delete(k)
   return { members, groups }

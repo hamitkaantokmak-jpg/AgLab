@@ -97,6 +97,28 @@ describe('HSRP seçimi', () => {
     expect(firstRouter(rt)).toBeNull()
   })
 
+  it("aynı grup, farklı VIP: tek seçim (Active + Standby), farklı VIP'li router DIFFVIP1 yazar", () => {
+    const rt = createLab(lab())
+    cfg(rt, 'R1', HSRP(110))
+    cfg(rt, 'R2', 'interface g0/0\nstandby 1 ip 192.168.1.253')
+    expect(states(rt)).toEqual({ 'R1:hsrp1': 'Active', 'R2:hsrp1': 'Standby' })
+    const logs = rt.logs.filter((l) => l.dev === 'R2').map((l) => l.text).join('\n')
+    expect(logs).toContain('%HSRP-4-DIFFVIP1: Gi0/0 Grp 1 active routers virtual IP address 192.168.1.254 is different to the locally configured address 192.168.1.253')
+    expect(rt.logs.filter((l) => l.dev === 'R1').map((l) => l.text).join('\n')).not.toContain('DIFFVIP1')
+    // show standby yerel VIP'i gösterir
+    expect(run(rt, 'R2', 'show standby')).toContain('  Virtual IP address is 192.168.1.253')
+    expect(run(rt, 'R2', 'show standby brief')).toMatch(/Gi0\/0\s+1\s+100\s+Standby\s+192\.168\.1\.2\s+local\s+192\.168\.1\.253/)
+    // ağ geçidi Active'in VIP'i (.254): trafik R1'den; Standby'ın yerel VIP'ini (.253) kimse yanıtlamaz
+    expect(pcPing(rt, '192.168.9.10').match(/84 bytes from/g)?.length).toBe(5)
+    expect(firstRouter(rt)).toBe('R1')
+    expect(pcPing(rt, '192.168.1.253')).not.toContain('84 bytes from')
+    // Active düşünce R2 devralır ve kendi VIP'ini (.253) yanıtlar; .254 artık yanıtsız
+    rt.setPower('R1', false)
+    expect(states(rt)['R2:hsrp1']).toBe('Active')
+    expect(pcPing(rt, '192.168.1.253').match(/84 bytes from/g)?.length).toBe(5)
+    expect(pcPing(rt, '192.168.9.10')).not.toContain('84 bytes from')
+  })
+
   it('grup numarası farklıysa iki Active, Standby bilinmiyor', () => {
     const rt = createLab(lab({ R1: HSRP(110), R2: 'interface g0/0\nstandby 2 ip 192.168.1.254' }))
     expect(states(rt)).toEqual({ 'R1:hsrp1': 'Active', 'R2:hsrp2': 'Active' })
@@ -233,6 +255,11 @@ describe('VRRP', () => {
     expect(pcPing(rt, '192.168.1.2').match(/84 bytes from/g)?.length).toBe(5)
     rt.setPower('R1', true)
     expect(states(rt)['R1:vrrp1']).toBe('Master')
+  })
+
+  it('aynı grup, farklı VIP: ilan düşürülür (RFC 3768 7.1), iki Master', () => {
+    const rt = createLab(lab({ R1: VRRP(110), R2: 'interface g0/0\nvrrp 1 ip 192.168.1.253' }))
+    expect(states(rt)).toEqual({ 'R1:vrrp1': 'Master', 'R2:vrrp1': 'Master' })
   })
 
   it('grup numarası farklıysa iki Master', () => {

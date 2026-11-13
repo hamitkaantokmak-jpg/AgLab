@@ -228,6 +228,28 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     assert re.search(r"Gi0/0\s+2\s+100\s+Active\s+local\s+unknown", cmd("r2", "show standby brief"))
     print("PASS: group mismatch gives two Active routers", flush=True)
 
+    # 5b) Aynı grup, farklı VIP (IOS): tek seçim; farklı VIP'li router DIFFVIP1 yazar, yerel VIP'i
+    # gösterir; trafik Active'in VIP'inden
+    load(topology(dict(hsrp=[dict(group=1, ip="192.168.1.254", priority=110)]), {}))
+    ios("r2", "enable", "configure terminal", "interface g0/0")
+    ios("r2", "standby 1 ip 192.168.1.253", "end")
+    terminal = "\n".join(page.locator("#ptTerminal > div").all_text_contents())
+    assert (
+        "%HSRP-4-DIFFVIP1: Gi0/0 Grp 1 active routers virtual IP address 192.168.1.254 is "
+        "different to the locally configured address 192.168.1.253" in terminal
+    ), terminal[-1500:]
+    assert re.search(
+        r"Gi0/0\s+1\s+100\s+Standby\s+192\.168\.1\.2\s+local\s+192\.168\.1\.253",
+        cmd("r2", "show standby brief"),
+    )
+    assert "Virtual IP address is 192.168.1.253" in cmd("r2", "show standby")
+    ios("r1", "enable")
+    assert re.search(
+        r"Gi0/0\s+1\s+110\s+Active\s+local\s+192\.168\.1\.3", cmd("r1", "show standby brief")
+    )
+    assert ping() and first_router() == "r1"
+    print("PASS: same group, different VIP: one Active/one Standby and DIFFVIP1 syslog", flush=True)
+
     # 6) VRRP: preempt varsayılan açık; yeni Master; sanal MAC 0000.5e00.01XX
     vr = lambda p=None: dict(
         vrrp=[dict(group=1, ip="192.168.1.254", **({"priority": p} if p else {}))]

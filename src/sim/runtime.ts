@@ -280,6 +280,12 @@ export class LabRuntime {
     for (const m of f.members) {
       const id = memberId(m)
       now.set(id, m.state)
+      // HSRP: Active'in VIP'i yerel yapılandırmadan farklıysa (koşul yeni oluştuğunda bir kez)
+      const g = m.proto === 'hsrp' && m.key ? f.groups.find((x) => x.key === m.key) : undefined
+      const diff = g?.active && g.active !== m && g.active.vip !== m.vip ? `diffvip:${g.active.vip}` : ''
+      if (diff) now.set(id + '|diffvip', diff)
+      if (diff && this.fhrpStates.get(id + '|diffvip') !== diff && !this.fhrpQuiet)
+        this.log(m.dev, `%HSRP-4-DIFFVIP1: ${shortIf(m.ifname)} Grp ${m.group} active routers virtual IP address ${g!.active!.vip} is different to the locally configured address ${m.vip}`)
       const was = this.fhrpStates.get(id) ?? 'Init'
       if (was === m.state || this.fhrpQuiet) continue
       const tag = m.proto === 'hsrp' ? '%HSRP-5-STATECHANGE' : '%VRRP-6-STATECHANGE'

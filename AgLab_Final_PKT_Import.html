@@ -2215,7 +2215,7 @@ var AgLabSim = (() => {
               state: "Init",
               key: ""
             };
-            if (iface && node && g.ip) m.key = `${proto}|${g.group}|${g.ip}|${domainKey(d, node)}`;
+            if (iface && node && g.ip) m.key = proto === "hsrp" ? `hsrp|${g.group}|${domainKey(d, node)}` : `vrrp|${g.group}|${g.ip}|${domainKey(d, node)}`;
             members.push(m);
           }
         }
@@ -2239,7 +2239,7 @@ var AgLabSim = (() => {
           m.state = "Standby";
         } else m.state = proto === "hsrp" ? "Listen" : "Backup";
       }
-      groups.push({ key, proto, group: best.group, vip: best.vip, members: list, active, standby });
+      groups.push({ key, proto, group: best.group, vip: active.vip, members: list, active, standby });
     }
     for (const k of [...prevActive.keys()]) if (!byKey.has(k)) prevActive.delete(k);
     return { members, groups };
@@ -6763,6 +6763,11 @@ var AgLabSim = (() => {
       for (const m of f.members) {
         const id = memberId(m);
         now.set(id, m.state);
+        const g = m.proto === "hsrp" && m.key ? f.groups.find((x) => x.key === m.key) : void 0;
+        const diff = g?.active && g.active !== m && g.active.vip !== m.vip ? `diffvip:${g.active.vip}` : "";
+        if (diff) now.set(id + "|diffvip", diff);
+        if (diff && this.fhrpStates.get(id + "|diffvip") !== diff && !this.fhrpQuiet)
+          this.log(m.dev, `%HSRP-4-DIFFVIP1: ${shortIf(m.ifname)} Grp ${m.group} active routers virtual IP address ${g.active.vip} is different to the locally configured address ${m.vip}`);
         const was = this.fhrpStates.get(id) ?? "Init";
         if (was === m.state || this.fhrpQuiet) continue;
         const tag = m.proto === "hsrp" ? "%HSRP-5-STATECHANGE" : "%VRRP-6-STATECHANGE";
