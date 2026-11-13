@@ -72,10 +72,12 @@ describe('NAT/PAT', () => {
     expect(rows(rt)).toEqual([])
   })
 
+  // L5-i: trace TTL'li sondalar gönderir; TTL 1 R1'de biter (çevrilmez), TTL 2 sondası (hedef
+  // port 33435) çevrilip sunucuya ulaşır
   it('TCP/UDP girdileri kaynak portuyla yazılır (VPCS trace UDP sondası)', () => {
     const rt = createLab(lab(PAT))
     vpcs(rt, 'PC1', 'trace 203.0.113.8')
-    expect(rows(rt)[0]).toMatch(/^udp 203\.0\.113\.1:49152 192\.168\.1\.10:49152 203\.0\.113\.8:33434 203\.0\.113\.8:33434$/)
+    expect(rows(rt)[0]).toMatch(/^udp 203\.0\.113\.1:49152 192\.168\.1\.10:49152 203\.0\.113\.8:33435 203\.0\.113\.8:33435$/)
   })
 
   it('inside/outside ters yapılandırılınca çeviri olmaz (başarısız); düzeltilince çalışır', () => {

@@ -371,6 +371,8 @@ export type Delivery = (
   | { kind: 'unreach'; at: string; atIp: string; hops: Hop[]; filtered?: AclHit }
   | { kind: 'timeout'; hops: Hop[] }
   | { kind: 'noip'; hops: Hop[] }
+  /** L5-i: TTL ran out on a router (it answers ICMP Time Exceeded from its ingress address) */
+  | { kind: 'expired'; at: string; atIp: string; hops: Hop[] }
 ) & {
   acl?: AclHit[]
   /** L5-d: the packet as it arrived (addresses after NAT) and the NAT entries it created */
@@ -383,7 +385,11 @@ export type Delivery = (
 }
 
 /** L5-c: what is being carried; defaults to an ICMP echo (id 1) from the egress address. */
-export type PacketSpec = Partial<Packet> & { natPending?: NatEntry[] }
+export type PacketSpec = Partial<Packet> & {
+  natPending?: NatEntry[]
+  /** L5-i: IP TTL at the sender (undefined: never expires within the hop limit) */
+  ttl?: number
+}
 
 /** `ip access-group` decision on one interface of a routing device. */
 function aclCheck(d: Derived, dev: string, ifname: string, dir: 'in' | 'out', pkt: Packet, hits: AclHit[]): AclHit | null {
@@ -409,7 +415,8 @@ export function deliver(d: Derived, from: string, dst: string, spec: PacketSpec 
   const nat: NatEntry[] = []
   let routers = 0
   if (!l3Ifs(d, from).length) return { kind: 'noip', hops }
-  const { natPending, ...fields } = spec
+  const { natPending, ttl: ttl0, ...fields } = spec
+  let ipTtl = ttl0 ?? Infinity
   let pkt: Packet = { proto: 'icmp', icmpType: 'echo', ...fields, src: fields.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0]!.ip, dst } as Packet
   if (pkt.proto === 'icmp' && pkt.sport === undefined && pkt.icmpType === 'echo') pkt.sport = 1
   const table = () => [...(d.natTable ?? []), ...(natPending ?? []), ...nat]
@@ -429,6 +436,11 @@ export function deliver(d: Derived, from: string, dst: string, spec: PacketSpec 
     if (owns(d, cur, pkt.dst)) return end({ kind: 'ok', hops, routersCrossed: routers })
     // a global address with no translation: nothing to forward to
     if (cur !== from && natAliases(d.cfgs[cur]).includes(pkt.dst)) return end({ kind: 'timeout', hops })
+    // L5-i: a router forwarding the packet decrements TTL; at 0 it drops it (Time Exceeded)
+    if (cur !== from && routing(cur)) {
+      if (ipTtl <= 1) return end({ kind: 'expired', at: cur, atIp: hops[hops.length - 1]!.ip, hops })
+      ipTtl--
+    }
     if (cur !== from && !isRouter(d, cur)) return end({ kind: 'timeout', hops })
     const r = lookup(d, cur, pkt.dst)
     if (!r) {
@@ -517,7 +529,9 @@ export interface PingResult {
   ok: boolean
   /** what the sender sees when it fails */
   /** 'off': the sender itself is powered off (no console, nothing is sent) */
-  reason?: 'noip' | 'noroute' | 'timeout' | 'unreach' | 'off'
+  reason?: 'noip' | 'noroute' | 'timeout' | 'unreach' | 'off' | 'expired'
+  /** L5-i: router that answered ICMP Time Exceeded */
+  expiredFrom?: string
   unreachFrom?: string
   ttl?: number
   /** device that answered (ok only); with a duplicate address, the ARP winner */
@@ -530,10 +544,10 @@ export interface PingResult {
   back?: Delivery
 }
 
-export function ping(d: Derived, from: string, dst: string): PingResult {
+export function ping(d: Derived, from: string, dst: string, opts: { ttl?: number; src?: string } = {}): PingResult {
   if (d.hw.off.has(from)) return { ok: false, reason: 'off' }
   if (!isValidIp(dst)) return { ok: false, reason: 'noroute' }
-  const fwd = deliver(d, from, dst)
+  const fwd = deliver(d, from, dst, { ...(opts.ttl !== undefined ? { ttl: opts.ttl } : {}), ...(opts.src ? { src: opts.src } : {}) })
   const firstHopArp = fwd.hops[0] ? { dev: from, ip: fwd.hops[0].ip } : undefined
   if (fwd.kind === 'noip') return { ok: false, reason: 'noip', forward: fwd }
   if (fwd.kind === 'noroute') return { ok: false, reason: 'noroute', forward: fwd }
@@ -543,6 +557,13 @@ export function ping(d: Derived, from: string, dst: string): PingResult {
     const back = deliver(d, fwd.at, fwd.pkt?.src ?? sourceIp(d, from, dst)!, { proto: 'icmp', icmpType: 'unreachable', src: fwd.atIp, dport: fwd.pkt?.sport, natPending: fwd.nat })
     return back.kind === 'ok'
       ? { ok: false, reason: 'unreach', unreachFrom: fwd.atIp, forward: fwd, back, firstHopArp }
+      : { ok: false, reason: 'timeout', forward: fwd, back, firstHopArp }
+  }
+  if (fwd.kind === 'expired') {
+    // L5-i: ICMP Time Exceeded from the router where TTL ran out, back to the (translated) source
+    const back = deliver(d, fwd.at, fwd.pkt?.src ?? sourceIp(d, from, dst)!, { proto: 'icmp', icmpType: 'time-exceeded', src: fwd.atIp, dport: fwd.pkt?.sport, natPending: fwd.nat })
+    return back.kind === 'ok'
+      ? { ok: false, reason: 'expired', expiredFrom: fwd.atIp, forward: fwd, back, firstHopArp }
       : { ok: false, reason: 'timeout', forward: fwd, back, firstHopArp }
   }
   if (fwd.kind !== 'ok') {
@@ -559,6 +580,35 @@ export function ping(d: Derived, from: string, dst: string): PingResult {
   if (back.kind !== 'ok' || backTo !== from) return { ok: false, reason: 'timeout', forward: fwd, back, firstHopArp }
   const base = d.topo.devices[replier]!.kind === 'pc' ? 64 : 255
   return { ok: true, ttl: base - back.routersCrossed, replier, forward: fwd, back, firstHopArp }
+}
+
+/** L5-i: one traceroute probe (UDP) with the given TTL and what came back to the sender. */
+export type ProbeResult =
+  | { kind: 'hop'; ip: string }
+  | { kind: 'dest'; ip: string }
+  | { kind: 'unreach'; ip: string; code: 'H' | 'A' }
+  | { kind: 'none' }
+
+export function traceProbe(d: Derived, from: string, dst: string, ttl: number, dport: number, sport = 49152): { result: ProbeResult; forward: Delivery; back?: Delivery } {
+  const fwd = deliver(d, from, dst, { proto: 'udp', sport, dport, ttl })
+  const src = fwd.pkt?.src ?? sourceIp(d, from, dst)
+  if (!src) return { result: { kind: 'none' }, forward: fwd }
+  const answer = (at: string, ip: string, icmpType: 'time-exceeded' | 'unreachable') =>
+    deliver(d, at, src, { proto: 'icmp', icmpType, src: ip, dport: fwd.pkt?.sport, natPending: fwd.nat })
+  const home = (b: Delivery) => b.kind === 'ok' && (b.hops[b.hops.length - 1]?.dev ?? from) === from
+  if (fwd.kind === 'expired') {
+    const back = answer(fwd.at, fwd.atIp, 'time-exceeded')
+    return { result: home(back) ? { kind: 'hop', ip: fwd.atIp } : { kind: 'none' }, forward: fwd, back }
+  }
+  if (fwd.kind === 'unreach') {
+    const back = answer(fwd.at, fwd.atIp, 'unreachable')
+    return { result: home(back) ? { kind: 'unreach', ip: fwd.atIp, code: fwd.filtered ? 'A' : 'H' } : { kind: 'none' }, forward: fwd, back }
+  }
+  if (fwd.kind !== 'ok') return { result: { kind: 'none' }, forward: fwd }
+  // the destination answers ICMP port unreachable (nothing listens on 33434+)
+  const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from
+  const back = answer(replier, fwd.pkt?.dst ?? dst, 'unreachable')
+  return { result: home(back) ? { kind: 'dest', ip: dst } : { kind: 'none' }, forward: fwd, back }
 }
 
 function isValidIp(s: string) {

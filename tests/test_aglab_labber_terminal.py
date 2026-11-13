@@ -263,6 +263,48 @@ class LabberTerminalTests(unittest.TestCase):
         self.type("end")
         self.assertIn("% CDP is not enabled", self.type("show cdp neighbors"))
 
+    def test_ttl_traceroute_extended_ping(self):
+        """L5-i: return-route çözülünce Labber terminalinde VPCS trace, ping -T (Time Exceeded ve
+        Simulation Mode izi), IOS traceroute ve extended ping; dönüş rotası silinince başarısız."""
+        self.load("return-route")
+        self.page.evaluate(
+            "() => { for (const b of aglabSharedEngine.recipes().find(r => r.id === 'return-route').solution)"
+            " aglabSharedEngine.commandBlock(b.device, b.commands) }"
+        )
+        self.device("PC-01")
+        out = self.type("trace 10.20.0.10")
+        self.assertTrue(any("Destination port unreachable" in x for x in out), out)
+        out = self.type("ping 10.20.0.10 -T 1 -c 1")
+        self.assertTrue(any("TTL expired in transit" in x for x in out), out)
+        raw = [e.get("raw") for e in self.page.evaluate("aglabLabberSession.trace()")["events"]]
+        self.assertTrue(any(r and r.startswith("ttl-expired ") for r in raw), raw)
+        self.assertTrue(
+            any(r and r.startswith("icmp-time-exceeded PC-01") for r in raw)
+            or any(r and "icmp-time-exceeded" in r for r in raw),
+            raw,
+        )
+        self.device("R1")
+        self.type("enable")
+        out = self.type("traceroute 10.20.0.10")
+        self.assertTrue(
+            any(x.strip().startswith("2 10.20.0.10") or " 10.20.0.10 " in x for x in out), out
+        )
+        self.type("ping")
+        for answer in ["", "10.20.0.10", "3", "", "", "n"]:
+            out = self.type(answer)
+        self.assertTrue(any("Sending 3, 100-byte ICMP Echos to 10.20.0.10" in x for x in out), out)
+        self.assertTrue(any("Success rate is" in x and "/3)" in x for x in out), out)
+        # dönüş rotası silinince traceroute yanıtsız atlamalarla biter
+        self.device("R2")
+        self.type("configure terminal")
+        self.type("no ip route 192.168.1.0 255.255.255.0")
+        self.type("end")
+        # R1'in kendi sondası R2'ye bağlı ağdan çıkar; PC-01'inki artık dönemez
+        self.device("PC-01")
+        out = self.type("trace 10.20.0.10")
+        self.assertTrue(any(x.strip().endswith("*  *  *") for x in out), out)
+        self.assertFalse(any("Destination port unreachable" in x for x in out), out)
+
     def test_acl_from_terminal(self):
         """L5-c: terminalden standart ACL; yanlış yönde etkisiz, doğru yönde PC-01 trafiğini keser,
         sayaçlar `show access-lists`'te, uygulanan liste `show ip interface`'te."""

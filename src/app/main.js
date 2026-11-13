@@ -9142,14 +9142,17 @@ labLoadExperiment();
     afterLabberChange();
     if (d.type === 'PC' && p[0] === 'ping' && p[1]) {
       const ok = !result.lines.some((r) => r.kind === 'outerr');
-      labberSimulationTrace(d.id, p[1]);
+      // L5-i: `-T N` (VPCS TTL) Simulation Mode izinde de uygulanır
+      const t = p.indexOf('-t');
+      const ttl = t > 0 && /^\d+$/.test(p[t + 1] || '') ? Number(p[t + 1]) : undefined;
+      labberSimulationTrace(d.id, p[1], ttl);
       recordSharedPing(d.id, p[1], { ok });
     }
   }
   // L3-b: Simulation Mode'un ping izi Labber olay adaptöründen gelir (AgLabSim.pingTrace):
   // Labber'ın teslimat atlamaları ve l2Domain yolu. Eski motor çalıştırılmaz. Port adları
   // AğLab bağlantılarıyla eşleşsin diye arayüz yazımına çevrilir.
-  function labberSimulationTrace(src, target) {
+  function labberSimulationTrace(src, target, ttl) {
     beginEthernetEvents();
     if (!validIP(target)) return;
     let portName;
@@ -9158,7 +9161,13 @@ labLoadExperiment();
       const names = AgLabSim.toLabber(aglabEngineChoice.snapshot()).report.portNames;
       portName = (dev, port) => names[dev]?.[port] || port;
     }
-    ethernetLabberTrace = AgLabSim.pingTrace(aglabLabber.runtime(), src, target, portName);
+    ethernetLabberTrace = AgLabSim.pingTrace(
+      aglabLabber.runtime(),
+      src,
+      target,
+      portName,
+      ttl === undefined ? {} : { ttl },
+    );
     finishEthernetTrace();
   }
 

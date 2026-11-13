@@ -2,7 +2,7 @@
 
 import { httpGet, HTTP_PORT } from '../http'
 import { dnsLookup, dnsRecords, isApipa } from '../dhcp'
-import { arpMac, deliver, ping } from '../net'
+import { arpMac, ping, traceProbe } from '../net'
 import type { LabRuntime } from '../runtime'
 import type { PcDef } from '../types'
 import { ipToInt, isIp, macToColon, maskToPrefix, prefixToMask, sameSubnet } from '../util'
@@ -16,7 +16,7 @@ const HELP = [
   '  ip dns <address>       Set the DNS server (0.0.0.0 clears it)',
   'clear ip                 Clear IP address, mask and gateway',
   'show [arp|ip]            Print the information of the VPC',
-  'ping <address>           Ping the network host',
+  'ping <address> [-c count] [-T ttl]  Ping the network host',
   'trace <address>          Print the path packets take to network host',
   'nslookup <name>          Ask the DNS server for the address of a host name',
   'curl [http://]<host>[:port][/path]  Fetch a web page (Labber addition: VPCS has no HTTP client)',
@@ -92,7 +92,7 @@ export class VpcsSession {
     }
     if (c === 'show' && (!args[0] || args[0] === 'ip')) return this.showIp()
     if (c === 'show' && args[0] === 'arp') return this.showArp()
-    if (c === 'ping' && args[0]) return this.ping(args[0])
+    if (c === 'ping' && args[0]) return this.pingCmd(args)
     if ((c === 'trace' || c === 'tracert' || c === 'traceroute') && args[0]) return this.trace(args[0])
     return ['Bad command: "' + line + '". Use ? for help.']
   }
@@ -258,7 +258,22 @@ export class VpcsSession {
     return ['', ...(out.length ? out : ['arp table is empty']), '']
   }
 
-  private ping(dst: string): string[] {
+  /** L5-i: VPCS `ping host [-c count] [-T ttl]` (diğer VPCS seçenekleri modellenmez). */
+  private pingCmd(args: string[]): string[] {
+    let count = 5
+    let ttl: number | undefined
+    for (let i = 1; i < args.length; i++) {
+      const v = args[i + 1]
+      const n = v !== undefined && /^\d+$/.test(v) ? Number(v) : NaN
+      if (args[i] === '-c' && n >= 1) count = n
+      else if (args[i] === '-T' && n >= 1 && n <= 255) ttl = n
+      else return [`Invalid options: ${args.slice(i).join(' ')}`]
+      i++
+    }
+    return this.ping(args[0]!, count, ttl)
+  }
+
+  private ping(dst: string, count = 5, ttlOut?: number): string[] {
     if (ipToInt(dst) === null) return [`Cannot resolve ${dst}`]
     const c = this.rt.pcs[this.dev]!
     if (!c.ip) return ['No gateway found']
@@ -266,17 +281,18 @@ export class VpcsSession {
     // L5-e: the PC sends (ARP/ICMP): port security learns or flags its source MAC first
     this.rt.hostSends(this.dev)
     const d = this.rt.derived
-    const r = ping(d, this.dev, dst)
+    const r = ping(d, this.dev, dst, ttlOut !== undefined ? { ttl: ttlOut } : {})
     this.rt.markSeen(r.forward?.hops ?? [], this.dev)
-    this.rt.countAcl(5, r.forward, r.back)
-    this.rt.recordNat(5, r.forward, r.back)
+    this.rt.countAcl(count, r.forward, r.back)
+    this.rt.recordNat(count, r.forward, r.back)
     // the first hop answered ARP (target on-link, else the gateway)
     if (r.firstHopArp) this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`)
     this.rt.emit()
     const out: string[] = []
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= count; i++) {
       const t = (0.4 + ((i * 37) % 10) / 10 + (r.ttl && r.ttl < 64 ? 0.8 : 0)).toFixed(3)
       if (r.ok) out.push(`84 bytes from ${dst} icmp_seq=${i} ttl=${r.ttl} time=${t} ms`)
+      else if (r.reason === 'expired') out.push(`*${r.expiredFrom} icmp_seq=${i} ttl=255 time=${t} ms (ICMP type:11, code:0, TTL expired in transit)`)
       else if (r.reason === 'unreach') out.push(`*${r.unreachFrom} icmp_seq=${i} ttl=255 time=${t} ms (ICMP type:3, code:1, Destination host unreachable)`)
       else if (r.reason === 'noroute' && !r.forward?.hops.length && c.gw && !sameSubnet(c.ip, dst, c.prefix)) out.push(`host (${c.gw}) not reachable`)
       else out.push(`${dst} icmp_seq=${i} timeout`)
@@ -290,18 +306,24 @@ export class VpcsSession {
     const c = this.rt.pcs[this.dev]!
     if (!c.ip) return ['No gateway found']
     this.rt.hostSends(this.dev)
-    // VPCS trace: UDP probes by default (doğrulanmadı: kaynak ve hedef port)
-    const r = deliver(this.rt.derived, this.dev, dst, { proto: 'udp', sport: 49152, dport: 33434 })
-    this.rt.markSeen(r.hops, this.dev)
-    this.rt.countAcl(1, r)
-    this.rt.recordNat(1, r)
+    // L5-i: VPCS trace: her TTL için UDP sondası (doğrulanmadı: kaynak/hedef port), en çok 8 atlama
     const out = [`trace to ${dst}, 8 hops max, press Ctrl+C to stop`]
-    r.hops.forEach((h, i) => {
-      const last = r.kind === 'ok' && i === r.hops.length - 1
-      out.push(` ${i + 1}   ${last ? '*' : ''}${h.ip}   ${(0.5 + i).toFixed(3)} ms  ${(0.4 + i).toFixed(3)} ms  ${(0.6 + i).toFixed(3)} ms`)
-    })
-    if (r.kind === 'unreach') out.push(` ${r.hops.length + 1}   *${r.atIp}   1.000 ms (ICMP type:3, code:1, Destination host unreachable)`)
-    else if (r.kind !== 'ok') for (let i = r.hops.length + 1; i <= Math.min(8, r.hops.length + 3); i++) out.push(` ${i}     *  *  *`)
+    for (let ttl = 1; ttl <= 8; ttl++) {
+      const p = traceProbe(this.rt.derived, this.dev, dst, ttl, 33434 + ttl - 1)
+      this.rt.markSeen(p.forward.hops, this.dev)
+      this.rt.countAcl(1, p.forward, p.back)
+      this.rt.recordNat(1, p.forward, p.back)
+      const r = p.result
+      const ms = (x: number) => (x + ttl * 0.5).toFixed(3) + ' ms'
+      if (r.kind === 'none') out.push(` ${ttl}     *  *  *`)
+      else if (r.kind === 'hop') out.push(` ${ttl}   ${r.ip}   ${ms(0.1)}  ${ms(0.05)}  ${ms(0.08)}`)
+      else if (r.kind === 'dest') out.push(` ${ttl}   *${r.ip}   ${ms(0.2)} (ICMP type:3, code:3, Destination port unreachable)`)
+      else
+        out.push(` ${ttl}   *${r.ip}   ${ms(0.2)} (ICMP type:3, code:${r.code === 'A' ? 13 : 1}, ${r.code === 'A' ? 'Communication administratively prohibited' : 'Destination host unreachable'})`)
+      if (r.kind === 'dest' || r.kind === 'unreach') break
+    }
+    this.rt.emit()
     return [...out, '']
   }
+
 }
