@@ -28,8 +28,8 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L5-c ACL | #73 | birleşti |
 | L5-d NAT/PAT; `nat-pat` | #74 | birleşti |
 | Plan: L7 sonrası işler (`SONRAKI_ISLER.md`) | #71 | birleşti |
-| L5-g sunucu HTTP servisi (TCP 80, `curl`) | #L5G (main'den) | açık (birleşmeyi bekliyor) |
-| L5-h PKT IOS metin yolu (hoşgörülü mod) | — | sırada (#L5G'nin dalından) |
+| L5-g sunucu HTTP servisi (TCP 80, `curl`) | #75 (main'den) | açık (birleşmeyi bekliyor) |
+| L5-h PKT IOS metin yolu (hoşgörülü mod) | — | sırada (#75'nin dalından) |
 | I-1 içe aktarma ve düzenleyici Labber'a | — | sırada (L5-h'nin dalından) |
 
 Yeni zincir (kullanıcı talimatı): **L5-g** (main'den) → **L5-h** (L5-g'nin dalından) →
