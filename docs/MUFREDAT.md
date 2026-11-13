@@ -66,11 +66,11 @@ CCNA v2.0 beş alana sahip: Ağ altyapısı ve bağlantı %25, Switching ve ağ 
 | # | Konu | CCNA v2.0 alanı | Pratik | Motor durumu | Öncelik |
 | --- | --- | --- | --- | --- | --- |
 | 13 | STP/RSTP, PortFast, BPDU/root guard | Switching | Motor | Labber'da var (PVST kök seçimi, öncelik, PortFast, BPDU Guard; Root Guard yok; modelde yalnız öncelik). Detaylı ders ve 5 senaryo var (`docs/dersler/stp.md`, `stp-*`) | P1 |
-| 14 | EtherChannel (LACP) | Switching | Motor | Doğrulanacak | P1 |
+| 14 | EtherChannel (LACP) | Switching | Motor | Labber'da var, AğLab modelinde yok. Okuma dersi var (`docs/dersler/etherchannel.md`); senaryolar model desteğiyle | P1 |
 | 15 | OSPFv2 tek alan | IP routing | Motor + Gerçek Lab | Labber'da var (komşuluk, DR/BDR, SPF, maliyet; modelde yalnız network/router-id). Detaylı ders ve 5 senaryo var (`docs/dersler/ospf.md`, `ospf-*`) | P1 |
-| 16 | IPv6 adresleme, SLAAC, NDP, statik rota | Altyapı / routing | Motor | Doğrulanacak | P1 |
+| 16 | IPv6 adresleme, SLAAC, NDP, statik rota | Altyapı / routing | Motor | Labber'da yok. Okuma dersi var (`docs/dersler/ipv6.md`); senaryolar motor desteğiyle | P1 |
 | 17 | OSPFv3 (IPv6) | IP routing | Gerçek Lab önce, sonra motor | Yok | P2 |
-| 18 | FHRP: HSRP/VRRP durum okuma | IP routing | Motor | Doğrulanacak | P1 |
+| 18 | FHRP: HSRP/VRRP durum okuma | IP routing | Motor | Labber'da yok. Okuma dersi var (`docs/dersler/fhrp.md`, `fhrp`); senaryolar motor desteğiyle | P1 |
 | 19 | ACL (standart, genişletilmiş) | Güvenlik | Motor | Labber'da var (L5-c). Detaylı ders ve 5 senaryo var (`docs/dersler/acl.md`, `acl-*`) | P1 |
 | 20 | NAT/PAT | Servisler | Motor | Labber'da var (L5-d; modelde yalnız PAT). Detaylı ders ve 5 senaryo var (`docs/dersler/nat-pat.md`, `nat-*`) | P1 |
 | 21 | L2 güvenlik: port security, DHCP snooping, DAI, storm control, RA guard | Switching / güvenlik | Motor | Port security var (dinamik adres sayımı hatalı); diğerleri yok. Detaylı ders ve 5 senaryo var (`docs/dersler/l2-guvenlik.md`, `psec-*`) | P1 |
