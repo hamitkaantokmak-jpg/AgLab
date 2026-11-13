@@ -18413,11 +18413,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
         );
       if (cli.cliDiffs.length)
         say(
-          'IOS METİN YOLU FARKI: dönüştürücü ile CLI ' +
+          // JSON, PKT metninden sonra düzenlenmişse beklenen durum: yapısal (JSON) yol kullanılır
+          'IOS METİN YOLU FARKI: JSON ile runningConfig metni ' +
             cli.cliDiffs.length +
-            ' modellenen alanda farklı sonuç verdi: ' +
+            " modellenen alanda farklı (JSON metinden sonra düzenlenmiş olabilir); motor JSON'u kullanır: " +
             cli.cliDiffs.map((x) => x.device + ' ' + x.field).join(', '),
-          'outerr',
+          'outinfo',
         );
     }
     if (report) {
