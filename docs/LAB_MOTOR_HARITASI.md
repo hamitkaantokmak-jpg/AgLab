@@ -88,6 +88,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `eth-duplicate-ip` | Ethernet/ARP · Muhasebe PC'sine bazen ulaşılıyor, bazen ulaşılamıyor | **Labber** |
 | `eth-moved-cable-vlan` | Ethernet/ARP · Masası değişen çalışan ağa giremiyor | **Labber** |
 | `eth-two-switch-vlan` | Ethernet/ARP · Yeni switch'e bağlananlar ofise ulaşamıyor | **Labber** |
+| `cdp-uplink-park-port` | CDP/LLDP · Dünkü kablolamadan sonra 2. kat ağdan koptu | **Labber** |
+| `cdp-native-mismatch` | CDP/LLDP · Kullanıcılar çalışıyor, 1. kat switch'i yönetilemiyor | **Labber** |
+| `cdp-gateway-typo` | CDP/LLDP · Kimse gateway'e ulaşamıyor, kablo sağlam | **Labber** |
+| `cdp-no-neighbor` | CDP/LLDP · 1. kat kendi içinde çalışıyor, dışarı çıkamıyor | **Labber** |
+| `cdp-two-faults` | CDP/LLDP · İki hata birden: belgelenmemiş değişiklikler | **Labber** |
 
 ## Labber labları (E)
 
@@ -129,9 +134,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 36 | 1 | 37 |
+| Ortak senaryolar | 41 | 1 | 42 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 89 | 1 | 90 |
+| Toplam | 94 | 1 | 95 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

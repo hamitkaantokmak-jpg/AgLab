@@ -57,7 +57,7 @@ Bu 12 konu şubedeki günlük ağ işinin büyük kısmını karşılar ve CCNA'
 | 9 | DHCP | Havuz kurar, relay (`ip helper-address`) ile başka ağa hizmet verir, 169.254'ü teşhis eder | Motor | Var (relay) | Detaylı ders var | P0 |
 | 10 | DNS | İsim çözümleme hatasını IP bağlantı hatasından ayırır | Motor + okuma | Kısmi (`nslookup` var), doğrulanacak | Detaylı ders var | P1 |
 | 11 | Cihaz yönetimi ve yedekleme | Running/startup config farkı, `write memory`, SSH, parola, yedek/geri yükleme | Motor | Labber'da var (kaydetme, `reload`, güç döngüsü); SSH/parola yok | Detaylı ders var; 5 senaryo Labber testinde (`tests/sim/device-management.test.ts`) | P1 |
-| 12 | CDP/LLDP ile komşu keşfi | `show cdp neighbors` ile belgelenmemiş ağı çıkarır | Motor | Yok | Yok | P1 |
+| 12 | CDP/LLDP ile komşu keşfi | `show cdp neighbors` ile belgelenmemiş ağı çıkarır | Motor | Labber'da var (L5-f: CDP/LLDP komşu tabloları) | Detaylı ders ve 5 senaryo var (`docs/dersler/cdp-lldp.md`, `cdp-*`) | P1 |
 
 ## Seviye 2 — CCNA (+14 konu)
 

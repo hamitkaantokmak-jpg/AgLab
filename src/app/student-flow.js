@@ -15,6 +15,7 @@
       'intervlan': ['intervlan'],
       'physical': ['physical'],
       'ethernet': ['ethernet'],
+      'discovery': ['discovery'],
       'stp': ['stp'],
       'etherchannel': ['etherchannel'],
       'ospf': ['ospf'],
