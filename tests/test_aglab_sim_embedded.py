@@ -214,11 +214,12 @@ class SimEmbeddedTests(unittest.TestCase):
         self.assertEqual(set(self.accesses()), {"global", "toLabber"}, "eski motor senaryosu")
         # Labber kararındaki senaryo: karar + tek kalıcı çalışma zamanı + terminal oturumu
         self.reset_accesses()
+        # (vlan-* sorgu doğrulamasında: hedefler LabQuery ile, createLab)
         page.evaluate("aglabSharedEngine.load('vlan-wrong-access')")
         page.evaluate("aglabSharedEngine.goal()")
         self.assertEqual(
             set(self.accesses()),
-            {"global", "toLabber", "createRuntime", "createSession", "VpcsSession"},
+            {"global", "toLabber", "createRuntime", "createLab", "createSession", "VpcsSession"},
             "Labber senaryosu",
         )
         self.assertEqual(self.accesses().count("createRuntime"), 1, "senaryo başına tek")

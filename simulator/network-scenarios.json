@@ -1256,7 +1256,31 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.10.12",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.20.11"
+          ],
+          "field": "ok",
+          "expected": false,
+          "label": "PC-01 → PC-03 (router yok, ulaşmamalı)"
+        }
+      ]
     }
   },
   {
@@ -1534,7 +1558,31 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.10.12",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-03",
+            "192.168.20.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-03 → PC-04"
+        }
+      ]
     }
   },
   {
@@ -1814,7 +1862,31 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.10.12",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-03",
+            "192.168.20.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-03 → PC-04"
+        }
+      ]
     }
   },
   {
@@ -2091,7 +2163,31 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.20.12",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.20.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-03",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-03 → PC-04"
+        }
+      ]
     }
   },
   {
@@ -2378,7 +2474,41 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.20.12",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.20.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-03",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-03 → PC-04"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.10.11"
+          ],
+          "field": "ok",
+          "expected": false,
+          "label": "PC-01 → PC-03 (router yok, ulaşmamalı)"
+        }
+      ]
     }
   },
   {
@@ -2610,7 +2740,21 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.20.12",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.20.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        }
+      ]
     }
   },
   {
@@ -2842,7 +2986,21 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-02",
+      "target": "192.168.10.11",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-02",
+            "192.168.10.11"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-02 → PC-01"
+        }
+      ]
     }
   },
   {
@@ -3070,7 +3228,31 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-02",
+      "target": "192.168.10.11",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-02",
+            "192.168.10.11"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-02 → PC-01"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-02",
+            "192.168.10.13"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-02 → PC-03"
+        }
+      ]
     }
   },
   {
@@ -3302,7 +3484,31 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.20.12",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.20.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-03",
+            "192.168.20.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-03 → PC-02"
+        }
+      ]
     }
   },
   {
@@ -3539,7 +3745,21 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.20.12",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.20.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        }
+      ]
     }
   },
   {
