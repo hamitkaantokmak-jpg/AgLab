@@ -29,24 +29,15 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L5-d NAT/PAT; `nat-pat` | #74 | birleşti |
 | Plan: L7 sonrası işler (`SONRAKI_ISLER.md`) | #71 | birleşti |
 | L5-g sunucu HTTP servisi (TCP 80, `curl`) | #75 (main'den) | açık (birleşmeyi bekliyor) |
-| L5-h PKT IOS metin yolu (hoşgörülü mod) | — | sırada (#75'nin dalından) |
+| L5-h PKT IOS metin yolu (hoşgörülü mod) | #L5H (#75'in dalından) | açık (birleşmeyi bekliyor) |
 | I-1 içe aktarma ve düzenleyici Labber'a | — | sırada (L5-h'nin dalından) |
 
-Yeni zincir (kullanıcı talimatı): **L5-g** (main'den) → **L5-h** (L5-g'nin dalından) →
+Yeni zincir (kullanıcı talimatı): **L5-g** (main'den, #75) → **L5-h** (L5-g'nin dalından, #L5H) →
 **I-1** (L5-h'nin dalından). Her biri ayrı PR; hiçbiri birleştirilmez; CI'ı kullanıcı denetler.
 I-1'in PR'ı açılınca durulur: L6 ve L7'ye başlanmaz.
 
 Eski motorda kalan içerik (`LAB_MOTOR_HARITASI.md`): yalnız `bgp-as` (BGP, kapsam dışı).
 İçe aktarılan `.pkt` ve düzenleyicide kurulan topolojiler I-1'e kadar eski motorda.
-
-**L5-h için kalan adımlar** (YENIDEN_YAPILANMA "PKT için IOS metin yolu"):
-1. `createLab` için hoşgörülü mod: `config.runningConfig` satırları satır satır Labber CLI'sine;
-   ilk hatada durulmaz; her satırın kabul/ret durumu raporlanır.
-2. Reddedilen satırlar içe aktarma raporuna (`unmodeledConfigLines`).
-3. Packet Tracer'ın ürettiği ama modellenmeyen satırlar ayrı sınıflandırılır: "zararsız/yok
-   sayıldı" (`version`, `service timestamps`, `line con 0`, `banner` …) ve "modellenmedi".
-4. Yapısal yol ile CLI yolu modellenen alanlarda karşılaştırılır; fark CI'da test hatası.
-5. Kabul: `test_aglab_import`, `test_aglab_pkt_*`, `test_aglab_svi_import`, depodaki örnek .pkt.
 
 **I-1 için kalan adımlar:** `importTopology` ve düzenleyici, Sorun Çöz/Akademi'deki motor seçimini
 kullanır (köprü ifade edebiliyorsa Labber, edemiyorsa eski motor; rozet nedeni gösterir); PKT
@@ -443,6 +434,24 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
 - **Testler**: `tests/sim/http.test.ts`, `http-parity.test.ts` (KNOWN_DIFFS:
   `legacy-http-needs-icmp`, `outside-acl-sees-translated-source`), `bridge.test.ts`
   "HTTP (L5-g)"; Playwright `test_aglab_labber_terminal.test_http_from_terminal`.
+
+## L5-h — PKT IOS metin yolu (yapıldı, PR açık)
+
+- **Labber**: `src/sim/config-text.ts` `applyConfigText` (hoşgörülü mod; satır sınıfları
+  applied/ignored/unmodeled; durum dökümü anlamı: metindeki arayüz `shutdown` yazmıyorsa açık;
+  `!` bölüm sınırı; `end` sonrası uygulanmaz; reddedilen kip bloğu önceki kipe uygulanmaz;
+  zararsız satır listesi). `createLab(def, { lenient: true })` → `rt.configReport`.
+- **Köprü**: `src/sim-bridge/cli-import.ts` `cliImport(topology)` → yapısal sonuç, CLI yoluyla
+  kurulmuş çalışma zamanı, satırlar, `diffs` (sessiz fark), `extended` (açık fark);
+  `modeledProjection`, `importReportWithCli`. `AgLabSim` dışa aktarır.
+- **Ürün**: içe aktarmada ve kayıtlı çalışma açılışında terminalde "IOS METİN YOLU (Labber CLI)"
+  özeti; `aglabImportCli.report()`. Kayda yazılmaz. **Motor kararı değişmedi**: içe aktarılan
+  topoloji hâlâ eski motorda (I-1'in işi).
+- **Dönüştürücü ve Labber düzeltmeleri**: UYUMLULUK_MATRISI "L5-h" (trunk `except`, port-security
+  access/H.H.H, access VLAN oluşturma, range tam ad bitişi, port-security maximum 1–1024).
+- **Testler**: `tests/sim/cli-import.test.ts`; Python kabul testleri her dönüşümde
+  `assert_cli_path_matches` (Node: `tests/sim_node_runner.cjs`); `pkt-sample-matrix.json`
+  yeni vaka `synthetic-port-security-dynamic-port`.
 
 ## Kurallar hatırlatması
 

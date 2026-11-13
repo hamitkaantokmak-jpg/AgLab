@@ -1,5 +1,6 @@
 // Lab runtime: owns configs, recomputes derived state, emits syslog on state changes.
 
+import type { ConfigLine } from './config-text'
 import type { NatEntry } from './nat'
 import { cdpBetween } from './discovery'
 import { activePs, secureCount } from './portsec'
@@ -86,6 +87,8 @@ export class LabRuntime {
   natHits = 0
   /** L5-d: packets dropped because the pool had no free address */
   natMisses = 0
+  /** L5-h: per-line result of a lenient (running-config) initial configuration */
+  configReport?: ConfigLine[]
   private seq = 0
   private t0 = Date.now()
   private listeners = new Set<() => void>()

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, assert_cli_path_matches
 from convert_pkt_to_aglab import convert, PacketTracerError
 
 SERVER = "10.20.0.10"
@@ -70,6 +70,7 @@ def imported(commands, tagged=False, blocked=False):
             ET.SubElement(cable, key).text = value
     xml = ET.tostring(root)
     obj, report = convert(xml, b"synthetic-original-pkt")
+    assert_cli_path_matches(obj)
     assert base64.b64decode(obj["sourceArchive"]["decodedXmlBase64"]) == xml
     assert (
         base64.b64decode(obj["sourceArchive"]["originalPacketBase64"]) == b"synthetic-original-pkt"

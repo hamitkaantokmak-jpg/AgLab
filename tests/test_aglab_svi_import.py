@@ -3,7 +3,7 @@
 import base64, json, tempfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, assert_cli_path_matches
 from convert_pkt_to_aglab import convert
 from playwright.sync_api import sync_playwright, expect
 
@@ -69,6 +69,7 @@ cases = []
 for shutdown in (False, True):
     xml = source(shutdown)
     obj, report = convert(xml)
+    assert_cli_path_matches(obj)
     sw = obj["devices"][0]
     assert sw["interfaces"].get("vlan10") == {
         "ip": "192.168.10.2",

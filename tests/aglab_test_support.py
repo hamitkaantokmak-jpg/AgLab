@@ -87,3 +87,47 @@ def import_topology(page, path) -> None:
     """
     page.locator("#ptImportFile").set_input_files(str(path))
     page.wait_for_function(IMPORT_DONE)
+
+
+def cli_path(*topologies) -> list:
+    """L5-h: AğLab JSON'larını Labber'ın IOS metin yolundan geçirir (tarayıcısız, Node).
+
+    Her topoloji için ``{decision, reasons, diffs, lines, report}`` döner (bkz.
+    ``tests/sim_node_runner.cjs`` ve ``src/sim-bridge/cli-import.ts``).
+    """
+    import subprocess
+
+    out = subprocess.run(
+        ["node", str(TESTS_DIR / "sim_node_runner.cjs")],
+        input=json.dumps({"topologies": list(topologies)}),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(out.stdout)
+
+
+def assert_cli_path_matches(obj) -> dict:
+    """L5-h: yapısal yol (dönüştürücü + köprü) ile CLI yolu (runningConfig → Labber CLI)
+    dönüştürücünün modellediği alanlarda aynı olmalı. Fark test hatasıdır."""
+    result = cli_path(obj)[0]
+    assert result["diffs"] == [], "Yapısal yol ile IOS metin yolu farklı: " + json.dumps(
+        _compact(result["diffs"]), ensure_ascii=False
+    )
+    return result
+
+
+def _compact(value):
+    """Uzun VLAN listelerini aralık metnine çevirir (hata iletisi okunur kalsın)."""
+    if isinstance(value, list) and len(value) > 8 and all(isinstance(x, int) for x in value):
+        out, start = [], value[0]
+        for prev, cur in zip(value, value[1:] + [None]):
+            if cur != prev + 1 if cur is not None else True:
+                out.append(str(start) if start == prev else f"{start}-{prev}")
+                start = cur
+        return ",".join(out)
+    if isinstance(value, list):
+        return [_compact(x) for x in value]
+    if isinstance(value, dict):
+        return {k: _compact(v) for k, v in value.items()}
+    return value

@@ -7456,7 +7456,84 @@ labLoadExperiment();
     );
     showImportReport(report);
   }
+  /**
+   * L5-h: PKT IOS metin yolu. runningConfig satırları Labber CLI'sine hoşgörülü modda verilir;
+   * her satır "uygulandı", "zararsız/yok sayıldı" ya da "modellenmedi" olarak sınıflanır.
+   * Rapor kayda yazılmaz (kayıt biçimi değişmez); runningConfig'ten her açılışta türetilir.
+   */
+  let importCliReportData = null;
+  function labberCliReport(report) {
+    importCliReportData = null;
+    if (!report || typeof AgLabSim === 'undefined') return null;
+    if (
+      !devices.some(
+        (d) => typeof d.config?.runningConfig === 'string' && d.config.runningConfig.trim(),
+      )
+    )
+      return null;
+    try {
+      const topo = {
+        app: 'AgLab',
+        version: 23,
+        devices: clone(devices),
+        links: clone(links),
+        importReport: clone(report),
+      };
+      const r = AgLabSim.cliImport(topo);
+      importCliReportData = {
+        ...AgLabSim.importReportWithCli(report, topo, r.lines),
+        cliDiffs: r.diffs,
+        cliExtended: r.extended,
+      };
+    } catch (e) {
+      importCliReportData = { error: String((e && e.message) || e) };
+    }
+    return importCliReportData;
+  }
   function showImportReport(report) {
+    const cli = labberCliReport(report);
+    if (cli && !cli.error) {
+      const s = cli.labberCli;
+      say(
+        'IOS METİN YOLU (Labber CLI): ' +
+          s.applied +
+          ' satır uygulandı, ' +
+          s.ignored +
+          ' zararsız satır yok sayıldı (version, service, line, banner …), ' +
+          s.unmodeled +
+          ' satır modellenmedi.',
+        s.unmodeled ? 'outerr' : 'outinfo',
+      );
+      cli.unmodeledConfigLines
+        .slice(0, 20)
+        .forEach((x) =>
+          say(
+            'MODELLENMEDİ: ' +
+              x.device +
+              ' satır ' +
+              x.line +
+              ': ' +
+              x.command +
+              (x.reason ? ' — ' + x.reason : ''),
+            'outerr',
+          ),
+        );
+      if (cli.unmodeledConfigLines.length > 20)
+        say(
+          '… ve ' +
+            (cli.unmodeledConfigLines.length - 20) +
+            ' satır daha (aglabImportCli.report()).',
+          'outerr',
+        );
+      if (cli.cliDiffs.length)
+        say(
+          'IOS METİN YOLU FARKI: dönüştürücü ile CLI ' +
+            cli.cliDiffs.length +
+            ' modellenen alanda farklı sonuç verdi: ' +
+            cli.cliDiffs.map((x) => x.device + ' ' + x.field).join(', '),
+          'outerr',
+        );
+    }
     if (report) {
       if (Number.isFinite(report.sourceDeviceCount) && report.sourceDeviceCount > devices.length)
         say(
@@ -7483,7 +7560,7 @@ labLoadExperiment();
         say(
           'CLI KAPSAM UYARISI: ' +
             report.unmodeledConfigLineCount +
-            ' yapılandırma satırı simülasyon modeline eşlenmedi; ham config ve kaynak arşivi JSON içinde korunuyor. Ayrıntılar importReport.unmodeledConfigLines alanında.',
+            ' yapılandırma satırı dönüştürücünün yapısal modeline eşlenmedi; ham config ve kaynak arşivi JSON içinde korunuyor. Ayrıntılar importReport.unmodeledConfigLines alanında.',
           'outerr',
         );
       if (report.sourceArchive?.originalPacketSha256)
@@ -7496,6 +7573,10 @@ labLoadExperiment();
         say('SINIRLAMA: ' + report.simulationCoverage.preservedButNotFullySimulated, 'outinfo');
     }
   }
+  // L5-h: test kancası — son içe aktarmanın IOS metin yolu raporu
+  window.aglabImportCli = {
+    report: () => (importCliReportData ? clone(importCliReportData) : null),
+  };
   function addDevice(type, x, y) {
     let n = devices.filter((d) => d.type === type).length + 1;
     let prefix = { PC: 'PC', Switch: 'SW', Router: 'R', Server: 'SRV' }[type];

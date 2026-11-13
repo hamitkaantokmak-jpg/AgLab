@@ -210,7 +210,7 @@ karşılaştırır (fark 0; sayaç için aşağıdaki karar).
 | İhlalin tetiklenmesi | Her ping hesabı (değerlendirme dahil) | Uç trafik gönderdiğinde (VPCS `ping`, `trace`, `ip dhcp`); değerlendirme ping'i (LabQuery) salt okunurdur ama ihlaldeki uç ağa çıkamaz | **Labber.** Senaryo testi `probe()` Labber'da öğrencinin ping'i gibi gerçek trafik üretir. |
 | Err-disabled portta tek `no shutdown` | Hata satırı ("önce shutdown") | IOS: hata yok, port err-disabled kalır; `shutdown` → `no shutdown` kurtarır | **Labber (IOS).** `test_aglab_network_features` test_05 buna göre. |
 | Dinamik/trunk portta `switchport port-security …` | — | `Command rejected: Fa0/1 is a dynamic port.` / `… is a trunk port.` | IOS metni. |
-| `maximum` aralığı | 1–1024 | CLI `<1-8192>`; köprü eski sınırı (1–1024) uygular | **Doğrulanmadı:** platforma göre üst sınır. |
+| `maximum` aralığı | 1–1024 | CLI `<1-1024>` (L5-h: PKT dönüştürücüsü ve AğLab modeliyle aynı; önceden `<1-8192>`); köprü 1–1024 | **Doğrulanmadı:** platforma göre IOS üst sınırı. |
 | Port güvenliği açıkken porta trunk yapmak | — | Kabul edilir, güvenlik etkisiz olur (yalnız access portta uygulanır) | **Doğrulanmadı:** bazı IOS sürümleri reddeder. |
 | Arkasında switch olan güvenli port | Bütün kaynak MAC'ler sayılır | Yalnız doğrudan bağlı uç denetlenir | **Sınır.** İçerikte güvenli port hep uca bağlı. |
 | **Desteklenmiyor** | — | `switchport port-security aging …`, `errdisable recovery cause psecure-violation`, `show port-security interface X address`, `clear port-security` | Komut `% Invalid input` verir. |
@@ -285,3 +285,25 @@ TCP/80 ACL'i + NAT; `src/engine/acl.js`, `nat.js`). Farklar yalnız aşağıdaki
 | NAT çevirisi | `natTranslations`'a `tcp` girdisi | `show ip nat translations`'ta `tcp …:49153 … :80` girdisi; statik TCP port çevirisi (`ip nat inside source static tcp L 80 G 80`) dışarıdan erişimi sağlar | Kabul edildi. **Doğrulanmadı:** istemcinin geçici kaynak portu (gerçekte rastgele). |
 | Sayaçlar | — | `curl` ACL eşleşme sayacına bağlantı başına 1 ekler | **Doğrulanmadı:** gerçek TCP oturumunun paket sayısı (SYN, ACK, veri) sayılmaz. |
 | **Desteklenmiyor** | — | HTTPS (`curl https://…` açık hata verir), HTTP başlıkları/yöntemleri (`-I`, `-X`), sayfa içeriğinin düzenlenmesi, router'da `ip http server`, Simulation Mode'da TCP/HTTP paketleri (iz yalnız ICMP), eski metin senaryolarının `test http` komutu (L6) | Görünür hata ya da `Bad command`. |
+
+## L5-h: PKT IOS metin yolu (Labber kararları)
+
+Packet Tracer dönüştürücüsünün sakladığı `config.runningConfig` metni Labber CLI'sine hoşgörülü
+modda verilir (`src/sim/config-text.ts`, `createLab(def, { lenient: true })`,
+`src/sim-bridge/cli-import.ts`). Yapısal yol (dönüştürücü + köprü) ile CLI yolu, dönüştürücünün
+modellediği alanlarda karşılaştırılır. Kabul testleri (`test_aglab_import`, `test_aglab_pkt_*`,
+`test_aglab_svi_import`) her dönüşümde bu karşılaştırmayı çalıştırır; sessiz fark test hatasıdır.
+
+| Konu | Karar |
+|---|---|
+| Satır sınıfları | **uygulandı** (Labber kabul etti), **zararsız/yok sayıldı** (Labber reddetti ama ağ davranışını etkilemez: `version`, `service …`, `ip cef`, `license udi`, `ip classless`, `ip flow-export`, `spanning-tree extend system-id`, router'da `spanning-tree mode pvst`, `duplex/speed auto`, `logging`, `line con/aux/vty` blokları, `banner` metni, `end`, PT router'ının varsayılan `interface Vlan1` bloğu), **modellenmedi** (Labber reddetti; içe aktarma raporunda görünür). |
+| Durum dökümü anlamı | running-config bir durum dökümüdür: metindeki arayüz `shutdown` yazmıyorsa açıktır (startup-config ile açılış). Metinde hiç geçmeyen router portu IOS fabrika durumunda (kapalı) kalır. **Doğrulanmadı:** yapılandırmada geçmeyen arayüzün startup-config açılışındaki durumu. |
+| Kip geçişleri | Alt kipte tanınmayan komut IOS'taki gibi global kipte denenir. `!` running-config belgesinde bölüm sınırıdır (sonraki satır global kipte). `end` yapılandırmayı bitirir; sonrası uygulanmaz ve "modellenmedi" raporlanır. Reddedilen bir kip satırının (ör. router'da `interface Vlan10`, `router bgp`) alt satırları önceki arayüze uygulanmaz. |
+| Onay soran komut | Metinden yüklemede onaylanmaz (satır "modellenmedi"). |
+| Rapor | Kayda yazılmaz (kayıt biçimi değişmez); içe aktarmada ve kayıtlı çalışma açılışında `runningConfig`'ten türetilir. Terminalde "IOS METİN YOLU (Labber CLI)" özeti, modellenmeyen satırlar ve varsa fark; ayrıntı `aglabImportCli.report()`: `unmodeledConfigLines` (Labber'ın reddettikleri), `ignoredConfigLines`, `converterUnmodeledConfigLines` (dönüştürücünün özgün listesi), `cliDiffs`, `cliExtended`. |
+| Sessiz ve açık fark | Dönüştürücünün modellediği bir alanda CLI yolu farklı sonuç verirse **sessiz fark** (test hatası). Dönüştürücünün raporunda "modellenmedi" olan bir satırı CLI (IOS gibi) uyguladıysa, o arayüzün ya da ilgili global alanın farkı **açık fark**tır (`cliExtended`; ör. router'da `interface range`, dönüştürücünün reddettiği DHCP relay adresleri). |
+| DTP | AğLab modelinde DTP yok: dönüştürücü `switchport mode` satırı olmayan portu `access` yazar; IOS'ta (Labber CLI'de) bu port `dynamic auto`dur. Karşılaştırmada yalnız bu eşleme yapılır; açık `dynamic desirable` satırı normalleştirilmez. |
+| Dönüştürücü düzeltmeleri (karşılaştırmanın yakaladığı farklar) | `switchport trunk allowed vlan except <liste>` IOS'ta geçerli; önceden bozuk sözdizimi sayılıp yok sayılıyordu. Port-security komutları yalnız açıkça `switchport mode access` yapılmış portta modellenir (IOS/PT: "Command rejected: … is a dynamic port"). Port-security statik MAC yalnız `H.H.H` biçiminde kabul edilir (IOS CLI biçimi; iki nokta/tire biçimleri reddedilir). |
+| Labber düzeltmeleri | `switchport access vlan N` olmayan VLAN'ı IOS gibi oluşturur: `% Access VLAN does not exist. Creating vlan N` (VTP server/transparent). Sonradan `no vlan N` ile silinen VLAN'daki port yine inactive olur. `interface range` bitişi aynı tür ve yuvayla tam ad olabilir (`Gi0/1 - Gi0/2`; **doğrulanmadı:** IOS sürümüne göre). Port-security `maximum` aralığı `<1-1024>` (AğLab modeli ve dönüştürücüyle aynı; **doğrulanmadı:** platform sınırı). |
+| DHCP relay adresi | Labber `ip helper-address` için 0.0.0.0, çok yöncü ve 255.255.255.255 adreslerini kabul eder; dönüştürücü reddeder (açık fark). **Doğrulanmadı:** IOS'un bu adresleri kabul edip etmediği. |
+| **Desteklenmiyor** | Labber'ın modellemediği her IOS özelliği (BGP, EIGRP, IP SLA, QoS, AAA, SSH/kullanıcı, kriptografi …) "modellenmedi" satırı olarak raporlanır; sessizce yok sayılmaz. |

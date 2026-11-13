@@ -3,6 +3,7 @@
 import json, base64, hashlib, sys, subprocess, xml.etree.ElementTree as ET
 from pathlib import Path
 from aglab_test_support import (
+    assert_cli_path_matches,
     ROOT,
     TESTS_DIR,
     artifact_dir,
@@ -84,6 +85,7 @@ for source_dev in xml_root.find("NETWORK/DEVICES"):
         item.text = line
     break
 synthetic_obj, synthetic_report = convert(ET.tostring(xml_root, encoding="utf-8"), source_pkt)
+assert_cli_path_matches(synthetic_obj)
 sw1 = next(d for d in synthetic_obj["devices"] if d["name"] == "SW1")
 assert sw1["interfaces"]["fa0/1"]["enabled"] is False, sw1["interfaces"]["fa0/1"]
 assert sw1["interfaces"]["gi0/1"]["mode"] == "trunk", sw1["interfaces"]["gi0/1"]
@@ -114,6 +116,14 @@ with sync_playwright() as p:
     assert "SINIRLAMA:" in terminal, terminal
     assert "CLI KAPSAM UYARISI:" in terminal, terminal
     assert "KAYNAK ARŞİVİ:" in terminal, terminal
+    # L5-h: IOS metin yolu (runningConfig → Labber CLI) raporu; kayda yazılmaz
+    cli = page.evaluate("aglabImportCli.report()")
+    assert "IOS METİN YOLU (Labber CLI):" in terminal, terminal
+    assert cli["cliDiffs"] == [], cli["cliDiffs"]
+    assert cli["unmodeledConfigLines"] == [], cli["unmodeledConfigLines"]
+    assert cli["ignoredConfigLineCount"] == len(cli["ignoredConfigLines"]) > 0
+    assert cli["converterUnmodeledConfigLines"] == report["unmodeledConfigLines"]
+    assert "IOS METİN YOLU FARKI" not in terminal, terminal
     page.evaluate("showArea('lab')")
     pings = []
     for src, target in [
