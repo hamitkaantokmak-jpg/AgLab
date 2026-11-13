@@ -109,6 +109,8 @@ const SHARED_QUERY_FNS = new Set([
   // L5-b
   'dhcpLease',
   'dnsLookup',
+  // L5-g (Konu #1 yöntem senaryosu: uygulama katmanı)
+  'http',
 ]);
 /**
  * Bir hedef satırı: { fn, args, field?, expected, label? }. Bağımsız değişkenlerde cihaz

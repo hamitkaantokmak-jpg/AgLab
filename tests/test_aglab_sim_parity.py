@@ -44,6 +44,9 @@ KNOWN_DIFFS = {
     # asimetrik maske: PC-C /25 yanıtı .11/.12'ye geri gönderemez (ağ geçidi yok)
     ("eth-wrong-mask", "başlangıç", "PC-A", "PC-C"),
     ("eth-wrong-mask", "başlangıç", "PC-B", "PC-C"),
+    ("ip-gw-outside-subnet", "başlangıç", "PC-11", "PC-13"),
+    ("ip-gw-outside-subnet", "başlangıç", "PC-12", "PC-13"),
+    ("ip-gw-outside-subnet", "başlangıç", "YAZICI", "PC-13"),
     # IP çakışması: .12'nin ARP'sini LAPTOP kazanır; PC-B'ye yanıt dönmez
     ("eth-duplicate-ip", "başlangıç", "PC-B", "PC-A"),
     ("eth-duplicate-ip", "başlangıç", "PC-B", "PC-C"),

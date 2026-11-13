@@ -118,6 +118,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `phy-wrong-port` | Fiziksel bağlantı · Masası değişen çalışanın bilgisayarı ağa bağlanmıyor | **Labber** |
 | `phy-power-off` | Fiziksel bağlantı · Sabah 2. switch'e bağlı her şey yok | **Labber** |
 | `phy-two-faults` | Fiziksel bağlantı · Kesintiden sonra iki ayrı sorun | **Labber** |
+| `method-one-pc-bottom-up` | Yöntem · "İnternet yok" diyen tek kullanıcı | **Labber** |
+| `method-app-top-down` | Yöntem · Ağ sağlam görünüyor, ERP sayfası açılmıyor | **Labber** |
+| `method-divide-at-gateway` | Yöntem · Kimse sunuculara ulaşamıyor | **Labber** |
+| `method-what-changed` | Yöntem · Gece bakımından sonra bütün kat kopuk | **Labber** |
+| `method-two-layers` | Yöntem · Bir hatayı bulunca durma | **Labber** |
 
 ## Labber labları (E)
 
@@ -159,9 +164,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 66 | 1 | 67 |
+| Ortak senaryolar | 71 | 1 | 72 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 119 | 1 | 120 |
+| Toplam | 124 | 1 | 125 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
