@@ -88,6 +88,41 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `eth-duplicate-ip` | Ethernet/ARP · Muhasebe PC'sine bazen ulaşılıyor, bazen ulaşılamıyor | **Labber** |
 | `eth-moved-cable-vlan` | Ethernet/ARP · Masası değişen çalışan ağa giremiyor | **Labber** |
 | `eth-two-switch-vlan` | Ethernet/ARP · Yeni switch'e bağlananlar ofise ulaşamıyor | **Labber** |
+| `cdp-uplink-park-port` | CDP/LLDP · Dünkü kablolamadan sonra 2. kat ağdan koptu | **Labber** |
+| `cdp-native-mismatch` | CDP/LLDP · Kullanıcılar çalışıyor, 1. kat switch'i yönetilemiyor | **Labber** |
+| `cdp-gateway-typo` | CDP/LLDP · Kimse gateway'e ulaşamıyor, kablo sağlam | **Labber** |
+| `cdp-no-neighbor` | CDP/LLDP · 1. kat kendi içinde çalışıyor, dışarı çıkamıyor | **Labber** |
+| `cdp-two-faults` | CDP/LLDP · İki hata birden: belgelenmemiş değişiklikler | **Labber** |
+| `dhcp-no-helper` | DHCP · Yeni açılan 2. kat 169.254 alıyor | **Labber** |
+| `dhcp-wrong-helper` | DHCP · Relay var ama 2. kat yine adres alamıyor | **Labber** |
+| `dhcp-pool-gateway` | DHCP · Adres var, dışarı çıkış yok | **Labber** |
+| `dhcp-excluded-all` | DHCP · Eski bilgisayarlar çalışıyor, yeni gelen adres alamıyor | **Labber** |
+| `dhcp-two-faults` | DHCP · İki kat, iki farklı belirti | **Labber** |
+| `dns-wrong-server-pc` | DNS · Yalnız benim bilgisayarım ERP'yi adıyla açamıyor | **Labber** |
+| `dns-pool-wrong-server` | DNS · 1. katta hiçbir isim çözülmüyor | **Labber** |
+| `dns-service-down` | DNS · Sabahtan beri hiçbir yerde isim çözülmüyor | **Labber** |
+| `dns-no-gateway` | DNS · Yeni bilgisayarda DNS doğru ama isim çözülmüyor | **Labber** |
+| `dns-two-faults` | DNS · Hiçbir yerde isim yok, düzeltince yalnız 2. kat geldi | **Labber** |
+| `gw-pc-wrong-gateway` | Routing · Yan masaya gidiyor, sunucuya gitmiyor | **Labber** |
+| `gw-missing-return` | Routing · Ping gidiyor ama geri gelmiyor | **Labber** |
+| `gw-lpm-leftover` | Routing · Varsayılan rota var, sunucuya yine gidilmiyor | **Labber** |
+| `gw-backup-floating` | Routing · Ana hat koptu, yedek hat boşta duruyor | **Labber** |
+| `gw-two-faults` | Routing · İki hata birden: bir PC hiç, diğerleri hiç gidemiyor | **Labber** |
+| `ip-gw-outside-subnet` | IP adresleme · Yeni PC kimseye, kimse ona ulaşamıyor | **Labber** |
+| `ip-duplicate-gateway` | IP adresleme · Dizüstü bağlandı, bütün kat dışarı çıkamıyor | **Labber** |
+| `ip-wrong-network` | IP adresleme · Yeni yazıcıya kimse yazdıramıyor | **Labber** |
+| `ip-router-mask` | IP adresleme · Aynı kattaki bazı PC'ler sunucuya ulaşıyor, bazıları ulaşamıyor | **Labber** |
+| `ip-two-faults` | IP adresleme · Hem yazıcı hem bir PC dışarıda kaldı | **Labber** |
+| `phy-port-shutdown` | Fiziksel bağlantı · Kullanılmayan portlar kapatılınca bir PC gitti | **Labber** |
+| `phy-uplink-one-side` | Fiziksel bağlantı · 2. switch'teki herkes kopuk, ışıklar yanmıyor | **Labber** |
+| `phy-wrong-port` | Fiziksel bağlantı · Masası değişen çalışanın bilgisayarı ağa bağlanmıyor | **Labber** |
+| `phy-power-off` | Fiziksel bağlantı · Sabah 2. switch'e bağlı her şey yok | **Labber** |
+| `phy-two-faults` | Fiziksel bağlantı · Kesintiden sonra iki ayrı sorun | **Labber** |
+| `method-one-pc-bottom-up` | Yöntem · "İnternet yok" diyen tek kullanıcı | **Labber** |
+| `method-app-top-down` | Yöntem · Ağ sağlam görünüyor, ERP sayfası açılmıyor | **Labber** |
+| `method-divide-at-gateway` | Yöntem · Kimse sunuculara ulaşamıyor | **Labber** |
+| `method-what-changed` | Yöntem · Gece bakımından sonra bütün kat kopuk | **Labber** |
+| `method-two-layers` | Yöntem · Bir hatayı bulunca durma | **Labber** |
 
 ## Labber labları (E)
 
@@ -129,9 +164,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 36 | 1 | 37 |
+| Ortak senaryolar | 71 | 1 | 72 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 89 | 1 | 90 |
+| Toplam | 124 | 1 | 125 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

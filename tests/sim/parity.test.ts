@@ -48,13 +48,20 @@ const KNOWN_DIFFS = new Set([
   'vlan-carry-native-mismatch',
 ])
 
+// Gerçek içerikte bilerek öğretilen bilinen farklar: senaryo kimliği → fark türü. Senaryo
+// Labber kararındadır ve arızanın kendisi bu farktır; içerik için "fark yok" kuralının tek istisnası.
+// cdp-native-mismatch (Konu #12): trunk'ın iki ucunda native VLAN farklı; Labber (Cisco gibi)
+// native VLAN trafiğini geçirmez, oracle'ın STP uygunluk kuralı native'i yok sayar.
+const CONTENT_INTENDED: ReadonlyMap<string, string> = new Map([['cdp-native-mismatch', 'vlan-carry-native-mismatch']])
+
 type Diff = { kind: string; where: string; oracle: unknown; labber: unknown }
 const diffs: Diff[] = []
 const counts: Record<string, number> = {}
-const bySource: Record<string, Record<string, number>> = { content: {}, synthetic: {} }
+const bySource: Record<string, Record<string, number>> = { content: {}, 'content-intended': {}, synthetic: {} }
 const note = (kind: string, where: string, oracle: unknown, labber: unknown) => {
   counts[kind] = (counts[kind] ?? 0) + 1
-  const src = /^(loop-|seed )/.test(where) ? 'synthetic' : 'content'
+  const intended = [...CONTENT_INTENDED].some(([id, k]) => k === kind && where.startsWith(`${id} `))
+  const src = /^(loop-|seed )/.test(where) ? 'synthetic' : intended ? 'content-intended' : 'content'
   bySource[src]![kind] = (bySource[src]![kind] ?? 0) + 1
   if (diffs.filter((d) => d.kind === kind).length < 5) diffs.push({ kind, where, oracle, labber })
 }
