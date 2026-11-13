@@ -193,7 +193,7 @@ export class VpcsSession {
     if (!c.ip) return [`curl: (7) Failed to connect to ${host} port ${port}: Network is unreachable`]
     this.rt.hostSends(this.dev)
     const r = httpGet(this.rt.derived, this.dev, host, port)
-    this.rt.markSeen(r.forward?.hops ?? [], this.dev)
+    this.rt.markExchange(this.dev, r.forward, r.back)
     this.rt.countAcl(1, r.forward, r.back)
     this.rt.recordNat(1, r.forward, r.back)
     this.rt.emit()
@@ -289,7 +289,7 @@ export class VpcsSession {
     const d = this.rt.derived
     // VPCS varsayılan IP TTL'i 64
     const r = ping(d, this.dev, dst, { ttl: ttlOut ?? 64 })
-    this.rt.markSeen(r.forward?.hops ?? [], this.dev)
+    this.rt.markExchange(this.dev, r.forward, r.back)
     this.rt.countAcl(count, r.forward, r.back)
     this.rt.recordNat(count, r.forward, r.back)
     // the first hop answered ARP (target on-link, else the gateway)

@@ -511,6 +511,18 @@ export class LabRuntime {
     })
   }
 
+  /**
+   * MotorBulgusu (I-1, test_aglab_next_hop): switch'ler yalnız gidiş çerçevelerinden öğreniyordu.
+   * Gerçek switch dönüş çerçevelerinin kaynak MAC'ini de öğrenir (asimetrik yolda farklı router).
+   */
+  markExchange(from: string, forward?: Delivery, back?: Delivery) {
+    if (forward) this.markSeen(forward.hops, from)
+    if (!back) return
+    const replier =
+      forward?.kind === 'ok' ? (forward.hops[forward.hops.length - 1]?.dev ?? from) : forward && 'at' in forward ? forward.at : null
+    if (replier) this.markSeen(back.hops, replier)
+  }
+
   /** Yeni çerçeve: adres yeniden öğrenilir (temizlenmiş switch'lerde de). */
   private learn(mac: string) {
     this.seen.add(mac)

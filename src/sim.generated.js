@@ -4456,7 +4456,7 @@ var AgLabSim = (() => {
       const r = ping(d, this.dev, ip2, o.src ? { src: o.src } : {});
       const firstKey = `${this.dev}>${r.firstHopArp?.ip ?? ip2}`;
       const coldArp = (r.forward?.hops.length ?? 0) > 0 && !this.rt.arp.has(firstKey);
-      this.rt.markSeen(r.forward?.hops ?? [], this.dev);
+      this.rt.markExchange(this.dev, r.forward, r.back);
       this.rt.countAcl(repeat, r.forward, r.back);
       this.rt.recordNat(repeat, r.forward, r.back);
       const head = ["Type escape sequence to abort.", `Sending ${repeat}, ${o.size ?? 100}-byte ICMP Echos to ${ip2}, timeout is ${o.timeout ?? 2} seconds:`];
@@ -4971,7 +4971,7 @@ var AgLabSim = (() => {
       if (!c.ip) return [`curl: (7) Failed to connect to ${host} port ${port}: Network is unreachable`];
       this.rt.hostSends(this.dev);
       const r = httpGet(this.rt.derived, this.dev, host, port);
-      this.rt.markSeen(r.forward?.hops ?? [], this.dev);
+      this.rt.markExchange(this.dev, r.forward, r.back);
       this.rt.countAcl(1, r.forward, r.back);
       this.rt.recordNat(1, r.forward, r.back);
       this.rt.emit();
@@ -5058,7 +5058,7 @@ var AgLabSim = (() => {
       this.rt.hostSends(this.dev);
       const d = this.rt.derived;
       const r = ping(d, this.dev, dst, { ttl: ttlOut ?? 64 });
-      this.rt.markSeen(r.forward?.hops ?? [], this.dev);
+      this.rt.markExchange(this.dev, r.forward, r.back);
       this.rt.countAcl(count, r.forward, r.back);
       this.rt.recordNat(count, r.forward, r.back);
       if (r.firstHopArp) this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`);
@@ -6077,6 +6077,16 @@ var AgLabSim = (() => {
         this.arp.add(`${prev}>${h.ip}`);
         this.arpIncomplete.delete(`${prev}>${h.ip}`);
       });
+    }
+    /**
+     * MotorBulgusu (I-1, test_aglab_next_hop): switch'ler yalnız gidiş çerçevelerinden öğreniyordu.
+     * Gerçek switch dönüş çerçevelerinin kaynak MAC'ini de öğrenir (asimetrik yolda farklı router).
+     */
+    markExchange(from, forward, back) {
+      if (forward) this.markSeen(forward.hops, from);
+      if (!back) return;
+      const replier = forward?.kind === "ok" ? forward.hops[forward.hops.length - 1]?.dev ?? from : forward && "at" in forward ? forward.at : null;
+      if (replier) this.markSeen(back.hops, replier);
     }
     /** Yeni çerçeve: adres yeniden öğrenilir (temizlenmiş switch'lerde de). */
     learn(mac) {

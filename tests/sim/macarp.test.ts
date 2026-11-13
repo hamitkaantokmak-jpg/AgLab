@@ -94,8 +94,10 @@ describe('11: PC show arp', () => {
     const arp = vpcs(rt, 'PC1', 'show arp').join('\n')
     expect(arp).toContain('52:54:00:01:00:40  192.168.10.1 expires in 120 seconds')
     expect(arp).not.toContain('192.168.20.13')
-    // diğer PC'nin tablosu etkilenmez
-    expect(vpcs(rt, 'PC2', 'show arp')).toEqual(['', 'arp table is empty', ''])
+    // I-1 (RFC 826): yanıt veren PC2 isteyen PC1'i ARP önbelleğine alır (yanıtı ona göndermek için
+    // çözmüştür); ping'e karışmayan PC3 ise yalnız ağ geçidini görür, PC1'i değil
+    expect(vpcs(rt, 'PC2', 'show arp')).toEqual(['', '00:50:79:66:00:01  192.168.10.11 expires in 120 seconds ', ''])
+    expect(vpcs(rt, 'PC3', 'show arp').join('\n')).not.toContain('192.168.10.11')
   })
 
   it('yanıtsız hedef ARP tablosuna girmez', () => {

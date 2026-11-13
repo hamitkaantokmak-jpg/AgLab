@@ -1561,7 +1561,7 @@ export class IosSession {
     const firstKey = `${this.dev}>${r.firstHopArp?.ip ?? ip}`
     // MotorBulgusu (I-1): kendi adresine ping ARP gerektirmez (atlama yok) — ilk paket kaybolmaz
     const coldArp = (r.forward?.hops.length ?? 0) > 0 && !this.rt.arp.has(firstKey)
-    this.rt.markSeen(r.forward?.hops ?? [], this.dev)
+    this.rt.markExchange(this.dev, r.forward, r.back)
     this.rt.countAcl(repeat, r.forward, r.back)
     this.rt.recordNat(repeat, r.forward, r.back)
     const head = ['Type escape sequence to abort.', `Sending ${repeat}, ${o.size ?? 100}-byte ICMP Echos to ${ip}, timeout is ${o.timeout ?? 2} seconds:`]
