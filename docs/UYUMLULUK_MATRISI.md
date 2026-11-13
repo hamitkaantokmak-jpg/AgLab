@@ -385,3 +385,32 @@ LabQuery: `fhrpActive(router, arayüz, grup)` (`SHARED_QUERY_FNS`).
 | `show standby [brief]`, `show vrrp [brief]` | Zamanlayıcı geri sayımları ("Next hello sent in", "expires in"), durum değişikliği sayacı | Bunlar yazılmaz; diğer satırlar IOS 15 biçiminde; VRRP Time = Master Down interval (ms) | Kabul edildi (zaman modellenmez). |
 | VIP alt ağ denetimi | VIP arayüz alt ağında değilse uyarı | Denetlenmez | **Doğrulanmadı.** |
 | SVI üzerinde FHRP | L3 switch SVI'sinde de çalışır | Motor çalıştırır; AğLab modelinde SVI alanı yok → geri yazımda açık hata (BridgeError) | Router arayüzü ve alt arayüzü kapsanır. |
+
+## L6: motor kullanmayan eski içerik (kararlar)
+
+Sorun Çöz'ün 25 eski metin senaryosu (`main.js` `scenarios`, kendi bayrak tabanlı modeli ve
+sahte terminali: `set …`, `test http`, `interface up`), "Hazır deneyler" mini lab'ı (`labRun`) ve
+iki atölyenin oyuncak RIB/FIB modelleri kaldırıldı. Her öğenin yolu `LAB_MOTOR_HARITASI.md`
+"Motor kullanmayan eski içerik (L6)" tablosundadır (üründen üretilir). Kayıtlı ilerleme
+(`aglab-passed-final`) eski kimliklerle okunur; görevin Labber karşılığı tamamlanınca da görev
+tamamlanmış sayılır. Görev kimlikleri ve sırası değişmedi.
+
+| Eski öğe | Yol | Gerekçe |
+|---|---|---|
+| `gateway`, `dns`, `duplicate`, `mask`, `wrongip`, `service`, `relay`, `relay-trunk`, `nat`, `vlan`, `trunk`, `native`, `subif`, `route`, `returnroute`, `lpm`, `routechoice`, `portsec`, `ospf` | 1 · Labber karşılığı | Aynı arıza (yanlış gateway/DNS/maske/ağ, IP çakışması, kapalı uygulama servisi, relay eksik, NAT kuralı yok, VLAN/trunk/native, alt arayüz, rota/dönüş rotası/LPM/AD, port security, OSPF area) gerçek topolojide; çözüm terminalden, değerlendirme Labber. `wrongip` → `ip-wrong-network`: hatalı adresli cihaz PC değil yazıcı; öğretilen aynı (adres başka ağda). |
+| `link` | 1 · `phy-port-shutdown` | Eski görev PC kartının "administratively down" olmasıydı ve sahte `interface up` ile çözülüyordu. VPCS'te (ve gerçek bilgisayarda) kartı kapatan bir CLI yok; aynı öğretim (arayüz yönetimsel kapalı → bağlantı yok → `no shutdown`) switch portunda. **Yakın eşleme:** arızalı uç PC değil switch portu. |
+| `dhcp` | 2 · `dhcp-client-static` (yeni) | Karşılık senaryoların hiçbiri "istemci DHCP'de değil, elle 169.254" değil. |
+| `mac`, `unknown` | 2 · `eth-mac-learning`, `eth-unknown-unicast` (yeni) | Arızasız gözlem görevleri (tablo trafikle dolar; bilinmeyen hedef taşırılır, kaynak öğrenilir). Taşırma Labber'da ayrı olay olarak gösterilmez; öğrenme sonucu (`macPort`, hiç göndermeyen PC'nin tabloda olmaması) sınanır. |
+| `acl` | 2 · `acl-http-blocked` (yeni) | Eski görev "ICMP geçiyor, TCP 80 engelli"ydi; `acl-*` senaryolarında ping de düşüyor ya da arıza başka. |
+| `bgp` | 3 · kavramsal alıştırma | BGP Labber'da modellenmez (kapsam dışı); `bgp-as` eski motordadır. Hikâye, verilen (canlı olmayan) kanıt satırları ve teşhis seçenekleri; terminal ve motor sonucu yok; rozet "motor yok". |
+| Hazır deneyler (9) | 1 · Labber karşılığı; `dhcp` 2 · `dhcp-service-down` (yeni) | "Sağlıklı ağ" deneyi kaldırıldı (öğretim yok: Lab'ın varsayılan topolojisi aynı gözlemi Labber'da verir). `uplink` (yanlış access VLAN + trunk izin listesi) → `vlan-two-faults`; `routerdown` → `roas-physical-shutdown`. "Paketi topolojide göster" animasyonu Simulation Mode'dadır. |
+| Rota atölyesi: AD, LPM, varsayılan rota | 1 · `ospf-static-overrides`, `lpm-next-hop`, `default-route` | Aynı seçim kuralı gerçek senaryoda. |
+| Rota atölyesi: metric, ECMP | 2 · Labber görünümü | Karşılık senaryo yok. R1→(R2/R3)→R4 OSPF topolojisi Labber'da kurulur; R1 `show ip route ospf` çıktısı ve `LabQuery.routeFor` (next-hop, metric, eşit yollar) motordan gelir; "Değişikliği uygula" gerçek `ip ospf cost` komutunu çalıştırır. |
+| Rota atölyesi: uçtan uca teşhis kontrol listesi | 3 · kavramsal alıştırma | Gözlenen koşulları işaretleyerek ilk başarısız aşamayı bulma çalışması; ağdan okumaz (rozet). |
+| Protokol atölyesi: OSPF area | 1 · `ospf-area-mismatch` | |
+| Protokol atölyesi: OSPF passive | 2 · Labber görünümü | `passive-interface` ile komşuluk ve rota yok; `no passive-interface` ile FULL ve O rotası (`show ip ospf neighbor`, `show ip route ospf`, `LabQuery.ospfAdjacent`). |
+| Protokol atölyesi: BGP (3) | 3 · kavramsal alıştırma | BGP kapsam dışı; örnek çıktılar açıkça kavramsal. Eski "Ana Lab ile ortak durum" özeti (mini lab durumunu okuyordu) kaldırıldı. |
+
+Ölü kalıntı: oyuncak terminal, mini lab ve atölye modellerinin JS'i, HTML'i ve yalnız onların
+kullandığı CSS kuralları silindi. L7'ye bırakılan motorlu yollar (eski topoloji motorunun CLI'si,
+ör. `test http`, `show ethernet events`) değişmedi.

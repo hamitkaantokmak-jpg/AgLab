@@ -167,6 +167,18 @@ Hedefler motordan bağımsız, Labber'ın `LabQuery` yaklaşımıyla yazıldı: 
 - **Çözüm:** SW1 → `interface fa0/8` → `switchport access vlan 10` (tek VLAN varsa yeterli; birden çok VLAN taşınacaksa trunk, Konu #6)
 - **Hedefler:** `q.ping('PC-D', '192.168.10.11').ok`; `q.ping('PC-E', '192.168.10.12').ok`; `q.macVlan('SW1', PCD_MAC) === 10` ve `q.macPort('SW1', PCD_MAC) === 'Fa0/8'`
 
+### Ek · L6'dan gelen iki gözlem senaryosu
+
+Eski Sorun Çöz'ün "MAC ve ARP tabloları boş" ve "bilinmeyen unicast" metin senaryoları motor
+kullanmıyordu. Arıza içermeyen iki gözlem senaryosuna çevrildi; başlangıçta tablolar boş olduğu
+için hedef başarısızdır, trafik üretilince başarılı olur:
+
+- `eth-mac-learning` · S1 topolojisi (yazıcı portu açık). PC-A → PC-B ping'inden sonra SW1
+  PC-A'yı Fa0/1'de, PC-B'yi (yanıttan) Fa0/2'de öğrenir.
+- `eth-unknown-unicast` · S5 topolojisi (SW1 Fa0/8 VLAN 10'da). PC-A → PC-D ping'inden sonra SW2
+  PC-A'yı uplink'te (Fa0/3), SW1 PC-D'yi uplink'te (Fa0/8) öğrenir; hiç göndermeyen PC-E hiçbir
+  tabloda yoktur. Taşırma (flood) Labber'da ayrı bir olay olarak gösterilmez; öğrenme sonucu sınanır.
+
 ## 7. Kısa sınav
 
 Beş soru, hepsi çıktı okuma. Geçme ölçütü 4/5.

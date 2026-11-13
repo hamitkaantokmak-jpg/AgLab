@@ -91,9 +91,11 @@ with sync_playwright() as pw:
     expect(page.locator("#ptExport")).to_be_visible()
     page.click('[data-area="troubleshoot"]')
     expect(page.locator("#mission")).to_be_visible()
-    page.fill("#command", "help")
-    page.press("#command", "Enter")
-    expect(page.locator("#terminal")).not_to_be_empty()
+    # L6: Sorun Çöz'ün oyuncak terminali (motorsuz metin senaryosu) kaldırıldı; görev Labber'daki
+    # karşılık senaryoda (gerçek cihaz terminalleriyle) açılır.
+    page.locator('#scenarioList [data-s="0"]').click()
+    expect(page.locator("#sharedScenarioSelect")).to_have_value("gw-pc-wrong-gateway")
+    expect(page.locator("#sharedScenarioPanel")).to_be_visible()
     for width in (390, 1280):
         page.set_viewport_size({"width": width, "height": 900})
         for area in ("learn", "lab", "troubleshoot"):

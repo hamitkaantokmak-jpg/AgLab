@@ -33189,5 +33189,345 @@
         }
       ]
     }
+  },
+  {
+    "id": "acl-http-blocked",
+    "title": "ACL · Sunucuya ping gidiyor, web sayfası açılmıyor",
+    "symptom": "Misafir ağındaki PC-20 sunucuya (192.168.100.10) ping atabiliyor ama web sayfası açılmıyor. Muhasebedeki PC-10'da web çalışıyor; sunucunun web servisi açık. R1 g0/1'e dün \"WEB\" adlı bir liste uygulandı.",
+    "cause": "WEB listesinin 10. satırı misafir ağından sunucuya TCP 80'i (www) engelliyor; ICMP 20. satırdaki permit ip any any'ye uyduğu için ping geçiyor. ACL katman 4'e (protokol/port) göre süzer: ping'in geçmesi uygulamanın geçtiğini kanıtlamaz (E1).",
+    "hints": [
+      "PC-20'den ping ve curl 192.168.100.10 sonuçlarını karşılaştır: hangisi geçiyor?",
+      "R1'de show access-lists WEB: web isteğinden sonra hangi satırın sayacı artıyor?",
+      "Engelleyen satırı kaldır: ip access-list extended WEB → no 10."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "192.168.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 380,
+          "y": 80,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 160,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 380,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW3",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 600,
+          "y": 220,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-10",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 160,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-20",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.20.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.20.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 380,
+          "y": 340,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 600,
+          "y": 340,
+          "w": 104,
+          "h": 72,
+          "services": {
+            "http": true
+          }
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d4",
+          "portA": "g0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "pending": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip access-list extended WEB",
+          "10 deny tcp 192.168.20.0 0.0.0.255 host 192.168.100.10 eq www",
+          "20 permit ip any any",
+          "exit",
+          "interface g0/1",
+          "ip access-group WEB in",
+          "end",
+          "copy running-config startup-config",
+          ""
+        ]
+      }
+    ],
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip access-list extended WEB",
+          "no 10",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-20",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "http",
+          "args": [
+            "PC-20",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-20 → SRV web (TCP 80)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-20",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-20 → SRV ping"
+        }
+      ]
+    }
   }
 ]

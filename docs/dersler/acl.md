@@ -117,6 +117,14 @@ Topoloji: R1 g0/0 muhasebe (192.168.10.0/24, PC-10), g0/1 misafir (192.168.20.0/
 - **Çözüm:** R1 → `interface g0/1` → `no ip access-group MISAFIR out` → `ip access-group MISAFIR in`; `ip access-list extended MISAFIR` → `no 10`
 - **Hedefler:** S1 ile aynı
 
+### Ek · L6'dan gelen senaryo
+
+- `acl-http-blocked` · **Sunucuya ping gidiyor, web sayfası açılmıyor (E1).** Eski Sorun Çöz metin
+  senaryosu (motor yok) gerçek topolojiye çevrildi; S1 topolojisi. R1 g0/1'deki WEB listesinin 10.
+  satırı misafir ağından sunucuya TCP 80'i engelliyor, ICMP `permit ip any any`'ye uyuyor. Ders:
+  ACL katman 4'e göre süzer; ping'in geçmesi uygulamanın geçtiğini kanıtlamaz. Çözüm: `no 10`.
+  Hedef: PC-20 → SRV `http` ve `ping`.
+
 ## 7. Kısa sınav
 
 1. ACL'de bir paket iki satıra da uyuyorsa hangisi uygulanır? **İlk (en üstteki) satır.**
