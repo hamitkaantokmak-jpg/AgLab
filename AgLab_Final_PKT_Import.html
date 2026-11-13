@@ -3266,7 +3266,7 @@ var AgLabSim = (() => {
       mac,
       line: ` All    ${mac}    STATIC      CPU`
     }));
-    for (const e of macTable(d, dev, rt.seen))
+    for (const e of macTable(d, dev, rt.seenOn(dev)))
       rows.push({ mac: e.mac, line: padL(e.vlan, 4) + "    " + pad(e.mac, 18) + pad("DYNAMIC", 12) + shortIf(e.port) });
     const shown = only ? rows.filter((r) => r.mac === only) : rows;
     o.push(...shown.map((r) => r.line));
@@ -3734,7 +3734,7 @@ var AgLabSim = (() => {
     {
       p: "clear mac address-table dynamic",
       run: (x) => {
-        x.rt.seen.clear();
+        x.rt.clearMacs(x.dev);
         x.rt.emit();
       }
     },
@@ -6217,6 +6217,33 @@ var AgLabSim = (() => {
   };
 
   // src/sim/runtime.ts
+  var MAC_AGING_SECONDS = 300;
+  var AgingSet = class extends Set {
+    constructor() {
+      super(...arguments);
+      __publicField(this, "at", /* @__PURE__ */ new Map());
+    }
+    add(mac) {
+      this.at?.set(mac, Date.now());
+      return super.add(mac);
+    }
+    delete(mac) {
+      this.at.delete(mac);
+      return super.delete(mac);
+    }
+    clear() {
+      this.at?.clear();
+      super.clear();
+    }
+    /** Süresi dolan dinamik girdileri siler (okunurken: show mac, değerlendirme). */
+    expire(now = Date.now()) {
+      for (const mac of [...this]) {
+        const t = this.at.get(mac);
+        if (t === void 0) this.at.set(mac, now);
+        else if (now - t >= MAC_AGING_SECONDS * 1e3) this.delete(mac);
+      }
+    }
+  };
   var LabRuntime = class {
     constructor(def, applyInitial) {
       this.def = def;
@@ -6227,7 +6254,10 @@ var AgLabSim = (() => {
       __publicField(this, "pcs", {});
       __publicField(this, "derived");
       __publicField(this, "logs", []);
-      __publicField(this, "seen", /* @__PURE__ */ new Set());
+      /** MACs learned by switches (sources of real traffic); dynamic entries age out (IOS: 300 s) */
+      __publicField(this, "seen", new AgingSet());
+      /** I-1: switch başına `clear mac address-table dynamic` ile gizlenen adresler */
+      __publicField(this, "clearedOn", /* @__PURE__ */ new Map());
       __publicField(this, "arp", /* @__PURE__ */ new Set());
       /** 'dev>ip' ARP requests that went unanswered (shown as Incomplete) */
       __publicField(this, "arpIncomplete", /* @__PURE__ */ new Set());
@@ -6258,6 +6288,12 @@ var AgLabSim = (() => {
       __publicField(this, "seq", 0);
       __publicField(this, "t0", Date.now());
       __publicField(this, "listeners", /* @__PURE__ */ new Set());
+      /**
+       * MotorBulgusu (I-1, test_aglab_mac_learning): IOS, portun access/native VLAN'ı ya da
+       * çalışma kipi değişince o portta öğrenilmiş dinamik girdileri siler; adres yeni VLAN'da
+       * ancak yeniden trafik gönderince öğrenilir. Labber eski girdiyi yeni VLAN'da gösteriyordu.
+       */
+      __publicField(this, "portSig", /* @__PURE__ */ new Map());
       this.topo = buildTopo(def);
       this.reset();
     }
@@ -6290,6 +6326,7 @@ var AgLabSim = (() => {
       this.derived = this.recompute();
       for (const sw of this.topo.switches) this.startup[sw.id] = clone(this.running[sw.id]);
       this.seen.clear();
+      this.clearedOn.clear();
       this.arp.clear();
       this.arpIncomplete.clear();
       this.logs = [];
@@ -6320,6 +6357,7 @@ var AgLabSim = (() => {
     commit() {
       const prev = this.derived;
       this.derived = this.recompute();
+      this.flushRevlannedPorts(prev);
       this.diffLogs(prev, this.derived);
       this.emit();
     }
@@ -6420,6 +6458,18 @@ var AgLabSim = (() => {
       this.commit();
       return true;
     }
+    flushRevlannedPorts(_prev) {
+      const next = /* @__PURE__ */ new Map();
+      for (const [dev, lps] of Object.entries(this.derived.lports))
+        for (const lp of lps) next.set(`${dev}|${lp.name}`, `${lp.opMode}/${lp.cfg.accessVlan}/${lp.cfg.nativeVlan}`);
+      for (const [k, v] of next) {
+        const old = this.portSig.get(k);
+        if (old === void 0 || old === v) continue;
+        const [dev, name] = k.split("|");
+        for (const e of macTable(this.derived, dev, this.seen)) if (e.port === name) this.seen.delete(e.mac);
+      }
+      this.portSig = next;
+    }
     /**
      * Forget MACs a switch learned on this port. The learned set is lab-wide, so those
      * addresses are relearned everywhere on their next frame (real switches age the
@@ -6458,6 +6508,7 @@ var AgLabSim = (() => {
     }
     /** Read-only queries on the current state, including learned MAC addresses. */
     query() {
+      this.seen.expire();
       return new LabQuery(this.derived, this.startup, this.seen, this.dhcp);
     }
     /**
@@ -6572,11 +6623,30 @@ var AgLabSim = (() => {
     markSeen(hops, from) {
       if (!hops.length) return;
       for (const h of hops) {
-        this.seen.add(h.outIf.mac);
+        this.learn(h.outIf.mac);
         const owner = l3Ifs(this.derived, h.dev).find((i) => i.ip === h.ip);
-        if (owner) this.seen.add(owner.mac);
+        if (owner) this.learn(owner.mac);
       }
       void from;
+    }
+    /** Yeni çerçeve: adres yeniden öğrenilir (temizlenmiş switch'lerde de). */
+    learn(mac) {
+      this.seen.add(mac);
+      for (const hidden of this.clearedOn.values()) hidden.delete(mac);
+    }
+    /**
+     * MotorBulgusu (I-1): `clear mac address-table dynamic` yalnız o switch'in tablosunu
+     * temizler (IOS); öğrenilmiş küme lab geneli olduğu için switch başına gizlenir, adres yeni
+     * trafikte yeniden görünür (doğrulanmadı: trafiğin o switch'ten geçip geçmediği ayrımı yok).
+     */
+    clearMacs(dev) {
+      this.clearedOn.set(dev, new Set(this.seen));
+    }
+    /** Bir switch'in gördüğü öğrenilmiş adresler (temizlenenler hariç). */
+    seenOn(dev) {
+      this.seen.expire();
+      const hidden = this.clearedOn.get(dev);
+      return hidden?.size ? new Set([...this.seen].filter((m) => !hidden.has(m))) : this.seen;
     }
     hostname(dev) {
       return this.running[dev]?.hostname ?? dev;
@@ -6625,7 +6695,7 @@ var AgLabSim = (() => {
       this.running = clone(s.running);
       this.startup = clone(s.startup);
       this.pcs = clone(s.pcs);
-      this.seen = new Set(s.seen);
+      this.seen = new AgingSet(s.seen);
       this.arp = new Set(s.arp);
       this.arpIncomplete = new Set(s.arpIncomplete ?? []);
       this.errdis = new Set(s.errdis ?? []);

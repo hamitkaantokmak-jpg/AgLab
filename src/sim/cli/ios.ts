@@ -138,7 +138,7 @@ const privPatterns: P[] = [
   {
     p: 'clear mac address-table dynamic',
     run: (x) => {
-      x.rt.seen.clear()
+      x.rt.clearMacs(x.dev)
       x.rt.emit()
     },
   },
