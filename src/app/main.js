@@ -8752,8 +8752,6 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   }
 })();
 
-load(0);
-
 // L6: Rota atölyesi (v36) kendi RIB/FIB oyuncak modelini kullanıyordu. Şimdi her durum ya Labber'daki
 // karşılık senaryoya açılır (AD, LPM, varsayılan rota) ya da Labber router'larında gerçek
 // `show ip route` çıktısı ve LabQuery kararıyla gösterilir (metric, ECMP).

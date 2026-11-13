@@ -1,4 +1,4 @@
-# Devir notu — Labber entegrasyonu (I-1 → FHRP)
+# Devir notu — Labber entegrasyonu (I-1 → FHRP → L6)
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
@@ -31,14 +31,30 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L5-g sunucu HTTP servisi (TCP 80, `curl`) | #75 (main'den) | birleşti |
 | L5-h PKT IOS metin yolu (hoşgörülü mod) | #76 (#75'in dalından) | birleşti |
 | L5-i TTL, Time Exceeded, traceroute, extended ping | #77 (#76'nın dalından) | birleşti |
-| EtherChannel AğLab modelinde (paralel iş) | #80 (main'den) | açık (birleşmeyi bekliyor) |
-| I-1 içe aktarma ve düzenleyici Labber'a | #81 (main'den, dal `claude/i1-workspace-labber`) | açık (birleşmeyi bekliyor) |
-| FHRP (HSRP + VRRP) Labber'da | #82 (#81'in dalından, taban `claude/i1-workspace-labber`) | açık (birleşmeyi bekliyor) |
+| EtherChannel AğLab modelinde (paralel iş) | #80 (main'den) | birleşti |
+| I-1 içe aktarma ve düzenleyici Labber'a | #81 (main'den, dal `claude/i1-workspace-labber`) | birleşti |
+| FHRP (HSRP + VRRP) Labber'da | #82 (#81'in dalından) | birleşti |
+| Seviye 1/2 dersleri (paralel iş) | #78, #79 | birleşti |
+| L6 motor kullanmayan eski içerik | L6_PR (main'den, dal `claude/l6-legacy-content`) | açık (birleşmeyi bekliyor) |
 
-**Durum:** #75–#77 birleşti. **I-1 PR'ı #81** açık (taban `main`; #80 EtherChannel birleşmediği için
-onun üstüne kurulmadı). **FHRP PR'ı #82** açık (taban I-1 dalı). Hiçbir PR birleştirilmedi. L6 ve
-L7'ye başlanmadı; kullanıcı talimatı olmadan başlanmaz. Her PR'dan önce `main` çekilir; #80 birleşmişse onun üstüne kurulur
-(`src/sim-bridge/bridge.ts`, `src/app/main.js` çakışmasında iki tarafın kodu korunur).
+**Durum:** #75–#82 birleşti. **L6 PR'ı L6_PR** açık (taban `main`); birleştirilmedi. L7'ye
+başlanmadı; kullanıcı talimatı olmadan başlanmaz.
+
+### L6 (L6_PR) özeti
+
+- Sorun Çöz'ün 25 eski metin senaryosu kaldırıldı; `TROUBLESHOOT_TASKS` (aynı kimlik ve sıra)
+  her görevi Labber karşılığına açar, `bgp` kavramsal alıştırmadır. İlerleme: `aglab-passed-final`
+  (eski kimlikler) + Labber karşılığının tamamlanması.
+- "Hazır deneyler" mini lab'ı (`labRun`) kaldırıldı; dokuz deney Labber senaryolarına açılır.
+- Rota atölyesi: AD/LPM/varsayılan rota → senaryo; metric ve ECMP → Labber görünümü
+  (`WORKSHOP_LAB`, `workshopView`: gerçek `show ip route` + `LabQuery.routeFor`). Uçtan uca
+  teşhis kontrol listesi kavramsal. Protokol atölyesi: OSPF area → senaryo; OSPF passive → Labber
+  görünümü; BGP (3) kavramsal.
+- Yeni senaryolar (yalnız ekleme): `dhcp-client-static`, `dhcp-service-down`,
+  `eth-mac-learning`, `eth-unknown-unicast`, `acl-http-blocked`.
+- Yol tablosu `LAB_MOTOR_HARITASI.md` "L6" (üründen üretilir), gerekçeler UYUMLULUK_MATRISI "L6".
+- Test: `test_aglab_l6_legacy_content.py`; `test_aglab_ui` ve `test_aglab_network_features`
+  uyarlandı.
 
 ### I-1 (#81) özeti
 

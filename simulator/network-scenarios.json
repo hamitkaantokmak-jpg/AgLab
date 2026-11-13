@@ -32790,6 +32790,7 @@
     ],
     "verify": {
       "kind": "query",
+      "observation": true,
       "source": "PC-A",
       "target": "192.168.10.12",
       "checks": [
@@ -33157,6 +33158,7 @@
     ],
     "verify": {
       "kind": "query",
+      "observation": true,
       "source": "PC-A",
       "target": "192.168.10.21",
       "checks": [
