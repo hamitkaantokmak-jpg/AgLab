@@ -123,6 +123,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `method-divide-at-gateway` | Yöntem · Kimse sunuculara ulaşamıyor | **Labber** |
 | `method-what-changed` | Yöntem · Gece bakımından sonra bütün kat kopuk | **Labber** |
 | `method-two-layers` | Yöntem · Bir hatayı bulunca durma | **Labber** |
+| `diag-trace-stops` | Teşhis · İz ikinci router'da kesiliyor | **Labber** |
+| `diag-return-source` | Teşhis · Router'dan ping gidiyor, PC'den gitmiyor | **Labber** |
+| `diag-routing-loop` | Teşhis · İz iki router arasında gidip geliyor | **Labber** |
+| `diag-dest-gateway` | Teşhis · İz son router'a varıyor, sonrası yıldız | **Labber** |
+| `diag-two-faults` | Teşhis · İki hata: önce unreachable, sonra sessizlik | **Labber** |
 
 ## Labber labları (E)
 
@@ -164,9 +169,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 71 | 1 | 72 |
+| Ortak senaryolar | 76 | 1 | 77 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 124 | 1 | 125 |
+| Toplam | 129 | 1 | 130 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

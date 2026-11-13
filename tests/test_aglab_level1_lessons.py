@@ -30,6 +30,8 @@ LESSONS = [
     ("vlan", "vlan", "vlan-trunk.md", "vlan-", "Okuma sırası", "Sahada: DTP ve VTP"),
     ("intervlan", "intervlan", "vlanlar-arasi-yonlendirme.md", "roas-", "Router-on-a-stick", "Üç kural"),
     ("devicemgmt", "devicemgmt", "cihaz-yonetimi.md", "mgmt-", "Yönetim adresi ve SSH", "İki yapılandırma"),
+    # Seviye 2
+    ("commands", "diagnostics", "teshis-araclari.md", "diag-", "Extended ping", "Paket yakalama"),
 ]
 PARTS = [
     "## 1. Neden önemli",

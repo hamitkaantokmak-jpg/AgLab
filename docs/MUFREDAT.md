@@ -76,7 +76,7 @@ CCNA v2.0 beş alana sahip: Ağ altyapısı ve bağlantı %25, Switching ve ağ 
 | 21 | L2 güvenlik: port security, DHCP snooping, DAI, storm control, RA guard | Switching / güvenlik | Motor | Port security var; diğerleri yok | P1 |
 | 22 | Cihaz erişim güvenliği: SSH, AAA, SFTP/SCP | Güvenlik | Motor + okuma | Yok | P2 |
 | 23 | Ağ servisleri: DNS kayıt türleri, NTP, Syslog, SNMP | Servisler / operasyon | Okuma + motor (Syslog) | Kısmi | P2 |
-| 24 | Teşhis araçları: extended ping, traceroute, paket yakalama | Operasyon | Motor | Traceroute ve Paket Dedektifi var; extended ping yok | P1 |
+| 24 | Teşhis araçları: extended ping, traceroute, paket yakalama | Operasyon | Motor | Labber'da var (ping, extended ping, `source`, traceroute; Paket Dedektifi). Detaylı ders ve 5 senaryo var (`docs/dersler/teshis-araclari.md`, `diag-*`) | P1 |
 | 25 | Kablosuz ağ temelleri | Altyapı | Okuma | Yok (motor kapsamı dışı) | P2 |
 | 26 | Otomasyon ve yapay zekâ: IaC, Ansible, ajan tabanlı yapay zekâ, prompt seçimi | Yapay zekâ ve operasyon | Okuma | Yok | P2 |
 
