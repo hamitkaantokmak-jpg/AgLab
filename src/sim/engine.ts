@@ -531,7 +531,12 @@ function computeStp(d: Derived, v: number): Record<string, StpBridge> {
   const self = (b: StpBridge): Vec => ({ rootPrio: b.prio, rootMac: b.mac, cost: 0, sPrio: b.prio, sMac: b.mac, sPort: 0 })
   const best: Record<string, { vec: Vec; via: string | null }> = {}
   for (const [dev, b] of Object.entries(bridges)) best[dev] = { vec: self(b), via: null }
-  for (let iter = 0; iter < 64; iter++) {
+  // MotorBulgusu (I-1, test_aglab_large_topology): tur sayısı 64'le sınırlıydı; 64'ten uzun
+  // zincirde kök bilgisi sona ulaşmıyor, döngüsüz zincirde iki kök ve bloklu port çıkıyordu.
+  // Kök vektörü her turda bir atlama ilerler: köprü sayısı + 1 tur yeter (doğrulanmadı: IOS'ta
+  // max-age/mesaj yaşı 802.1D çapını ~7 köprüyle sınırlar; Labber zamanlayıcı modellemez).
+  const rounds = Object.keys(bridges).length + 1
+  for (let iter = 0; iter < rounds; iter++) {
     let changed = false
     const next: typeof best = {}
     for (const [dev, b] of Object.entries(bridges)) {

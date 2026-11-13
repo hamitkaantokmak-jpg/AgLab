@@ -145,3 +145,11 @@ def legacy_engine(obj):
     switch = next(d for d in data["devices"] if d["type"] == "Switch")
     switch["staticRoutes"] = []
     return data
+
+
+def assert_vpcs_ping(output, target, ok):
+    """I-1: Labber'da PC terminali VPCS'tir. Başarı: 5 adet ``84 bytes from <hedef>``;
+    başarısızlık: hiç yanıt yok (zaman aşımı, ulaşılamaz ya da ARP yok). IOS'un
+    "Success rate" satırı VPCS'te yoktur."""
+    replies = output.count("84 bytes from " + target)
+    assert replies == (5 if ok else 0), (ok, output[-1500:])

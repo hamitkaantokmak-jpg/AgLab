@@ -676,7 +676,8 @@ var AgLabSim = (() => {
     const self = (b) => ({ rootPrio: b.prio, rootMac: b.mac, cost: 0, sPrio: b.prio, sMac: b.mac, sPort: 0 });
     const best = {};
     for (const [dev, b] of Object.entries(bridges)) best[dev] = { vec: self(b), via: null };
-    for (let iter = 0; iter < 64; iter++) {
+    const rounds = Object.keys(bridges).length + 1;
+    for (let iter = 0; iter < rounds; iter++) {
       let changed = false;
       const next = {};
       for (const [dev, b] of Object.entries(bridges)) {
@@ -8265,6 +8266,7 @@ write memory`
     helperAddress: "DHCP relay (helperAddress) yalnız router arayüzünde ve alt arayüzünde eşlenir"
   };
   var sortNum = (a, b) => a - b;
+  var ALL_VLANS2 = Array.from({ length: 4094 }, (_, i) => i + 1);
   function needsEncapFor(model) {
     return /3560/.test(model);
   }
@@ -9047,7 +9049,6 @@ write memory`
         if (phys.mode !== "access" && phys.mode !== "trunk") fail(`${canon} modu ${phys.mode}`);
         if (phys.channel) fail(`${canon} channel-group`);
         if (phys.routed) fail(`${canon} routed port`);
-        if (phys.allowed === null) fail(`${canon} "allowed vlan all"`);
         if (phys.portfast) fail(`${canon} portfast`);
         if (phys.nonegotiate) fail(`${canon} nonegotiate`);
         if (phys.description) fail(`${canon} description`);
@@ -9063,7 +9064,7 @@ write memory`
         };
         put("mode", phys.mode, "access");
         put("vlan", phys.accessVlan, def.accessVlan);
-        put("allowed", phys.allowed, []);
+        put("allowed", phys.allowed ?? ALL_VLANS2, []);
         put("nativeVlan", phys.nativeVlan, def.nativeVlan);
         put("enabled", !phys.shutdown, true);
         const ps = phys.portSecurity;
