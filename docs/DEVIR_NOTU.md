@@ -565,6 +565,16 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
   `test_ttl_traceroute_extended_ping`; `acl.test.ts`/`nat.test.ts` traceroute beklentileri
   TTL'li sondaya göre (gerekçeli).
 
+## EtherChannel AğLab modelinde (yapıldı, PR açık; main'den)
+
+- Köprü: switch arayüzünde `channelGroup {id, mode}`, `po<N>` Port-channel arayüzü; iki yönde.
+  Grupta protokol uyuşmazlığı, 1-48 dışı numara reddedilir; Port-channel kaydı yoksa ilk üyeden.
+- Ürün: `validateTopologyData` alanları kabul eder; `SHARED_QUERY_FNS` `etherchannel`.
+- Testler: `tests/sim/etherchannel-bridge.test.ts` (LACP kanalı, askıya alınan üye, passive–passive,
+  JSON'dan kanal, geçersiz alanlar; toAglab → toLabber sonrası summary aynı);
+  `test_aglab_labber_terminal.test_etherchannel_from_terminal`.
+- #79'daki EtherChannel okuma dersi (`docs/dersler/etherchannel.md`) artık senaryoya çevrilebilir.
+
 ## Kurallar hatırlatması
 
 - Sayıları sabit yazma (lab/senaryo sayısı) — ilgili JSON'dan türet (#56 bu yüzden üç testi

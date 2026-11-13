@@ -109,6 +109,8 @@ const SHARED_QUERY_FNS = new Set([
   // L5-b
   'dhcpLease',
   'dnsLookup',
+  // EtherChannel: Port-channel durumu (up, protocol, bundled) — show etherchannel summary
+  'etherchannel',
 ]);
 /**
  * Bir hedef satırı: { fn, args, field?, expected, label? }. Bağımsız değişkenlerde cihaz
