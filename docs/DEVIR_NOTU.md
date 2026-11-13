@@ -29,10 +29,10 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L5-d NAT/PAT; `nat-pat` | #74 | birleşti |
 | Plan: L7 sonrası işler (`SONRAKI_ISLER.md`) | #71 | birleşti |
 | L5-g sunucu HTTP servisi (TCP 80, `curl`) | #75 (main'den) | açık (birleşmeyi bekliyor) |
-| L5-h PKT IOS metin yolu (hoşgörülü mod) | #L5H (#75'in dalından) | açık (birleşmeyi bekliyor) |
+| L5-h PKT IOS metin yolu (hoşgörülü mod) | #76 (#75'in dalından) | açık (birleşmeyi bekliyor) |
 | I-1 içe aktarma ve düzenleyici Labber'a | — | sırada (L5-h'nin dalından) |
 
-Yeni zincir (kullanıcı talimatı): **L5-g** (main'den, #75) → **L5-h** (L5-g'nin dalından, #L5H) →
+Yeni zincir (kullanıcı talimatı): **L5-g** (main'den, #75) → **L5-h** (L5-g'nin dalından, #76) →
 **I-1** (L5-h'nin dalından). Her biri ayrı PR; hiçbiri birleştirilmez; CI'ı kullanıcı denetler.
 I-1'in PR'ı açılınca durulur: L6 ve L7'ye başlanmaz.
 
