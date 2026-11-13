@@ -30,7 +30,7 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | Plan: L7 sonrası işler (`SONRAKI_ISLER.md`) | #71 | birleşti |
 | L5-g sunucu HTTP servisi (TCP 80, `curl`) | #75 (main'den) | açık (birleşmeyi bekliyor) |
 | L5-h PKT IOS metin yolu (hoşgörülü mod) | #76 (#75'in dalından) | açık (birleşmeyi bekliyor) |
-| I-1 içe aktarma ve düzenleyici Labber'a | — | sırada (L5-h'nin dalından) |
+| I-1 içe aktarma ve düzenleyici Labber'a | — | **başlandı, PR açılmadı** (WIP dalı `claude/i1-import-labber`; aşağıda) |
 
 Yeni zincir (kullanıcı talimatı): **L5-g** (main'den, #75) → **L5-h** (L5-g'nin dalından, #76) →
 **I-1** (L5-h'nin dalından). Her biri ayrı PR; hiçbiri birleştirilmez; CI'ı kullanıcı denetler.
@@ -39,11 +39,59 @@ I-1'in PR'ı açılınca durulur: L6 ve L7'ye başlanmaz.
 Eski motorda kalan içerik (`LAB_MOTOR_HARITASI.md`): yalnız `bgp-as` (BGP, kapsam dışı).
 İçe aktarılan `.pkt` ve düzenleyicide kurulan topolojiler I-1'e kadar eski motorda.
 
-**I-1 için kalan adımlar:** `importTopology` ve düzenleyici, Sorun Çöz/Akademi'deki motor seçimini
-kullanır (köprü ifade edebiliyorsa Labber, edemiyorsa eski motor; rozet nedeni gösterir); PKT
-içe aktarımında L5-h'nin CLI yolu; `restore_pkt_from_aglab_json.py` testi ve kayıtlı
-çalışmaların açılması bozulmaz (kayıt biçimi değişmez — L7). Kabul: örnek .pkt Labber'da açılır
-ve uçtan uca ping'ler geçer; desteklenmeyen özellikli topoloji eski motorda açılır, rozet nedeni.
+**Durum (bu oturumun sonu):** zincirde açık PR'lar **#75 (L5-g, main'den) → #76 (L5-h, #75'in
+dalından; tabanı `claude/l5g-http`)**. #75 birleşince #76'nın tabanı `main`'e çevrilmeli. Hiçbiri
+birleştirilmedi. I-1 için PR açılmadı: bağlam doldu ve tam hat yeşil değil (aşağıda). L6 ve L7'ye
+başlanmadı.
+
+### I-1 için kalan adımlar (sıradaki iş)
+
+WIP dalı `claude/i1-import-labber` (#76'nın dalından, itildi, PR değil) şunları içeriyor:
+- `workspaceDecideEngine()` (`src/app/main.js`): `importTopology`, kayıtlı çalışmanın açılışı ve
+  `reset()` (düzenleyicinin varsayılan topolojisi) sonunda Sorun Çöz/Akademi ile aynı karar.
+  Köprü ifade edebiliyorsa Labber oturumu (`aglabLabber.start`), edemiyorsa eski motor. Akademi
+  labı ve Labber labı kendi oturumunu kurduğu için atlanıyor.
+- PKT topolojisinde (switch/router `runningConfig` varsa) çalışma zamanı L5-h'nin IOS metin
+  yolundan kuruluyor: `aglabLabber.start(AgLabSim.cliImport(topo).runtime)`.
+- Çalışma alanı rozeti `#workspaceEngine` (`src/index.html`). `aglabEngineChoice.renderBadge`
+  rozeti her içerikte günceller; Labber labı da yazar.
+- Elle denendi: depodaki örnek .pkt JSON'u Labber'da açılıyor, rozet "Motor: Labber", PC'ler arası
+  ping geçiyor.
+
+Tam hatta 34 test dosyası düşüyor (55 PASS / 54 FAIL kontrol):
+`test_aglab_advanced_engines`, `test_aglab_cli_vlan`, `test_aglab_device_cli`, `test_aglab_dhcp_dns`, `test_aglab_endpoint_ports`, `test_aglab_frame_forwarding`, `test_aglab_icmp_ttl`, `test_aglab_icmp_unreachable`, `test_aglab_import`, `test_aglab_l2_router_trunk`, `test_aglab_large_topology`, `test_aglab_mac_learning`, `test_aglab_next_hop`, `test_aglab_persistence`, `test_aglab_pkt_config_context`, `test_aglab_pkt_dhcp_relay`, `test_aglab_pkt_dot1q`, `test_aglab_pkt_port_security`, `test_aglab_routed_frames`, `test_aglab_sim_embedded`, `test_aglab_simulation_mode`, `test_aglab_status`, `test_aglab_subinterfaces`, `test_aglab_svi_import`, `test_aglab_traceroute`, `test_aglab_trunk_defaults`, `test_aglab_unified_performance`, `test_aglab_unified_rc`, `test_aglab_v11_routing`, `test_aglab_v12_gateway`, `test_aglab_v13_router_ping`, `test_aglab_v15_local_ping`, `test_aglab_v17_ping_validation`, `test_aglab_v7`
+
+Düşüş sınıfları ve önerilen yol:
+1. **Eski motorun terminal metni.** Varsayılan topolojide ve içe aktarılan topolojilerde eski
+   motorun çıktısı bekleniyor. Örnekler: `test_aglab_v7` "Arayüz IP adresi kaldırıldı.",
+   `test_aglab_status` eski `show ip interface brief` biçimi, `test_aglab_cli_vlan`
+   "Allowed VLANs: …". Bu testler Labber çıktısına gerekçeyle uyarlanmalı; L4/L5'te senaryo
+   testlerinde yapıldığı gibi aynı arıza Labber'dan doğrulanır, test gevşetilmez. Davranışı
+   eski motora özgü olanlar eski motor kararındaki bir topolojiyle (desteklenmeyen öğe içeren
+   içe aktarma) sınanmaya devam edebilir.
+2. **Yalnız eski motorda olan araçlar.** `test_aglab_icmp_ttl` (`ping … ttl N` / Time Exceeded),
+   `test_aglab_traceroute`, `test_aglab_routed_frames`, `test_aglab_simulation_mode` (eski iz) ve
+   `show ethernet events`. UYUMLULUK_MATRISI "L4" bunları "eski motorda kalır, içe aktarılan
+   topolojiler eski motorda" diye belgeledi. I-1 ile bu dayanak kalkıyor. Ya Labber'a eklenmeli
+   (`ping … ttl`, Time Exceeded) ya da bu testler eski motor kararındaki topolojiye taşınmalı.
+   Kullanıcı kararı gerekir.
+3. **Entegrasyon hatası.** `test_aglab_persistence`: Labber oturumu etkinken denetçiden cihaz
+   adı değiştirme kaydedilmiyor (`KALICI-SW` beklenirken eski ad). Muhtemel neden: `writeBack`
+   (`toAglab`) adı çalışma zamanındaki hostname'den yazıyor; düzenleyici değişikliği
+   `reconcile`'dan önce eziliyor. Düzeltilmeli. Aynı kontrol diğer denetçi alanları (IP, VLAN)
+   için de yapılmalı.
+4. `test_aglab_sim_embedded`: ürünün AgLabSim erişim beklentileri. Çalışma alanı artık
+   `toLabber`/`createRuntime`/`cliImport` kullanıyor; beklenen erişim kümeleri gerekçeyle
+   güncellenmeli.
+
+Kabul (kullanıcı talimatı):
+- Örnek .pkt Labber'da açılır ve uçtan uca ping'ler geçer.
+- Desteklenmeyen özellikli topoloji eski motorda açılır ve rozet nedenini gösterir.
+- `restore_pkt_from_aglab_json.py` testi geçer.
+- Kayıtlı çalışmalar açılır; kayıt biçimi değişmez (L7).
+
+Sonra dur: L6 ve L7'ye başlama.
+
 
 Kalan PR'ların kapsamı (kullanıcı talimatı):
 - **L5-c ACL:** standart ve genişletilmiş, numaralı ve isimli ACL; `ip access-group in/out`;
