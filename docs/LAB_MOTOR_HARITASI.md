@@ -108,6 +108,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `gw-lpm-leftover` | Routing · Varsayılan rota var, sunucuya yine gidilmiyor | **Labber** |
 | `gw-backup-floating` | Routing · Ana hat koptu, yedek hat boşta duruyor | **Labber** |
 | `gw-two-faults` | Routing · İki hata birden: bir PC hiç, diğerleri hiç gidemiyor | **Labber** |
+| `ip-gw-outside-subnet` | IP adresleme · Yeni PC kimseye, kimse ona ulaşamıyor | **Labber** |
+| `ip-duplicate-gateway` | IP adresleme · Dizüstü bağlandı, bütün kat dışarı çıkamıyor | **Labber** |
+| `ip-wrong-network` | IP adresleme · Yeni yazıcıya kimse yazdıramıyor | **Labber** |
+| `ip-router-mask` | IP adresleme · Aynı kattaki bazı PC'ler sunucuya ulaşıyor, bazıları ulaşamıyor | **Labber** |
+| `ip-two-faults` | IP adresleme · Hem yazıcı hem bir PC dışarıda kaldı | **Labber** |
 
 ## Labber labları (E)
 
@@ -149,9 +154,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 56 | 1 | 57 |
+| Ortak senaryolar | 61 | 1 | 62 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 109 | 1 | 110 |
+| Toplam | 114 | 1 | 115 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

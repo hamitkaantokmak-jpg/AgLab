@@ -47,7 +47,7 @@ Bu 12 konu şubedeki günlük ağ işinin büyük kısmını karşılar ve CCNA'
 | # | Konu | Öğrenci sonunda ne yapar | Pratik | Motor durumu | Mevcut içerik | Öncelik |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Sorun giderme yöntemi | Katman katman ilerler, kanıtla teşhis koyar, değişiklik öncesi yedek alır | Motor | Var (senaryo altyapısı) | "İleri sorun giderme" başlığı (en sonda) | P0 |
-| 2 | IP adresleme ve subnetting | Adres, maske, ağ/yayın adresini hesaplar; aynı ağ mı kararını verir | Motor | Var | Detaylı ders var | P0 |
+| 2 | IP adresleme ve subnetting | Adres, maske, ağ/yayın adresini hesaplar; aynı ağ mı kararını verir | Motor | Labber'da var | Detaylı ders ve 5 senaryo var (`docs/dersler/ip-adresleme.md`, `ip-*`; alt ağlara bölme `subnet` dersinde) | P0 |
 | 3 | Ethernet, MAC ve ARP | MAC tablosunu ve ARP önbelleğini okur, "aynı ağdayım ama ulaşamıyorum"u çözer | Motor | Var (MAC öğrenme, ARP, `show mac address-table`) | Detaylı ders var (`docs/dersler/ethernet-mac-arp.md`) | P0 |
 | 4 | Fiziksel bağlantı ve kablolama | Port durumunu yorumlar, kopuk kablo/kapalı portu bulur; patch panel, PoE, etiketleme | Motor + okuma | Var (link up/down, shutdown) | Detaylı ders var | P0 |
 | 5 | VLAN | Access port atar, `show vlan brief` okur | Motor | Var | Detaylı ders var (VLAN+trunk birlikte) | P0 |
