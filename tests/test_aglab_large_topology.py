@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, assert_vpcs_ping
 
 N = 298
 BUDGET_MS = 1000
@@ -102,9 +102,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
 
     def ping(ok):
         output, elapsed = command("d299", "ping 10.0.0.2")
-        assert (
-            "Success rate is 100 percent" if ok else "Success rate is 0 percent"
-        ) in output, output
+        # I-1: topoloji Labber'da; PC terminali VPCS
+        assert_vpcs_ping(output, "10.0.0.2", ok)
         timings.append(round(elapsed, 2))
         print("ping_ms", timings[-1], "expected_success", ok, flush=True)
         assert elapsed < BUDGET_MS, f"300-device ping exceeded {BUDGET_MS} ms: {elapsed:.1f}"

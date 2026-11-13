@@ -3,7 +3,7 @@
 import json, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium, import_topology
+from aglab_test_support import legacy_engine, ROOT, launch_chromium, import_topology
 
 module = (ROOT / "simulator/mac-learning.js").read_text()
 assert (
@@ -93,65 +93,76 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         return "\n".join(page.locator("#ptTerminal > div").all_text_contents()[before:])
 
     def ping(device, target):
-        assert "100 percent (5/5)" in cmd(device, "ping " + target)
+        # I-1: çalışma alanı Labber'da; PC terminali VPCS (başarı: 5 adet "84 bytes from")
+        out = cmd(device, "ping " + target)
+        assert out.count("84 bytes from " + target) == 5, out
+
+    def dynamic(device):
+        # Labber `show mac address-table` IOS biçiminde: dinamik girdiler DYNAMIC satırları
+        out = cmd(device, "show mac address-table")
+        return [line for line in out.splitlines() if "DYNAMIC" in line]
 
     def row(device, mac, port, vlan=10):
-        out = cmd(device, "show mac address-table")
-        rows = [line for line in out.splitlines() if mac in line]
-        assert any(line.split()[0] == str(vlan) and port in line for line in rows), (
-            device,
-            mac,
-            port,
-            vlan,
-            out,
-        )
+        # IOS port yazımı kısa ve büyük harfle (Fa0/1, Gi0/1); karşılaştırma harf duyarsız
+        rows = [line for line in dynamic(device) if mac in line]
+        assert any(
+            line.split()[0] == str(vlan) and port.lower() in line.lower() for line in rows
+        ), (device, mac, port, vlan, rows)
 
-    load(obj)
+    # "Paket adımı" ilerleticisi eski motorun aracı (Labber içeriğinde de eski yol bulucuyu
+    # kullanır; L7'de silinir): MAC'in yalnız giriş portunda, adım adım öğrenildiğini eski motor
+    # kararındaki aynı topolojide sınar. Çıktı eski motorun MAC tablosudur.
+    load(legacy_engine(obj))
     page.evaluate(
         "document.querySelector('#ptSource').value='d3';document.querySelector('#ptTarget').value='d4';document.querySelector('#ptPacketStep').click()"
     )
-    row("d1", "0200.0000.0003", "fa0/1")
-    assert "0200.0000.0004" not in cmd("d1", "show mac address-table")
+    legacy_rows = cmd("d1", "show mac address-table")
+    assert "0200.0000.0003" in legacy_rows and "fa0/1" in legacy_rows, legacy_rows
+    assert "0200.0000.0004" not in legacy_rows, legacy_rows
     page.evaluate("document.querySelector('#ptPacketStep').click()")
-    row("d2", "0200.0000.0003", "gi0/1")
+    assert "gi0/1" in cmd("d2", "show mac address-table")
+    print("PASS: legacy packet stepper learns source MAC hop by hop", flush=True)
+    # Labber: gerçek trafik (ping) kaynak MAC'leri giriş portlarında öğretir
     load(obj)
     ping("d3", "192.168.10.3")
-    assert "Switch enable" in cmd("d1", "clear mac address-table dynamic")
-    row("d1", "0200.0000.0003", "fa0/1")
+    # IOS: `clear mac address-table` ayrıcalıklı EXEC'tedir; kullanıcı kipinde tanınmayan
+    # kelime ana bilgisayar adı sayılır (Translating "clear" … % Unknown command or computer name)
+    out = cmd("d1", "clear mac address-table dynamic")
+    assert "% Unknown command or computer name" in out, out
     row("d1", "0200.0000.0003", "fa0/1")
     row("d1", "0200.0000.0004", "gi0/1")
     row("d2", "0200.0000.0003", "gi0/1")
     row("d2", "0200.0000.0004", "fa0/2")
     print("PASS: source MAC learned on ingress ports on both switches", flush=True)
-    # Advance application wall clock, without waiting five minutes or adding runtime test APIs.
+    # IOS mac address-table aging-time 300 s (Labber motor bulgusu, MOTOR_BULGULARI.md):
+    # son trafikten 300 s sonra dinamik girdi düşer, yeni trafik yeniden öğretir.
     page.evaluate("window.macTestTime=Date.now();Date.now=()=>window.macTestTime")
     ping("d3", "192.168.10.3")
     page.evaluate("window.macTestTime+=299999")
     row("d1", "0200.0000.0003", "fa0/1")
     page.evaluate("window.macTestTime+=1")
-    assert "MAC tablosu boş" in cmd("d1", "show mac address-table")
+    assert dynamic("d1") == [], dynamic("d1")
     ping("d3", "192.168.10.3")
     row("d1", "0200.0000.0003", "fa0/1")
-    # Shutdown and VLAN membership changes invalidate stale entries when the table is read.
+    # Shutdown ve access VLAN değişikliği porttaki dinamik girdileri siler (IOS)
     for c in ["enable", "configure terminal", "interface fa0/1", "shutdown", "end"]:
         cmd("d1", c)
-    assert "0200.0000.0003" not in cmd("d1", "show mac address-table")
+    assert not any("0200.0000.0003" in line for line in dynamic("d1")), dynamic("d1")
     for c in ["configure terminal", "interface fa0/1", "no shutdown", "end"]:
         cmd("d1", c)
     ping("d3", "192.168.10.3")
     for c in ["configure terminal", "interface fa0/1", "switchport access vlan 20", "end"]:
         cmd("d1", c)
-    assert "0200.0000.0003" not in cmd("d1", "show mac address-table")
+    assert not any("0200.0000.0003" in line for line in dynamic("d1")), dynamic("d1")
     print("PASS: 300-second aging, relearning, shutdown and VLAN invalidation", flush=True)
     load(obj)
     ping("d3", "192.168.10.3")
     cmd("d1", "enable")
     cmd("d1", "clear mac address-table dynamic")
-    cleared = cmd("d1", "show mac address-table")
-    assert "MAC tablosu boş" in cleared, cleared
+    assert dynamic("d1") == [], dynamic("d1")
     row("d2", "0200.0000.0003", "gi0/1")
     ping("d3", "192.168.10.3")
-    assert "0200.0000.0003" in cmd("d1", "show mac address-table")
+    row("d1", "0200.0000.0003", "fa0/1")
     # A router uses the same modeled MAC on two VLANs; the downstream switch must not learn remote endpoint MACs across L3.
     obj["devices"][3]["ip"] = "192.168.20.2"
     obj["devices"][1]["interfaces"]["fa0/2"]["vlan"] = 20
@@ -184,14 +195,20 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     load(obj)
     ping("d3", "192.168.10.1")
     ping("d4", "192.168.20.1")
-    row("d1", "0200.0000.0005", "gi0/2", 10)
-    row("d1", "0200.0000.0005", "gi0/2", 20)
+    # IOS: router'ın her fiziksel arayüzünün kendi MAC'i vardır; alt arayüzler (g0/0.10,
+    # g0/0.20) üst arayüzün MAC'ini paylaşır. Eski motor cihaz başına tek MAC kullanıyordu;
+    # Labber arayüz MAC'i verir. Router g0/0 MAC'i, Gi0/2'de iki VLAN'da birden görülen adrestir.
+    on_gi2 = [line.split() for line in dynamic("d1") if "gi0/2" in line.lower()]
+    router_mac = next(
+        m for v, m, *_ in on_gi2 if v == "10" and any(x[0] == "20" and x[1] == m for x in on_gi2)
+    )
+    assert router_mac not in ("0200.0000.0003", "0200.0000.0004"), on_gi2
+    row("d1", router_mac, "gi0/2", 10)
+    row("d1", router_mac, "gi0/2", 20)
     ping("d3", "192.168.20.2")
-    out = cmd("d2", "show mac address-table")
-    assert not any(
-        "0200.0000.0003" in line and line.split()[0] == "20" for line in out.splitlines()
-    ), out
-    row("d2", "0200.0000.0005", "gi0/1", 20)
+    out = dynamic("d2")
+    assert not any("0200.0000.0003" in line and line.split()[0] == "20" for line in out), out
+    row("d2", router_mac, "gi0/1", 20)
     print("PASS: clear/relearn, same MAC in two VLANs and router source-MAC rewrite", flush=True)
     assert not errors, errors
     browser.close()

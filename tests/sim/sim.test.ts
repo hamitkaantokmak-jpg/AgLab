@@ -123,6 +123,14 @@ describe('campus lab', () => {
     expect(pcPing(rt, 'PC1', '192.168.20.12')).toContain('timeout')
   })
 
+  it('IOS ping to its own address needs no ARP (I-1 motor bulgusu)', () => {
+    const rt = solved()
+    const s = new IosSession(rt, 'SW1')
+    s.mode = 'priv'
+    const own = rt.running['SW1']!.svis['1']?.ip?.addr ?? Object.values(rt.running['SW1']!.svis).find((v) => v.ip)?.ip?.addr
+    if (own) expect(s.exec('ping ' + own).join('\n')).toContain('!!!!!')
+  })
+
   it('IOS ping loses the first packet to ARP once', () => {
     const rt = solved()
     const s = new IosSession(rt, 'SW1')

@@ -54,10 +54,12 @@
         kind = 'discard';
         device = m[1];
         detail = { reason: m[2] };
-      } else if ((m = raw.match(/^ttl-expired (\S+) quote (.*)$/))) {
+      } else if ((m = raw.match(/^ttl-expired (\S+)(?: quote (.*))?$/))) {
+        // Labber izi alıntısız `ttl-expired <cihaz>` yazar; ikisi de düşürme noktasıdır.
         kind = 'discard';
         device = m[1];
-        detail = { reason: 'ttl-expired', quote: m[2] };
+        detail =
+          m[2] === undefined ? { reason: 'ttl-expired' } : { reason: 'ttl-expired', quote: m[2] };
       } else if ((m = raw.match(/^port-security-drop (\S+) (\S+) (.*)$/))) {
         kind = 'discard';
         device = m[1];

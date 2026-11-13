@@ -169,10 +169,15 @@ class SimEmbeddedTests(unittest.TestCase):
         her akışta tam olarak denetlenir."""
         page = self.page
         # Sayfa yüklemesi: Akademi'de seçili labın motor rozeti için karar; Labber lab
-        # grubunun listesi (E) için LABBER_LABS
+        # grubunun listesi (E) için LABBER_LABS. I-1: kayıtlı/varsayılan çalışma alanı da karara
+        # gider; Labber kararında tek kalıcı çalışma zamanı kurulur ve terminal istemi için seçili
+        # cihazın oturumu açılır (PC: VpcsSession).
         self.assertEqual(
-            set(self.accesses()), {"global", "toLabber", "LABBER_LABS"}, "sayfa yüklemesi"
+            set(self.accesses()),
+            {"global", "toLabber", "LABBER_LABS", "createRuntime", "createSession", "VpcsSession"},
+            "sayfa yüklemesi",
         )
+        self.assertEqual(self.accesses().count("createRuntime"), 1, "çalışma alanı başına tek")
         self.reset_accesses()
         page.click('[data-area="troubleshoot"]')
         page.click('[data-area="learn"]')

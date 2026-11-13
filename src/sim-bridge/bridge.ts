@@ -9,12 +9,12 @@
 // aracı kullanır.
 
 import AgLabMacAddress from '../../simulator/mac-address.js'
-import { defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED_VLANS } from '../sim/config'
+import { defaultL2, defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED_VLANS } from '../sim/config'
 import { LabRuntime } from '../sim/runtime'
 import { isApipa } from '../sim/dhcp'
 import { aclKind, normAddr } from '../sim/acl'
 import { emptyNat, type NatEntry } from '../sim/nat'
-import type { Acl, AclAddr, AclEntry, DhcpPool, Hardware, L3Opts, LabDef, OspfConfig, PcConfig, PcDef, StaticRoute, SubIfConfig, SwitchConfig, SwitchDef } from '../sim/types'
+import type { Acl, AclAddr, AclEntry, DhcpPool, FhrpTrack, Hardware, HsrpGroup, L3Opts, LabDef, OspfConfig, PcConfig, PcDef, StaticRoute, SubIfConfig, SwitchConfig, SwitchDef } from '../sim/types'
 import { canonIf, clone, ipToInt, isIp, maskToPrefix, networkOf, normalizeMac, ports as expandPorts, prefixToMask } from '../sim/util'
 import type { AglabDevice, AglabInterface, AglabLink, AglabStaticRoute, AglabTopology } from './aglab'
 
@@ -69,20 +69,26 @@ const SWITCH_FIELDS = new Set([
 // anlamsızdır (PKT dönüştürücüsü 1 yazar) ve opak geçer.
 // L5-b: `dhcpPools` / `dhcpExcluded` (IOS DHCP sunucusu) ve arayüzde `helperAddress` (relay).
 // L5-d: `natOverload {aclId, outsideInterface}` ve çalışma durumu `natTranslations`
-const ROUTER_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'staticRoutes', 'route', 'ospf', 'ip', 'mask', 'gateway', 'vlan', 'dhcpPools', 'dhcpExcluded', 'acls', 'natOverload', 'natTranslations'])
+// FHRP: `tracks [{id, interface}]` (`track N interface <if> line-protocol`)
+const ROUTER_FIELDS = new Set(['enabled', 'ports', 'interfaces', 'staticRoutes', 'route', 'ospf', 'ip', 'mask', 'gateway', 'vlan', 'dhcpPools', 'dhcpExcluded', 'acls', 'natOverload', 'natTranslations', 'tracks'])
 // L5-c: `aclIn` / `aclOut` (ip access-group)
-const ROUTER_IF_FIELDS = new Set(['ip', 'mask', 'enabled', 'helperAddress', 'aclIn', 'aclOut', 'natRole'])
+// FHRP: `hsrp [{group, ip, priority, preempt, track}]`, `vrrp [{group, ip, priority, preempt}]`
+const ROUTER_IF_FIELDS = new Set(['ip', 'mask', 'enabled', 'helperAddress', 'aclIn', 'aclOut', 'natRole', 'hsrp', 'vrrp'])
 const ACL_RULE_FIELDS = new Set(['id', 'action', 'protocol', 'srcType', 'src', 'wildcard', 'dstType', 'dst', 'dstWildcard', 'port'])
 const DHCP_POOL_FIELDS = new Set(['name', 'network', 'mask', 'defaultRouter', 'dnsServer'])
 // L5-a: router alt arayüzü (`g0/0.10`). Eski CLI yeni alt arayüzü `encapsulation: ''`, `vlan: 1`
 // ile kurar: boş encapsulation "henüz yapılandırılmadı" demektir (eski motorda da etkin değil).
-const SUBIF_FIELDS = new Set(['ip', 'mask', 'enabled', 'parent', 'vlan', 'encapsulation', 'helperAddress', 'aclIn', 'aclOut', 'natRole'])
+const SUBIF_FIELDS = new Set(['ip', 'mask', 'enabled', 'parent', 'vlan', 'encapsulation', 'helperAddress', 'aclIn', 'aclOut', 'natRole', 'hsrp', 'vrrp'])
 const STATIC_ROUTE_FIELDS = new Set(['network', 'mask', 'nextHop', 'distance'])
 const OSPF_FIELDS = new Set(['pid', 'routerId', 'networks'])
 // Server: PC gibi bir uç; L5-b'den beri DHCP ve DNS servisleri modellenir (HTTP L5-d'ye kadar yok).
 const SERVER_FIELDS = new Set([...PC_FIELDS, 'services'])
 // L5-e: `portSecurity {enabled, max, violation, macs}` ve `errdisabled` (port security ihlali)
-const PHYS_FIELDS = new Set(['mode', 'vlan', 'allowed', 'nativeVlan', 'enabled', 'portSecurity', 'errdisabled'])
+// EtherChannel: üye portta `channelGroup {id, mode}`, switch'te `po<N>` (Port-channel) arayüzü
+const PHYS_FIELDS = new Set(['mode', 'vlan', 'allowed', 'nativeVlan', 'enabled', 'portSecurity', 'errdisabled', 'channelGroup'])
+const PO_FIELDS = new Set(['mode', 'vlan', 'allowed', 'nativeVlan', 'enabled'])
+const CHANNEL_MODES = ['on', 'active', 'passive', 'desirable', 'auto'] as const
+const channelProto = (m: string) => (m === 'on' ? 'on' : m === 'active' || m === 'passive' ? 'lacp' : 'pagp')
 const PS_FIELDS = ['enabled', 'max', 'violation', 'macs']
 /** AğLab MAC yazımı (`02:00:00:00:00:fe`) ⇄ Labber (`0200.0000.00fe`). */
 const colonMac = (dotted: string) => dotted.replace(/\./g, '').match(/../g)!.join(':')
@@ -105,10 +111,14 @@ const FEATURE_REASON: Record<string, string> = {
   aclIn: 'ACL Labber\'da yok (L5)',
   aclOut: 'ACL Labber\'da yok (L5)',
   natRole: 'NAT Labber\'da yok (L5)',
+  hsrp: 'HSRP/VRRP yalnız router arayüzünde ve alt arayüzünde eşlenir',
+  vrrp: 'HSRP/VRRP yalnız router arayüzünde ve alt arayüzünde eşlenir',
+  tracks: 'İzlenen nesne (track) yalnız router\'da eşlenir',
   helperAddress: 'DHCP relay (helperAddress) yalnız router arayüzünde ve alt arayüzünde eşlenir',
 }
 
 const sortNum = (a: number, b: number) => a - b
+const ALL_VLANS = Array.from({ length: 4094 }, (_, i) => i + 1)
 
 /** Labber'ın 3560 ailesi gibi trunk için önce encapsulation isteyen modelleri. */
 export function needsEncapFor(model: string): boolean {
@@ -296,6 +306,67 @@ export function toLabber(input: AglabTopology): BridgeResult {
     return ok ? lists : null
   }
 
+  /**
+   * FHRP: arayüzün `hsrp` / `vrrp` listeleri → L3Opts. Grup aralıkları ve öncelikler IOS'unki
+   * (HSRP v1 grup 0-255, öncelik 0-255; VRRP grup 1-255, öncelik 1-254). İzlenen arayüz adı
+   * `ifaceOf` ile kanonik yapılır (alt arayüzler sonra kurulduğu için çağıran çözer).
+   */
+  const fhrpOf = (id: string, name: string, iface: AglabInterface, ifaceOf: (n: string) => string | null): Pick<L3Opts, 'hsrp' | 'vrrp'> | null => {
+    const out: Pick<L3Opts, 'hsrp' | 'vrrp'> = {}
+    const int = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi
+    for (const proto of ['hsrp', 'vrrp'] as const) {
+      const list = iface[proto]
+      if (list === undefined) continue
+      const where = `${name}.${proto}`
+      if (!Array.isArray(list)) {
+        reject(id, where, `${proto} bir liste olmalı`)
+        continue
+      }
+      const groups: HsrpGroup[] = []
+      for (const [i, raw] of (list as unknown[]).entries()) {
+        const g = raw as Record<string, unknown>
+        const at = `${where}[${i}]`
+        const keys = proto === 'hsrp' ? ['group', 'ip', 'priority', 'preempt', 'track'] : ['group', 'ip', 'priority', 'preempt']
+        if (!g || typeof g !== 'object' || Array.isArray(g)) {
+          reject(id, at, 'Geçersiz FHRP grubu')
+          continue
+        }
+        for (const k of Object.keys(g)) if (!keys.includes(k)) unsupported(id, `interfaces.${at}.${k}`, `Labber\'da karşılığı olmayan ${proto.toUpperCase()} alanı`)
+        const ok =
+          int(g['group'], proto === 'hsrp' ? 0 : 1, 255) &&
+          (g['ip'] === undefined || g['ip'] === '' || (typeof g['ip'] === 'string' && isIp(g['ip']))) &&
+          (g['priority'] === undefined || int(g['priority'], proto === 'hsrp' ? 0 : 1, proto === 'hsrp' ? 255 : 254)) &&
+          (g['preempt'] === undefined || typeof g['preempt'] === 'boolean')
+        if (!ok || groups.some((x) => x.group === g['group'])) {
+          reject(id, at, `Geçersiz ya da yinelenen ${proto.toUpperCase()} grubu (grup, ip, priority, preempt)`)
+          continue
+        }
+        const grp: HsrpGroup = { group: g['group'] as number, ip: g['ip'] ? String(g['ip']) : null }
+        if (g['priority'] !== undefined) grp.priority = g['priority'] as number
+        if (proto === 'hsrp' && g['preempt'] === true) grp.preempt = true
+        if (proto === 'vrrp' && g['preempt'] === false) grp.preempt = false
+        if (g['track'] !== undefined) {
+          const tracks: FhrpTrack[] = []
+          const ts = g['track']
+          for (const t of Array.isArray(ts) ? (ts as Record<string, unknown>[]) : [null as unknown as Record<string, unknown>]) {
+            const dec = t?.['decrement']
+            const okDec = dec === undefined || int(dec, 1, 255)
+            const canon = typeof t?.['interface'] === 'string' ? ifaceOf(t['interface']) : null
+            if (t && okDec && int(t['object'], 1, 1000) && t['interface'] === undefined && Object.keys(t).every((k) => k === 'object' || k === 'decrement'))
+              tracks.push({ obj: t['object'] as number, ...(dec !== undefined ? { decrement: dec as number } : {}) })
+            else if (t && okDec && canon && t['object'] === undefined && Object.keys(t).every((k) => k === 'interface' || k === 'decrement'))
+              tracks.push({ iface: canon, ...(dec !== undefined ? { decrement: dec as number } : {}) })
+            else reject(id, `${at}.track`, 'HSRP track: {object, decrement?} ya da cihazdaki {interface, decrement?} olmalı')
+          }
+          if (tracks.length) grp.tracks = tracks
+        }
+        groups.push(grp)
+      }
+      if (groups.length) out[proto] = groups.sort((a, b) => a.group - b.group)
+    }
+    return Object.keys(out).length ? out : null
+  }
+
   // ---- Router (L4) ----
   const routerToLabber = (d: AglabDevice, id: string, off: boolean) => {
     for (const key of ['ip', 'mask', 'gateway'] as const)
@@ -317,6 +388,8 @@ export function toLabber(input: AglabTopology): BridgeResult {
     cfg.hostname = d.name || id
     // AğLab'da arayüz kaydı olmayan router portu açık ve adressizdir (eski motor: enabled !== false).
     for (const c of canonPorts) cfg.ifaces[c]!.shutdown = false
+    // FHRP grupları alt arayüzler kurulduktan sonra çözülür (izlenen arayüz alt arayüz olabilir)
+    const fhrpLater: [string, AglabInterface, (fh: Pick<L3Opts, 'hsrp' | 'vrrp'>) => void][] = []
     for (const [name, iface] of Object.entries(ifaces)) {
       if (name.includes('.')) continue
       const c = canonPort(name)
@@ -339,6 +412,7 @@ export function toLabber(input: AglabTopology): BridgeResult {
       if (groups) phys.l3 = { ...(phys.l3 ?? {}), ...groups }
       const role = natRoleOf(id, name, iface)
       if (role) phys.l3 = { ...(phys.l3 ?? {}), ...role }
+      fhrpLater.push([name, iface, (fh) => void (phys.l3 = { ...(phys.l3 ?? {}), ...fh })])
     }
     // L5-a: alt arayüzler (`<fiziksel>.<n>`, 802.1Q)
     for (const [name, iface] of Object.entries(ifaces)) {
@@ -384,6 +458,29 @@ export function toLabber(input: AglabTopology): BridgeResult {
       if (groups) subs[key]!.l3 = { ...(subs[key]!.l3 ?? {}), ...groups }
       const role = natRoleOf(id, name, iface)
       if (role) subs[key]!.l3 = { ...(subs[key]!.l3 ?? {}), ...role }
+      fhrpLater.push([name, iface, (fh) => void (subs[key]!.l3 = { ...(subs[key]!.l3 ?? {}), ...fh })])
+    }
+    // FHRP: izlenen arayüz adı (fiziksel ya da alt arayüz) cihazda olmalı
+    const ifaceOf = (n: string): string | null => {
+      const dot = n.indexOf('.')
+      const canon = dot < 0 ? canonPort(n) : canonPort(n.slice(0, dot)) + n.slice(dot)
+      return canon && (dot < 0 ? portMap[canon] !== undefined : !!cfg.subifs?.[canon]) ? canon : null
+    }
+    for (const [name, iface, apply] of fhrpLater) {
+      const fh = fhrpOf(id, name, iface, ifaceOf)
+      if (fh) apply(fh)
+    }
+    if (d.tracks !== undefined) {
+      const list = d.tracks as unknown
+      const tracks: Record<string, { iface: string }> = {}
+      for (const t of Array.isArray(list) ? (list as Record<string, unknown>[]) : [null as unknown as Record<string, unknown>]) {
+        const n = t?.['id']
+        const canon = typeof t?.['interface'] === 'string' ? ifaceOf(t['interface']) : null
+        if (!t || !Number.isInteger(n) || (n as number) < 1 || (n as number) > 1000 || !canon || tracks[String(n)] || Object.keys(t).some((k) => k !== 'id' && k !== 'interface'))
+          reject(id, 'tracks', 'track: {id 1-1000, interface} (cihazdaki arayüz, yinelenmeyen numara) olmalı')
+        else tracks[String(n)] = { iface: canon }
+      }
+      if (Object.keys(tracks).length) cfg.tracks = tracks
     }
     // L5-d: NAT overload (PAT, outside arayüz adresiyle) ve çeviri tablosu
     if (d.natOverload !== undefined && d.natOverload !== null) {
@@ -670,7 +767,16 @@ export function toLabber(input: AglabTopology): BridgeResult {
       else if (value !== null) cfg.stpPriority[String(n)] = value
     }
     // Arayüzler
+    /** EtherChannel: `po<N>` kayıtları üyelerden sonra işlenir (üyeden Port-channel türetilmez) */
+    const poRecords: [string, number, AglabInterface][] = []
     for (const [name, iface] of Object.entries(ifaces)) {
+      const po = /^po(\d+)$/i.exec(name)
+      if (po) {
+        const n = Number(po[1])
+        if (!Number.isInteger(n) || n < 1 || n > 48) reject(id, name, 'Port-channel numarası 1-48 olmalı')
+        else poRecords.push([name, n, iface])
+        continue
+      }
       if (/^vlan\d+$/i.test(name)) {
         const v = vlanId(name.slice(4))
         if (v === null) {
@@ -739,7 +845,58 @@ export function toLabber(input: AglabTopology): BridgeResult {
         if (typeof iface.errdisabled !== 'boolean') reject(id, `${name}.errdisabled`, 'errdisabled true/false olmalı')
         else if (iface.errdisabled) errdis.push(`${id}|${c}`)
       }
+      if (iface['channelGroup'] !== undefined && iface['channelGroup'] !== null) {
+        const g = iface['channelGroup'] as Record<string, unknown>
+        const gid = g?.['id']
+        if (
+          typeof g !== 'object' || Object.keys(g).some((k) => k !== 'id' && k !== 'mode') ||
+          !Number.isInteger(gid) || (gid as number) < 1 || (gid as number) > 48 || !CHANNEL_MODES.includes(g['mode'] as never)
+        )
+          reject(id, `${name}.channelGroup`, 'channelGroup {id: 1-48, mode: on|active|passive|desirable|auto} olmalı')
+        else phys.channel = { id: gid as number, mode: g['mode'] as (typeof CHANNEL_MODES)[number] }
+      }
       cfg.ifaces[c] = phys
+    }
+    // EtherChannel: bir gruptaki üyeler aynı protokolü kullanır (IOS "Channel protocol mismatch")
+    const groups = new Map<number, string>()
+    for (const [c, phys] of Object.entries(cfg.ifaces)) {
+      if (!phys.channel) continue
+      const p = channelProto(phys.channel.mode)
+      const prev = groups.get(phys.channel.id)
+      if (prev !== undefined && prev !== p) reject(id, `${c}.channelGroup`, `Port-channel ${phys.channel.id} üyelerinde protokol uyuşmazlığı`)
+      groups.set(phys.channel.id, p)
+    }
+    for (const [name, n, iface] of poRecords) {
+      for (const key of Object.keys(iface))
+        if (!PO_FIELDS.has(key)) unsupported(id, `interfaces.${name}.${key}`, 'Labber\'da karşılığı olmayan Port-channel alanı')
+      const mode = iface.mode ?? 'access'
+      if (mode !== 'access' && mode !== 'trunk') {
+        reject(id, `${name}.mode`, 'Bilinmeyen port modu: ' + mode)
+        continue
+      }
+      const access = vlanId(iface.vlan ?? 1)
+      const native = vlanId(iface.nativeVlan ?? 1)
+      const allowed = (iface.allowed ?? []).map(vlanId)
+      if (access === null || native === null || allowed.some((x) => x === null)) {
+        reject(id, name, 'Geçersiz Port-channel VLAN değeri')
+        continue
+      }
+      cfg.pos[String(n)] = {
+        ...defaultL2(),
+        shutdown: iface.enabled === false,
+        mode,
+        accessVlan: access,
+        nativeVlan: native,
+        allowed: [...new Set(allowed as number[])].sort(sortNum),
+        encapDot1q: mode === 'trunk' && !!sw.needsEncap,
+      }
+    }
+    // Port-channel kaydı olmayan grup: IOS ilk üyenin ayarlarından oluşturur (channel-group)
+    for (const [c, phys] of Object.entries(cfg.ifaces)) {
+      if (!phys.channel || cfg.pos[String(phys.channel.id)]) continue
+      const { channel: _c, routed: _r, ip: _i, l3: _l, bpduguard: _b, portSecurity: _p, cdp: _cd, lldpTx: _t, lldpRx: _x, ...l2 } = phys
+      cfg.pos[String(phys.channel.id)] = { ...defaultL2(), ...l2, shutdown: false, description: '' }
+      void [_c, _r, _i, _l, _b, _p, _cd, _t, _x, c]
     }
     // AğLab'da arayüz kaydı olmayan port: access, VLAN 1 (Labber varsayılanı dynamic-auto).
     for (const c of canonPorts)
@@ -897,7 +1054,28 @@ export function toAglab(
       throw new BridgeError(`${id}: ${what} AğLab modelinde ifade edilemiyor`)
     }
     if (cfg.hostname !== (d.name || id)) d.name = cfg.hostname
-    if (cfg.pos && Object.keys(cfg.pos).length) fail('Port-channel')
+    // EtherChannel: Port-channel arayüzleri `po<N>` olarak (özgün kayıt alanları korunur)
+    d.interfaces = d.interfaces ?? {}
+    for (const name of Object.keys(d.interfaces)) {
+      const m = /^po(\d+)$/i.exec(name)
+      if (m && !cfg.pos[String(Number(m[1]))]) delete d.interfaces[name]
+    }
+    for (const [n, po] of Object.entries(cfg.pos)) {
+      if (po.mode !== 'access' && po.mode !== 'trunk') fail(`Port-channel${n} modu ${po.mode}`)
+      if (po.allowed === null) fail(`Port-channel${n} "allowed vlan all"`)
+      if (po.nonegotiate) fail(`Port-channel${n} nonegotiate`)
+      if (po.portfast) fail(`Port-channel${n} portfast`)
+      if (po.description) fail(`Port-channel${n} description`)
+      const key = Object.keys(d.interfaces).find((k) => /^po\d+$/i.test(k) && Number(k.slice(2)) === Number(n)) ?? `po${n}`
+      const prev = d.interfaces[key]
+      const next: AglabInterface = prev ? { ...prev } : {}
+      next.mode = po.mode
+      next.vlan = po.accessVlan
+      next.allowed = [...po.allowed!]
+      next.nativeVlan = po.nativeVlan
+      next.enabled = !po.shutdown
+      d.interfaces[key] = next
+    }
     if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail('Loopback')
     if (cfg.ospf) fail('OSPF')
     if (cfg.routes.length) fail('statik rota')
@@ -929,13 +1107,19 @@ export function toAglab(
     // Arayüzler
     const back = portNames[id] ?? {}
     d.interfaces = d.interfaces ?? {}
-    for (const [canon, phys] of Object.entries(cfg.ifaces)) {
+    for (const [canon, raw] of Object.entries(cfg.ifaces)) {
       const name = back[canon]
       if (!name) continue
+      // I-1: AğLab modelinde DTP yok. IOS varsayılanı `dynamic auto` olan port (PKT IOS metin
+      // yolu, L5-h) AğLab'da `access` gösterimiyle tutulur (dönüştürücüyle aynı eşleme); özgün
+      // kayıt access değilse ya da `dynamic desirable` ise açık hata.
+      const prevMode = d.interfaces[name]?.mode
+      const phys =
+        raw.mode === 'dynamic-auto' && (prevMode === undefined || prevMode === 'access')
+          ? { ...raw, mode: 'access' as const, allowed: raw.allowed ?? ((d.interfaces[name]?.allowed as number[] | undefined) ?? [1]) }
+          : raw
       if (phys.mode !== 'access' && phys.mode !== 'trunk') fail(`${canon} modu ${phys.mode}`)
-      if (phys.channel) fail(`${canon} channel-group`)
       if (phys.routed) fail(`${canon} routed port`)
-      if (phys.allowed === null) fail(`${canon} "allowed vlan all"`)
       if (phys.portfast) fail(`${canon} portfast`)
       if (phys.nonegotiate) fail(`${canon} nonegotiate`)
       if (phys.description) fail(`${canon} description`)
@@ -951,7 +1135,8 @@ export function toAglab(
       }
       put('mode', phys.mode, 'access')
       put('vlan', phys.accessVlan, def.accessVlan)
-      put('allowed', phys.allowed, [])
+      // I-1: Labber'ın "allowed vlan all"u (null) AğLab'da 1-4094 listesidir (dönüştürücüyle aynı)
+      put('allowed', phys.allowed ?? ALL_VLANS, [])
       put('nativeVlan', phys.nativeVlan, def.nativeVlan)
       put('enabled', !phys.shutdown, true)
       // L5-e: yapılandırılmış güvenli MAC'ler (dinamik öğrenilenler yazılmaz; IOS gibi kalıcı değil)
@@ -965,6 +1150,9 @@ export function toAglab(
         const on = rt.errdis.has(`${id}|${canon}`)
         if ((prev && 'errdisabled' in prev) || on) iface['errdisabled'] = on
       }
+      // EtherChannel üyeliği
+      if (phys.channel) iface['channelGroup'] = { id: phys.channel.id, mode: phys.channel.mode }
+      else delete iface['channelGroup']
       if (prev || Object.keys(iface).length) d.interfaces[name] = iface
     }
     for (const [v, svi] of Object.entries(cfg.svis)) {
@@ -1011,13 +1199,31 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
     if (!same && (d.acls !== undefined || rules.length)) d.acls = rules
   }
   d.interfaces = d.interfaces ?? {}
+  // FHRP: kanonik arayüz adı → AğLab yazımı (alt arayüz: fiziksel portun yazımı + '.N')
+  const aglabIf = (canon: string): string => {
+    const dot = canon.indexOf('.')
+    const physName = back[dot < 0 ? canon : canon.slice(0, dot)]
+    if (!physName) fail(`${canon} (izlenen arayüz)`)
+    return physName + (dot < 0 ? '' : canon.slice(dot))
+  }
+  {
+    const ids = Object.keys(cfg.tracks ?? {}).map(Number).sort((a, b) => a - b)
+    const list = ids.map((n) => ({ id: n, interface: aglabIf(cfg.tracks![String(n)]!.iface) }))
+    const same = (orig.tracks as Record<string, unknown>[] | undefined)?.length === list.length &&
+      list.every((t, i) => {
+        const o = (orig.tracks as Record<string, unknown>[])[i]!
+        return o['id'] === t.id && canonPort(String(o['interface']).split('.')[0]!) === canonPort(t.interface.split('.')[0]!) && String(o['interface']).split('.')[1] === t.interface.split('.')[1]
+      })
+    if (same) d.tracks = clone(orig.tracks)
+    else if (list.length || d.tracks !== undefined) d.tracks = list
+  }
   for (const [canon, phys] of Object.entries(cfg.ifaces)) {
     const name = back[canon]
     if (!name) continue
     if (phys.description) fail(`${canon} description`)
     const helper = helperBack(phys.l3, canon, fail)
     const prev = d.interfaces[name]
-    if (!prev && !phys.ip && !phys.shutdown && !helper && !phys.l3?.aclIn && !phys.l3?.aclOut && !phys.l3?.nat) continue
+    if (!prev && !phys.ip && !phys.shutdown && !helper && !phys.l3?.aclIn && !phys.l3?.aclOut && !phys.l3?.nat && !phys.l3?.hsrp && !phys.l3?.vrrp) continue
     const iface: AglabInterface = prev ? { ...prev } : {}
     if (phys.ip) {
       iface.ip = phys.ip.addr
@@ -1028,6 +1234,7 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
     else if (iface['helperAddress'] !== '') delete iface['helperAddress']
     groupsBack(iface, phys.l3)
     natRoleBack(iface, phys.l3)
+    fhrpBack(iface, phys.l3, aglabIf)
     d.interfaces[name] = iface
   }
   // L5-a: alt arayüzler. AğLab adı: fiziksel portun AğLab yazımı + '.N'. Native alt arayüz,
@@ -1058,6 +1265,7 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
     else if (iface['helperAddress'] !== '') delete iface['helperAddress']
     groupsBack(iface, si.l3)
     natRoleBack(iface, si.l3)
+    fhrpBack(iface, si.l3, aglabIf)
     d.interfaces[name] = iface
   }
   // CLI ile silinen alt arayüz (`no interface Gi0/0.N`) AğLab görünümünden de çıkar
@@ -1121,10 +1329,50 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
  */
 function helperBack(l3: L3Opts | undefined, canon: string, fail: (what: string) => never): string | null {
   if (!l3) return null
-  const { helpers, aclIn: _in, aclOut: _out, nat: _nat, ...rest } = l3
+  const { helpers, aclIn: _in, aclOut: _out, nat: _nat, hsrp: _h, vrrp: _v, ...rest } = l3
   if (Object.keys(rest).length) fail(`${canon} arayüz OSPF/L3 ayarı`)
   if (helpers && helpers.length > 1) fail(`${canon} üzerinde birden çok ip helper-address`)
   return helpers?.[0] ?? null
+}
+
+/**
+ * FHRP: L3Opts → AğLab `hsrp` / `vrrp`. Grup, özgün kayıttaki aynı grubun üstüne yazılır:
+ * varsayılana eşit özgün alanlar (priority 100, HSRP `preempt: false`, VRRP `preempt: true`,
+ * boş `track`) korunur; böylece içe aktarma → dışa aktarma birebir kalır.
+ */
+function fhrpBack(iface: AglabInterface, l3: L3Opts | undefined, aglabIf: (canon: string) => string) {
+  for (const proto of ['hsrp', 'vrrp'] as const) {
+    const list = l3?.[proto]
+    if (!list?.length) {
+      if (Array.isArray(iface[proto]) && (iface[proto] as unknown[]).length === 0) continue
+      delete iface[proto]
+      continue
+    }
+    const prevList = Array.isArray(iface[proto]) ? (iface[proto] as Record<string, unknown>[]) : []
+    iface[proto] = list.map((g) => {
+      const prev = prevList.find((x) => x?.['group'] === g.group)
+      const o: Record<string, unknown> = prev ? clone(prev) : {}
+      o['group'] = g.group
+      if (g.ip) o['ip'] = g.ip
+      else if (o['ip'] !== '') delete o['ip']
+      if (g.priority !== undefined) o['priority'] = g.priority
+      else if (o['priority'] !== 100) delete o['priority']
+      const preempt = proto === 'hsrp' ? !!g.preempt : g.preempt !== false
+      if (preempt !== (proto === 'vrrp')) o['preempt'] = preempt
+      else if (o['preempt'] !== preempt) delete o['preempt']
+      if (proto === 'hsrp') {
+        const tracks = ((g as HsrpGroup).tracks ?? []).map((t) => ({
+          ...(t.obj !== undefined ? { object: t.obj } : { interface: aglabIf(t.iface!) }),
+          ...(t.decrement !== undefined ? { decrement: t.decrement } : {}),
+        }))
+        const prevTracks = JSON.stringify(o['track'] ?? [])
+        if (tracks.length) {
+          if (JSON.stringify(tracks) !== prevTracks) o['track'] = tracks
+        } else if (!(Array.isArray(o['track']) && (o['track'] as unknown[]).length === 0)) delete o['track']
+      }
+      return o
+    })
+  }
 }
 
 /** L5-d: `ip nat inside|outside` → AğLab `natRole` (kaldırılınca alan silinir). */

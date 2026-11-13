@@ -113,6 +113,10 @@ const SHARED_QUERY_FNS = new Set([
   'http',
   // Konu #15: OSPF komşuluğu (iki uçta FULL)
   'ospfAdjacent',
+  // EtherChannel: Port-channel durumu (up, protocol, bundled) — show etherchannel summary
+  'etherchannel',
+  // FHRP: router arayüzü grupta HSRP Active / VRRP Master mı
+  'fhrpActive',
 ]);
 /**
  * Bir hedef satırı: { fn, args, field?, expected, label? }. Bağımsız değişkenlerde cihaz

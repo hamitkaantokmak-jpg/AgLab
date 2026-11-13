@@ -44,6 +44,44 @@ export interface L3Opts {
   aclOut?: string
   /** L5-b: `ip helper-address` list (DHCP relay), in configuration order */
   helpers?: string[]
+  /** FHRP: HSRP groups (`standby <grp> …`), in group order */
+  hsrp?: HsrpGroup[]
+  /** FHRP: VRRP groups (`vrrp <grp> …`), in group order */
+  vrrp?: VrrpGroup[]
+}
+
+/** FHRP: `standby <grp> track <obj> [decrement N]` or `standby <grp> track <if> [N]` */
+export interface FhrpTrack {
+  /** tracked object number (`track N interface … line-protocol`) */
+  obj?: number
+  /** canonical interface name (interface tracking, no object) */
+  iface?: string
+  /** priority decrement; undefined = 10 (IOS default) */
+  decrement?: number
+}
+
+/** FHRP: HSRP version 1 group on an interface. */
+export interface HsrpGroup {
+  /** 0-255 */
+  group: number
+  /** `standby <grp> ip <vip>`; null when only other options are configured */
+  ip: string | null
+  /** `standby <grp> priority N`; undefined = 100 */
+  priority?: number
+  /** `standby <grp> preempt` (IOS default: off) */
+  preempt?: boolean
+  tracks?: FhrpTrack[]
+}
+
+/** FHRP: VRRP (v2) group on an interface. */
+export interface VrrpGroup {
+  /** 1-255 */
+  group: number
+  ip: string | null
+  /** `vrrp <grp> priority N` (1-254); undefined = 100; the address owner always uses 255 */
+  priority?: number
+  /** `no vrrp <grp> preempt` → false (IOS default: on) */
+  preempt?: boolean
 }
 
 /** L5-b: `ip dhcp pool <name>` on a router or multilayer switch. */
@@ -245,6 +283,8 @@ export interface SwitchConfig {
   dhcpPools?: Record<string, DhcpPool>
   /** L5-b: `ip dhcp excluded-address low [high]` */
   dhcpExcluded?: { lo: string; hi: string }[]
+  /** FHRP: `track <n> interface <if> line-protocol` (object number → canonical interface) */
+  tracks?: Record<string, { iface: string }>
 }
 
 export interface PcConfig {

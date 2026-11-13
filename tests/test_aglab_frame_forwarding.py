@@ -3,7 +3,7 @@
 import json, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium, import_topology
+from aglab_test_support import ROOT, launch_chromium, import_topology, legacy_engine
 
 module = (ROOT / "simulator/ethernet-forwarding.js").read_text()
 assert (
@@ -85,8 +85,12 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto((ROOT / "AgLab_Final_PKT_Import.html").as_uri())
     path = Path(tmp) / "frames.json"
-    path.write_text(json.dumps(obj))
+    # `test ethernet` / `show ethernet events` gerçek IOS/VPCS komutu değildir; Labber'da yoklar.
+    # Kullanıcı kararı: bu test eski motor kararındaki topolojide kalır, L7'de eski motorla silinir
+    # (UYUMLULUK_MATRISI). legacy_engine köprünün desteklemediği bir alan ekleyip kararı eski motora çevirir.
+    path.write_text(json.dumps(legacy_engine(obj)))
     import_topology(page, path)
+    assert not page.evaluate("aglabLabberSession.active()")
 
     def cmd(device, text):
         before = page.locator("#ptTerminal > div").count()
@@ -229,7 +233,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     # An access port emits untagged frames: its VLAN must match the peer trunk native VLAN.
     mixed = json.loads(json.dumps(obj))
     mixed["devices"][1]["interfaces"]["gi0/1"]["mode"] = "access"
-    path.write_text(json.dumps(mixed))
+    path.write_text(json.dumps(legacy_engine(mixed)))
     import_topology(page, path)
     cmd("d3", "test ethernet broadcast")
     events = cmd("d3", "show ethernet events")
@@ -248,7 +252,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     obj["devices"].append(switch("d7"))
     obj["links"] += [link("d1", "gi0/2", "d7", "gi0/1"), link("d2", "gi0/2", "d7", "gi0/2")]
     obj["nextId"] = 8
-    path.write_text(json.dumps(obj))
+    path.write_text(json.dumps(legacy_engine(obj)))
     import_topology(page, path)
     assert "Henüz" in cmd("d3", "show ethernet events")
     cmd("d3", "test ethernet broadcast")
@@ -290,7 +294,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     ]
     obj["links"] += [link("d7", "fa0/1", "d8", "g0/0"), link("d8", "g0/1", "d9", "eth0")]
     obj["nextId"] = 10
-    path.write_text(json.dumps(obj))
+    path.write_text(json.dumps(legacy_engine(obj)))
     import_topology(page, path)
     cmd("d3", "test ethernet broadcast")
     events = cmd("d3", "show ethernet events")

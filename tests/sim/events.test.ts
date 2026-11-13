@@ -77,3 +77,16 @@ describe('pingTrace', () => {
     })
   }
 })
+
+describe('başarısız ping tanısı (I-1, Paket Dedektifi)', () => {
+  it('VLAN taşımayan trunk adaptörden türetilmiş tanı olarak işaretlenir; başarılı ping\'de tanı yok', () => {
+    const rt = solved(findLab('vlan-temelleri')!)
+    const ok = pingTrace(rt, 'PC1', rt.pcs['PC1']!.ip!.replace(/\d+$/, '1'))
+    void ok
+    const t = pingTrace(rt, 'PC1', '192.168.1.13')
+    const diag = t.records.find((r) => r.raw.startsWith('diagnostic '))
+    expect(diag).toBeTruthy()
+    expect(JSON.parse(diag!.raw.slice(11))).toMatchObject({ source: 'PC1', origin: 'adapter-derived' })
+    expect(t.records.at(-1)!.raw).toMatch(/^icmp-undelivered PC1 /)
+  })
+})

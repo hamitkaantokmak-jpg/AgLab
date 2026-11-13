@@ -64,8 +64,9 @@ try:
             assert 77 in device["vlans"]
             assert device["interfaces"]["fa0/24"]["allowed"] == [77]
             assert device["interfaces"]["fa0/24"]["enabled"] is False
+            # I-1: içe aktarılan topoloji Labber'da; PC terminali VPCS (5 yanıt satırı)
             output = command(page, "d3", "ping 192.168.2.2")
-            assert "Success rate is 100 percent (5/5)" in output, output
+            assert output.count("84 bytes from 192.168.2.2") == 5, output
             return snapshot
 
         context, page = open_context()

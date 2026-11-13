@@ -29,15 +29,36 @@ LESSONS = [
     ("physical", "physical", "fiziksel-baglanti.md", "phy-", "İki uç kuralı", "port ne diyor"),
     ("method", "method", "sorun-giderme-yontemi.md", "method-", "Üç yaklaşım", "tek değişiklik"),
     ("vlan", "vlan", "vlan-trunk.md", "vlan-", "Okuma sırası", "Sahada: DTP ve VTP"),
-    ("intervlan", "intervlan", "vlanlar-arasi-yonlendirme.md", "roas-", "Router-on-a-stick", "Üç kural"),
-    ("devicemgmt", "devicemgmt", "cihaz-yonetimi.md", "mgmt-", "Yönetim adresi ve SSH", "İki yapılandırma"),
+    (
+        "intervlan",
+        "intervlan",
+        "vlanlar-arasi-yonlendirme.md",
+        "roas-",
+        "Router-on-a-stick",
+        "Üç kural",
+    ),
+    (
+        "devicemgmt",
+        "devicemgmt",
+        "cihaz-yonetimi.md",
+        "mgmt-",
+        "Yönetim adresi ve SSH",
+        "İki yapılandırma",
+    ),
     # Seviye 2
     ("commands", "diagnostics", "teshis-araclari.md", "diag-", "Extended ping", "Paket yakalama"),
     ("acl", "acl", "acl.md", "acl-", "Wildcard ve sıra", "Sayaçlarla teşhis"),
     ("nat", "natpat", "nat-pat.md", "nat-", "PAT'ın üç parçası", "Tablo ve istatistikle teşhis"),
     ("ospf", "ospf", "ospf.md", "ospf-", "Komşuluk şartları", "Teşhis sırası"),
     ("stp", "stp", "stp.md", "stp-", "Port rolleri", "RSTP ve koruma"),
-    ("l2sec", "l2sec", "l2-guvenlik.md", "psec-", "İhlal modları ve err-disabled", "err-disabled'dan çıkış"),
+    (
+        "l2sec",
+        "l2sec",
+        "l2-guvenlik.md",
+        "psec-",
+        "İhlal modları ve err-disabled",
+        "err-disabled'dan çıkış",
+    ),
     # Seviye 2 okuma dersleri (senaryolar motor/model hazır olunca)
     ("etherchannel", "etherchannel", "etherchannel.md", None, "Mod çiftleri", "Bayraklarla teşhis"),
     ("fhrp", "fhrp", "fhrp.md", None, "Sanal gateway", "Tek gateway sorunu"),
@@ -92,7 +113,9 @@ class LevelOneLessonDataTests(unittest.TestCase):
             if prefix is None:  # okuma dersi: senaryo motor/model hazır olunca
                 continue
             # eski tek adımlı senaryolar (ping doğrulamalı ya da topolojisi uygulamada kurulan), şablon dışı
-            rows = [r for r in RECIPES if r["id"].startswith(prefix) and r["id"] not in LEGACY_ONE_STEP]
+            rows = [
+                r for r in RECIPES if r["id"].startswith(prefix) and r["id"] not in LEGACY_ONE_STEP
+            ]
             text = (ROOT / "docs/dersler" / doc).read_text(encoding="utf-8")
             with self.subTest(prefix):
                 self.assertGreaterEqual(len(rows), 5)

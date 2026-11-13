@@ -1,6 +1,6 @@
 """PT XML -> browser: physical untagged router vs dot1Q trunk traffic."""
 
-import base64, json, tempfile
+import base64, json, re, tempfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
 from aglab_test_support import ROOT, launch_chromium, import_topology
@@ -72,8 +72,16 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         return page.locator("#ptTerminal").inner_text()[len(before) :]
 
     def ping(device, target, expected):
+        # I-1: içe aktarılan topoloji Labber'da. PC (d3) terminali VPCS: başarı 5 adet
+        # "84 bytes from", başarısızlıkta hiç yanıt yok. Router (d2) IOS: ilk ping'de ARP
+        # çözülürken ilk paket kaybolur (".!!!!", %80) — gerçek IOS davranışı; başarısızlık %0.
         out = command(device, "ping " + target)
-        assert ("100 percent (5/5)" if expected else "0 percent (0/5)") in out, out
+        if device == "d3":
+            assert out.count("84 bytes from " + target) == (5 if expected else 0), out
+        elif expected:
+            assert re.search(r"Success rate is (80|100) percent", out), out
+        else:
+            assert "Success rate is 0 percent (0/5)" in out, out
 
     count = 0
     for vlan in (10, 77, 333):
