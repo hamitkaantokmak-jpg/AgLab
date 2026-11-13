@@ -321,4 +321,26 @@ modellediği alanlarda karşılaştırılır. Kabul testleri (`test_aglab_import
 | Simulation Mode | Eski iz (`ttl-expired`, `ttl-forward`) | Labber izi aynı kayıt adlarıyla: `ttl-forward <router> N -> N-1`, `ttl-expired <router>`, `icmp-time-exceeded` çerçeveleri (ICMP tip 11), `icmp-time-exceeded <kaynak> from <router>` | Kabul edildi. |
 | `show ethernet events` | Var | **Eklenmez** | Gerçek IOS komutu değil; eski motor kararındaki topolojide kalır, L7'de silinir. |
 
-Çalışma alanındaki (içe aktarılan/düzenleyici) eski testler (`test_aglab_icmp_ttl`, `test_aglab_traceroute`, `test_aglab_routed_frames`, `test_aglab_simulation_mode`) bu PR'da eski motorda kalır (çalışma alanı I-1'e kadar eski motorda); I-1'de Labber izine uyarlanır.
+L5-i PR'ında çalışma alanı testleri eski motordaydı; I-1 bunları Labber izine uyarladı (aşağıdaki I-1 bölümü).
+
+## I-1: içe aktarma ve düzenleyici Labber'da (Labber kararları)
+
+İçe aktarılan JSON/`.pkt`, kayıtlı çalışma ve düzenleyicide kurulan topoloji (Serbest Çalışma)
+Sorun Çöz/Akademi ile aynı köprü kararını alır (`workspaceDecideEngine`). Köprünün ifade
+edemediği topoloji eski motorda açılır; rozet (`#workspaceEngine`) nedeni gösterir. Motor
+düzeltmeleri: [MOTOR_BULGULARI.md](MOTOR_BULGULARI.md).
+
+| Konu | Eski motor | Labber | Karar |
+|---|---|---|---|
+| PC terminali | IOS benzeri (`ip address`, `ipconfig`, `Success rate …`) | VPCS (`ip <adres> <maske> [ağ geçidi]`, `ip dhcp`, `show ip`, `show arp`, beş `84 bytes from` satırı) | **Labber (VPCS).** Eski PC sözdizimi VPCS'te hata verir (`Invalid netmask`/`Invalid options`). |
+| PKT IOS metin yolu | — | Metin cihazı hâlâ tarif ediyorsa (fark yok, hostname = ad, AğLab görünümü JSON ile aynı) `cliImport` çalışma zamanı; değilse yapısal yol (düzenleme korunur) | Kabul edildi. Metin ile JSON farkı içe aktarma raporunda bilgi satırıdır. |
+| Simulation Mode izi | ARP + ICMP çerçeveleri | Yalnız ICMP çerçeveleri (ARP gösterilmez, durum satırında yazılı); komşu ARP'si `show arp`/`show ip arp` tablolarında | Kabul edildi (L3-b). İz yalnız ping için üretilir. |
+| Paket Dedektifi kaynağı | "AğLab simülasyon motoru" | "Labber motoru" | Kabul edildi. |
+| "İlk Ağım" rehberi ping'i | Eski motor | Çalışma alanının motoru (Labber'da Labber) | Kabul edildi. |
+| Bayat FDB (taşınan host) ve "Paket adımı" | Var | Labber iletimi FDB'den değil topolojiden hesaplar; "Paket adımı" yok | Eski motor kararındaki topolojide sınanır (`test_aglab_routed_frames`), L7'de silinir. |
+| `test ethernet` / `show ethernet events` | Var | **Eklenmez** | Gerçek IOS/VPCS komutu değil; `test_aglab_frame_forwarding` eski motor kararındaki topolojide (`legacy_engine`) kalır, L7'de silinir. |
+| Alt arayüz durumu (`show ip interface brief`) | Ebeveyn kapalıyken `down` | Labber IOS gösterimi | **Doğrulanmadı:** ebeveyn `shutdown` iken alt arayüzün `administratively down` mı `down` mı yazıldığı. |
+
+Çalışma alanı testleri (`test_aglab_icmp_ttl`, `test_aglab_traceroute`, `test_aglab_routed_frames`,
+`test_aglab_simulation_mode` ve DEVIR_NOTU'ndaki tablo) bu PR'da Labber çıktısına uyarlandı; her
+değişen beklentinin gerekçesi testte yorum olarak yazılı.

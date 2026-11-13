@@ -18261,9 +18261,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
    * yoluyla (L5-h, AgLabSim.cliImport) kurulur. Akademi labı ve Labber labı kendi oturumunu
    * kurar; onlara dokunulmaz.
    */
+  // Senaryo kurulurken importTopology çalışma alanı kararını vermez: senaryonun motoru
+  // sharedScenarioDecideEngine ile bir kez belirlenir (tek kalıcı çalışma zamanı).
+  let sharedScenarioLoading = false;
   function workspaceDecideEngine() {
     if (typeof AgLabSim === 'undefined' || typeof aglabLabber === 'undefined') return null;
     if ((typeof academyActive !== 'undefined' && academyActive) || aglabLabber.lab()) return null;
+    if (sharedScenarioLoading) return null;
     aglabLabber.stop();
     const topo = aglabEngineChoice.snapshot();
     const decision = aglabEngineChoice.decide(topo);
@@ -18312,7 +18316,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
     updatePrompt();
     return decision;
   }
-  window.aglabWorkspace = { decide: () => workspaceDecideEngine() };
+  window.aglabWorkspace = {
+    decide: () => workspaceDecideEngine(),
+    // I-1: çalışma alanı Labber'dayken rehber gibi araçlar terminalle aynı izi üretir.
+    pingTrace: (src, target) => labberSimulationTrace(src, target),
+  };
   function importTopology(obj) {
     validateTopologyData(obj);
     // Yeni içerik: önceki Labber oturumu biter; içerik Labber kararındaysa yeniden başlar.
@@ -20122,6 +20130,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
   // Labber'ın teslimat atlamaları ve l2Domain yolu. Eski motor çalıştırılmaz. Port adları
   // AğLab bağlantılarıyla eşleşsin diye arayüz yazımına çevrilir.
   function labberSimulationTrace(src, target, ttl) {
+    labberSimulationCapture(src, target, ttl);
+    // Simulation Mode açıkken yeni iz eski motor ping'indeki gibi hemen yakalanır.
+    document.dispatchEvent(new CustomEvent('aglab:trace-ready'));
+  }
+  function labberSimulationCapture(src, target, ttl) {
     beginEthernetEvents();
     if (!validIP(target)) return;
     let portName;
@@ -21794,7 +21807,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
   }
   // Senaryo yüklenince motor kararı içerikten verilir ve rozet gösterilir (engine-choice.js).
   function loadSharedScenario(key) {
-    loadSharedScenarioContent(key);
+    sharedScenarioLoading = true;
+    try {
+      loadSharedScenarioContent(key);
+    } finally {
+      sharedScenarioLoading = false;
+    }
     sharedScenarioDecideEngine();
   }
   function loadSharedScenarioContent(key) {
@@ -24006,10 +24024,12 @@ function tracerouteCommand(device, parts, out) {
         kind = 'discard';
         device = m[1];
         detail = { reason: m[2] };
-      } else if ((m = raw.match(/^ttl-expired (\S+) quote (.*)$/))) {
+      } else if ((m = raw.match(/^ttl-expired (\S+)(?: quote (.*))?$/))) {
+        // Labber izi alıntısız `ttl-expired <cihaz>` yazar; ikisi de düşürme noktasıdır.
         kind = 'discard';
         device = m[1];
-        detail = { reason: 'ttl-expired', quote: m[2] };
+        detail =
+          m[2] === undefined ? { reason: 'ttl-expired' } : { reason: 'ttl-expired', quote: m[2] };
       } else if ((m = raw.match(/^port-security-drop (\S+) (\S+) (.*)$/))) {
         kind = 'discard';
         device = m[1];
@@ -24527,14 +24547,15 @@ function tracerouteCommand(device, parts, out) {
     raw.textContent = step.raw;
     markDevice(step.device);
     markForwardEdge(step);
-    simulate.disabled = eventSource !== 'aglab-js' || !step.eventId;
+    simulate.disabled = !engineSource() || !step.eventId;
     if (reviewed)
       document.dispatchEvent(
         new CustomEvent('aglab:packet-event-viewed', {
           detail: {
             origin: eventSource,
             raw: step.raw,
-            trace: allEvents.legacy || allEvents.events.map((e) => e.raw),
+            // Labber izinde eski motor günlüğü boştur; iz olayların kendisidir.
+            trace: allEvents.legacy?.length ? allEvents.legacy : allEvents.events.map((e) => e.raw),
           },
         }),
       );
@@ -24555,10 +24576,16 @@ function tracerouteCommand(device, parts, out) {
       node.setAttribute('aria-label', 'Sorun kaydıyla ilişkili seçili cihaz');
     }
   };
+  // Simülatörün kendi izi: kaynağı izin kendisinden gelir. I-1: Labber çalışma alanında iz
+  // Labber olay adaptöründendir ve öyle etiketlenir (eski motor adı kullanılmaz).
+  function useEngineTrace(trace) {
+    allEvents = trace;
+    eventSource = trace.origin === 'labber' ? 'labber' : 'aglab-js';
+    eventOrigin = eventSource === 'labber' ? 'Labber motoru' : 'AğLab simülasyon motoru';
+  }
+  const engineSource = () => eventSource === 'aglab-js' || eventSource === 'labber';
   refresh.onclick = () => {
-    eventSource = 'aglab-js';
-    eventOrigin = 'AğLab simülasyon motoru';
-    allEvents = readEthernetTrace();
+    useEngineTrace(readEthernetTrace());
     snapshot = filtered();
     index = 0;
     render(true);
@@ -24592,12 +24619,10 @@ function tracerouteCommand(device, parts, out) {
   document.addEventListener('aglab:detective-select', (event) => {
     const request = event.detail;
     if (!request || typeof request.eventId !== 'string') return;
-    if (eventSource !== 'aglab-js' || allEvents.generation !== request.generation) {
+    if (!engineSource() || allEvents.generation !== request.generation) {
       const current = readEthernetTrace();
       if (current.generation !== request.generation) return;
-      allEvents = current;
-      eventSource = 'aglab-js';
-      eventOrigin = 'AğLab simülasyon motoru';
+      useEngineTrace(current);
     }
     filter.value = 'all';
     snapshot = allEvents;
@@ -35272,7 +35297,9 @@ if(typeof module==="object" && module.exports)module.exports=AgLabBorckEngine;
           detail: {
             origin: captured.origin || 'aglab-js',
             raw: e.raw,
-            trace: captured.legacy || [],
+            trace: captured.legacy?.length
+              ? captured.legacy
+              : (captured.events || []).map((x) => x.raw),
           },
         }),
       );
@@ -36018,13 +36045,29 @@ new MutationObserver(() => {
 ac('firstGuidePing').onclick = () => {
   const pair = guidePair();
   if (!guideAddressOK(pair)) return;
-  const result = ping(pair[0].id, pair[1].ip);
+  // I-1: çalışma alanı Labber'daysa ping ve olay izi terminalle aynı Labber çalışma
+  // zamanından gelir; eski motor yalnız eski motor kararındaki çalışma alanında çalışır.
+  const labber = typeof aglabLabber !== 'undefined' && aglabLabber.active();
+  let result, trace;
+  if (labber) {
+    try {
+      result = aglabEngineChoice.labberPing(pair[0].id, pair[1].ip);
+    } catch (error) {
+      result = { ok: false, why: String(error.message || error) };
+    }
+    window.aglabWorkspace.pingTrace(pair[0].id, pair[1].ip);
+    trace = readEthernetTrace().events.map((e) => e.raw);
+  } else {
+    result = ping(pair[0].id, pair[1].ip);
+    trace = ethernetEvents.slice();
+  }
   guidePingEvidence = {
     fingerprint: guideFingerprint(),
     source: pair[0].id,
     target: pair[1].id,
     ok: result.ok === true,
-    trace: ethernetEvents.slice(),
+    origin: labber ? 'labber' : 'aglab-js',
+    trace,
     reviewed: false,
   };
   firstGuideRender();
@@ -36037,7 +36080,7 @@ document.addEventListener('aglab:packet-event-viewed', (event) => {
   if (
     !guidePingEvidence?.ok ||
     guidePingEvidence.fingerprint !== guideFingerprint() ||
-    d?.origin !== 'aglab-js' ||
+    d?.origin !== guidePingEvidence.origin ||
     !guidePingEvidence.trace.includes(d.raw) ||
     JSON.stringify(d.trace) !== JSON.stringify(guidePingEvidence.trace)
   )

@@ -7428,9 +7428,13 @@ labLoadExperiment();
    * yoluyla (L5-h, AgLabSim.cliImport) kurulur. Akademi labı ve Labber labı kendi oturumunu
    * kurar; onlara dokunulmaz.
    */
+  // Senaryo kurulurken importTopology çalışma alanı kararını vermez: senaryonun motoru
+  // sharedScenarioDecideEngine ile bir kez belirlenir (tek kalıcı çalışma zamanı).
+  let sharedScenarioLoading = false;
   function workspaceDecideEngine() {
     if (typeof AgLabSim === 'undefined' || typeof aglabLabber === 'undefined') return null;
     if ((typeof academyActive !== 'undefined' && academyActive) || aglabLabber.lab()) return null;
+    if (sharedScenarioLoading) return null;
     aglabLabber.stop();
     const topo = aglabEngineChoice.snapshot();
     const decision = aglabEngineChoice.decide(topo);
@@ -7479,7 +7483,11 @@ labLoadExperiment();
     updatePrompt();
     return decision;
   }
-  window.aglabWorkspace = { decide: () => workspaceDecideEngine() };
+  window.aglabWorkspace = {
+    decide: () => workspaceDecideEngine(),
+    // I-1: çalışma alanı Labber'dayken rehber gibi araçlar terminalle aynı izi üretir.
+    pingTrace: (src, target) => labberSimulationTrace(src, target),
+  };
   function importTopology(obj) {
     validateTopologyData(obj);
     // Yeni içerik: önceki Labber oturumu biter; içerik Labber kararındaysa yeniden başlar.
@@ -9219,6 +9227,11 @@ labLoadExperiment();
   // Labber'ın teslimat atlamaları ve l2Domain yolu. Eski motor çalıştırılmaz. Port adları
   // AğLab bağlantılarıyla eşleşsin diye arayüz yazımına çevrilir.
   function labberSimulationTrace(src, target, ttl) {
+    labberSimulationCapture(src, target, ttl);
+    // Simulation Mode açıkken yeni iz eski motor ping'indeki gibi hemen yakalanır.
+    document.dispatchEvent(new CustomEvent('aglab:trace-ready'));
+  }
+  function labberSimulationCapture(src, target, ttl) {
     beginEthernetEvents();
     if (!validIP(target)) return;
     let portName;
@@ -10891,7 +10904,12 @@ labLoadExperiment();
   }
   // Senaryo yüklenince motor kararı içerikten verilir ve rozet gösterilir (engine-choice.js).
   function loadSharedScenario(key) {
-    loadSharedScenarioContent(key);
+    sharedScenarioLoading = true;
+    try {
+      loadSharedScenarioContent(key);
+    } finally {
+      sharedScenarioLoading = false;
+    }
     sharedScenarioDecideEngine();
   }
   function loadSharedScenarioContent(key) {
