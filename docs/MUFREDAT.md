@@ -67,7 +67,7 @@ CCNA v2.0 beş alana sahip: Ağ altyapısı ve bağlantı %25, Switching ve ağ 
 | --- | --- | --- | --- | --- | --- |
 | 13 | STP/RSTP, PortFast, BPDU/root guard | Switching | Motor | Kısmi (root seçimi var, guard'lar yok) | P1 |
 | 14 | EtherChannel (LACP) | Switching | Motor | Doğrulanacak | P1 |
-| 15 | OSPFv2 tek alan | IP routing | Motor + Gerçek Lab | Kısmi (komşuluk ve rota var; SPF/LSDB, timer yok) | P1 |
+| 15 | OSPFv2 tek alan | IP routing | Motor + Gerçek Lab | Labber'da var (komşuluk, DR/BDR, SPF, maliyet; modelde yalnız network/router-id). Detaylı ders ve 5 senaryo var (`docs/dersler/ospf.md`, `ospf-*`) | P1 |
 | 16 | IPv6 adresleme, SLAAC, NDP, statik rota | Altyapı / routing | Motor | Doğrulanacak | P1 |
 | 17 | OSPFv3 (IPv6) | IP routing | Gerçek Lab önce, sonra motor | Yok | P2 |
 | 18 | FHRP: HSRP/VRRP durum okuma | IP routing | Motor | Doğrulanacak | P1 |

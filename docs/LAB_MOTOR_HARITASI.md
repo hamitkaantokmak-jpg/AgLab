@@ -138,6 +138,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `nat-roles-swapped` | NAT · inside ile outside yer değiştirmiş | **Labber** |
 | `nat-missing-rule` | NAT · Roller ve ACL var, çeviri yok | **Labber** |
 | `nat-two-faults` | NAT · Önce kimse, sonra bir kişi çıkamıyor | **Labber** |
+| `ospf-lan-wildcard` | OSPF · Komşuluk var, B şubesinin ağı yok | **Labber** |
+| `ospf-area-mismatch` | OSPF · R3 kimseyle komşu değil | **Labber** |
+| `ospf-subnet-mismatch` | OSPF · Kablo takılı, port up, komşuluk yok | **Labber** |
+| `ospf-static-overrides` | OSPF · OSPF rotayı biliyor ama kullanılmıyor | **Labber** |
+| `ospf-two-faults` | OSPF · Komşuluk geldi, ağ yine yok | **Labber** |
 
 ## Labber labları (E)
 
@@ -179,9 +184,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 86 | 1 | 87 |
+| Ortak senaryolar | 91 | 1 | 92 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 139 | 1 | 140 |
+| Toplam | 144 | 1 | 145 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

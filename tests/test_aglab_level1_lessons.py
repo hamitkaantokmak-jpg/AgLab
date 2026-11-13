@@ -34,6 +34,7 @@ LESSONS = [
     ("commands", "diagnostics", "teshis-araclari.md", "diag-", "Extended ping", "Paket yakalama"),
     ("acl", "acl", "acl.md", "acl-", "Wildcard ve sıra", "Sayaçlarla teşhis"),
     ("nat", "natpat", "nat-pat.md", "nat-", "PAT'ın üç parçası", "Tablo ve istatistikle teşhis"),
+    ("ospf", "ospf", "ospf.md", "ospf-", "Komşuluk şartları", "Teşhis sırası"),
 ]
 PARTS = [
     "## 1. Neden önemli",
@@ -47,7 +48,7 @@ PARTS = [
 ]
 
 
-LEGACY_ONE_STEP = {"nat-pat"}
+LEGACY_ONE_STEP = {"nat-pat", "ospf-area"}
 
 
 class LevelOneLessonDataTests(unittest.TestCase):
@@ -81,7 +82,7 @@ class LevelOneLessonDataTests(unittest.TestCase):
 
     def test_lesson_scenarios_follow_template(self):
         for _, _, doc, prefix, _, _ in LESSONS:
-            # nat-pat: topolojisi uygulamada kurulan eski tek adımlı senaryo, şablon dışı
+            # eski tek adımlı senaryolar (ping doğrulamalı ya da topolojisi uygulamada kurulan), şablon dışı
             rows = [r for r in RECIPES if r["id"].startswith(prefix) and r["id"] not in LEGACY_ONE_STEP]
             text = (ROOT / "docs/dersler" / doc).read_text(encoding="utf-8")
             with self.subTest(prefix):
