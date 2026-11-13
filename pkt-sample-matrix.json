@@ -201,6 +201,7 @@
       "deviceType": "Switch",
       "config": [
         "interface fa0/1",
+        "switchport mode access",
         "switchport port-security",
         "switchport port-security maximum 2",
         "switchport port-security violation restrict",
@@ -236,6 +237,7 @@
       "deviceType": "Switch",
       "config": [
         "interface fa0/1",
+        "switchport mode access",
         "switchport port-security",
         "switchport port-security maximum 0",
         "switchport port-security mac-address 01:00:5e:00:00:01",
@@ -264,6 +266,34 @@
       ],
       "limitations": [
         "model dışı komutlar uygulanmaz, ham kaynak korunur"
+      ]
+    },
+    {
+      "id": "synthetic-port-security-dynamic-port",
+      "sourceKind": "synthetic-xml",
+      "deviceType": "Switch",
+      "config": [
+        "interface fa0/1",
+        "switchport port-security",
+        "switchport port-security maximum 2"
+      ],
+      "expectedDevice": {
+        "interfaces": {
+          "fa0/1": {
+            "mode": "access",
+            "vlan": 1
+          }
+        }
+      },
+      "expectedUnmodeled": [
+        "switchport port-security",
+        "switchport port-security maximum 2"
+      ],
+      "coverage": [
+        "IOS/PT: switchport mode access olmayan (dynamic) portta port-security reddi"
+      ],
+      "limitations": [
+        "DTP (dynamic auto/desirable) AğLab modelinde yok; Labber CLI yolu dynamic auto olarak kurar"
       ]
     },
     {

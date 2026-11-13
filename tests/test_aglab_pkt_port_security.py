@@ -8,13 +8,19 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, assert_cli_path_matches
 from convert_pkt_to_aglab import convert, PacketTracerError
 from test_aglab_pkt_config_context import topology
 
 MAC1 = "02:aa:00:00:00:11"
 MAC2 = "02:aa:00:00:00:22"
 OTHER = "02:bb:00:00:00:33"
+
+
+def dotted(mac):
+    """IOS/PT biçimi: 02:aa:00:00:00:11 → 02aa.0000.0011."""
+    raw = mac.replace(":", "")
+    return ".".join(raw[i : i + 4] for i in range(0, 12, 4))
 
 
 def source(commands, macs=(MAC1, MAC2)):
@@ -39,6 +45,7 @@ def source(commands, macs=(MAC1, MAC2)):
 def imported(commands, macs=(MAC1, MAC2)):
     xml = source(commands, macs)
     obj, report = convert(xml, b"original-pkt")
+    assert_cli_path_matches(obj)
     assert base64.b64decode(obj["sourceArchive"]["decodedXmlBase64"]) == xml
     assert base64.b64decode(obj["sourceArchive"]["originalPacketBase64"]) == b"original-pkt"
     return obj, report
@@ -50,11 +57,12 @@ class PortSecurityImportTests(unittest.TestCase):
             obj, report = imported(
                 [
                     "interface fa0/1",
+                    "switchport mode access",
                     "switchport port-security",
                     "switchport port-security maximum 2",
                     "switchport port-security violation " + mode,
                     "switchport port-security mac-address 02aa.0000.0011",
-                    "switchport port-security mac-address 02-AA-00-00-00-22",
+                    "switchport port-security mac-address 02aa.0000.0022",
                 ]
             )
             self.assertEqual(obj["devices"][1].get("mac"), MAC1)
@@ -72,6 +80,9 @@ class PortSecurityImportTests(unittest.TestCase):
             "switchport port-security violation unexpected",
             "switchport port-security mac-address 01:00:5e:00:00:01",
             "switchport port-security mac-address 00:00:00:00:00:00",
+            # L5-h: IOS yalnız H.H.H biçimini kabul eder
+            "switchport port-security mac-address " + MAC2,
+            "switchport port-security mac-address 02-AA-00-00-00-22",
             "switchport port-security mac-address broken",
             "switchport port-security mac-address sticky",
             "switchport port-security mac-address sticky " + MAC1,
@@ -80,8 +91,9 @@ class PortSecurityImportTests(unittest.TestCase):
         obj, report = imported(
             [
                 "interface fa0/1",
+                "switchport mode access",
                 "switchport port-security",
-                "switchport port-security mac-address " + MAC1,
+                "switchport port-security mac-address " + dotted(MAC1),
                 *bad,
             ]
         )
@@ -94,16 +106,17 @@ class PortSecurityImportTests(unittest.TestCase):
     def test_remove_disable_and_range_capacity_are_atomic(self):
         commands = [
             "interface range fa0/1 - 2",
+            "switchport mode access",
             "switchport port-security",
             "switchport port-security maximum 2",
-            "switchport port-security mac-address " + MAC1,
+            "switchport port-security mac-address " + dotted(MAC1),
             "exit",
             "interface fa0/2",
-            "switchport port-security mac-address " + MAC2,
+            "switchport port-security mac-address " + dotted(MAC2),
             "exit",
             "interface range fa0/1 - 2",
             "switchport port-security maximum 1",
-            "no switchport port-security mac-address " + MAC1,
+            "no switchport port-security mac-address " + dotted(MAC1),
             "no switchport port-security",
         ]
         obj, report = imported(commands)
@@ -114,7 +127,32 @@ class PortSecurityImportTests(unittest.TestCase):
             )
         self.assertEqual(
             [(r["line"], r["command"]) for r in report["unmodeledConfigLines"]],
-            [(10, "switchport port-security maximum 1")],
+            # L5-h: aralığa eklenen "switchport mode access" satırı numarayı bir kaydırır
+            [(11, "switchport port-security maximum 1")],
+        )
+
+    def test_dynamic_port_rejects_port_security(self):
+        """L5-h (IOS/PT): `switchport mode access` olmayan port dynamic'tir; port-security
+        komutları "Command rejected: … is a dynamic port" ile reddedilir ve modellenmez."""
+        commands = [
+            "interface fa0/1",
+            "switchport port-security",
+            "switchport port-security maximum 2",
+            "exit",
+            "interface fa0/2",
+            "switchport mode trunk",
+            "switchport port-security",
+        ]
+        obj, report = imported(commands)
+        for name in ("fa0/1", "fa0/2"):
+            self.assertNotIn("portSecurity", obj["devices"][0]["interfaces"][name])
+        self.assertEqual(
+            [r["command"] for r in report["unmodeledConfigLines"]],
+            [
+                "switchport port-security",
+                "switchport port-security maximum 2",
+                "switchport port-security",
+            ],
         )
 
     def test_invalid_duplicate_and_ambiguous_source_macs(self):
@@ -162,12 +200,13 @@ class PortSecurityImportTests(unittest.TestCase):
                             [
                                 "vlan 10",
                                 "interface range fa0/1 - 2",
+                                "switchport mode access",
                                 "switchport access vlan 10",
                                 "exit",
                                 "interface fa0/1",
                                 "switchport port-security",
                                 "switchport port-security violation " + mode,
-                                "switchport port-security mac-address " + allowed,
+                                "switchport port-security mac-address " + dotted(allowed),
                             ]
                         )
                         self.assertEqual(report["unmodeledConfigLines"], [])
@@ -199,8 +238,8 @@ class PortSecurityImportTests(unittest.TestCase):
                                     "enable",
                                     "configure terminal",
                                     "interface fa0/1",
-                                    "no switchport port-security mac-address " + OTHER,
-                                    "switchport port-security mac-address " + MAC1,
+                                    "no switchport port-security mac-address " + dotted(OTHER),
+                                    "switchport port-security mac-address " + dotted(MAC1),
                                     "shutdown",
                                     "no shutdown",
                                     "end",
@@ -227,6 +266,7 @@ class PortSecurityImportTests(unittest.TestCase):
                     "switchport access vlan 10",
                     "exit",
                     "interface fa0/1",
+                    "switchport mode access",
                     "switchport port-security",
                 ]
             )

@@ -126,7 +126,8 @@ class SimEmbeddedTests(unittest.TestCase):
         result = self.page.evaluate(RUN_LAB)
         # L0 motor API'si + L1 köprüsü (toLabber/toAglab/createRuntime ve yardımcıları) +
         # L3-a terminal oturum sınıfları (IosSession/VpcsSession) + L3-b olay adaptörü
-        # (pingTrace).
+        # (pingTrace) + L5-h PKT IOS metin yolu (cliImport, importReportWithCli, modeledDiffs,
+        # modeledProjection).
         self.assertEqual(
             result["api"],
             [
@@ -138,9 +139,13 @@ class SimEmbeddedTests(unittest.TestCase):
                 "MODEL_L3",
                 "VpcsSession",
                 "canonPort",
+                "cliImport",
                 "createLab",
                 "createRuntime",
                 "createSession",
+                "importReportWithCli",
+                "modeledDiffs",
+                "modeledProjection",
                 "needsEncapFor",
                 "pingTrace",
                 "runScript",

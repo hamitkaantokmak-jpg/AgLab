@@ -98,9 +98,13 @@ var AgLabSim = (() => {
     MODEL_L3: () => MODEL_L3,
     VpcsSession: () => VpcsSession,
     canonPort: () => canonPort,
+    cliImport: () => cliImport,
     createLab: () => createLab,
     createRuntime: () => createRuntime,
     createSession: () => createSession,
+    importReportWithCli: () => importReportWithCli,
+    modeledDiffs: () => modeledDiffs,
+    modeledProjection: () => modeledProjection,
     needsEncapFor: () => needsEncapFor,
     pingTrace: () => pingTrace,
     runScript: () => runScript,
@@ -226,8 +230,8 @@ var AgLabSim = (() => {
     }
     return out;
   }
-  function ipToInt(ip) {
-    const p = ip.split(".");
+  function ipToInt(ip2) {
+    const p = ip2.split(".");
     if (p.length !== 4) return null;
     let n = 0;
     for (const s of p) {
@@ -267,8 +271,8 @@ var AgLabSim = (() => {
     const m = prefixMaskInt(len);
     return (ipToInt(a) & m) >>> 0 === (ipToInt(b) & m) >>> 0;
   }
-  function networkOf(ip, len) {
-    return intToIp((ipToInt(ip) & prefixMaskInt(len)) >>> 0);
+  function networkOf(ip2, len) {
+    return intToIp((ipToInt(ip2) & prefixMaskInt(len)) >>> 0);
   }
   function parseVlanList(s, min = 1, max = 4094) {
     const out = /* @__PURE__ */ new Set();
@@ -748,7 +752,7 @@ var AgLabSim = (() => {
 
   // src/sim/acl.ts
   var ANY = { addr: "0.0.0.0", wild: "255.255.255.255" };
-  var hostAddr = (ip) => ({ addr: ip, wild: "0.0.0.0" });
+  var hostAddr = (ip2) => ({ addr: ip2, wild: "0.0.0.0" });
   var TCP_NAMES = { ftp: 21, telnet: 23, smtp: 25, www: 80, pop3: 110 };
   var UDP_NAMES = { domain: 53, bootps: 67, bootpc: 68, tftp: 69, snmp: 161 };
   var BOTH = { domain: 53 };
@@ -758,16 +762,16 @@ var AgLabSim = (() => {
     const n = Number(name);
     return n >= 1 && n <= 99 ? "standard" : n >= 100 && n <= 199 ? "extended" : null;
   }
-  var u32 = (ip) => ipToInt(ip) >>> 0;
+  var u32 = (ip2) => ipToInt(ip2) >>> 0;
   function normAddr(addr, wild) {
     return { addr: intToIp2((u32(addr) & ~u32(wild)) >>> 0), wild };
   }
   function intToIp2(n) {
     return [n >>> 24, n >>> 16 & 255, n >>> 8 & 255, n & 255].join(".");
   }
-  function addrMatches(a, ip) {
+  function addrMatches(a, ip2) {
     const w = u32(a.wild);
-    return (u32(ip) & ~w) >>> 0 === (u32(a.addr) & ~w) >>> 0;
+    return (u32(ip2) & ~w) >>> 0 === (u32(a.addr) & ~w) >>> 0;
   }
   function portMatches(p, v) {
     if (!p) return true;
@@ -932,7 +936,7 @@ var AgLabSim = (() => {
   function emptyNat() {
     return { statics: [], pools: {}, rules: [] };
   }
-  var u322 = (ip) => ipToInt(ip) >>> 0;
+  var u322 = (ip2) => ipToInt(ip2) >>> 0;
   var ip4 = (n) => [n >>> 24, n >>> 16 & 255, n >>> 8 & 255, n & 255].join(".");
   var role = (cfg, ifname) => l3OptsOf(cfg, ifname)?.nat;
   function poolAddrs(p) {
@@ -1001,7 +1005,7 @@ var AgLabSim = (() => {
     if (ifname.includes(".")) return c.subifs?.[ifname]?.ip?.addr;
     return c.ifaces[ifname]?.ip?.addr;
   }
-  var col = (ip, port) => port === void 0 ? ip : `${ip}:${port}`;
+  var col = (ip2, port) => port === void 0 ? ip2 : `${ip2}:${port}`;
   function showNatTranslations(cfg, dev, table) {
     const row = (pro, ig, il, ol, og) => pad(pro, 5) + pad(ig, 22) + pad(il, 22) + pad(ol, 22) + og;
     const o = [row("Pro", "Inside global", "Inside local", "Outside local", "Outside global")];
@@ -1273,9 +1277,9 @@ var AgLabSim = (() => {
     return def.kind === "switch" && !!(def.l3 || def.router) && d.cfgs[dev].ipRouting;
   }
   var OSPF_AD = 110;
-  var inPrefix = (ip, net, prefix) => {
+  var inPrefix = (ip2, net, prefix) => {
     const m = prefixMaskInt(prefix);
-    return (ipToInt(ip) & m) >>> 0 === (ipToInt(net) & m) >>> 0;
+    return (ipToInt(ip2) & m) >>> 0 === (ipToInt(net) & m) >>> 0;
   };
   function routeTable(d, dev) {
     const ifs = l3Ifs(d, dev);
@@ -1359,8 +1363,8 @@ var AgLabSim = (() => {
     if (!best) return null;
     return { out: best.out, nh: best.e.code === "C" ? dst : best.e.via ?? best.e.nh };
   }
-  function owns(d, dev, ip) {
-    return l3Ifs(d, dev).some((i) => i.ip === ip);
+  function owns(d, dev, ip2) {
+    return l3Ifs(d, dev).some((i) => i.ip === ip2);
   }
   var domainCache = /* @__PURE__ */ new WeakMap();
   function domainOf(d, n) {
@@ -1370,16 +1374,16 @@ var AgLabSim = (() => {
     if (!dom) m.set(nk(n), dom = l2Domain(d, n));
     return dom;
   }
-  function arpResolve(d, from, ip) {
+  function arpResolve(d, from, ip2) {
     if (!from.node) return null;
     const dom = domainOf(d, from.node);
     for (const i of allL3Ifs(d)) {
-      if (i.ip !== ip || !i.node) continue;
+      if (i.ip !== ip2 || !i.node) continue;
       if (dom.nodes.has(nk(i.node))) return i;
     }
     for (const i of allL3Ifs(d)) {
-      if (!i.node || !dom.nodes.has(nk(i.node)) || !sameSubnet(i.ip, ip, i.prefix)) continue;
-      if (natAliases(d.cfgs[i.dev]).includes(ip)) return { ...i, ip };
+      if (!i.node || !dom.nodes.has(nk(i.node)) || !sameSubnet(i.ip, ip2, i.prefix)) continue;
+      if (natAliases(d.cfgs[i.dev]).includes(ip2)) return { ...i, ip: ip2 };
     }
     return null;
   }
@@ -1460,7 +1464,7 @@ var AgLabSim = (() => {
       else byIp.set(i.ip, [i]);
     }
     const out = [];
-    for (const [ip, group] of byIp) {
+    for (const [ip2, group] of byIp) {
       if (group.length < 2) continue;
       const left = [...group];
       while (left.length > 1) {
@@ -1469,15 +1473,15 @@ var AgLabSim = (() => {
         const same = left.filter((i) => dom.nodes.has(nk(i.node)));
         if (!same.length) continue;
         for (const i of same) left.splice(left.indexOf(i), 1);
-        out.push({ ip, owners: [first, ...same].map((i) => ({ dev: i.dev, kind: i.kind, name: i.name, mac: i.mac })) });
+        out.push({ ip: ip2, owners: [first, ...same].map((i) => ({ dev: i.dev, kind: i.kind, name: i.name, mac: i.mac })) });
       }
     }
     return out;
   }
-  function arpMac(d, dev, ip) {
-    const via = l3Ifs(d, dev).find((i) => i.node && sameSubnet(i.ip, ip, i.prefix));
+  function arpMac(d, dev, ip2) {
+    const via = l3Ifs(d, dev).find((i) => i.node && sameSubnet(i.ip, ip2, i.prefix));
     if (!via) return null;
-    const owner = arpResolve(d, via, ip);
+    const owner = arpResolve(d, via, ip2);
     return owner ? { mac: owner.mac, via: via.name } : null;
   }
   function sourceIp(d, dev, dst) {
@@ -1861,7 +1865,7 @@ var AgLabSim = (() => {
   }
 
   // src/sim/dhcp.ts
-  var isApipa = (ip) => sameSubnet(ip, "169.254.0.0", 16);
+  var isApipa = (ip2) => sameSubnet(ip2, "169.254.0.0", 16);
   function apipaFor(mac) {
     const hex = mac.replace(/\./g, "");
     const b5 = parseInt(hex.slice(8, 10), 16);
@@ -1890,8 +1894,8 @@ var AgLabSim = (() => {
   }
   function configuredIps(d, except) {
     const out = /* @__PURE__ */ new Set();
-    const add = (ip) => {
-      const n = ip ? ipToInt(ip) : null;
+    const add = (ip2) => {
+      const n = ip2 ? ipToInt(ip2) : null;
       if (n !== null) out.add(n);
     };
     for (const [id, pc] of Object.entries(d.pcs)) if (id !== except) add(pc.ip);
@@ -1930,7 +1934,7 @@ var AgLabSim = (() => {
     const net = (ipToInt(network) & prefixMaskInt(prefix)) >>> 0;
     const broadcast = net + 2 ** (32 - prefix) - 1;
     const taken = configuredIps(d, client);
-    for (const ip of [gw, serverIp]) if (ip) taken.add(ipToInt(ip));
+    for (const ip2 of [gw, serverIp]) if (ip2) taken.add(ipToInt(ip2));
     const start = Math.min(100, Math.max(1, broadcast - net - 1));
     const offsets = [...Array.from({ length: 4096 }, (_, i) => start + i), ...Array.from({ length: Math.max(0, start - 1) }, (_, i) => i + 1)];
     for (const off of offsets) {
@@ -1958,10 +1962,10 @@ var AgLabSim = (() => {
         if (!Object.keys(cfg.dhcpPools ?? {}).length) return null;
         const p = poolFor(cfg, giaddr);
         if (!p) return { ok: false, reason: "nopool", server };
-        const ip2 = allocateIos(d, cfg, server, p.pool, pc, def.mac, bindings);
-        if (!ip2) return { ok: false, reason: "exhausted", server };
+        const ip3 = allocateIos(d, cfg, server, p.pool, pc, def.mac, bindings);
+        if (!ip3) return { ok: false, reason: "exhausted", server };
         const serverIp = via?.ip ?? l3Ifs(d, server).find((i) => i.node)?.ip ?? giaddr;
-        return { ok: true, server, serverIp, pool: p.name, relay, ip: ip2, prefix: p.prefix, gw: p.pool.defaultRouter, dns: p.pool.dns };
+        return { ok: true, server, serverIp, pool: p.name, relay, ip: ip3, prefix: p.prefix, gw: p.pool.defaultRouter, dns: p.pool.dns };
       }
       if (!isDhcpServerPc(d, server)) return null;
       const sc = d.pcs[server];
@@ -1969,10 +1973,10 @@ var AgLabSim = (() => {
       const network = relay ? giaddr : sc.ip;
       const prefix = relay ? giPrefix : sc.prefix;
       const gw = relay ? giaddr : sc.gw;
-      const ip = allocateServer(d, network, prefix, gw, sc.ip, pc);
-      if (ip === "invalid") return { ok: false, reason: "nopool", server };
-      if (!ip) return { ok: false, reason: "exhausted", server };
-      return { ok: true, server, serverIp: sc.ip, pool: "", relay, ip, prefix, gw, dns: sc.services?.dns ? sc.ip : null };
+      const ip2 = allocateServer(d, network, prefix, gw, sc.ip, pc);
+      if (ip2 === "invalid") return { ok: false, reason: "nopool", server };
+      if (!ip2) return { ok: false, reason: "exhausted", server };
+      return { ok: true, server, serverIp: sc.ip, pool: "", relay, ip: ip2, prefix, gw, dns: sc.services?.dns ? sc.ip : null };
     };
     for (const i of onLink) {
       const r = offerFrom(i.dev, i, i.ip, i.prefix, null);
@@ -2011,8 +2015,8 @@ var AgLabSim = (() => {
     const out = [];
     for (const dev of d.topo.lab.devices) {
       if (dev.kind === "pc") {
-        const ip = d.pcs[dev.id]?.ip;
-        if (ip) out.push({ name: dev.name ?? dev.id, address: ip });
+        const ip2 = d.pcs[dev.id]?.ip;
+        if (ip2) out.push({ name: dev.name ?? dev.id, address: ip2 });
       } else {
         const first = l3Ifs(d, dev.id)[0];
         if (first) out.push({ name: d.cfgs[dev.id].hostname, address: first.ip });
@@ -2048,10 +2052,10 @@ var AgLabSim = (() => {
     if (c.portfast) out.push(" spanning-tree portfast");
     return out;
   }
-  function l3Lines(ip, o, noIpLine) {
+  function l3Lines(ip2, o, noIpLine) {
     const out = [];
     if (o?.bandwidth) out.push(" bandwidth " + o.bandwidth);
-    if (ip) out.push(` ip address ${ip.addr} ${ip.mask}`);
+    if (ip2) out.push(` ip address ${ip2.addr} ${ip2.mask}`);
     else if (noIpLine) out.push(" no ip address");
     for (const h of o?.helpers ?? []) out.push(" ip helper-address " + h);
     if (o?.aclIn) out.push(` ip access-group ${o.aclIn} in`);
@@ -2350,14 +2354,14 @@ var AgLabSim = (() => {
     const sw = rt.topo.devices[dev];
     const c = rt.running[dev];
     const o = ["Interface              IP-Address      OK? Method Status                Protocol"];
-    const row = (n, ip, status, proto) => pad(n, 23) + pad(ip, 16) + "YES " + pad(ip === "unassigned" ? "unset" : "manual", 7) + pad(status, 22) + proto;
+    const row = (n, ip2, status, proto) => pad(n, 23) + pad(ip2, 16) + "YES " + pad(ip2 === "unassigned" ? "unset" : "manual", 7) + pad(status, 22) + proto;
     for (const s of d.svis[dev] ?? [])
       o.push(row("Vlan" + s.vlan, s.ip ?? "unassigned", s.status, s.up ? "up" : "down"));
     for (const p of sw.ports) {
       const ps = d.phys[pk(dev, p)];
       const proto = ps.up && ps.ec?.flag !== "s" ? "up" : "down";
-      const ip = c.ifaces[p].routed ? c.ifaces[p].ip?.addr ?? "unassigned" : "unassigned";
-      o.push(row(p, ip, ps.adminDown ? "administratively down" : ps.up ? "up" : "down", proto));
+      const ip2 = c.ifaces[p].routed ? c.ifaces[p].ip?.addr ?? "unassigned" : "unassigned";
+      o.push(row(p, ip2, ps.adminDown ? "administratively down" : ps.up ? "up" : "down", proto));
       for (const [name, si] of subifsOf(c, p)) {
         const up = !si.shutdown && ps.up;
         o.push(row(name, si.ip?.addr ?? "unassigned", si.shutdown ? "administratively down" : up ? "up" : "down", up ? "up" : "down"));
@@ -2417,11 +2421,11 @@ var AgLabSim = (() => {
     }
     return o;
   }
-  function showIpRouteFor(rt, dev, ip) {
+  function showIpRouteFor(rt, dev, ip2) {
     const c = rt.running[dev];
     const sw = rt.topo.devices[dev];
     if (!(sw.l3 || sw.router) || !c.ipRouting) return ["% Network not in table"];
-    const dn = ipToInt(ip);
+    const dn = ipToInt(ip2);
     let best = null;
     for (const e2 of routeTable(rt.derived, dev)) {
       if (e2.code === "L") continue;
@@ -2812,12 +2816,12 @@ var AgLabSim = (() => {
         o.push("  Internet protocol processing disabled");
         continue;
       }
-      const helpers = r.l3?.helpers ?? [];
+      const helpers2 = r.l3?.helpers ?? [];
       o.push(
         `  Internet address is ${r.ip.addr}/${maskToPrefix(r.ip.mask)}`,
         "  Broadcast address is 255.255.255.255",
         `  MTU is ${r.l3?.mtu ?? 1500} bytes`,
-        helpers.length ? `  Helper addresses are ${helpers.join(" ")}` : "  Helper address is not set",
+        helpers2.length ? `  Helper addresses are ${helpers2.join(" ")}` : "  Helper address is not set",
         "  Outgoing Common access list is not set",
         `  Outgoing access list is ${r.l3?.aclOut ?? "not set"}`,
         "  Inbound Common access list is not set",
@@ -2903,12 +2907,12 @@ var AgLabSim = (() => {
       const o2 = [];
       for (const n of ns) {
         const peer = rt.topo.devices[n.dev];
-        const ip = mgmtIp(rt, n.dev, n.peerPort);
+        const ip2 = mgmtIp(rt, n.dev, n.peerPort);
         o2.push(
           "-------------------------",
           `Device ID: ${rt.hostname(n.dev)}`,
           "Entry address(es): ",
-          ...ip ? [`  IP address: ${ip}`] : [],
+          ...ip2 ? [`  IP address: ${ip2}`] : [],
           `Platform: cisco ${peer.model},  Capabilities: ${cdpCapWords(peer)} `,
           `Interface: ${n.port},  Port ID (outgoing port): ${n.peerPort}`,
           `Holdtime : ${CDP_HOLDTIME} sec`,
@@ -2920,7 +2924,7 @@ var AgLabSim = (() => {
           "advertisement version: 2",
           "Duplex: full",
           "Management address(es): ",
-          ...ip ? [`  IP address: ${ip}`] : [],
+          ...ip2 ? [`  IP address: ${ip2}`] : [],
           ""
         );
       }
@@ -2965,7 +2969,7 @@ var AgLabSim = (() => {
       const o2 = [];
       for (const n of ns) {
         const peer = rt.topo.devices[n.dev];
-        const ip = mgmtIp(rt, n.dev, n.peerPort);
+        const ip2 = mgmtIp(rt, n.dev, n.peerPort);
         const caps = lldpCaps(peer);
         o2.push(
           "------------------------------------------------",
@@ -2983,7 +2987,7 @@ var AgLabSim = (() => {
           `System Capabilities: ${caps}`,
           `Enabled Capabilities: ${caps}`,
           "Management Addresses:",
-          ...ip ? [`    IP: ${ip}`] : ["    - not advertised"],
+          ...ip2 ? [`    IP: ${ip2}`] : ["    - not advertised"],
           "Auto Negotiation - supported, enabled",
           ""
         );
@@ -3432,7 +3436,7 @@ var AgLabSim = (() => {
       { p: "switchport mode dynamic auto", run: (x) => x.setMode("dynamic-auto") },
       { p: "switchport mode dynamic desirable", run: (x) => x.setMode("dynamic-desirable") },
       { p: "no switchport mode", run: (x) => x.setMode("dynamic-auto") },
-      { p: "switchport access vlan <1-4094:VLAN ID of the VLAN when this port is in access mode>", run: (x, a) => x.eachL2((c) => void (c.accessVlan = Number(a[3]))) },
+      { p: "switchport access vlan <1-4094:VLAN ID of the VLAN when this port is in access mode>", run: (x, a) => x.accessVlan(Number(a[3])) },
       { p: "no switchport access vlan", run: (x) => x.eachL2((c) => void (c.accessVlan = 1)) },
       { p: "switchport trunk native vlan <1-4094:VLAN ID of the native VLAN when this port is in trunking mode>", run: (x, a) => x.eachL2((c) => void (c.nativeVlan = Number(a[4]))) },
       { p: "no switchport trunk native vlan", run: (x) => x.eachL2((c) => void (c.nativeVlan = 1)) },
@@ -3463,7 +3467,7 @@ var AgLabSim = (() => {
       // L5-e: port security (access ports)
       { p: "switchport port-security", run: (x) => x.portSec((ps) => void (ps.enabled = true)) },
       { p: "no switchport port-security", run: (x) => x.portSec((ps) => void (ps.enabled = false)) },
-      { p: "switchport port-security maximum <1-8192:Maximum addresses>", run: (x, a) => x.portSecMax(Number(a[3])) },
+      { p: "switchport port-security maximum <1-1024:Maximum addresses>", run: (x, a) => x.portSecMax(Number(a[3])) },
       { p: "no switchport port-security maximum", run: (x) => x.portSecMax(1) },
       { p: "switchport port-security violation shutdown", run: (x) => x.portSec((ps) => void (ps.violation = "shutdown")) },
       { p: "switchport port-security violation restrict", run: (x) => x.portSec((ps) => void (ps.violation = "restrict")) },
@@ -3751,6 +3755,17 @@ var AgLabSim = (() => {
       this.vlanIds = ids;
       this.mode = "vlan";
     }
+    /**
+     * `switchport access vlan N`. IOS (VTP server/transparent) creates a missing VLAN:
+     * `% Access VLAN does not exist. Creating vlan N`. A VLAN deleted later (`no vlan N`)
+     * leaves the port inactive.
+     */
+    accessVlan(v) {
+      this.eachL2((c) => void (c.accessVlan = v));
+      if (this.cfg.vlans[String(v)] !== void 0) return;
+      this.cfg.vlans[String(v)] = defaultVlanName(v);
+      return [`% Access VLAN does not exist. Creating vlan ${v}`];
+    }
     deleteVlan(list) {
       const ids = parseVlanList(list);
       if (!ids) throw new InvalidAt(2);
@@ -4000,10 +4015,12 @@ var AgLabSim = (() => {
       const names = [];
       const cleaned = spec.replace(/\s*-\s*/g, "-").replace(/\s*,\s*/g, ",");
       for (const part of cleaned.split(",")) {
-        const m = /^([A-Za-z-]+)\s*(\d+\/)?(\d+)(?:-(\d+))?$/.exec(part.trim());
+        const m = /^([A-Za-z-]+)\s*(\d+\/)?(\d+)(?:-(?:([A-Za-z-]+)\s*(\d+\/)?)?(\d+))?$/.exec(part.trim());
         if (!m) throw new InvalidAt(2);
+        if (m[4] && (canonIf(m[4], (m[5] ?? "") + m[6]) !== canonIf(m[1], (m[2] ?? "") + m[6]) || (m[5] ?? "") !== (m[2] ?? "")))
+          throw new InvalidAt(2);
         const from = Number(m[3]);
-        const to = m[4] ? Number(m[4]) : from;
+        const to = m[6] ? Number(m[6]) : from;
         if (to < from) throw new InvalidAt(2);
         for (let i = from; i <= to; i++) {
           const name = canonIf(m[1], (m[2] ?? "") + i);
@@ -4175,10 +4192,10 @@ var AgLabSim = (() => {
       if (len < 31 && (host === 0 || host === ~prefixMaskInt(len) >>> 0)) return [`Bad mask /${len} for address ${addr}`];
       if (this.ifs.length > 1) return ["% IP address may not be configured on an interface range."];
       const name = this.ifs[0];
-      for (const [other, ip] of this.ipIfs()) {
+      for (const [other, ip2] of this.ipIfs()) {
         if (other === name) continue;
-        const l = Math.min(maskToPrefix(ip.mask), len);
-        if (networkOf(ip.addr, l) === networkOf(addr, l)) return [`% ${networkOf(addr, len)} overlaps with ${other}`];
+        const l = Math.min(maskToPrefix(ip2.mask), len);
+        if (networkOf(ip2.addr, l) === networkOf(addr, l)) return [`% ${networkOf(addr, len)} overlaps with ${other}`];
       }
       if (name.startsWith("Vlan") || name.startsWith("Loopback")) this.eachSvi((s) => void (s.ip = { addr, mask }));
       else if (name.includes(".")) {
@@ -4286,7 +4303,7 @@ var AgLabSim = (() => {
       const len = maskToPrefix(mask);
       if (len === null) return ["%Inconsistent address and mask"];
       if (networkOf(net, len) !== net) return ["%Inconsistent address and mask"];
-      if (nh === "0.0.0.0" || this.ipIfs().some(([, ip]) => ip.addr === nh)) return ["%Invalid next hop address (it's this router)"];
+      if (nh === "0.0.0.0" || this.ipIfs().some(([, ip2]) => ip2.addr === nh)) return ["%Invalid next hop address (it's this router)"];
       const same = this.cfg.routes.find((r) => r.net === net && r.mask === mask && r.nh === nh);
       if (same) {
         if (ad === 1) delete same.ad;
@@ -4389,18 +4406,18 @@ var AgLabSim = (() => {
         ""
       ];
     }
-    ping(ip) {
+    ping(ip2) {
       const d = this.rt.derived;
-      const r = ping(d, this.dev, ip);
+      const r = ping(d, this.dev, ip2);
       this.rt.markSeen(r.forward?.hops ?? [], this.dev);
       this.rt.countAcl(5, r.forward, r.back);
       this.rt.recordNat(5, r.forward, r.back);
-      const head = ["Type escape sequence to abort.", `Sending 5, 100-byte ICMP Echos to ${ip}, timeout is 2 seconds:`];
+      const head = ["Type escape sequence to abort.", `Sending 5, 100-byte ICMP Echos to ${ip2}, timeout is 2 seconds:`];
       if (r.reason === "noip" && !l3Ifs(d, this.dev).length) return [...head, ".....", "Success rate is 0 percent (0/5)"];
       let marks;
       let ok = 0;
       if (r.ok) {
-        const key = `${this.dev}>${r.firstHopArp?.ip ?? ip}`;
+        const key = `${this.dev}>${r.firstHopArp?.ip ?? ip2}`;
         const cold = !this.rt.arp.has(key);
         this.rt.arp.add(key);
         this.rt.arpIncomplete.delete(key);
@@ -4421,16 +4438,16 @@ var AgLabSim = (() => {
         `Success rate is ${ok * 20} percent (${ok}/5)` + (ok ? ", round-trip min/avg/max = 1/2/4 ms" : "")
       ];
     }
-    traceroute(ip) {
+    traceroute(ip2) {
       const d = this.rt.derived;
-      const r = deliver(d, this.dev, ip, { proto: "udp", sport: 49152, dport: 33434 });
+      const r = deliver(d, this.dev, ip2, { proto: "udp", sport: 49152, dport: 33434 });
       this.rt.markSeen(r.hops, this.dev);
       this.rt.countAcl(1, r);
       this.rt.recordNat(1, r);
-      const out = ["Type escape sequence to abort.", `Tracing the route to ${ip}`, "VRF info: (vrf in name/id, vrf out name/id)"];
+      const out = ["Type escape sequence to abort.", `Tracing the route to ${ip2}`, "VRF info: (vrf in name/id, vrf out name/id)"];
       r.hops.forEach((h, i) => out.push(`  ${i + 1} ${h.ip} ${1 + i} msec ${i} msec ${1 + i} msec`));
       if (r.kind === "ok") {
-        if (!r.hops.length) out.push(`  1 ${ip} 0 msec 0 msec 0 msec`);
+        if (!r.hops.length) out.push(`  1 ${ip2} 0 msec 0 msec 0 msec`);
         return out;
       }
       if (r.kind === "unreach") {
@@ -4473,15 +4490,15 @@ var AgLabSim = (() => {
       for (const i of l3Ifs(d, this.dev)) out.push(`Internet  ${i.ip.padEnd(17)}-          ${i.mac}  ARPA   ${i.name}`);
       for (const k of this.rt.arp) {
         if (!k.startsWith(this.dev + ">")) continue;
-        const ip = k.split(">")[1];
-        const now = arpMac(d, this.dev, ip);
+        const ip2 = k.split(">")[1];
+        const now = arpMac(d, this.dev, ip2);
         if (now) {
-          out.push(`Internet  ${ip.padEnd(17)}0          ${now.mac}  ARPA   ${now.via}`);
+          out.push(`Internet  ${ip2.padEnd(17)}0          ${now.mac}  ARPA   ${now.via}`);
           continue;
         }
-        const owner = d.topo.lab.devices.flatMap((x) => l3Ifs(d, x.id)).find((x) => x.ip === ip);
-        const via = l3Ifs(d, this.dev).find((i) => owner && i.node && networkOf(i.ip, i.prefix) === networkOf(ip, i.prefix));
-        if (owner && via) out.push(`Internet  ${ip.padEnd(17)}0          ${owner.mac}  ARPA   ${via.name}`);
+        const owner = d.topo.lab.devices.flatMap((x) => l3Ifs(d, x.id)).find((x) => x.ip === ip2);
+        const via = l3Ifs(d, this.dev).find((i) => owner && i.node && networkOf(i.ip, i.prefix) === networkOf(ip2, i.prefix));
+        if (owner && via) out.push(`Internet  ${ip2.padEnd(17)}0          ${owner.mac}  ARPA   ${via.name}`);
       }
       for (const k of this.rt.arpIncomplete) {
         if (!k.startsWith(this.dev + ">") || this.rt.arp.has(k)) continue;
@@ -4508,6 +4525,141 @@ var AgLabSim = (() => {
       if (inSec) out.push(l);
     }
     return out;
+  }
+
+  // src/sim/config-text.ts
+  var HARMLESS = [
+    [/^version\s/i, "IOS sürüm satırı"],
+    [/^(no\s+)?service\s+(timestamps|password-encryption|config|pad|tcp-keepalives|sequence-numbers)\b/i, "service ayarı (ağ davranışını etkilemez)"],
+    [/^(no\s+)?ip\s+cef$/i, "CEF anahtarlama (davranış aynı)"],
+    [/^(no\s+)?ipv6\s+cef$/i, "IPv6 CEF"],
+    [/^license\s+udi\b/i, "lisans kimliği"],
+    [/^ip\s+classless$/i, "varsayılan (classless yönlendirme)"],
+    [/^ip\s+flow-export\s+version\b/i, "NetFlow dışa aktarma sürümü"],
+    [/^spanning-tree\s+extend\s+system-id$/i, "varsayılan (genişletilmiş sistem kimliği)"],
+    // Packet Tracer router'larının running-config'inde de yer alır; router'da STP yoktur
+    [/^spanning-tree\s+mode\s+pvst$/i, "varsayılan STP kipi (router'da STP yok)"],
+    [/^(no\s+)?ip\s+domain[- ]lookup$/i, "DNS çözümleme ayarı"],
+    [/^boot-(start|end)-marker$/i, "açılış işaretçisi"],
+    [/^(duplex|speed)\s+auto$/i, "varsayılan (otomatik hız/çift yön)"],
+    [/^(no\s+)?logging\s/i, "günlük ayarı"],
+    [/^end$/i, "yapılandırma sonu"]
+  ];
+  var HARMLESS_BLOCK = /^line\s+(con|aux|vty)\b/i;
+  var ERR = /^(%|Command rejected)/;
+  var INFO = /^% Access VLAN does not exist\. Creating vlan \d+$/;
+  var isError = (out) => out.some((l) => ERR.test(l.trim()) && !INFO.test(l.trim()));
+  var MODE_LINE = /^(interface|router|line|ip\s+access-list|ip\s+dhcp\s+pool|vlan\s+\d|controller|class-map|policy-map|key\s+chain|crypto)\b/i;
+  function harmless(cmd) {
+    for (const [re, why] of HARMLESS) if (re.test(cmd)) return why;
+    return null;
+  }
+  function applyConfigText(rt, dev, text) {
+    const s = new IosSession(rt, dev);
+    s.mode = "config";
+    const out = [];
+    const lines = text.split(/\r?\n/);
+    let rejectedParent = null;
+    const push = (line, command, status, reason) => out.push({ device: dev, line, command, status, ...reason ? { reason } : {}, ...status === "applied" ? { ifs: s.mode === "if" ? [...s.ifs] : [] } : {} });
+    for (let i = 0; i < lines.length; i++) {
+      const n = i + 1;
+      const cmd = lines[i].trim();
+      if (!cmd) continue;
+      if (cmd.startsWith("!")) {
+        rejectedParent = null;
+        s.mode = "config";
+        continue;
+      }
+      const banner = /^banner\s+\S+\s+(\^C|\S)(.*)$/i.exec(cmd);
+      if (banner) {
+        const delim = banner[1];
+        push(n, cmd, "ignored", "banner (ağ davranışını etkilemez)");
+        if (!banner[2].includes(delim))
+          while (i + 1 < lines.length) {
+            i++;
+            push(i + 1, lines[i].trim(), "ignored", "banner metni");
+            if (lines[i].includes(delim)) break;
+          }
+        continue;
+      }
+      if (/^end$/i.test(cmd)) {
+        push(n, cmd, "ignored", "yapılandırma sonu");
+        for (let j = i + 1; j < lines.length; j++) {
+          const rest = lines[j].trim();
+          if (rest && !rest.startsWith("!")) push(j + 1, rest, "unmodeled", "`end` satırından sonra (uygulanmaz)");
+        }
+        break;
+      }
+      if (rejectedParent) {
+        s.mode = "config";
+        const r2 = s.exec(cmd);
+        if (!isError(r2) && !s.pendingPrompt) {
+          rejectedParent = null;
+          push(n, cmd, "applied");
+          continue;
+        }
+        if (s.pendingPrompt) s.exec("");
+        if (MODE_LINE.test(cmd)) {
+          rejectedParent = { cmd, harmless: HARMLESS_BLOCK.test(cmd) };
+          if (rejectedParent.harmless) push(n, cmd, "ignored", "oturum/erişim hattı ayarı (ağ davranışını etkilemez)");
+          else push(n, cmd, harmless(cmd) ? "ignored" : "unmodeled", harmless(cmd) ?? r2.find((l) => ERR.test(l.trim()) && !INFO.test(l.trim()))?.trim());
+          continue;
+        }
+        const why2 = harmless(cmd);
+        if (rejectedParent.harmless || why2) push(n, cmd, "ignored", why2 ?? `"${rejectedParent.cmd}" bloğu (zararsız)`);
+        else push(n, cmd, "unmodeled", `üst satır modellenmedi: ${rejectedParent.cmd}`);
+        continue;
+      }
+      const before = s.mode;
+      let r = s.exec(cmd);
+      if (s.pendingPrompt) {
+        s.exec("");
+        r = [...r, "% confirmation required"];
+      }
+      if (isError(r) && before !== "config") {
+        s.mode = "config";
+        const g = s.exec(cmd);
+        if (!isError(g)) r = g;
+        else s.mode = before;
+      }
+      if (!isError(r)) {
+        push(n, cmd, "applied");
+        if (/^interface\s/i.test(cmd) && !/\srange\s/i.test(cmd) && s.mode === "if") s.exec("no shutdown");
+        continue;
+      }
+      const why = harmless(cmd);
+      const isMode = MODE_LINE.test(cmd);
+      if (isMode) {
+        s.mode = "config";
+        rejectedParent = { cmd, harmless: HARMLESS_BLOCK.test(cmd) };
+      }
+      if (why || isMode && HARMLESS_BLOCK.test(cmd)) push(n, cmd, "ignored", why ?? "oturum/erişim hattı ayarı (ağ davranışını etkilemez)");
+      else push(n, cmd, "unmodeled", r.find((l) => ERR.test(l.trim()) && !INFO.test(l.trim()))?.trim());
+    }
+    return defaultBlocks(rt, dev, out);
+  }
+  function defaultBlocks(rt, dev, lines) {
+    const sw = rt.topo.devices[dev];
+    if (!sw || sw.kind !== "switch" || !sw.router) return lines;
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (l.status !== "unmodeled" || !/^interface\s+vlan\s*1$/i.test(l.command)) continue;
+      const kids = [];
+      for (let j = i + 1; j < lines.length && lines[j].reason?.startsWith("üst satır modellenmedi: " + l.command); j++) kids.push(lines[j]);
+      if (!kids.every((k) => /^(no\s+ip\s+address|shutdown)$/i.test(k.command))) continue;
+      for (const x of [l, ...kids]) {
+        x.status = "ignored";
+        x.reason = "Packet Tracer router'ının varsayılan Vlan1 bloğu (router'da SVI yok)";
+      }
+    }
+    return lines;
+  }
+  function summarize(lines) {
+    return {
+      applied: lines.filter((l) => l.status === "applied").length,
+      ignored: lines.filter((l) => l.status === "ignored").length,
+      unmodeled: lines.filter((l) => l.status === "unmodeled").length
+    };
   }
 
   // src/sim/http.ts
@@ -4759,9 +4911,9 @@ var AgLabSim = (() => {
       const out = [];
       for (const k of this.rt.arp) {
         if (!k.startsWith(this.dev + ">")) continue;
-        const ip = k.split(">")[1];
-        const now = arpMac(d, this.dev, ip);
-        if (now) out.push(`${macToColon(now.mac)}  ${ip} expires in 120 seconds `);
+        const ip2 = k.split(">")[1];
+        const now = arpMac(d, this.dev, ip2);
+        if (now) out.push(`${macToColon(now.mac)}  ${ip2} expires in 120 seconds `);
       }
       return ["", ...out.length ? out : ["arp table is empty"], ""];
     }
@@ -4839,9 +4991,9 @@ var AgLabSim = (() => {
     for (const [n, l] of Object.entries(cfg.loopbacks ?? {})) if (l.ip) out.push({ name: "Loopback" + n, ip: l.ip, l3: l.l3 ?? {} });
     return out;
   }
-  function areaFor(o, ip, l3) {
+  function areaFor(o, ip2, l3) {
     if (l3.ospfArea && l3.ospfArea.pid === o.pid) return l3.ospfArea.area;
-    const a = ipToInt(ip);
+    const a = ipToInt(ip2);
     let best = null;
     for (const n of o.networks) {
       const wc = ipToInt(n.wildcard);
@@ -5213,12 +5365,12 @@ var AgLabSim = (() => {
       return this.macEntry(dev, mac)?.vlan ?? null;
     }
     /** No two interfaces share this address inside one broadcast domain. */
-    ipUnique(ip) {
-      return !this.d.dups.some((x) => x.ip === ip);
+    ipUnique(ip2) {
+      return !this.d.dups.some((x) => x.ip === ip2);
     }
     /** Devices that share this address in one broadcast domain (lab order; first answers ARP), else []. */
-    duplicates(ip) {
-      return this.d.dups.find((x) => x.ip === ip)?.owners.map((o) => o.dev) ?? [];
+    duplicates(ip2) {
+      return this.d.dups.find((x) => x.ip === ip2)?.owners.map((o) => o.dev) ?? [];
     }
     /** Running config saved to NVRAM (startup matches running). */
     saved(dev) {
@@ -5297,12 +5449,12 @@ var AgLabSim = (() => {
     pcVlan(pc) {
       return pcNode(this.d, pc)?.vlan ?? null;
     }
-    ping(from, ip) {
-      return ping(this.d, from, ip);
+    ping(from, ip2) {
+      return ping(this.d, from, ip2);
     }
     /** L5-g: HTTP (TCP 80) isteği; tabloya/sayaçlara yazmaz. */
-    http(from, ip, port) {
-      return httpGet(this.d, from, ip, port);
+    http(from, ip2, port) {
+      return httpGet(this.d, from, ip2, port);
     }
     pcIp(pc) {
       return this.d.pcs[pc]?.ip ?? null;
@@ -5408,6 +5560,8 @@ var AgLabSim = (() => {
       __publicField(this, "natHits", 0);
       /** L5-d: packets dropped because the pool had no free address */
       __publicField(this, "natMisses", 0);
+      /** L5-h: per-line result of a lenient (running-config) initial configuration */
+      __publicField(this, "configReport");
       __publicField(this, "seq", 0);
       __publicField(this, "t0", Date.now());
       __publicField(this, "listeners", /* @__PURE__ */ new Set());
@@ -5651,9 +5805,9 @@ var AgLabSim = (() => {
       return c?.dhcp && this.dhcp.find((b) => b.client === pc && b.ip === c.ip) || null;
     }
     /** `clear ip dhcp binding *` / reload: the server forgets its leases. */
-    dhcpClear(server, ip) {
+    dhcpClear(server, ip2) {
       const before = this.dhcp.length;
-      this.dhcp = this.dhcp.filter((b) => b.server !== server || ip !== void 0 && b.ip !== ip);
+      this.dhcp = this.dhcp.filter((b) => b.server !== server || ip2 !== void 0 && b.ip !== ip2);
       return before - this.dhcp.length;
     }
     /** Default lease is one day: expiration on the lab clock (starts on Mar 1). */
@@ -5888,11 +6042,16 @@ var AgLabSim = (() => {
   };
 
   // src/sim/index.ts
-  function createLab(def) {
+  function createLab(def, opts = {}) {
     return new LabRuntime(def, (rt) => {
+      if (opts.lenient) rt.configReport = [];
       for (const sw of rt.topo.switches) {
         const text = def.initialConfig?.[sw.id];
         if (!text) continue;
+        if (opts.lenient) {
+          rt.configReport.push(...applyConfigText(rt, sw.id, text));
+          continue;
+        }
         const s = new IosSession(rt, sw.id);
         s.mode = "config";
         for (const line of text.split("\n")) {
@@ -7151,7 +7310,7 @@ exit`;
         hint: "interface gi0/1 → no switchport → ip address 10.0.12.1 255.255.255.252. Kontrol: show ip interface brief, ping 10.0.12.2",
         check: (q) => {
           const pairs = [["R1", "10.0.12.2"], ["R1", "10.0.13.2"], ["R2", "10.0.23.2"]];
-          const bad = pairs.filter(([d, ip]) => !q.ping(d, ip).ok).map(([d, ip]) => `${d}→${ip}`);
+          const bad = pairs.filter(([d, ip2]) => !q.ping(d, ip2).ok).map(([d, ip2]) => `${d}→${ip2}`);
           return { ok: !bad.length, detail: bad.length ? "Ping yok: " + bad.join(", ") : void 0 };
         }
       },
@@ -7180,7 +7339,7 @@ exit`;
         id: "loop",
         title: "R1, diğer router'ların loopback'lerini /32 olarak OSPF'ten öğrendi",
         hint: "Loopback0 da bir network ifadesiyle eşleşmeli (ör. network 2.2.2.2 0.0.0.0 area 0). Kontrol: show ip route ospf",
-        check: (q) => ["2.2.2.2", "3.3.3.3"].every((ip) => q.route("R1", ip, 32)?.code === "O")
+        check: (q) => ["2.2.2.2", "3.3.3.3"].every((ip2) => q.route("R1", ip2, 32)?.code === "O")
       },
       {
         id: "e2e",
@@ -7260,9 +7419,9 @@ write memory`
     ["DSW2", "Gi0/2", "ASW2", "Gi0/2", "10.1.22"]
   ];
   var ALL2 = ["DSW1", "DSW2", "ASW1", "ASW2"];
-  var routedIf = (port, ip) => `interface ${port}
+  var routedIf = (port, ip2) => `interface ${port}
  no switchport
- ip address ${ip} 255.255.255.252
+ ip address ${ip2} 255.255.255.252
  ip ospf network point-to-point`;
   var solutionFor = (dev) => {
     const lines = ["configure terminal"];
@@ -7587,9 +7746,9 @@ router ospf 1
  router-id ${rid}
  passive-interface vlan 10
  network 192.168.${n}.0 0.0.0.255 area 0`;
-  var routed = (port, ip, more = "") => `interface ${port}
+  var routed = (port, ip2, more = "") => `interface ${port}
  no switchport
- ip address ${ip} 255.255.255.252${more}
+ ip address ${ip2} 255.255.255.252${more}
 exit`;
   var lab12 = {
     id: "ospf-ariza",
@@ -7722,9 +7881,9 @@ exit
 interface vlan 10
  ip address 192.168.${n}.1 255.255.255.0
 exit`;
-  var routed2 = (port, ip, mask = "255.255.255.252") => `interface ${port}
+  var routed2 = (port, ip2, mask = "255.255.255.252") => `interface ${port}
  no switchport
- ip address ${ip} ${mask}
+ ip address ${ip2} ${mask}
 exit`;
   var lab13 = {
     id: "ospf-cok-alan",
@@ -8131,8 +8290,8 @@ write memory`
           if (!isIp(iface.ip) || pre === null || pre === 0) reject(id, name, "Geçersiz router arayüzü IPv4 adresi/maskesi");
           else phys.ip = { addr: iface.ip, mask: iface.mask };
         }
-        const helpers = helperOf(id, name, iface);
-        if (helpers) phys.l3 = { ...phys.l3 ?? {}, helpers };
+        const helpers2 = helperOf(id, name, iface);
+        if (helpers2) phys.l3 = { ...phys.l3 ?? {}, helpers: helpers2 };
         const groups = accessGroups(id, name, iface);
         if (groups) phys.l3 = { ...phys.l3 ?? {}, ...groups };
         const role2 = natRoleOf(id, name, iface);
@@ -8167,16 +8326,16 @@ write memory`
           reject(id, name, `Aynı fiziksel portta VLAN ${vlan} iki alt arayüzde`);
           continue;
         }
-        let ip = null;
+        let ip2 = null;
         if (iface.ip) {
           const pre = iface.mask ? maskToPrefix(iface.mask) : null;
           if (!isIp(iface.ip) || pre === null || pre === 0) reject(id, name, "Geçersiz alt arayüz IPv4 adresi/maskesi");
           else if (vlan === null) reject(id, name, "encapsulation dot1q olmadan alt arayüz IP adresi (IOS kabul etmez)");
-          else ip = { addr: iface.ip, mask: iface.mask };
+          else ip2 = { addr: iface.ip, mask: iface.mask };
         }
-        subs[key] = { parent, vlan, native: false, shutdown: iface.enabled === false, description: "", ip };
-        const helpers = helperOf(id, name, iface);
-        if (helpers) subs[key].l3 = { helpers };
+        subs[key] = { parent, vlan, native: false, shutdown: iface.enabled === false, description: "", ip: ip2 };
+        const helpers2 = helperOf(id, name, iface);
+        if (helpers2) subs[key].l3 = { helpers: helpers2 };
         const groups = accessGroups(id, name, iface);
         if (groups) subs[key].l3 = { ...subs[key].l3 ?? {}, ...groups };
         const role2 = natRoleOf(id, name, iface);
@@ -8349,13 +8508,13 @@ write memory`
           for (const key of Object.keys(iface))
             if (key !== "enabled") unsupported(id, `interfaces.eth0.${key}`, "Labber'da karşılığı olmayan PC arayüz alanı");
         }
-        const ip = d.ip ?? "";
+        const ip2 = d.ip ?? "";
         const prefix = d.mask ? maskToPrefix(d.mask) : null;
-        if (ip && !isIp(ip)) reject(id, "ip", "Geçersiz IPv4 adresi: " + ip);
-        if (ip && prefix === null) reject(id, "mask", "Geçersiz alt ağ maskesi: " + d.mask);
+        if (ip2 && !isIp(ip2)) reject(id, "ip", "Geçersiz IPv4 adresi: " + ip2);
+        if (ip2 && prefix === null) reject(id, "mask", "Geçersiz alt ağ maskesi: " + d.mask);
         if (d.gateway && !isIp(d.gateway)) reject(id, "gateway", "Geçersiz ağ geçidi: " + d.gateway);
         pcs[id] = {
-          ip: ip && isIp(ip) && prefix !== null ? ip : null,
+          ip: ip2 && isIp(ip2) && prefix !== null ? ip2 : null,
           prefix: prefix ?? 24,
           gw: d.gateway && isIp(d.gateway) ? d.gateway : null
         };
@@ -8632,8 +8791,8 @@ write memory`
       }
       if ((d.type === "PC" || d.type === "Server") && rt.pcs[id]) {
         const pc = rt.pcs[id];
-        const ip = pc.ip ?? "";
-        if (d.ip !== void 0 || ip) d.ip = ip;
+        const ip2 = pc.ip ?? "";
+        if (d.ip !== void 0 || ip2) d.ip = ip2;
         if (pc.ip !== null && (d.mask !== void 0 || pc.ip)) d.mask = prefixToMask(pc.prefix);
         const gw2 = pc.gw ?? "";
         if (d.gateway !== void 0 || gw2) d.gateway = gw2;
@@ -8857,10 +9016,10 @@ write memory`
   }
   function helperBack(l3, canon, fail) {
     if (!l3) return null;
-    const { helpers, aclIn: _in, aclOut: _out, nat: _nat, ...rest } = l3;
+    const { helpers: helpers2, aclIn: _in, aclOut: _out, nat: _nat, ...rest } = l3;
     if (Object.keys(rest).length) fail(`${canon} arayüz OSPF/L3 ayarı`);
-    if (helpers && helpers.length > 1) fail(`${canon} üzerinde birden çok ip helper-address`);
-    return helpers?.[0] ?? null;
+    if (helpers2 && helpers2.length > 1) fail(`${canon} üzerinde birden çok ip helper-address`);
+    return helpers2?.[0] ?? null;
   }
   function natRoleBack(iface, l3) {
     if (l3?.nat) iface["natRole"] = l3.nat;
@@ -8981,7 +9140,7 @@ write memory`
     const records = [];
     let frameNo = 0;
     let l2 = true;
-    const ifOf = (dev, ip) => l3Ifs(d, dev).find((i) => i.ip === ip) ?? null;
+    const ifOf = (dev, ip2) => l3Ifs(d, dev).find((i) => i.ip === ip2) ?? null;
     const walk2 = (kind, start, hops, srcIp, dstIp, baseTtl) => {
       let ttl = baseTtl;
       let sender = start;
@@ -9052,6 +9211,137 @@ write memory`
     }
     records.push({ raw: `icmp-delivered ${from} from ${replier}` });
     return { ok: true, l2, records };
+  }
+
+  // src/sim-bridge/cli-import.ts
+  function configTexts(t) {
+    const out = {};
+    for (const d of t.devices ?? []) {
+      const text = d.config?.["runningConfig"];
+      if ((d.type === "Switch" || d.type === "Router") && typeof text === "string" && text.trim()) out[String(d.id)] = text;
+    }
+    return out;
+  }
+  function cliImport(t) {
+    const bridge = toLabber(t);
+    const texts = configTexts(t);
+    const lines = [];
+    const runtime = new LabRuntime(bridge.def, (rt) => {
+      for (const [id, pc] of Object.entries(bridge.pcs)) rt.pcs[id] = clone(pc);
+      for (const sw of rt.topo.switches) {
+        const text = texts[sw.id];
+        if (text === void 0) {
+          if (bridge.running[sw.id]) rt.running[sw.id] = clone(bridge.running[sw.id]);
+          continue;
+        }
+        lines.push(...applyConfigText(rt, sw.id, text));
+      }
+      rt.natTable = clone(bridge.nat ?? []);
+      rt.configReport = lines;
+    });
+    const diffs = [];
+    const extended = [];
+    const converterUnmodeled = new Set(
+      (t.importReport?.unmodeledConfigLines ?? []).map((r) => `${r.device}|${r.line}`)
+    );
+    for (const id of Object.keys(texts)) {
+      const def = runtime.topo.devices[id];
+      if (!def || def.kind !== "switch" || !bridge.running[id]) continue;
+      const name = String(t.devices.find((d) => String(d.id) === id)?.name ?? id);
+      const touched = /* @__PURE__ */ new Set();
+      const globals = [];
+      for (const l of lines)
+        if (l.device === id && l.status === "applied" && converterUnmodeled.has(`${name}|${l.line}`)) {
+          if (l.ifs?.length) for (const x of l.ifs) touched.add(x);
+          else globals.push(l.command);
+        }
+      for (const diff of modeledDiffs(id, def, bridge.running[id], runtime.running[id], interfacesIn(texts[id]))) {
+        const dot = diff.field.lastIndexOf(".");
+        const iface = dot > 0 && !["routes", "vlans", "defaultGateway", "stpPriority"].includes(diff.field) ? diff.field.slice(0, dot) : null;
+        if (iface ? touched.has(iface) : globals.some((c) => GLOBAL_FIELD[diff.field]?.test(c))) extended.push(diff);
+        else diffs.push(diff);
+      }
+    }
+    return { bridge, runtime, lines, diffs, extended };
+  }
+  var GLOBAL_FIELD = {
+    routes: /^(no\s+)?ip\s+route\s/i,
+    vlans: /^(no\s+)?vlan\s|^name\s|switchport\s+access\s+vlan\s/i,
+    defaultGateway: /^(no\s+)?ip\s+default-gateway\s/i,
+    stpPriority: /^(no\s+)?spanning-tree\s+vlan\s/i
+  };
+  function interfacesIn(text) {
+    const out = /* @__PURE__ */ new Set();
+    for (const line of text.split(/\r?\n/)) {
+      const m = /^\s*interface\s+([A-Za-z-]+)\s*([\d/.:]+)\s*$/i.exec(line);
+      const name = m ? canonIf(m[1], m[2]) : null;
+      if (name) out.add(name);
+    }
+    return out;
+  }
+  var ip = (x) => x ? `${x.addr} ${x.mask}` : null;
+  var helpers = (o) => o?.l3?.helpers ?? [];
+  function modeledProjection(def, c, recorded) {
+    const p = {};
+    if (def.router) {
+      for (const [n, i] of Object.entries(c.ifaces)) {
+        if (recorded && !recorded.has(n)) continue;
+        p[`${n}.ip`] = ip(i.ip);
+        p[`${n}.shutdown`] = i.shutdown;
+        p[`${n}.helpers`] = helpers(i);
+      }
+      for (const [n, s] of Object.entries(c.subifs ?? {})) {
+        p[`${n}.vlan`] = s.vlan;
+        p[`${n}.ip`] = ip(s.ip);
+        p[`${n}.shutdown`] = s.shutdown;
+        p[`${n}.helpers`] = helpers(s);
+      }
+      p["routes"] = c.routes.map((r) => `${r.net} ${r.mask} ${r.nh} ${r.ad ?? 1}`).sort();
+      return p;
+    }
+    p["vlans"] = Object.fromEntries(Object.entries(c.vlans).sort(([a], [b]) => Number(a) - Number(b)));
+    for (const [n, i] of Object.entries(c.ifaces)) {
+      const mode = i.mode === "dynamic-auto" ? "access" : i.mode;
+      p[`${n}.mode`] = mode;
+      p[`${n}.accessVlan`] = i.accessVlan;
+      p[`${n}.nativeVlan`] = i.nativeVlan;
+      const all = i.allowed === null || i.allowed.length === 4094 && i.allowed[0] === 1 && i.allowed[4093] === 4094;
+      p[`${n}.allowed`] = mode === "trunk" ? all ? "all" : i.allowed : null;
+      p[`${n}.shutdown`] = i.shutdown;
+      const ps = i.portSecurity;
+      p[`${n}.portSecurity`] = ps?.enabled ? { max: ps.max, violation: ps.violation, macs: [...ps.macs].sort() } : null;
+    }
+    for (const [v, s] of Object.entries(c.svis)) {
+      p[`Vlan${v}.ip`] = ip(s.ip);
+      if (s.ip) p[`Vlan${v}.shutdown`] = s.shutdown;
+    }
+    p["defaultGateway"] = c.defaultGateway;
+    p["stpPriority"] = c.stpPriority;
+    return p;
+  }
+  function modeledDiffs(id, def, structural, cli, recorded) {
+    const a = modeledProjection(def, structural, recorded);
+    const b = modeledProjection(def, cli, recorded);
+    const out = [];
+    for (const k of [.../* @__PURE__ */ new Set([...Object.keys(a), ...Object.keys(b)])]) {
+      if (JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null)) out.push({ device: id, field: k, structural: a[k] ?? null, cli: b[k] ?? null });
+    }
+    return out;
+  }
+  function importReportWithCli(report, t, lines) {
+    const name = (id) => String(t.devices.find((d) => String(d.id) === id)?.name ?? id);
+    const row = (l) => ({ device: name(l.device), line: l.line, command: l.command, ...l.reason ? { reason: l.reason } : {} });
+    const base2 = { ...report ?? {} };
+    const out = {
+      ...base2,
+      converterUnmodeledConfigLines: base2["converterUnmodeledConfigLines"] ?? base2["unmodeledConfigLines"] ?? [],
+      unmodeledConfigLines: lines.filter((l) => l.status === "unmodeled").map(row),
+      ignoredConfigLines: lines.filter((l) => l.status === "ignored").map(row),
+      labberCli: summarize(lines)
+    };
+    out["unmodeledConfigLineCount"] = out["unmodeledConfigLines"].length;
+    out["ignoredConfigLineCount"] = out["ignoredConfigLines"].length;
+    return out;
   }
   return __toCommonJS(index_exports);
 })();

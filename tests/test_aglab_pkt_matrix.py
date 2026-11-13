@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import xml.etree.ElementTree as ET
-from aglab_test_support import ROOT
+from aglab_test_support import ROOT, assert_cli_path_matches
 from convert_pkt_to_aglab import convert, decrypt_pkt
 
 matrix = json.loads((ROOT / "pkt-sample-matrix.json").read_text())
@@ -30,6 +30,7 @@ for case in matrix["cases"]:
         xml = decrypt_pkt(raw)  # Verify the real encrypted sample, not only cached XML.
         assert xml == base64.b64decode(archived["sourceArchive"]["decodedXmlBase64"])
         obj, report = convert(xml, raw)
+        assert_cli_path_matches(obj)
         assert obj == archived, "Cached normalized topology is stale: " + case["id"]
         if case.get("report"):
             assert report == json.loads((ROOT / case["report"]).read_text()), (
@@ -55,6 +56,7 @@ for case in matrix["cases"]:
             ET.SubElement(config, "LINE").text = command
         xml = ET.tostring(root)
         obj, report = convert(xml)
+        assert_cli_path_matches(obj)
         subset(obj["devices"][0], case["expectedDevice"])
         assert report["devicesImported"] == 1
         if "expectedUnmodeled" in case:

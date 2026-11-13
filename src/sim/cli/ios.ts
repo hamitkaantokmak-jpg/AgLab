@@ -461,7 +461,7 @@ const l2IfPatterns = (def: SwitchDef): P[] => {
     { p: 'switchport mode dynamic auto', run: (x) => x.setMode('dynamic-auto') },
     { p: 'switchport mode dynamic desirable', run: (x) => x.setMode('dynamic-desirable') },
     { p: 'no switchport mode', run: (x) => x.setMode('dynamic-auto') },
-    { p: 'switchport access vlan <1-4094:VLAN ID of the VLAN when this port is in access mode>', run: (x, a) => x.eachL2((c) => void (c.accessVlan = Number(a[3]))) },
+    { p: 'switchport access vlan <1-4094:VLAN ID of the VLAN when this port is in access mode>', run: (x, a) => x.accessVlan(Number(a[3])) },
     { p: 'no switchport access vlan', run: (x) => x.eachL2((c) => void (c.accessVlan = 1)) },
     { p: 'switchport trunk native vlan <1-4094:VLAN ID of the native VLAN when this port is in trunking mode>', run: (x, a) => x.eachL2((c) => void (c.nativeVlan = Number(a[4]))) },
     { p: 'no switchport trunk native vlan', run: (x) => x.eachL2((c) => void (c.nativeVlan = 1)) },
@@ -493,7 +493,7 @@ const l2IfPatterns = (def: SwitchDef): P[] => {
     // L5-e: port security (access ports)
     { p: 'switchport port-security', run: (x) => x.portSec((ps) => void (ps.enabled = true)) },
     { p: 'no switchport port-security', run: (x) => x.portSec((ps) => void (ps.enabled = false)) },
-    { p: 'switchport port-security maximum <1-8192:Maximum addresses>', run: (x, a) => x.portSecMax(Number(a[3])) },
+    { p: 'switchport port-security maximum <1-1024:Maximum addresses>', run: (x, a) => x.portSecMax(Number(a[3])) },
     { p: 'no switchport port-security maximum', run: (x) => x.portSecMax(1) },
     { p: 'switchport port-security violation shutdown', run: (x) => x.portSec((ps) => void (ps.violation = 'shutdown')) },
     { p: 'switchport port-security violation restrict', run: (x) => x.portSec((ps) => void (ps.violation = 'restrict')) },
@@ -820,6 +820,18 @@ export class IosSession {
     this.mode = 'vlan'
   }
 
+  /**
+   * `switchport access vlan N`. IOS (VTP server/transparent) creates a missing VLAN:
+   * `% Access VLAN does not exist. Creating vlan N`. A VLAN deleted later (`no vlan N`)
+   * leaves the port inactive.
+   */
+  accessVlan(v: number): Out {
+    this.eachL2((c) => void (c.accessVlan = v))
+    if (this.cfg.vlans[String(v)] !== undefined) return
+    this.cfg.vlans[String(v)] = defaultVlanName(v)
+    return [`% Access VLAN does not exist. Creating vlan ${v}`]
+  }
+
   deleteVlan(list: string): Out {
     const ids = parseVlanList(list)
     if (!ids) throw new InvalidAt(2)
@@ -1099,10 +1111,14 @@ export class IosSession {
     const names: string[] = []
     const cleaned = spec.replace(/\s*-\s*/g, '-').replace(/\s*,\s*/g, ',')
     for (const part of cleaned.split(',')) {
-      const m = /^([A-Za-z-]+)\s*(\d+\/)?(\d+)(?:-(\d+))?$/.exec(part.trim())
+      // bitiş yalnız numara (`Fa0/1 - 3`) ya da aynı tür ve yuvayla tam ad (`Gi0/1 - Gi0/2`;
+      // doğrulanmadı: IOS sürümüne göre)
+      const m = /^([A-Za-z-]+)\s*(\d+\/)?(\d+)(?:-(?:([A-Za-z-]+)\s*(\d+\/)?)?(\d+))?$/.exec(part.trim())
       if (!m) throw new InvalidAt(2)
+      if (m[4] && (canonIf(m[4], (m[5] ?? '') + m[6]) !== canonIf(m[1]!, (m[2] ?? '') + m[6]) || (m[5] ?? '') !== (m[2] ?? '')))
+        throw new InvalidAt(2)
       const from = Number(m[3])
-      const to = m[4] ? Number(m[4]) : from
+      const to = m[6] ? Number(m[6]) : from
       if (to < from) throw new InvalidAt(2)
       for (let i = from; i <= to; i++) {
         const name = canonIf(m[1]!, (m[2] ?? '') + i)

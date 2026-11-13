@@ -1,15 +1,29 @@
 import { IosSession } from './cli/ios'
+import { applyConfigText } from './config-text'
 import { VpcsSession } from './cli/vpcs'
 import { LabRuntime } from './runtime'
 import type { LabDef } from './types'
 
 export type Session = IosSession | VpcsSession
 
-export function createLab(def: LabDef): LabRuntime {
+export interface CreateLabOptions {
+  /**
+   * L5-h: hoşgörülü mod. `initialConfig` bir running-config metni sayılır: satırlar ilk hatada
+   * durmadan uygulanır ve her satırın sonucu `rt.configReport`'a yazılır (bkz. config-text.ts).
+   */
+  lenient?: boolean
+}
+
+export function createLab(def: LabDef, opts: CreateLabOptions = {}): LabRuntime {
   return new LabRuntime(def, (rt) => {
+    if (opts.lenient) rt.configReport = []
     for (const sw of rt.topo.switches) {
       const text = def.initialConfig?.[sw.id]
       if (!text) continue
+      if (opts.lenient) {
+        rt.configReport!.push(...applyConfigText(rt, sw.id, text))
+        continue
+      }
       const s = new IosSession(rt, sw.id)
       s.mode = 'config'
       for (const line of text.split('\n')) {

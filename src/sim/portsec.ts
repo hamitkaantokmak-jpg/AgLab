@@ -13,7 +13,8 @@ import { pk } from './topology'
 import type { PortSecurityConfig, SwitchConfig, SwitchDef } from './types'
 import { pad, padL, shortIf } from './util'
 
-export const PS_MAX_LIMIT = 8192
+// L5-h: AğLab modeli ve PKT dönüştürücüsüyle aynı üst sınır (doğrulanmadı: platforma göre IOS sınırı)
+export const PS_MAX_LIMIT = 1024
 
 export function defaultPortSecurity(): PortSecurityConfig {
   return { enabled: false, max: 1, violation: 'shutdown', sticky: false, macs: [], stickyMacs: [] }

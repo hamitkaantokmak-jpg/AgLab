@@ -17,3 +17,7 @@ export type { BridgeReport, BridgeResult, RejectedItem, UnsupportedItem } from '
 export { pingTrace } from './events'
 export type { PingTrace, TraceRecord } from './events'
 export type { AglabDevice, AglabInterface, AglabLink, AglabTopology } from './aglab'
+// L5-h: PKT IOS metin yolu (hoşgörülü mod, satır raporu, yapısal/CLI karşılaştırması).
+export { cliImport, importReportWithCli, modeledDiffs, modeledProjection } from './cli-import'
+export type { CliImport, ModeledDiff } from './cli-import'
+export type { ConfigLine, LineStatus } from '../sim/config-text'

@@ -5,7 +5,7 @@ import json
 import tempfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
-from aglab_test_support import ROOT, launch_chromium, import_topology
+from aglab_test_support import ROOT, launch_chromium, import_topology, assert_cli_path_matches
 from convert_pkt_to_aglab import convert
 from playwright.sync_api import sync_playwright
 
@@ -74,6 +74,7 @@ cable("SW1", "FastEthernet0/1", "PC10", "FastEthernet0")
 cable("SW1", "FastEthernet0/2", "PC20", "FastEthernet0")
 xml = ET.tostring(root)
 topology, report = convert(xml)
+assert_cli_path_matches(topology)
 router = topology["devices"][0]
 for vlan in (10, 20):
     name = "g0/0." + str(vlan * 10)
@@ -102,6 +103,7 @@ for encapsulation in [
 # A physical parent outside the default port inventory is still created.
 changed = xml.replace(b"GigabitEthernet0/0", b"GigabitEthernet1/0")
 parent_topology, _ = convert(changed)
+assert_cli_path_matches(parent_topology)
 assert "g1/0" in parent_topology["devices"][0]["ports"]
 assert parent_topology["devices"][0]["interfaces"]["g1/0.200"]["parent"] == "g1/0"
 

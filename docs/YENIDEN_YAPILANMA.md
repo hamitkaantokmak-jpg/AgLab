@@ -199,7 +199,7 @@ Korunacaklar (değişmez):
 - Özellik testi: desteklenen alanlarda `toAglab(toLabber(x)) == x`.
 - Desteklenmeyen alanlar opak olarak taşınır ve rapora "modellenmedi" diye yazılır.
 
-**PKT için IOS metin yolu (değerlendirme):**
+**PKT için IOS metin yolu (değerlendirme; L5-h'de uygulandı — `src/sim/config-text.ts`, `src/sim-bridge/cli-import.ts`, UYUMLULUK_MATRISI "L5-h"):**
 
 PKT dönüştürücüsü cihaz başına `config.runningConfig` satırlarını zaten saklıyor. Bu
 satırlar doğrudan Labber CLI'sine verilebilir (`IosSession` global config modunda,

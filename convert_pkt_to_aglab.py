@@ -109,16 +109,20 @@ def parse_vlan_list(value):
 
 def parse_trunk_allowed(value):
     """Return an operation and VLANs, or None for unsupported/invalid syntax."""
-    match=re.fullmatch(r'(?:(add|remove)\s+)?(.+)',value.strip(),re.I)
+    match=re.fullmatch(r'(?:(add|remove|except)\s+)?(.+)',value.strip(),re.I)
     if not match: return None
     action=(match.group(1) or 'set').lower(); value=match.group(2).lower()
+    if action=='except' and value in ('all','none'): return None
     if value=='all': return action,list(range(1,4095))
     if value=='none': return action,[]
     for part in value.split(','):
         if not re.fullmatch(r'\s*\d+(?:\s*-\s*\d+)?\s*',part): return None
         bounds=[int(v) for v in part.split('-')]
         if not all(1 <= v <= 4094 for v in bounds) or bounds[0]>bounds[-1]: return None
-    return action,parse_vlan_list(value)
+    vlans=parse_vlan_list(value)
+    # IOS: `except <liste>` = listedekiler dışındaki bütün VLAN'lar
+    if action=='except': return 'set',[v for v in range(1,4095) if v not in set(vlans)]
+    return action,vlans
 
 def parse_helper_command(line):
     """One unicast IPv4 DHCP relay target; no VRF/options or partial matches."""
@@ -153,7 +157,8 @@ def parse_port_security_command(line, previous=None):
     elif len(args)==4 and args[2]=='violation' and not removing and args[3] in ('shutdown','restrict','protect'):
         policy['violation']=args[3]
     elif len(args)==4 and args[2]=='mac-address':
-        mac=canonical_secure_mac(args[3])
+        # IOS/PT CLI yalnız H.H.H biçimini kabul eder (02aa.0000.0011)
+        mac=canonical_secure_mac(args[3]) if re.fullmatch(r'[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}',args[3]) else None
         if mac is None: return None
         if removing: policy['macs']=[value for value in policy['macs'] if value!=mac]
         elif mac not in policy['macs']:
@@ -269,7 +274,7 @@ def convert(xml_bytes, original_pkt=None):
             ports=[f'fa0/{i}' for i in range(1,25)]+['gi0/1','gi0/2']; interfaces={p:{'mode':'access','vlan':1,'allowed':[1],'enabled':True} for p in ports}
             # Parse explicit access/trunk commands and VLAN database from the source config.
             range_ports=None; range_context={}; security_lines=set()
-            current=None; vlans={1}; ignored_interfaces=[]; stp_priorities={}; explicit_allowed=set(); vlan_names={}; vlan_context=None; management_gateway=''
+            current=None; vlans={1}; ignored_interfaces=[]; stp_priorities={}; explicit_allowed=set(); explicit_access=set(); vlan_names={}; vlan_context=None; management_gateway=''
             for line_no,line in enumerate(cfg.splitlines(),1):
                 if line.strip() in ('!','exit','end'):
                     current=None; range_ports=None; vlan_context=None; continue
@@ -317,7 +322,8 @@ def convert(xml_bytes, original_pkt=None):
                 targets=range_ports or ([current] if current in interfaces else [])
                 if re.match(r'\s*(?:no\s+)?switchport\s+port-security\b',line,re.I):
                     updates={port:parse_port_security_command(line,interfaces[port].get('portSecurity')) for port in targets if port in ports}
-                    if updates and len(updates)==len(targets) and all(policy is not None for policy in updates.values()):
+                    # IOS/PT: port-security yalnız access portta ("Command rejected: … is a dynamic port")
+                    if updates and len(updates)==len(targets) and all(policy is not None for policy in updates.values()) and all(port in explicit_access for port in targets):
                         for port,policy in updates.items(): interfaces[port]['portSecurity']=policy
                         security_lines.add(line_no)
                     continue
@@ -333,8 +339,8 @@ def convert(xml_bytes, original_pkt=None):
                         vid=int(m.group(1))
                         if 1 <= vid <= 4094:
                             interfaces[port]['vlan']=vid; vlans.add(vid)
-                    if re.match(r'\s*switchport mode trunk\s*$',line,re.I): interfaces[port]['mode']='trunk'
-                    if re.match(r'\s*switchport mode access\s*$',line,re.I): interfaces[port]['mode']='access'
+                    if re.match(r'\s*switchport mode trunk\s*$',line,re.I): interfaces[port]['mode']='trunk'; explicit_access.discard(port)
+                    if re.match(r'\s*switchport mode access\s*$',line,re.I): interfaces[port]['mode']='access'; explicit_access.add(port)
                     m=re.match(r'\s*switchport trunk allowed vlan\s+(.+)',line,re.I)
                     if m:
                         parsed=parse_trunk_allowed(m.group(1))

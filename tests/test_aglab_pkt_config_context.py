@@ -5,7 +5,7 @@ import json
 import unittest
 import tempfile
 from unittest.mock import patch
-from aglab_test_support import HTML, launch_chromium
+from aglab_test_support import HTML, launch_chromium, assert_cli_path_matches
 from convert_pkt_to_aglab import main, PacketTracerError
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -46,6 +46,7 @@ def topology(kind, commands, hosts=False):
                 ET.SubElement(cable, key).text = value
     xml = ET.tostring(root)
     obj, report = convert(xml, b"original-pkt")
+    assert_cli_path_matches(obj)
     assert base64.b64decode(obj["sourceArchive"]["decodedXmlBase64"]) == xml
     assert base64.b64decode(obj["sourceArchive"]["originalPacketBase64"]) == b"original-pkt"
     return obj, report
