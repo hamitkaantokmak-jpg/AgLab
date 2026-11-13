@@ -188,7 +188,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     out = cmd("d3", "trace 192.168.2.2 -m 4")
     assert PORT in rows(out)[-1], out
     cmd("d1", "enable")
-    assert "udp 10.0.0.1:" in cmd("d1", "show ip nat translations")
+    nat_rows = cmd("d1", "show ip nat translations")
+    assert "udp  10.0.0.1:" in nat_rows, nat_rows
     print("PASS: local destination router TTL, later missing route and PAT traceroute", flush=True)
     assert not errors, errors
     browser.close()
