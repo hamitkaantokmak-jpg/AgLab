@@ -98,6 +98,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `dhcp-pool-gateway` | DHCP · Adres var, dışarı çıkış yok | **Labber** |
 | `dhcp-excluded-all` | DHCP · Eski bilgisayarlar çalışıyor, yeni gelen adres alamıyor | **Labber** |
 | `dhcp-two-faults` | DHCP · İki kat, iki farklı belirti | **Labber** |
+| `dns-wrong-server-pc` | DNS · Yalnız benim bilgisayarım ERP'yi adıyla açamıyor | **Labber** |
+| `dns-pool-wrong-server` | DNS · 1. katta hiçbir isim çözülmüyor | **Labber** |
+| `dns-service-down` | DNS · Sabahtan beri hiçbir yerde isim çözülmüyor | **Labber** |
+| `dns-no-gateway` | DNS · Yeni bilgisayarda DNS doğru ama isim çözülmüyor | **Labber** |
+| `dns-two-faults` | DNS · Hiçbir yerde isim yok, düzeltince yalnız 2. kat geldi | **Labber** |
 
 ## Labber labları (E)
 
@@ -139,9 +144,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 46 | 1 | 47 |
+| Ortak senaryolar | 51 | 1 | 52 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 99 | 1 | 100 |
+| Toplam | 104 | 1 | 105 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

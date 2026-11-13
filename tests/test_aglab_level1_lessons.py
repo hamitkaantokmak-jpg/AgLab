@@ -22,6 +22,7 @@ FLOW = (ROOT / "src/app/student-flow.js").read_text(encoding="utf-8")
 LESSONS = [
     ("discovery", "discovery", "cdp-lldp.md", "cdp-", "LLDP", "çizimi olmayan ağı çıkarmak"),
     ("dhcp", "dhcp", "dhcp.md", "dhcp-", "169.254", "adres nereden gelir"),
+    ("dns", "dns", "dns.md", "dns-", "nslookup", "isim yok"),
 ]
 PARTS = [
     "## 1. Neden önemli",
