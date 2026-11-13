@@ -122,6 +122,12 @@ export class LabQuery {
     return (m && canonIf(m[1]!, m[2]!)) || port
   }
 
+  /** FHRP: the router's interface is HSRP Active / VRRP Master for this group. */
+  fhrpActive(dev: string, iface: string, group: number): boolean {
+    const name = this.canon(iface)
+    return (this.d.fhrp?.groups ?? []).some((g) => g.group === Number(group) && g.active?.dev === dev && g.active.ifname === name)
+  }
+
   vlanExists(dev: string, vlan: number): boolean {
     return vlanExists(this.d.cfgs[dev]!, vlan)
   }

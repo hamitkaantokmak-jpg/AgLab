@@ -33,11 +33,11 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L5-i TTL, Time Exceeded, traceroute, extended ping | #77 (#76'nın dalından) | birleşti |
 | EtherChannel AğLab modelinde (paralel iş) | #80 (main'den) | açık (birleşmeyi bekliyor) |
 | I-1 içe aktarma ve düzenleyici Labber'a | #81 (main'den, dal `claude/i1-workspace-labber`) | açık (birleşmeyi bekliyor) |
-| FHRP (HSRP + VRRP) Labber'da | — | sıradaki iş (aşağıda) |
+| FHRP (HSRP + VRRP) Labber'da | #82 (#81'in dalından, taban `claude/i1-workspace-labber`) | açık (birleşmeyi bekliyor) |
 
 **Durum:** #75–#77 birleşti. **I-1 PR'ı #81** açık (taban `main`; #80 EtherChannel birleşmediği için
-onun üstüne kurulmadı). Hiçbir PR birleştirilmedi. L6 ve L7'ye başlanmadı. Sıradaki iş **FHRP**
-(HSRP + VRRP), ayrı PR. Her PR'dan önce `main` çekilir; #80 birleşmişse onun üstüne kurulur
+onun üstüne kurulmadı). **FHRP PR'ı #82** açık (taban I-1 dalı). Hiçbir PR birleştirilmedi. L6 ve
+L7'ye başlanmadı; kullanıcı talimatı olmadan başlanmaz. Her PR'dan önce `main` çekilir; #80 birleşmişse onun üstüne kurulur
 (`src/sim-bridge/bridge.ts`, `src/app/main.js` çakışmasında iki tarafın kodu korunur).
 
 ### I-1 (#81) özeti
@@ -57,15 +57,21 @@ onun üstüne kurulmadı). Hiçbir PR birleştirilmedi. L6 ve L7'ye başlanmadı
 - Yerel: `python run_pipeline.py` 91/91, vitest 566/566, `tsc`, Prettier, black, Python 3.11
   derlemesi temiz.
 
-### FHRP için (sıradaki iş, kullanıcı talimatı)
+### FHRP (#82) özeti
 
-HSRP (`standby <grp> ip|priority|preempt|track … decrement`, `track <n> interface <if>
-line-protocol`, v1 MAC `0000.0c07.acXX`, `show standby [brief]`) ve VRRP (`vrrp <grp>
-ip|priority`, preempt varsayılan açık, sahip 255, MAC `0000.5e00.01XX`, `show vrrp brief`). AğLab
-router arayüz alanları `hsrp: [...]`, `vrrp: [...]` iki yönde; `validateTopologyData` reddetmez;
-LabQuery `fhrpActive` + `SHARED_QUERY_FNS`. Testler: seçim, preempt farkı, track devri, grup
-uyuşmazlığında iki Active, güç kesintisi, PC trafiği yeni aktiften. `build_html.py` +
-`build_lab_engine_map.py`, bütün testler, PR (birleştirme yok).
+Dal `claude/fhrp-hsrp-vrrp`, I-1 dalından (Playwright testi içe aktarılan topolojinin Labber'da
+açılmasına dayanır); PR tabanı `claude/i1-workspace-labber`. #81 birleşince taban `main`'e çevrilmeli.
+- Motor `src/sim/fhrp.ts`: üyeler (yayın alanı + protokol + grup + VIP), seçim, preempt geçmişi
+  (`LabRuntime.fhrpActive`; lab başlangıcı/kayıttan açılışta sıfırlanır, düzenleyici uzlaştırmasında
+  `labber-session.js` taşır), track, sanal MAC; `net.ts arpResolve/owns` VIP'yi Active/Master'a verir.
+- IOS: `standby …`, `vrrp …`, `track N interface <if> line-protocol` (`(config-track)#`),
+  `show standby [brief]`, `show vrrp [brief]`, `show track`; running-config satırları; STATECHANGE syslog'u.
+- Köprü: router arayüzü/alt arayüzü `hsrp`, `vrrp`; router `tracks`. Gidiş-dönüş birebir.
+- Ürün: `validateTopologyData` alanları kabul eder; `SHARED_QUERY_FNS` += `fhrpActive`; eski motor
+  kararında rozet "HSRP/VRRP eski motorda modellenmez".
+- Testler: `tests/sim/fhrp.test.ts` (22), `tests/test_aglab_fhrp.py` (7 bölüm). Doğrulanmayanlar
+  UYUMLULUK_MATRISI "FHRP"de (syslog ara durumları, VIP alt ağ denetimi). Aynı grup + farklı VIP: HSRP tek
+  seçim + `%HSRP-4-DIFFVIP1`, VRRP iki Master (kullanıcı düzeltmesi).
 
 
 Kalan PR'ların kapsamı (kullanıcı talimatı):

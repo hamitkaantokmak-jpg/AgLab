@@ -344,3 +344,28 @@ düzeltmeleri: [MOTOR_BULGULARI.md](MOTOR_BULGULARI.md).
 Çalışma alanı testleri (`test_aglab_icmp_ttl`, `test_aglab_traceroute`, `test_aglab_routed_frames`,
 `test_aglab_simulation_mode` ve DEVIR_NOTU'ndaki tablo) bu PR'da Labber çıktısına uyarlandı; her
 değişen beklentinin gerekçesi testte yorum olarak yazılı.
+
+## FHRP: HSRP ve VRRP (Labber kararları)
+
+Motor: `src/sim/fhrp.ts`. AğLab modeli: router arayüzünde (fiziksel ve alt arayüz)
+`hsrp: [{group, ip, priority?, preempt?, track?: [{object, decrement?} | {interface, decrement?}]}]`,
+`vrrp: [{group, ip, priority?, preempt?}]`; router'da `tracks: [{id, interface}]`. `validateTopologyData`
+bu alanları reddetmez; ayrıntılı denetim köprüdedir (geçersiz grup → "Reddedildi" nedeniyle eski motor).
+Eski motor FHRP modellemez: içerik eski motorda açılırsa rozet "HSRP/VRRP eski motorda modellenmez" der.
+LabQuery: `fhrpActive(router, arayüz, grup)` (`SHARED_QUERY_FNS`).
+
+| Konu | IOS | Labber | Karar |
+|---|---|---|---|
+| HSRP komutları | `standby [<grp>] ip <vip>`, `priority <0-255>` (100), `preempt` (kapalı), `track <nesne> [decrement N]`, `track <arayüz> [N]` (varsayılan azaltma 10), `no standby <grp> …` | Aynı; grup 0-255 (v1) | **Labber (IOS).** `standby version 2`, zamanlayıcılar, kimlik doğrulama, `standby <grp> name`, `use-bia` modellenmez (açık ileti). |
+| VRRP komutları | `vrrp <1-255> ip <vip>`, `priority <1-254>` (100), preempt varsayılan açık (`no vrrp <grp> preempt`) | Aynı | **Labber (IOS).** `vrrp … track`, zamanlayıcılar, kimlik doğrulama yok: `% Invalid input`. |
+| Seçim | En yüksek öncelik, eşitse yüksek arayüz adresi Active/Master; HSRP'de sonraki Standby, diğerleri Listen; VRRP'de diğerleri Backup | Aynı | **Labber.** |
+| Preempt | Active yerinde kalır; yalnız preempt eden ve önceliği **büyük** olan devralır | Aynı (çalışma zamanı önceki Active'i tutar) | **Labber.** Lab başlangıcı/kayıttan açılış bütün üyelerin birlikte açılışıdır: en yüksek öncelik kazanır. |
+| VRRP adres sahibi | VIP arayüzün kendi adresiyse öncelik 255, her zaman Master | Aynı; `show vrrp brief` Own `Y` | **Labber.** |
+| Track | `track N interface <if> line-protocol`; düşükse öncelik azalır | Aynı; `show track` | **Labber.** Yalnız line-protocol nesnesi (IP SLA, rota izleme yok). `(config-track)#` alt kipinde yalnız `exit`/`end`/`do`. |
+| Sanal MAC ve ARP | HSRP v1 `0000.0c07.acXX`, VRRP `0000.5e00.01XX`; VIP ARP'sini Active/Master yanıtlar | Aynı; VIP'ye ping'i Active/Master yanıtlar | **Labber.** |
+| Grup numarası farklı | Ayrı gruplar: iki Active, Standby `unknown` | Aynı | **Labber.** |
+| Aynı grup, farklı VIP | HSRP: hello'lar kabul edilir, seçim normal (bir Active, bir Standby); VIP'i Active'inkinden farklı router `%HSRP-4-DIFFVIP1: … Grp N active routers virtual IP address A.B.C.D is different to the locally configured address W.X.Y.Z` yazar, `show standby` yerel VIP'i gösterir. VRRP: VIP listesi uyuşmayan ilan düşürülür (RFC 3768 7.1) → iki Master | Aynı. VIP ARP'sini/ping'ini Active yanıtlar (Active'in VIP'i); Standby'ın yerel VIP'ini kimse yanıtlamaz | **Labber (IOS).** |
+| Durum syslog'u | `%HSRP-5-STATECHANGE: Gi0/0 Grp 1 state Standby -> Active`, `%VRRP-6-STATECHANGE: …` | Aynı biçim | **Doğrulanmadı:** ara durumlar (Speak, Learn) ve tam/kısa arayüz adı sürüme göre değişir. |
+| `show standby [brief]`, `show vrrp [brief]` | Zamanlayıcı geri sayımları ("Next hello sent in", "expires in"), durum değişikliği sayacı | Bunlar yazılmaz; diğer satırlar IOS 15 biçiminde; VRRP Time = Master Down interval (ms) | Kabul edildi (zaman modellenmez). |
+| VIP alt ağ denetimi | VIP arayüz alt ağında değilse uyarı | Denetlenmez | **Doğrulanmadı.** |
+| SVI üzerinde FHRP | L3 switch SVI'sinde de çalışır | Motor çalıştırır; AğLab modelinde SVI alanı yok → geri yazımda açık hata (BridgeError) | Router arayüzü ve alt arayüzü kapsanır. |

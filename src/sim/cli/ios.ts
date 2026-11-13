@@ -1,9 +1,10 @@
 // IOS-like CLI session for one switch.
 
+import * as fhrp from '../fhrp'
 import { defaultSvi, defaultSwitchConfig, defaultVlanName, pickL2, RESERVED_VLANS } from '../config'
 import { arpMac, deliver, l3Ifs, ping, traceProbe } from '../net'
 import type { LabRuntime } from '../runtime'
-import type { ChannelMode, DhcpPool, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
+import type { ChannelMode, DhcpPool, FhrpTrack, HsrpGroup, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { canonIf, clone, ifNum, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
@@ -12,7 +13,7 @@ import * as psec from '../portsec'
 import * as acl from '../acl'
 import * as nat from '../nat'
 
-export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl'
+export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl' | 'track'
 
 type P = Pattern<IosSession>
 type Out = string[] | void
@@ -75,6 +76,12 @@ const showPatterns = (privOnly: boolean): P[] => {
     // L5-d: NAT (yalnız router; switch'te gizli)
     { p: 'show ip nat translations', run: (x) => nat.showNatTranslations(x.cfg, x.dev, x.rt.natTable) },
     { p: 'show ip nat statistics', run: (x) => x.natStatistics() },
+    // FHRP
+    { p: 'show standby', run: (x) => fhrp.showStandby(x.rt.derived, x.dev) },
+    { p: 'show standby brief', run: (x) => fhrp.showStandbyBrief(x.rt.derived, x.dev) },
+    { p: 'show vrrp', run: (x) => fhrp.showVrrp(x.rt.derived, x.dev) },
+    { p: 'show vrrp brief', run: (x) => fhrp.showVrrpBrief(x.rt.derived, x.dev) },
+    { p: 'show track', run: (x) => fhrp.showTrack(x.rt.derived, x.dev) },
     { p: 'show ip interface <if>', run: (x, a) => show.showIpInterface(x.rt, x.dev, x.resolveL3(a[3]!, a[4]!, 3)) },
     { p: 'show port-security address', run: (x) => psec.showPortSecurityAddress(x.rt, x.dev) },
     { p: 'show port-security interface <if>', run: (x, a) => psec.showPortSecurityInterface(x.rt, x.dev, x.physName(a[3]!, a[4]!, 3)), ifTypes: ['FastEthernet', 'GigabitEthernet'] },
@@ -178,6 +185,9 @@ const configPatterns = (def: SwitchDef): P[] => {
       },
     },
     { p: 'vlan <vlist:ISL VLAN IDs 1-4094>', run: (x, a) => x.enterVlan(a[1]!) },
+    // FHRP: izlenen nesne (yalnız arayüz line-protocol'ü modellenir)
+    { p: 'track <1-1000:Tracked object> interface <if> line-protocol', run: (x, a) => x.trackObject(Number(a[1]), x.resolveL3(a[3]!, a[4]!, 3)) },
+    { p: 'no track <1-1000:Tracked object>', run: (x, a) => void delete x.cfg.tracks?.[a[2]!] },
     { p: 'no vlan <vlist:ISL VLAN IDs 1-4094>', run: (x, a) => x.deleteVlan(a[2]!) },
     { p: 'interface <if>', run: (x, a) => x.enterIf(a[1]!, a[2]!) },
     { p: 'interface range <LINE:Interface range, e.g. fa0/1 - 4, gi0/1>', run: (x, a) => x.enterRange(a[2]!) },
@@ -300,6 +310,46 @@ const ROUTER_HIDDEN_CONFIG = /^(no )?(vlan|spanning-tree|errdisable) /
 const SWITCH_HIDDEN_SHOW = /^(show|clear) ip nat /
 const ROUTER_HIDDEN_SHOW = /^show (vlan|spanning-tree|mac address-table|interfaces (trunk|status|switchport)|interfaces <if> switchport|etherchannel|errdisable|vtp|port-security)/
 
+/** FHRP: HSRP v1 (`standby`) and VRRP v2 (`vrrp`) on L3 interfaces. */
+function fhrpIfPatterns(): P[] {
+  const HG = '<0-255:group number>', VG = '<1-255:Group number>'
+  const track = (t: FhrpTrack) => (g: HsrpGroup) => {
+    const list = (g.tracks ?? []).filter((x) => (t.obj !== undefined ? x.obj !== t.obj : x.iface !== t.iface))
+    g.tracks = [...list, t]
+  }
+  const untrack = (t: FhrpTrack) => (g: HsrpGroup) => {
+    g.tracks = (g.tracks ?? []).filter((x) => (t.obj !== undefined ? x.obj !== t.obj : x.iface !== t.iface))
+    if (!g.tracks.length) delete g.tracks
+  }
+  return [
+    { p: `standby ${HG} ip <A.B.C.D:Virtual IP address>`, run: (x, a) => x.fhrp('hsrp', Number(a[1]), (g) => void (g.ip = a[3]!)) },
+    { p: 'standby ip <A.B.C.D:Virtual IP address>', run: (x, a) => x.fhrp('hsrp', 0, (g) => void (g.ip = a[2]!)) },
+    { p: `no standby ${HG} ip`, run: (x, a) => x.fhrp('hsrp', Number(a[2]), (g) => void (g.ip = null), false) },
+    { p: `no standby ${HG} ip <A.B.C.D:Virtual IP address>`, run: (x, a) => x.fhrp('hsrp', Number(a[2]), (g) => void (g.ip = null), false) },
+    { p: `standby ${HG} priority <0-255:Priority level>`, run: (x, a) => x.fhrp('hsrp', Number(a[1]), (g) => void (g.priority = Number(a[3]))) },
+    { p: `no standby ${HG} priority`, run: (x, a) => x.fhrp('hsrp', Number(a[2]), (g) => void delete g.priority, false) },
+    { p: `standby ${HG} preempt`, run: (x, a) => x.fhrp('hsrp', Number(a[1]), (g) => void (g.preempt = true)) },
+    { p: `no standby ${HG} preempt`, run: (x, a) => x.fhrp('hsrp', Number(a[2]), (g) => void delete g.preempt, false) },
+    { p: `standby ${HG} track <1-1000:Tracked object number>`, run: (x, a) => x.fhrp('hsrp', Number(a[1]), track({ obj: Number(a[3]) })) },
+    { p: `standby ${HG} track <1-1000:Tracked object number> decrement <1-255:Priority decrement>`, run: (x, a) => x.fhrp('hsrp', Number(a[1]), track({ obj: Number(a[3]), decrement: Number(a[5]) })) },
+    { p: `standby ${HG} track <if>`, run: (x, a) => x.fhrp('hsrp', Number(a[1]), track({ iface: x.resolveL3(a[3]!, a[4]!, 3) })) },
+    { p: `standby ${HG} track <if> <1-255:Priority decrement>`, run: (x, a) => x.fhrp('hsrp', Number(a[1]), track({ iface: x.resolveL3(a[3]!, a[4]!, 3), decrement: Number(a[5]) })) },
+    { p: `no standby ${HG} track <1-1000:Tracked object number>`, run: (x, a) => x.fhrp('hsrp', Number(a[2]), untrack({ obj: Number(a[4]) }), false) },
+    { p: `no standby ${HG} track <if>`, run: (x, a) => x.fhrp('hsrp', Number(a[2]), untrack({ iface: x.resolveL3(a[4]!, a[5]!, 4) }), false) },
+    { p: `no standby ${HG}`, run: (x, a) => x.fhrp('hsrp', Number(a[2]), (g) => void Object.assign(g, { ip: null, priority: undefined, preempt: undefined, tracks: undefined }), false) },
+    { p: 'standby version 1', run: () => undefined },
+    { p: 'standby version 2', run: () => ['% HSRP version 2 is not modelled in this lab.'] },
+    { p: `vrrp ${VG} ip <A.B.C.D:IP address>`, run: (x, a) => x.fhrp('vrrp', Number(a[1]), (g) => void (g.ip = a[3]!)) },
+    { p: `no vrrp ${VG} ip`, run: (x, a) => x.fhrp('vrrp', Number(a[2]), (g) => void (g.ip = null), false) },
+    { p: `no vrrp ${VG} ip <A.B.C.D:IP address>`, run: (x, a) => x.fhrp('vrrp', Number(a[2]), (g) => void (g.ip = null), false) },
+    { p: `vrrp ${VG} priority <1-254:Priority level>`, run: (x, a) => x.fhrp('vrrp', Number(a[1]), (g) => void (g.priority = Number(a[3]))) },
+    { p: `no vrrp ${VG} priority`, run: (x, a) => x.fhrp('vrrp', Number(a[2]), (g) => void delete g.priority, false) },
+    { p: `vrrp ${VG} preempt`, run: (x, a) => x.fhrp('vrrp', Number(a[1]), (g) => void delete g.preempt) },
+    { p: `no vrrp ${VG} preempt`, run: (x, a) => x.fhrp('vrrp', Number(a[2]), (g) => void (g.preempt = false)) },
+    { p: `no vrrp ${VG}`, run: (x, a) => x.fhrp('vrrp', Number(a[2]), (g) => void Object.assign(g, { ip: null, priority: undefined, preempt: undefined }), false) },
+  ]
+}
+
 const l3OptPatterns: P[] = [
   { p: 'ip ospf cost <1-65535:Cost>', run: (x, a) => x.eachL3((o) => void (o.ospfCost = Number(a[3]))) },
   { p: 'no ip ospf cost', run: (x) => x.eachL3((o) => void delete o.ospfCost) },
@@ -342,6 +392,7 @@ const l3OptPatterns: P[] = [
   { p: 'no ip access-group <WORD:IP access list (standard or extended)> in', run: (x) => x.eachL3((o) => void delete o.aclIn) },
   { p: 'no ip access-group <WORD:IP access list (standard or extended)> out', run: (x) => x.eachL3((o) => void delete o.aclOut) },
   { p: 'no ip access-group in', run: (x) => x.eachL3((o) => void delete o.aclIn) },
+  ...fhrpIfPatterns(),
   { p: 'no ip access-group out', run: (x) => x.eachL3((o) => void delete o.aclOut) },
 ]
 
@@ -589,6 +640,8 @@ function tries(def: SwitchDef) {
       router: buildTrie(routerPatterns),
       dhcp: buildTrie(dhcpPoolPatterns),
       acl: buildTrie(aclPatterns),
+      // FHRP: `track N interface … line-protocol` alt kipi (gecikme vb. modellenmez)
+      track: buildTrie(commonSub),
     }
     trieCache.set(def, t)
   }
@@ -640,13 +693,15 @@ export class IosSession {
         return h + '(config-router)#'
       case 'dhcp':
         return h + '(dhcp-config)#'
+      case 'track':
+        return h + '(config-track)#'
       case 'acl':
         return h + (this.cfg.acls?.[this.aclName]?.type === 'extended' ? '(config-ext-nacl)#' : '(config-std-nacl)#')
     }
   }
 
   get inConfig() {
-    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl'
+    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track'
   }
 
   private trie(): TrieNode<IosSession> {
@@ -695,7 +750,7 @@ export class IosSession {
   private run(cmd: string): string[] {
     let r = parse(this.trie(), cmd)
     // in a sub-mode, a global config command drops back to config mode (as IOS does)
-    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl') && r.err !== 'empty') {
+    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track') && r.err !== 'empty') {
       const g = parse(tries(this.def).config, cmd)
       if (g.ok) {
         this.mode = 'config'
@@ -1035,6 +1090,33 @@ export class IosSession {
   }
 
   /** An L3 interface name for show commands (physical, subinterface, SVI, loopback). */
+  // ---- FHRP ----
+
+  trackObject(n: number, iface: string): Out {
+    ;(this.cfg.tracks ??= {})[String(n)] = { iface }
+    this.mode = 'track'
+  }
+
+  /** Apply to group `n` of HSRP/VRRP on the interface; empty groups are removed (as IOS). */
+  fhrp(proto: 'hsrp' | 'vrrp', n: number, fn: (g: HsrpGroup) => Out, create = true): Out {
+    let out: Out = undefined
+    this.eachL3((o) => {
+      const list = (proto === 'hsrp' ? (o.hsrp ??= []) : (o.vrrp ??= [])) as HsrpGroup[]
+      let g = list.find((x) => x.group === n)
+      if (!g && create) {
+        g = { group: n, ip: null }
+        list.push(g)
+        list.sort((a, b) => a.group - b.group)
+      }
+      if (g) out = fn(g)
+      const empty = (x: HsrpGroup) => !x.ip && x.priority === undefined && x.preempt === undefined && !x.tracks?.length
+      const kept = list.filter((x) => !empty(x))
+      if (proto === 'hsrp') kept.length ? (o.hsrp = kept) : delete o.hsrp
+      else kept.length ? (o.vrrp = kept) : delete o.vrrp
+    })
+    return out
+  }
+
   resolveL3(type: string, num: string, argIndex: number): string {
     return this.resolveIf(type, num, argIndex, false)
   }

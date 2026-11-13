@@ -25,7 +25,20 @@ const aglabEngineChoice = (() => {
   /** İçerik için motor kararı: { engine: 'labber' | 'legacy', reasons: [] }. */
   function decide(topology) {
     const report = AgLabSim.toLabber(topology).report;
-    return { engine: report.engineDecision, reasons: report.reasons.slice() };
+    const reasons = report.reasons.slice();
+    // FHRP eski motorda yoktur: içerik eski motorda açılırsa gruplar sessizce kaybolmaz,
+    // rozet bunu söyler (AGENTS.md: sessiz veri kaybı raporlanır).
+    const fhrp = (topology.devices || []).some(
+      (d) =>
+        (Array.isArray(d.tracks) && d.tracks.length) ||
+        Object.values(d.interfaces || {}).some(
+          (i) =>
+            (Array.isArray(i?.hsrp) && i.hsrp.length) || (Array.isArray(i?.vrrp) && i.vrrp.length),
+        ),
+    );
+    if (report.engineDecision !== 'labber' && fhrp)
+      reasons.push('HSRP/VRRP eski motorda modellenmez (gruplar ve track yok sayılır)');
+    return { engine: report.engineDecision, reasons };
   }
   function badgeText(decision) {
     return decision.engine === 'labber'

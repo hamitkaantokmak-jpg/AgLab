@@ -125,6 +125,8 @@ export interface Derived {
   natTable?: NatEntry[]
   /** I-1: ARP önbelleği ('dev>ip'; runtime'ınki): sıcak girdide ARP başarısızlığı sessizdir */
   arpCache?: Set<string>
+  /** FHRP: HSRP/VRRP members and elected Active/Master (filled by the runtime; see fhrp.ts) */
+  fhrp?: import('./fhrp').FhrpState
 }
 
 const protoOf = (m: ChannelMode): 'LACP' | 'PAgP' | '-' =>

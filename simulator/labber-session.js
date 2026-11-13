@@ -194,6 +194,9 @@ const aglabLabber = (() => {
     for (const m of old.seen) rt.seen.add(m);
     for (const a of old.arp) if (rt.topo.devices[a.split('>')[0]]) rt.arp.add(a);
     rt.logs = old.logs.slice();
+    // FHRP: Active/Master geçmişi taşınır (preempt yoksa düzenleme rolü geri almaz)
+    rt.fhrpActive = new Map(old.fhrpActive);
+    rt.fhrpStates = new Map(old.fhrpStates);
     rt.commit();
     for (const [dev, s] of Object.entries(state.sessions)) {
       if (rt.topo.devices[dev]) s.rt = rt;

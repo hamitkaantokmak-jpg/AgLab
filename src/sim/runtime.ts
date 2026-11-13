@@ -1,5 +1,6 @@
 // Lab runtime: owns configs, recomputes derived state, emits syslog on state changes.
 
+import { computeFhrp, memberId, type FhrpState } from './fhrp'
 import type { ConfigLine } from './config-text'
 import type { NatEntry } from './nat'
 import { cdpBetween } from './discovery'
@@ -122,6 +123,10 @@ export class LabRuntime {
   natHits = 0
   /** L5-d: packets dropped because the pool had no free address */
   natMisses = 0
+  /** FHRP: group key → member id of the current Active/Master (preemption needs history) */
+  fhrpActive = new Map<string, string>()
+  /** FHRP: member id → last state (for %HSRP/%VRRP state change syslog) */
+  fhrpStates = new Map<string, string>()
   /** L5-h: per-line result of a lenient (running-config) initial configuration */
   configReport?: ConfigLine[]
   private seq = 0
@@ -153,6 +158,8 @@ export class LabRuntime {
     this.natHits = 0
     this.natMisses = 0
     this.dhcp = []
+    this.fhrpActive.clear()
+    this.fhrpStates.clear()
     this.hw = noHardwareFaults()
     for (const l of this.def.links)
       if (l.up === false) for (const [dev, port] of [l.a, l.b]) this.hw.cut.add(pk(dev, port))
@@ -162,6 +169,8 @@ export class LabRuntime {
     }
     this.derived = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw)
     this.applyInitial(this)
+    // FHRP: lab başlangıcı bütün üyelerin birlikte açılışıdır (seçim önceliğe göre)
+    this.fhrpActive.clear()
     this.derived = this.recompute()
     for (const sw of this.topo.switches) this.startup[sw.id] = clone(this.running[sw.id]!)
     this.seen.clear()
@@ -259,7 +268,30 @@ export class LabRuntime {
     }
     d.natTable = this.natTable
     d.arpCache = this.arp
+    d.fhrp = computeFhrp(d, this.fhrpActive)
+    this.fhrpLog(d.fhrp)
     return d
+  }
+
+  /** FHRP state changes (IOS 15 biçimi; ara Speak/Learn durumları modellenmez). */
+  private fhrpQuiet = false
+  private fhrpLog(f: FhrpState) {
+    const now = new Map<string, string>()
+    for (const m of f.members) {
+      const id = memberId(m)
+      now.set(id, m.state)
+      // HSRP: Active'in VIP'i yerel yapılandırmadan farklıysa (koşul yeni oluştuğunda bir kez)
+      const g = m.proto === 'hsrp' && m.key ? f.groups.find((x) => x.key === m.key) : undefined
+      const diff = g?.active && g.active !== m && g.active.vip !== m.vip ? `diffvip:${g.active.vip}` : ''
+      if (diff) now.set(id + '|diffvip', diff)
+      if (diff && this.fhrpStates.get(id + '|diffvip') !== diff && !this.fhrpQuiet)
+        this.log(m.dev, `%HSRP-4-DIFFVIP1: ${shortIf(m.ifname)} Grp ${m.group} active routers virtual IP address ${g!.active!.vip} is different to the locally configured address ${m.vip}`)
+      const was = this.fhrpStates.get(id) ?? 'Init'
+      if (was === m.state || this.fhrpQuiet) continue
+      const tag = m.proto === 'hsrp' ? '%HSRP-5-STATECHANGE' : '%VRRP-6-STATECHANGE'
+      this.log(m.dev, `${tag}: ${shortIf(m.ifname)} Grp ${m.group} state ${was} -> ${m.state}`)
+    }
+    this.fhrpStates = now
   }
 
   /**
@@ -610,7 +642,12 @@ export class LabRuntime {
     this.natMisses = s.natMisses ?? 0
     if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) }
     this.dhcp = clone(s.dhcp ?? [])
+    // FHRP: kayıttan açılış bütün üyelerin birlikte açılışıdır (en yüksek öncelik); log yazılmaz
+    this.fhrpActive.clear()
+    this.fhrpStates.clear()
+    this.fhrpQuiet = true
     this.derived = this.recompute()
+    this.fhrpQuiet = false
     this.emit()
     return true
   }
