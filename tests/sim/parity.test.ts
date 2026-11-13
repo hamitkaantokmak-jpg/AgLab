@@ -67,6 +67,8 @@ const note = (kind: string, where: string, oracle: unknown, labber: unknown) => 
 }
 let compared = { links: 0, roots: 0, blocked: 0, routes: 0, recursive: 0, floating: 0, topologies: 0, linkStates: 0, linksDown: 0 }
 let skippedStp = 0
+/** EtherChannel içeren, L2 karşılaştırması atlanan topolojiler (oracle kanal modellemez) */
+const skippedEtherchannel: string[] = []
 /** köprüden geçemeyen (legacy kararlı) rastgele router zinciri sayısı; L4'te 0 olmalı */
 let adRejected = 0
 
@@ -126,6 +128,13 @@ function compareL2(name: string, t: AglabTopology) {
     compared.linkStates++
     if (!ora) compared.linksDown++
     if (lab !== ora) note('link-up', `${name} ${l.a}:${l.portA}-${l.b}:${l.portB}`, ora, lab)
+  }
+  // EtherChannel (#80): oracle Port-channel modellemez; üye kabloları ayrı bağlantı sayar (STP birini
+  // bloklar, üyeye göre taşır). Labber kanalı tek mantıksal port (Po) görür. Kanallı topolojide VLAN
+  // taşıma ve STP karşılaştırması anlamsızdır: atlanır ve sayılır (bağlantı durumu yukarıda karşılaştırıldı).
+  if (t.devices.some((x) => Object.values(x.interfaces ?? {}).some((i) => (i as { channelGroup?: unknown }).channelGroup))) {
+    skippedEtherchannel.push(name)
+    return
   }
   const lport = (dev: string, port: string) => d.lportOfPhys[`${dev}|${canon(dev, port)}`]
   const macToDev = new Map(Object.values(d.stp).flatMap((bs) => Object.entries(bs).map(([dev, b]) => [b.mac, dev])))
@@ -501,7 +510,7 @@ describe('oracle paritesi', () => {
     for (let seed = 1; seed <= 300; seed++) compareL2(`loop-${seed}`, loopTopology(seed))
     for (let seed = 1; seed <= 300; seed++) compareL2(`loop-hw-${seed}`, withHardwareFaults(loopTopology(seed), seed))
     for (let seed = 1; seed <= 300; seed++) compareRoutes(seed)
-    const result = { compared, skippedStpVlans: skippedStp, bridgeRejectedRouteTopologies: adRejected, counts, bySource, examples: diffs, known: [...KNOWN_DIFFS] }
+    const result = { compared, skippedStpVlans: skippedStp, skippedEtherchannel, bridgeRejectedRouteTopologies: adRejected, counts, bySource, examples: diffs, known: [...KNOWN_DIFFS] }
     const out = process.env.AGLAB_TEST_ARTIFACT_DIR
     if (out) {
       mkdirSync(out, { recursive: true })
@@ -510,6 +519,8 @@ describe('oracle paritesi', () => {
     console.log('SIM_PARITY ' + JSON.stringify({ compared, skippedStp, adRejected, counts }))
     // Gerçek içerikte (40 Akademi labı başlangıç/hedef + JSON senaryoları) fark yok.
     expect(bySource['content']).toEqual({})
+    // Atlanan topolojilerin hepsi gerçek içerik (ec-* senaryoları); rastgele topolojide kanal yok
+    expect(skippedEtherchannel.filter((n) => /^(loop-|seed )/.test(n))).toEqual([])
     expect(compared.topologies).toBeGreaterThan(300)
     expect(compared.routes).toBeGreaterThan(500)
     // L4: rastgele zincirlerin hepsi köprüden geçer; özyinelemeli ve yedek (AD) rotalar gerçekten sınanır
