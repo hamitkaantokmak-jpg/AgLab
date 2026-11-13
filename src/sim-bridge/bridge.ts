@@ -97,7 +97,6 @@ const FEATURE_REASON: Record<string, string> = {
   ospf: 'Switch üzerinde OSPF AğLab modelinde yok',
   bgp: 'BGP Labber\'da yok (L5)',
   services: 'Sunucu servisleri yalnız Server cihazında modellenir',
-  http: 'Sunucu servisleri içinde HTTP Labber\'da yok (L5)',
   startupConfig: 'Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)',
   portSecurity: 'Port security Labber\'da yok (L5)',
   errdisabled: 'Port security err-disable durumu Labber\'da yok (L5)',
@@ -536,8 +535,9 @@ export function toLabber(input: AglabTopology): BridgeResult {
       else
         for (const [name, on] of Object.entries(services ?? {})) {
           if (typeof on !== 'boolean') reject(id, `services.${name}`, 'Servis durumu true/false olmalı')
-          else if (name !== 'dhcp' && name !== 'dns' && on)
-            unsupported(id, `services.${name}`, name === 'http' ? FEATURE_REASON['http']! : 'Bilinmeyen sunucu servisleri Labber\'da yok: ' + name)
+          // L5-g: HTTP (TCP 80) Labber'da
+          else if (name !== 'dhcp' && name !== 'dns' && name !== 'http' && on)
+            unsupported(id, `services.${name}`, 'Bilinmeyen sunucu servisleri Labber\'da yok: ' + name)
         }
     }
 
@@ -576,8 +576,8 @@ export function toLabber(input: AglabTopology): BridgeResult {
       }
       if (d.type === 'Server') {
         const sv = (d.services ?? {}) as Record<string, unknown>
-        if (sv['dhcp'] === true || sv['dns'] === true)
-          pcs[id]!.services = { ...(sv['dhcp'] === true ? { dhcp: true } : {}), ...(sv['dns'] === true ? { dns: true } : {}) }
+        const on = (['dhcp', 'dns', 'http'] as const).filter((k) => sv[k] === true)
+        if (on.length) pcs[id]!.services = Object.fromEntries(on.map((k) => [k, true]))
       }
       const mac = resolveMac ? intToDotted(macToInt(resolveMac(d))) : '0000.0000.0000'
       claimMac(id, mac)
@@ -879,7 +879,7 @@ export function toAglab(
       if (d.type === 'Server') {
         const prev = (d.services ?? {}) as Record<string, unknown>
         const next: Record<string, unknown> = { ...prev }
-        for (const k of ['dhcp', 'dns'] as const) {
+        for (const k of ['dhcp', 'dns', 'http'] as const) {
           const on = !!pc.services?.[k]
           if (k in prev || on) next[k] = on
         }

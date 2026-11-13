@@ -255,8 +255,9 @@ export interface PcConfig {
   dhcp?: boolean
   /** L5-b: DNS server (`ip dns`, or handed out by DHCP) */
   dns?: string | null
-  /** L5-b: services of a server (PcDef.server): DHCP (implicit pool) and DNS (lab host names) */
-  services?: { dhcp?: boolean; dns?: boolean }
+  /** L5-b: services of a server (PcDef.server): DHCP (implicit pool) and DNS (lab host names);
+   *  L5-g: HTTP (TCP 80) */
+  services?: { dhcp?: boolean; dns?: boolean; http?: boolean }
 }
 
 // ---- Lab definition (authored by lab writers) ----

@@ -1,4 +1,4 @@
-# Devir notu — Labber entegrasyonu (L5-f → L5-e → L5-c → L5-d tamam)
+# Devir notu — Labber entegrasyonu (L5-g → L5-h → I-1)
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
@@ -23,27 +23,36 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L5-a router alt arayüzü / 802.1Q; `subif-missing` + `roas-*` | #66 | birleşti |
 | CI tetikleme: push yalnız main, dal başına `concurrency` | #67 | birleşti |
 | L5-b DHCP/DNS; `relay-trunk` | #68 | birleşti (aynı işi yapan #69 kapatıldı) |
-| L5-f CDP/LLDP | #70 (main'den) | açık (birleşmeyi bekliyor) |
-| L5-e port security; `port-security` | #72 (#70'in dalından) | açık (birleşmeyi bekliyor) |
-| L5-c ACL | #73 (#72'nin dalından) | açık (birleşmeyi bekliyor) |
-| L5-d NAT/PAT; `nat-pat` | #74 (#73'ün dalından) | açık (birleşmeyi bekliyor) |
+| L5-f CDP/LLDP | #70 | birleşti |
+| L5-e port security; `port-security` | #72 | birleşti |
+| L5-c ACL | #73 | birleşti |
+| L5-d NAT/PAT; `nat-pat` | #74 | birleşti |
+| Plan: L7 sonrası işler (`SONRAKI_ISLER.md`) | #71 | birleşti |
+| L5-g sunucu HTTP servisi (TCP 80, `curl`) | #L5G (main'den) | açık (birleşmeyi bekliyor) |
+| L5-h PKT IOS metin yolu (hoşgörülü mod) | — | sırada (#L5G'nin dalından) |
+| I-1 içe aktarma ve düzenleyici Labber'a | — | sırada (L5-h'nin dalından) |
 
-Açık zincir: #70 (L5-f, main'den) → #72 (L5-e) → #73 (L5-c) → #74 (L5-d); her biri bir
-öncekinin dalından, hiçbiri birleştirilmedi. Birleştirme sırası aynı olmalı (her PR bir
-öncekinin değişikliklerini içerir). CI sonucunu kullanıcı denetler (oturum CI'ı beklemez).
+Yeni zincir (kullanıcı talimatı): **L5-g** (main'den) → **L5-h** (L5-g'nin dalından) →
+**I-1** (L5-h'nin dalından). Her biri ayrı PR; hiçbiri birleştirilmez; CI'ı kullanıcı denetler.
+I-1'in PR'ı açılınca durulur: L6 ve L7'ye başlanmaz.
 
-**L5 kapsamındaki işler bitti.** Eski motorda kalan içerik (`LAB_MOTOR_HARITASI.md`):
-yalnız `bgp-as` (BGP; kapsam dışı, gerekçe haritada). İçe aktarılan `.pkt` topolojileri de
-eski motorda (içe aktarmanın Labber'a geçmesi kapsam dışı).
+Eski motorda kalan içerik (`LAB_MOTOR_HARITASI.md`): yalnız `bgp-as` (BGP, kapsam dışı).
+İçe aktarılan `.pkt` ve düzenleyicide kurulan topolojiler I-1'e kadar eski motorda.
 
-**Sıradaki iş** (YENIDEN_YAPILANMA L5 satırı, kullanıcı kararı gerekir):
-1. Zincirin sırayla birleştirilmesi (#70 → #72 → #73 → #74); her birleşmeden sonra bir
-   sonraki PR'ın tabanı `main`'e çevrilir.
-2. PKT IOS metin yolu (hoşgörülü mod) ve içe aktarılan topolojilerin Labber'a geçmesi (L5'in
-   kalan satırı; bu turda kapsam dışıydı). Bunlar gelince `test_aglab_icmp_ttl`,
-   `test_aglab_traceroute`, `test_aglab_routed_frames` gibi içe aktarma testlerinin eski
-   motor yolundaki NAT/ACL adımları Labber'da da sınanmalı.
-3. L6 (eski metin senaryoları), L7 (kalıcılık ve eski motorun kaldırılması).
+**L5-h için kalan adımlar** (YENIDEN_YAPILANMA "PKT için IOS metin yolu"):
+1. `createLab` için hoşgörülü mod: `config.runningConfig` satırları satır satır Labber CLI'sine;
+   ilk hatada durulmaz; her satırın kabul/ret durumu raporlanır.
+2. Reddedilen satırlar içe aktarma raporuna (`unmodeledConfigLines`).
+3. Packet Tracer'ın ürettiği ama modellenmeyen satırlar ayrı sınıflandırılır: "zararsız/yok
+   sayıldı" (`version`, `service timestamps`, `line con 0`, `banner` …) ve "modellenmedi".
+4. Yapısal yol ile CLI yolu modellenen alanlarda karşılaştırılır; fark CI'da test hatası.
+5. Kabul: `test_aglab_import`, `test_aglab_pkt_*`, `test_aglab_svi_import`, depodaki örnek .pkt.
+
+**I-1 için kalan adımlar:** `importTopology` ve düzenleyici, Sorun Çöz/Akademi'deki motor seçimini
+kullanır (köprü ifade edebiliyorsa Labber, edemiyorsa eski motor; rozet nedeni gösterir); PKT
+içe aktarımında L5-h'nin CLI yolu; `restore_pkt_from_aglab_json.py` testi ve kayıtlı
+çalışmaların açılması bozulmaz (kayıt biçimi değişmez — L7). Kabul: örnek .pkt Labber'da açılır
+ve uçtan uca ping'ler geçer; desteklenmeyen özellikli topoloji eski motorda açılır, rozet nedeni.
 
 Kalan PR'ların kapsamı (kullanıcı talimatı):
 - **L5-c ACL:** standart ve genişletilmiş, numaralı ve isimli ACL; `ip access-group in/out`;
@@ -420,6 +429,20 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
   havuz tükendi, statik, IOS hata iletileri, onay sorusu, kayıt/yükleme, Simulation Mode izi),
   `nat-parity.test.ts` (`nat.js`), `bridge.test.ts` "NAT (L5-d)"; Playwright
   `test_aglab_labber_terminal` `nat-pat` terminalden; eski motor örneği `bgp-as`.
+
+## L5-g — Sunucu HTTP servisi (yapıldı, PR açık)
+
+- **Labber**: `src/sim/http.ts` — `httpGet(d, from, dst, port)`: TCP SYN (49153 → port)
+  `deliver` ile (ACL, NAT dahil); ulaşılan cihaz HTTP dinliyorsa (sunucu, `services.http`,
+  port 80) yanıt, dinlemiyorsa RST; yanıt dönmezse zaman aşımı; router ICMP unreachable →
+  `unreach`. `LabQuery.http`. `PcConfig.services.http`.
+- **CLI (VPCS)**: PC'de `curl [http://]host[:port][/path]` (Labber eki; ad DNS ile), sunucuda
+  `service http on|off`, `show services`. ACL sayacı ve NAT tablosu `curl` ile güncellenir.
+- **Köprü**: `services.http` iki yönde; açık HTTP artık `unsupported` değil.
+- **Senaryo**: `nat-pat`'ta `WEB-PUBLIC` yeniden HTTP servisli.
+- **Testler**: `tests/sim/http.test.ts`, `http-parity.test.ts` (KNOWN_DIFFS:
+  `legacy-http-needs-icmp`, `outside-acl-sees-translated-source`), `bridge.test.ts`
+  "HTTP (L5-g)"; Playwright `test_aglab_labber_terminal.test_http_from_terminal`.
 
 ## Kurallar hatırlatması
 

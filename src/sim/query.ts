@@ -1,5 +1,6 @@
 // Read-only helpers for lab objectives. Objectives look at derived behaviour, never config text.
 
+import { httpGet, type HttpResult } from './http'
 import { egress, portForwards, vlanExists, type Derived, type LPort } from './engine'
 import { dnsLookup, isApipa, type DnsResult } from './dhcp'
 import { macTable, ping, pcNode, routeTable, type MacEntry, type PingResult, type RouteEntry } from './net'
@@ -159,6 +160,11 @@ export class LabQuery {
 
   ping(from: string, ip: string): PingResult {
     return ping(this.d, from, ip)
+  }
+
+  /** L5-g: HTTP (TCP 80) isteği; tabloya/sayaçlara yazmaz. */
+  http(from: string, ip: string, port?: number): HttpResult {
+    return httpGet(this.d, from, ip, port)
   }
 
   pcIp(pc: string): string | null {
