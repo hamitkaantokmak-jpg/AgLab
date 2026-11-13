@@ -103,6 +103,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `dns-service-down` | DNS · Sabahtan beri hiçbir yerde isim çözülmüyor | **Labber** |
 | `dns-no-gateway` | DNS · Yeni bilgisayarda DNS doğru ama isim çözülmüyor | **Labber** |
 | `dns-two-faults` | DNS · Hiçbir yerde isim yok, düzeltince yalnız 2. kat geldi | **Labber** |
+| `gw-pc-wrong-gateway` | Routing · Yan masaya gidiyor, sunucuya gitmiyor | **Labber** |
+| `gw-missing-return` | Routing · Ping gidiyor ama geri gelmiyor | **Labber** |
+| `gw-lpm-leftover` | Routing · Varsayılan rota var, sunucuya yine gidilmiyor | **Labber** |
+| `gw-backup-floating` | Routing · Ana hat koptu, yedek hat boşta duruyor | **Labber** |
+| `gw-two-faults` | Routing · İki hata birden: bir PC hiç, diğerleri hiç gidemiyor | **Labber** |
 
 ## Labber labları (E)
 
@@ -144,9 +149,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 51 | 1 | 52 |
+| Ortak senaryolar | 56 | 1 | 57 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 104 | 1 | 105 |
+| Toplam | 109 | 1 | 110 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

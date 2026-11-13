@@ -202,10 +202,11 @@
     "id": "ospf-area",
     "title": "OSPF area uyuşmazlığı",
     "symptom": "R1 ve R2 aynı transit ağda; uzak LAN rotaları öğrenilmiyor.",
-    "cause": "Transit OSPF area değerleri farklı.",
+    "cause": "Transit ağ (10.0.12.0/30) R1'de area 0'da, R2'de area 1'de; area uyuşmadığı için komşuluk kurulmuyor.",
     "hints": [
-      "Önce arayüz ve komşuluk/port durumunu incele.",
-      "Hedefe gidiş ve dönüş ağlarını ayrı kontrol et."
+      "Rota öğrenilmiyorsa önce komşuluğa bak: R1'de show ip ospf neighbor. R2 komşu olarak görünüyor mu?",
+      "Komşuluk için transit bağlantının iki ucu aynı area'da olmalı. İki router'da show ip ospf interface ile transit arayüzün area numarasını karşılaştır.",
+      "Hangi network satırının hangi area'ya yazıldığını gör: show running-config | section router ospf. Farklı olan ucu düzelt."
     ],
     "topology": {
       "app": "AgLab",
@@ -12894,6 +12895,1698 @@
           "field": "server",
           "expected": "R1",
           "label": "PC-11 ayarını R1'in havuzundan aldı"
+        }
+      ]
+    }
+  },
+  {
+    "id": "gw-pc-wrong-gateway",
+    "title": "Routing · Yan masaya gidiyor, sunucuya gitmiyor",
+    "symptom": "PC-11'in kullanıcısı yan masadaki PC-12'ye dosya gönderebiliyor ama merkezdeki sunucuya (192.168.100.10) ulaşamıyor. PC-12 sunucuya ulaşıyor. PC-11'in ayarları dün elle değiştirilmişti.",
+    "cause": "PC-11'in varsayılan ağ geçidi 192.168.10.1 yerine 192.168.10.254 (E1).",
+    "hints": [
+      "Kendi ağındaki cihaza gidiyor, başka ağa gitmiyor: başka ağa giden paketi kim taşıyor?",
+      "PC-11'de show ip: GATEWAY ne? O adrese ping at.",
+      "Gateway'i PC-12'ninkiyle aynı yap: ip <adres> <maske> <gateway>."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.12.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "10.0.21.1",
+              "mask": "255.255.255.248",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "0.0.0.0",
+              "mask": "0.0.0.0",
+              "nextHop": "10.0.12.2"
+            }
+          ],
+          "x": 200,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "R2",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.12.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "10.0.21.2",
+              "mask": "255.255.255.248",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "192.168.10.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.12.1"
+            }
+          ],
+          "x": 560,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 200,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 200,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.254",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 120,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 280,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 560,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/1",
+          "portB": "g0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/2",
+          "portB": "g0/2",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d4",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "PC-11",
+        "commands": [
+          "ip 192.168.10.11 255.255.255.0 192.168.10.1"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-11",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → SRV"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "192.168.10.12"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → PC-12 (hâlâ çalışıyor)"
+        }
+      ]
+    }
+  },
+  {
+    "id": "gw-missing-return",
+    "title": "Routing · Ping gidiyor ama geri gelmiyor",
+    "symptom": "Şube ağı yeniden numaralandırıldı. Şubeden merkezdeki sunucuya hiçbir şey ulaşmıyor. R1'in yönlendirme tablosunda merkeze giden yol duruyor; R1'den 10.0.12.2'ye ping gidiyor.",
+    "cause": "R2'de şube ağına (192.168.10.0/24) dönüş rotası yok; eski numaralandırmanın rotası kalmış (E2).",
+    "hints": [
+      "Gidiş yolu var gibi görünüyor. Yanıtın geri dönmesi için karşı tarafın neyi bilmesi gerekir?",
+      "R2'de show ip route: 192.168.10.0/24 için bir satır var mı? Hangi ağlar var?",
+      "R2'ye dönüş rotasını yaz: ip route 192.168.10.0 255.255.255.0 10.0.12.1. Eski rotayı da kaldır."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.12.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "10.0.21.1",
+              "mask": "255.255.255.248",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "0.0.0.0",
+              "mask": "0.0.0.0",
+              "nextHop": "10.0.12.2"
+            }
+          ],
+          "x": 200,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "R2",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.12.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "10.0.21.2",
+              "mask": "255.255.255.248",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "192.168.1.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.12.1"
+            }
+          ],
+          "x": 560,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 200,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 200,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 120,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 280,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 560,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/1",
+          "portB": "g0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/2",
+          "portB": "g0/2",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d4",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "R2",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "no ip route 192.168.1.0 255.255.255.0 10.0.12.1",
+          "ip route 192.168.10.0 255.255.255.0 10.0.12.1",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-11",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → SRV"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-12",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-12 → SRV"
+        }
+      ]
+    }
+  },
+  {
+    "id": "gw-lpm-leftover",
+    "title": "Routing · Varsayılan rota var, sunucuya yine gidilmiyor",
+    "symptom": "Şubeden merkezdeki her şeye ulaşılıyor, yalnız sunucu ağına (192.168.100.0/24) ulaşılamıyor. R1'de varsayılan rota doğru. Yedek hat geçen yıl başka bir cihaza bağlıyken bir rota eklenmişti.",
+    "cause": "R1'de eskiden kalma ip route 192.168.100.0 255.255.255.0 10.0.21.5 var. En uzun önek kuralına göre /24 rota varsayılan rotadan önce seçiliyor; 10.0.21.5'te artık cihaz yok (E3).",
+    "hints": [
+      "Varsayılan rota yalnız daha özgül bir rota yoksa kullanılır. Sunucu ağı için daha özgül bir satır var mı?",
+      "R1'de show ip route 192.168.100.10: hangi rota seçiliyor, next-hop ne? O adrese ping at.",
+      "Artık geçerli olmayan rotayı no ip route ile kaldır."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.12.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "10.0.21.1",
+              "mask": "255.255.255.248",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "0.0.0.0",
+              "mask": "0.0.0.0",
+              "nextHop": "10.0.12.2"
+            },
+            {
+              "network": "192.168.100.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.21.5"
+            }
+          ],
+          "x": 200,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "R2",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.12.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "10.0.21.2",
+              "mask": "255.255.255.248",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "192.168.10.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.12.1"
+            }
+          ],
+          "x": 560,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 200,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 200,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 120,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 280,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 560,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/1",
+          "portB": "g0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/2",
+          "portB": "g0/2",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d4",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "no ip route 192.168.100.0 255.255.255.0 10.0.21.5",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-11",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → SRV"
+        }
+      ]
+    }
+  },
+  {
+    "id": "gw-backup-floating",
+    "title": "Routing · Ana hat koptu, yedek hat boşta duruyor",
+    "symptom": "Operatör ana hattaki (R1 Gi0/1 – R2 Gi0/1) arızayı onarana kadar şube merkeze ulaşamıyor. İki router arasında ikinci bir hat (Gi0/2, 10.0.21.0/29) bağlı ve ayakta, ama kullanılmıyor.",
+    "cause": "Yedek hat için rota yok; ana hat düşünce R1'in varsayılan rotası ve R2'nin dönüş rotası tablodan çıktı (E4).",
+    "hints": [
+      "Ana hat düşünce o hattaki next-hop'u kullanan rotalar ne olur? show ip route'a bak.",
+      "Yedek hattan iki yönde de rota gerekir: R1'den merkeze, R2'den şubeye.",
+      "Rotaları ana hat geri gelince devreden çıkacak şekilde yüksek AD ile yaz (floating static): ... 10.0.21.2 200 ve ... 10.0.21.1 200."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.12.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "10.0.21.1",
+              "mask": "255.255.255.248",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "0.0.0.0",
+              "mask": "0.0.0.0",
+              "nextHop": "10.0.12.2"
+            }
+          ],
+          "x": 200,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "R2",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.12.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "10.0.21.2",
+              "mask": "255.255.255.248",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "192.168.10.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.12.1"
+            }
+          ],
+          "x": 560,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 200,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 200,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 120,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 280,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 560,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/1",
+          "portB": "g0/1",
+          "up": false
+        },
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/2",
+          "portB": "g0/2",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d4",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "R1",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip route 0.0.0.0 0.0.0.0 10.0.21.2 200",
+          "end"
+        ]
+      },
+      {
+        "device": "R2",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip route 192.168.10.0 255.255.255.0 10.0.21.1 200",
+          "end"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-11",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → SRV (yedek hat üzerinden)"
+        }
+      ]
+    }
+  },
+  {
+    "id": "gw-two-faults",
+    "title": "Routing · İki hata birden: bir PC hiç, diğerleri hiç gidemiyor",
+    "symptom": "Şubeden kimse merkezdeki sunucuya ulaşamıyor. Biri düzeltildikten sonra PC-11 hâlâ ulaşamıyor; PC-11 yan masadaki PC-12'ye ulaşıyor.",
+    "cause": "R2'de şube ağına dönüş rotası yok (E2) ve PC-11'in gateway'i yanlış (E1).",
+    "hints": [
+      "Herkesi etkileyen hatayla başla: gidiş-dönüş yolunun iki ucunu da kontrol et.",
+      "R2'de show ip route: şube ağı var mı?",
+      "Sonra yalnız PC-11'i etkileyen hataya bak: show ip, GATEWAY."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "R1",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.10.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.12.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "10.0.21.1",
+              "mask": "255.255.255.248",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [
+            {
+              "network": "0.0.0.0",
+              "mask": "0.0.0.0",
+              "nextHop": "10.0.12.2"
+            }
+          ],
+          "x": 200,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d2",
+          "name": "R2",
+          "type": "Router",
+          "enabled": true,
+          "ports": [
+            "g0/0",
+            "g0/1",
+            "g0/2"
+          ],
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.100.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.12.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/2": {
+              "ip": "10.0.21.2",
+              "mask": "255.255.255.248",
+              "enabled": true
+            }
+          },
+          "staticRoutes": [],
+          "x": 560,
+          "y": 60,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d3",
+          "name": "SW1",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1",
+            "fa0/2"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 200,
+          "y": 200,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d4",
+          "name": "SW2",
+          "type": "Switch",
+          "enabled": true,
+          "ports": [
+            "gi0/1",
+            "fa0/1"
+          ],
+          "vlans": [
+            1
+          ],
+          "interfaces": {
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            },
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 1,
+              "allowed": [
+                1
+              ],
+              "nativeVlan": 1,
+              "enabled": true
+            }
+          },
+          "config": {
+            "packetTracerModel": "WS-C2960-24TT-L"
+          },
+          "x": 560,
+          "y": 200,
+          "w": 112,
+          "h": 72
+        },
+        {
+          "id": "d5",
+          "name": "PC-11",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.11",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.254",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 120,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d6",
+          "name": "PC-12",
+          "type": "PC",
+          "enabled": true,
+          "ip": "192.168.10.12",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.10.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 280,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        },
+        {
+          "id": "d7",
+          "name": "SRV",
+          "type": "Server",
+          "enabled": true,
+          "ip": "192.168.100.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.100.1",
+          "ports": [
+            "eth0"
+          ],
+          "interfaces": {
+            "eth0": {
+              "enabled": true
+            }
+          },
+          "vlan": 1,
+          "x": 560,
+          "y": 330,
+          "w": 104,
+          "h": 72
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/1",
+          "portB": "g0/1",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "g0/2",
+          "portB": "g0/2",
+          "up": true
+        },
+        {
+          "a": "d1",
+          "b": "d3",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d4",
+          "portA": "g0/0",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d6",
+          "b": "d3",
+          "portA": "eth0",
+          "portB": "fa0/2",
+          "up": true
+        },
+        {
+          "a": "d7",
+          "b": "d4",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        }
+      ]
+    },
+    "solution": [
+      {
+        "device": "R2",
+        "commands": [
+          "enable",
+          "configure terminal",
+          "ip route 192.168.10.0 255.255.255.0 10.0.12.1",
+          "end"
+        ]
+      },
+      {
+        "device": "PC-11",
+        "commands": [
+          "ip 192.168.10.11 255.255.255.0 192.168.10.1"
+        ]
+      }
+    ],
+    "verify": {
+      "kind": "query",
+      "source": "PC-11",
+      "target": "192.168.100.10",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-12",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-12 → SRV"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-11",
+            "192.168.100.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-11 → SRV"
         }
       ]
     }

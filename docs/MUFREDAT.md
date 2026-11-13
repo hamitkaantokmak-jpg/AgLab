@@ -53,7 +53,7 @@ Bu 12 konu şubedeki günlük ağ işinin büyük kısmını karşılar ve CCNA'
 | 5 | VLAN | Access port atar, `show vlan brief` okur | Motor | Var | Detaylı ders var (VLAN+trunk birlikte) | P0 |
 | 6 | Trunk | 802.1Q trunk kurar; izinli VLAN ve native VLAN hatalarını bulur; DTP ve VTP'nin etkisini bilir | Motor | Var | VLAN dersiyle birlikte | P0 |
 | 7 | VLAN'lar arası yönlendirme | Router-on-a-stick ve L3 switch SVI kurar | Motor | Router-on-a-stick var; SVI ile yönlendirme yalnız Labber'da | Detaylı ders ve 5 senaryo var (`roas-*`) | P0 |
-| 8 | Gateway ve statik routing | Varsayılan ağ geçidi ve statik rota kurar; LPM ve AD ile rota seçimini açıklar | Motor | Var | Detaylı ders var | P0 |
+| 8 | Gateway ve statik routing | Varsayılan ağ geçidi ve statik rota kurar; LPM ve AD ile rota seçimini açıklar | Motor | Labber'da var (L4: AD, özyinelemeli statik, floating; L5-i traceroute) | Detaylı ders ve 5 senaryo var (`docs/dersler/gateway-statik-routing.md`, `gw-*`) | P0 |
 | 9 | DHCP | Havuz kurar, relay (`ip helper-address`) ile başka ağa hizmet verir, 169.254'ü teşhis eder | Motor | Labber'da var (L5-b: havuz, dışlama, relay, 169.254) | Detaylı ders ve 5 senaryo var (`docs/dersler/dhcp.md`, `dhcp-*`) | P0 |
 | 10 | DNS | İsim çözümleme hatasını IP bağlantı hatasından ayırır | Motor + okuma | Labber'da var (L5-b: `nslookup`, DNS servisi; kayıtlar cihaz adları) | Detaylı ders ve 5 senaryo var (`docs/dersler/dns.md`, `dns-*`) | P1 |
 | 11 | Cihaz yönetimi ve yedekleme | Running/startup config farkı, `write memory`, SSH, parola, yedek/geri yükleme | Motor | Labber'da var (kaydetme, `reload`, güç döngüsü); SSH/parola yok | Detaylı ders var; 5 senaryo Labber testinde (`tests/sim/device-management.test.ts`) | P1 |

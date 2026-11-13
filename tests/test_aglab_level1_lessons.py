@@ -23,6 +23,7 @@ LESSONS = [
     ("discovery", "discovery", "cdp-lldp.md", "cdp-", "LLDP", "çizimi olmayan ağı çıkarmak"),
     ("dhcp", "dhcp", "dhcp.md", "dhcp-", "169.254", "adres nereden gelir"),
     ("dns", "dns", "dns.md", "dns-", "nslookup", "isim yok"),
+    ("routing", "routing", "gateway-statik-routing.md", "gw-", "floating static", "nasıl döner"),
 ]
 PARTS = [
     "## 1. Neden önemli",
