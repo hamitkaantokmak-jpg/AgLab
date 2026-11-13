@@ -8969,9 +8969,11 @@ write memory`
       if (d.stpPriorities !== void 0 || Object.keys(prios).length) d.stpPriorities = prios;
       const back = portNames[id] ?? {};
       d.interfaces = d.interfaces ?? {};
-      for (const [canon, phys] of Object.entries(cfg.ifaces)) {
+      for (const [canon, raw] of Object.entries(cfg.ifaces)) {
         const name = back[canon];
         if (!name) continue;
+        const prevMode = d.interfaces[name]?.mode;
+        const phys = raw.mode === "dynamic-auto" && (prevMode === void 0 || prevMode === "access") ? { ...raw, mode: "access", allowed: raw.allowed ?? (d.interfaces[name]?.allowed ?? [1]) } : raw;
         if (phys.mode !== "access" && phys.mode !== "trunk") fail(`${canon} modu ${phys.mode}`);
         if (phys.channel) fail(`${canon} channel-group`);
         if (phys.routed) fail(`${canon} routed port`);

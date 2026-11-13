@@ -9543,9 +9543,11 @@ write memory`
       if (d.stpPriorities !== void 0 || Object.keys(prios).length) d.stpPriorities = prios;
       const back = portNames[id] ?? {};
       d.interfaces = d.interfaces ?? {};
-      for (const [canon, phys] of Object.entries(cfg.ifaces)) {
+      for (const [canon, raw] of Object.entries(cfg.ifaces)) {
         const name = back[canon];
         if (!name) continue;
+        const prevMode = d.interfaces[name]?.mode;
+        const phys = raw.mode === "dynamic-auto" && (prevMode === void 0 || prevMode === "access") ? { ...raw, mode: "access", allowed: raw.allowed ?? (d.interfaces[name]?.allowed ?? [1]) } : raw;
         if (phys.mode !== "access" && phys.mode !== "trunk") fail(`${canon} modu ${phys.mode}`);
         if (phys.channel) fail(`${canon} channel-group`);
         if (phys.routed) fail(`${canon} routed port`);
@@ -18125,10 +18127,19 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabEngin
         typeof d.config?.runningConfig === 'string' &&
         d.config.runningConfig.trim(),
     );
+    // PKT IOS metin yolu yalnız metin cihazları hâlâ tarif ediyorsa: modellenen alanlarda fark
+    // yok ve hostname'ler adlarla aynı. Kayıttan sonra yapılan düzenleme (ör. hostname, VLAN)
+    // metinle çelişir; o zaman yapısal yol kullanılır ve düzenleme korunur.
+    let cli = null;
     if (text) {
-      const cli = AgLabSim.cliImport({ ...topo, importReport: importReportData });
-      aglabLabber.start(cli.runtime);
-    } else aglabLabber.start();
+      cli = AgLabSim.cliImport({ ...topo, importReport: importReportData });
+      const fresh =
+        !cli.diffs.length &&
+        !cli.extended.length &&
+        devices.every((d) => !cli.runtime.running[d.id] || cli.runtime.hostname(d.id) === d.name);
+      if (!fresh) cli = null;
+    }
+    aglabLabber.start(cli ? cli.runtime : undefined);
     updatePrompt();
     return decision;
   }
@@ -25269,6 +25280,11 @@ const aglabLabber = (() => {
       broken: null,
       writeError: null,
     };
+    // I-1: IOS metin yolundan kurulan durum AğLab görünümüne yazılır (kayıt, denetçi)
+    if (prebuilt) {
+      writeBack();
+      if (state.writeError) say(state.writeError, 'outerr');
+    }
   }
   /**
    * Labber labı (src/labs, E): lab tanımı (LabDef) köprü kullanılmadan doğrudan

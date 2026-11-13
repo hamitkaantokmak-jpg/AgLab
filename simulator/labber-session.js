@@ -107,6 +107,11 @@ const aglabLabber = (() => {
       broken: null,
       writeError: null,
     };
+    // I-1: IOS metin yolundan kurulan durum AğLab görünümüne yazılır (kayıt, denetçi)
+    if (prebuilt) {
+      writeBack();
+      if (state.writeError) say(state.writeError, 'outerr');
+    }
   }
   /**
    * Labber labı (src/labs, E): lab tanımı (LabDef) köprü kullanılmadan doğrudan

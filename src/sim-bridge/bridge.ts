@@ -929,9 +929,17 @@ export function toAglab(
     // Arayüzler
     const back = portNames[id] ?? {}
     d.interfaces = d.interfaces ?? {}
-    for (const [canon, phys] of Object.entries(cfg.ifaces)) {
+    for (const [canon, raw] of Object.entries(cfg.ifaces)) {
       const name = back[canon]
       if (!name) continue
+      // I-1: AğLab modelinde DTP yok. IOS varsayılanı `dynamic auto` olan port (PKT IOS metin
+      // yolu, L5-h) AğLab'da `access` gösterimiyle tutulur (dönüştürücüyle aynı eşleme); özgün
+      // kayıt access değilse ya da `dynamic desirable` ise açık hata.
+      const prevMode = d.interfaces[name]?.mode
+      const phys =
+        raw.mode === 'dynamic-auto' && (prevMode === undefined || prevMode === 'access')
+          ? { ...raw, mode: 'access' as const, allowed: raw.allowed ?? ((d.interfaces[name]?.allowed as number[] | undefined) ?? [1]) }
+          : raw
       if (phys.mode !== 'access' && phys.mode !== 'trunk') fail(`${canon} modu ${phys.mode}`)
       if (phys.channel) fail(`${canon} channel-group`)
       if (phys.routed) fail(`${canon} routed port`)

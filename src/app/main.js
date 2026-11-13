@@ -7442,10 +7442,19 @@ labLoadExperiment();
         typeof d.config?.runningConfig === 'string' &&
         d.config.runningConfig.trim(),
     );
+    // PKT IOS metin yolu yalnız metin cihazları hâlâ tarif ediyorsa: modellenen alanlarda fark
+    // yok ve hostname'ler adlarla aynı. Kayıttan sonra yapılan düzenleme (ör. hostname, VLAN)
+    // metinle çelişir; o zaman yapısal yol kullanılır ve düzenleme korunur.
+    let cli = null;
     if (text) {
-      const cli = AgLabSim.cliImport({ ...topo, importReport: importReportData });
-      aglabLabber.start(cli.runtime);
-    } else aglabLabber.start();
+      cli = AgLabSim.cliImport({ ...topo, importReport: importReportData });
+      const fresh =
+        !cli.diffs.length &&
+        !cli.extended.length &&
+        devices.every((d) => !cli.runtime.running[d.id] || cli.runtime.hostname(d.id) === d.name);
+      if (!fresh) cli = null;
+    }
+    aglabLabber.start(cli ? cli.runtime : undefined);
     updatePrompt();
     return decision;
   }
