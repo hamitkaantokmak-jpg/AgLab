@@ -113,6 +113,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `ip-wrong-network` | IP adresleme · Yeni yazıcıya kimse yazdıramıyor | **Labber** |
 | `ip-router-mask` | IP adresleme · Aynı kattaki bazı PC'ler sunucuya ulaşıyor, bazıları ulaşamıyor | **Labber** |
 | `ip-two-faults` | IP adresleme · Hem yazıcı hem bir PC dışarıda kaldı | **Labber** |
+| `phy-port-shutdown` | Fiziksel bağlantı · Kullanılmayan portlar kapatılınca bir PC gitti | **Labber** |
+| `phy-uplink-one-side` | Fiziksel bağlantı · 2. switch'teki herkes kopuk, ışıklar yanmıyor | **Labber** |
+| `phy-wrong-port` | Fiziksel bağlantı · Masası değişen çalışanın bilgisayarı ağa bağlanmıyor | **Labber** |
+| `phy-power-off` | Fiziksel bağlantı · Sabah 2. switch'e bağlı her şey yok | **Labber** |
+| `phy-two-faults` | Fiziksel bağlantı · Kesintiden sonra iki ayrı sorun | **Labber** |
 
 ## Labber labları (E)
 
@@ -154,9 +159,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 61 | 1 | 62 |
+| Ortak senaryolar | 66 | 1 | 67 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 114 | 1 | 115 |
+| Toplam | 119 | 1 | 120 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
