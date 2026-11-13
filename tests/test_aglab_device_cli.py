@@ -68,7 +68,8 @@ with sync_playwright() as pw:
         expect(dialog).to_contain_text("PC-Test")
         expect(page.locator("#ptCliDevice")).to_have_value("pc")
         expect(page.locator("#ptCliInput")).to_be_focused()
-        page.locator("#ptCliInput").fill("ipconfig")
+        # I-1: düzenleyicideki topoloji Labber'da; PC terminali VPCS (adres `show ip` ile görülür)
+        page.locator("#ptCliInput").fill("show ip")
         page.locator("#ptCliInput").press("Enter")
         expect(page.locator("#ptTerminal")).to_contain_text("192.168.10.10")
         bounds = dialog.bounding_box()
@@ -129,7 +130,7 @@ with sync_playwright() as pw:
         expect(dialog).not_to_be_visible()
         pc.tap() if mobile else pc.click()
         page.locator("#ptCliInput").press("ArrowUp")
-        expect(page.locator("#ptCliInput")).to_have_value("ipconfig")
+        expect(page.locator("#ptCliInput")).to_have_value("show ip")
         page.keyboard.press("Escape")
         # Cabling uses a fresh topology: the router port above was deliberately shut down.
         page.evaluate("(topology) => academyEngine.load(topology)", TOPOLOGY)

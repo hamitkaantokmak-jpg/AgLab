@@ -281,13 +281,29 @@ new MutationObserver(() => {
 ac('firstGuidePing').onclick = () => {
   const pair = guidePair();
   if (!guideAddressOK(pair)) return;
-  const result = ping(pair[0].id, pair[1].ip);
+  // I-1: çalışma alanı Labber'daysa ping ve olay izi terminalle aynı Labber çalışma
+  // zamanından gelir; eski motor yalnız eski motor kararındaki çalışma alanında çalışır.
+  const labber = typeof aglabLabber !== 'undefined' && aglabLabber.active();
+  let result, trace;
+  if (labber) {
+    try {
+      result = aglabEngineChoice.labberPing(pair[0].id, pair[1].ip);
+    } catch (error) {
+      result = { ok: false, why: String(error.message || error) };
+    }
+    window.aglabWorkspace.pingTrace(pair[0].id, pair[1].ip);
+    trace = readEthernetTrace().events.map((e) => e.raw);
+  } else {
+    result = ping(pair[0].id, pair[1].ip);
+    trace = ethernetEvents.slice();
+  }
   guidePingEvidence = {
     fingerprint: guideFingerprint(),
     source: pair[0].id,
     target: pair[1].id,
     ok: result.ok === true,
-    trace: ethernetEvents.slice(),
+    origin: labber ? 'labber' : 'aglab-js',
+    trace,
     reviewed: false,
   };
   firstGuideRender();
@@ -300,7 +316,7 @@ document.addEventListener('aglab:packet-event-viewed', (event) => {
   if (
     !guidePingEvidence?.ok ||
     guidePingEvidence.fingerprint !== guideFingerprint() ||
-    d?.origin !== 'aglab-js' ||
+    d?.origin !== guidePingEvidence.origin ||
     !guidePingEvidence.trace.includes(d.raw) ||
     JSON.stringify(d.trace) !== JSON.stringify(guidePingEvidence.trace)
   )

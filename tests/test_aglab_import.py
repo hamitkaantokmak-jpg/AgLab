@@ -136,8 +136,9 @@ with sync_playwright() as p:
             f"document.querySelector('#ptCliDevice').value='{src}';document.querySelector('#ptCliInput').value='ping {target}';document.querySelector('#ptCliForm').requestSubmit()"
         )
         page.wait_for_timeout(80)
+        # I-1: içe aktarılan topoloji Labber'da; PC terminali VPCS (5 yanıt satırı)
         text = page.locator("#ptTerminal").inner_text()
-        assert "Success rate is 100 percent (5/5)" in text, (src, target, text[-500:])
+        assert "84 bytes from " + target + " icmp_seq=5" in text[-700:], (src, target, text[-500:])
         pings.append({"source": src, "target": target, "result": "5/5"})
     page.locator("#uxMoreLabActions").click()
     with page.expect_download() as download_info:

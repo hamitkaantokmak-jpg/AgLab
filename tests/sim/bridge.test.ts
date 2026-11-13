@@ -644,11 +644,21 @@ describe('köprü: alan eşlemesi', () => {
     expect(back.devices[2]!.vlanNames).toEqual({ '30': 'MISAFIR' })
   })
 
+  it('allowed vlan all AğLab\'da 1-4094 listesi olarak yazılır (PKT dönüştürücüsüyle aynı; I-1)', () => {
+    const t = lan()
+    const rt = createRuntime(toLabber(t))
+    runScript(rt, 'd3', 'configure terminal\ninterface gi0/1\nswitchport trunk allowed vlan all\nend')
+    const back = toAglab(rt, t)
+    const all = Array.from({ length: 4094 }, (_, i) => i + 1)
+    expect(back.devices[2]!.interfaces!['gi0/1']!.allowed).toEqual(all)
+    const again = createRuntime(toLabber(back))
+    expect(again.running['d3']!.ifaces['GigabitEthernet0/1']!.allowed).toEqual(all)
+  })
+
   it('AğLab\'da ifade edilemeyen Labber durumu açık hata verir (sessiz kayıp yok)', () => {
     const t = lan()
     for (const script of [
       'interface fa0/2\nswitchport mode dynamic desirable',
-      'interface gi0/1\nswitchport trunk allowed vlan all',
       'spanning-tree mode rapid-pvst',
       'interface fa0/1\nspanning-tree portfast',
       'interface fa0/1\ndescription muhasebe',

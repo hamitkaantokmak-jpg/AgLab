@@ -118,7 +118,7 @@ v13, traceroute, icmp) `tests/sim/routing-acceptance.test.ts`'de karşılaştır
 | AD 0 ya da 255'ten büyük AD | Oracle sessizce yok sayar | CLI sözdizimi reddeder; köprü reddeder → eski motor | **Labber.** Sessiz yok sayma yerine açık ret. |
 | Maskeyle hizasız statik rota ağı (ör. 10.20.1.5/24) | Maskelenip kullanılır | IOS `%Inconsistent address and mask`; köprü reddeder → eski motor | **Labber.** İçerikte yok. |
 | Eşit AD'li iki statik rota | İlk satır kullanılır | İlk satır kurulur (oracle ile aynı) | **Oracle'a uyuldu.** Gerçek IOS'taki ECMP yük paylaşımı modellenmedi. |
-| Olmayan hosta ping (son router ARP alamaz) | ICMP Host Unreachable (code 1), traceroute `!H` | Paket düşer: zaman aşımı | **Labber.** Fark yalnız içe aktarılan (eski motor) topolojilerde görülür; routing içeriğinde hedefler vardır. |
+| Olmayan hosta ping | Host Unreachable | **I-1'den beri** son router ARP'yi çözemezse ICMP host unreachable (kod 1); ARP önbelleği sıcaksa sessiz | **Labber (IOS).** Önceden zaman aşımıydı (MOTOR_BULGULARI). |
 | Rota yokken dönen ICMP | Network Unreachable (code 0), traceroute `!N` | IOS gibi `U`; traceroute `!H` | **Labber (IOS).** |
 | `ping … ttl N` / Time Exceeded, `show ethernet events` | Var | TTL ve Time Exceeded L5-i'de eklendi (aşağıda). `show ethernet events` **Labber'a eklenmez** | `show ethernet events` gerçek bir IOS komutu değildir: testi eski motor kararındaki topolojide kalır, L7'de eski motorla birlikte silinir (L5-i kararı). |
 | OSPF teşhis metni (`ospf-area`) | Türkçe neden satırı ("area uyuşmazlığı", "maskesi uyuşmazlığı") | Komşuluk kurulmaz; `%OSPF-4-ERRRCV … mismatched area ID` ve `%OSPF-5-ADJCHG … FULL to DOWN` syslog'u; türetilmiş uyuşmazlık türü (`area`, `subnet`) | **Labber (IOS).** `test_aglab_network_features` türetilmiş durumu sorar. |
@@ -322,3 +322,66 @@ modellediği alanlarda karşılaştırılır. Kabul testleri (`test_aglab_import
 | `show ethernet events` | Var | **Eklenmez** | Gerçek IOS komutu değil; eski motor kararındaki topolojide kalır, L7'de silinir. |
 
 Çalışma alanındaki (içe aktarılan/düzenleyici) eski testler (`test_aglab_icmp_ttl`, `test_aglab_traceroute`, `test_aglab_routed_frames`, `test_aglab_simulation_mode`) bu PR'da eski motorda kalır (çalışma alanı I-1'e kadar eski motorda); I-1'de Labber izine uyarlanır.
+
+## EtherChannel AğLab modelinde (köprü kararları)
+
+Labber EtherChannel'ı zaten modelliyordu (`channel-group N mode on|active|passive|desirable|auto`,
+Port-channel, `show etherchannel summary`, `LabQuery.etherchannel`); köprü bunu AğLab modelinde
+ifade edemediği için `toAglab` duruyordu ("kayda yazılamadı"). Artık iki yönde eşlenir.
+
+| Konu | AğLab | Labber | Karar |
+|---|---|---|---|
+| Üyelik | Switch fiziksel arayüzünde `channelGroup: {id: 1-48, mode}` | `PhysIfConfig.channel` | **Köprü iki yönde.** Grupta farklı protokol (LACP/PAgP/on) **reddedilir** (IOS "Channel protocol mismatch"). |
+| Port-channel | Switch arayüzü `po<N>`: `mode`, `vlan`, `allowed`, `nativeVlan`, `enabled` | `SwitchConfig.pos[N]` | **Köprü iki yönde.** Kaydı olmayan grupta Port-channel ilk üyenin ayarlarından oluşur (IOS `channel-group` gibi). Numara 1-48 dışında reddedilir; bilinmeyen alan `unsupported`. Port-channel silinince `po<N>` ve üyelerin `channelGroup` alanı da silinir. |
+| Askıya alınan üye | Üyenin kendi `allowed`/mod alanları yazılır | Port-channel ile uyuşmayan üye `(s)` | Labber kararı; gidiş-dönüşte durum aynı kalır (`tests/sim/etherchannel-bridge.test.ts`). |
+| AğLab'da ifade edilemeyen | — | Port-channel'da `dynamic` mod, "allowed vlan all", `nonegotiate`, `portfast`, açıklama; routed EtherChannel | `toAglab` `BridgeError` (sessiz kayıp yok). |
+| Eski motor | `validateTopologyData` alanları kabul eder (biçim denetimiyle) | — | Eski motor kanal davranışını simüle etmez; kanal içeren geçerli topoloji köprüde ifade edildiği için motor kararı Labber'dır. Geçersiz kanal alanı reddedilirse karar eski motor olur ve rozet nedeni gösterir. |
+| Senaryo hedefi | — | `SHARED_QUERY_FNS` `etherchannel` (dev, grup → `{up, protocol, bundled}`) | Kabul edildi. |
+L5-i PR'ında çalışma alanı testleri eski motordaydı; I-1 bunları Labber izine uyarladı (aşağıdaki I-1 bölümü).
+
+## I-1: içe aktarma ve düzenleyici Labber'da (Labber kararları)
+
+İçe aktarılan JSON/`.pkt`, kayıtlı çalışma ve düzenleyicide kurulan topoloji (Serbest Çalışma)
+Sorun Çöz/Akademi ile aynı köprü kararını alır (`workspaceDecideEngine`). Köprünün ifade
+edemediği topoloji eski motorda açılır; rozet (`#workspaceEngine`) nedeni gösterir. Motor
+düzeltmeleri: [MOTOR_BULGULARI.md](MOTOR_BULGULARI.md).
+
+| Konu | Eski motor | Labber | Karar |
+|---|---|---|---|
+| PC terminali | IOS benzeri (`ip address`, `ipconfig`, `Success rate …`) | VPCS (`ip <adres> <maske> [ağ geçidi]`, `ip dhcp`, `show ip`, `show arp`, beş `84 bytes from` satırı) | **Labber (VPCS).** Eski PC sözdizimi VPCS'te hata verir (`Invalid netmask`/`Invalid options`). |
+| PKT IOS metin yolu | — | Metin cihazı hâlâ tarif ediyorsa (fark yok, hostname = ad, AğLab görünümü JSON ile aynı) `cliImport` çalışma zamanı; değilse yapısal yol (düzenleme korunur) | Kabul edildi. Metin ile JSON farkı içe aktarma raporunda bilgi satırıdır. |
+| Simulation Mode izi | ARP + ICMP çerçeveleri | Yalnız ICMP çerçeveleri (ARP gösterilmez, durum satırında yazılı); komşu ARP'si `show arp`/`show ip arp` tablolarında | Kabul edildi (L3-b). İz yalnız ping için üretilir. |
+| Paket Dedektifi kaynağı | "AğLab simülasyon motoru" | "Labber motoru" | Kabul edildi. |
+| "İlk Ağım" rehberi ping'i | Eski motor | Çalışma alanının motoru (Labber'da Labber) | Kabul edildi. |
+| Bayat FDB (taşınan host) ve "Paket adımı" | Var | Labber iletimi FDB'den değil topolojiden hesaplar; "Paket adımı" yok | Eski motor kararındaki topolojide sınanır (`test_aglab_routed_frames`), L7'de silinir. |
+| `test ethernet` / `show ethernet events` | Var | **Eklenmez** | Gerçek IOS/VPCS komutu değil; `test_aglab_frame_forwarding` eski motor kararındaki topolojide (`legacy_engine`) kalır, L7'de silinir. |
+| Alt arayüz durumu (`show ip interface brief`) | Ebeveyn kapalıyken `down` | Labber IOS gösterimi | **Doğrulanmadı:** ebeveyn `shutdown` iken alt arayüzün `administratively down` mı `down` mı yazıldığı. |
+
+Çalışma alanı testleri (`test_aglab_icmp_ttl`, `test_aglab_traceroute`, `test_aglab_routed_frames`,
+`test_aglab_simulation_mode` ve DEVIR_NOTU'ndaki tablo) bu PR'da Labber çıktısına uyarlandı; her
+değişen beklentinin gerekçesi testte yorum olarak yazılı.
+
+## FHRP: HSRP ve VRRP (Labber kararları)
+
+Motor: `src/sim/fhrp.ts`. AğLab modeli: router arayüzünde (fiziksel ve alt arayüz)
+`hsrp: [{group, ip, priority?, preempt?, track?: [{object, decrement?} | {interface, decrement?}]}]`,
+`vrrp: [{group, ip, priority?, preempt?}]`; router'da `tracks: [{id, interface}]`. `validateTopologyData`
+bu alanları reddetmez; ayrıntılı denetim köprüdedir (geçersiz grup → "Reddedildi" nedeniyle eski motor).
+Eski motor FHRP modellemez: içerik eski motorda açılırsa rozet "HSRP/VRRP eski motorda modellenmez" der.
+LabQuery: `fhrpActive(router, arayüz, grup)` (`SHARED_QUERY_FNS`).
+
+| Konu | IOS | Labber | Karar |
+|---|---|---|---|
+| HSRP komutları | `standby [<grp>] ip <vip>`, `priority <0-255>` (100), `preempt` (kapalı), `track <nesne> [decrement N]`, `track <arayüz> [N]` (varsayılan azaltma 10), `no standby <grp> …` | Aynı; grup 0-255 (v1) | **Labber (IOS).** `standby version 2`, zamanlayıcılar, kimlik doğrulama, `standby <grp> name`, `use-bia` modellenmez (açık ileti). |
+| VRRP komutları | `vrrp <1-255> ip <vip>`, `priority <1-254>` (100), preempt varsayılan açık (`no vrrp <grp> preempt`) | Aynı | **Labber (IOS).** `vrrp … track`, zamanlayıcılar, kimlik doğrulama yok: `% Invalid input`. |
+| Seçim | En yüksek öncelik, eşitse yüksek arayüz adresi Active/Master; HSRP'de sonraki Standby, diğerleri Listen; VRRP'de diğerleri Backup | Aynı | **Labber.** |
+| Preempt | Active yerinde kalır; yalnız preempt eden ve önceliği **büyük** olan devralır | Aynı (çalışma zamanı önceki Active'i tutar) | **Labber.** Lab başlangıcı/kayıttan açılış bütün üyelerin birlikte açılışıdır: en yüksek öncelik kazanır. |
+| VRRP adres sahibi | VIP arayüzün kendi adresiyse öncelik 255, her zaman Master | Aynı; `show vrrp brief` Own `Y` | **Labber.** |
+| Track | `track N interface <if> line-protocol`; düşükse öncelik azalır | Aynı; `show track` | **Labber.** Yalnız line-protocol nesnesi (IP SLA, rota izleme yok). `(config-track)#` alt kipinde yalnız `exit`/`end`/`do`. |
+| Sanal MAC ve ARP | HSRP v1 `0000.0c07.acXX`, VRRP `0000.5e00.01XX`; VIP ARP'sini Active/Master yanıtlar | Aynı; VIP'ye ping'i Active/Master yanıtlar | **Labber.** |
+| Grup numarası farklı | Ayrı gruplar: iki Active, Standby `unknown` | Aynı | **Labber.** |
+| Aynı grup, farklı VIP | HSRP: hello'lar kabul edilir, seçim normal (bir Active, bir Standby); VIP'i Active'inkinden farklı router `%HSRP-4-DIFFVIP1: … Grp N active routers virtual IP address A.B.C.D is different to the locally configured address W.X.Y.Z` yazar, `show standby` yerel VIP'i gösterir. VRRP: VIP listesi uyuşmayan ilan düşürülür (RFC 3768 7.1) → iki Master | Aynı. VIP ARP'sini/ping'ini Active yanıtlar (Active'in VIP'i); Standby'ın yerel VIP'ini kimse yanıtlamaz | **Labber (IOS).** |
+| Durum syslog'u | `%HSRP-5-STATECHANGE: Gi0/0 Grp 1 state Standby -> Active`, `%VRRP-6-STATECHANGE: …` | Aynı biçim | **Doğrulanmadı:** ara durumlar (Speak, Learn) ve tam/kısa arayüz adı sürüme göre değişir. |
+| `show standby [brief]`, `show vrrp [brief]` | Zamanlayıcı geri sayımları ("Next hello sent in", "expires in"), durum değişikliği sayacı | Bunlar yazılmaz; diğer satırlar IOS 15 biçiminde; VRRP Time = Master Down interval (ms) | Kabul edildi (zaman modellenmez). |
+| VIP alt ağ denetimi | VIP arayüz alt ağında değilse uyarı | Denetlenmez | **Doğrulanmadı.** |
+| SVI üzerinde FHRP | L3 switch SVI'sinde de çalışır | Motor çalıştırır; AğLab modelinde SVI alanı yok → geri yazımda açık hata (BridgeError) | Router arayüzü ve alt arayüzü kapsanır. |

@@ -105,6 +105,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
 
         measure("topology_import_ms", load)
         expect(page.locator("#ptCanvas .pt-node")).to_have_count(count)
+        row["engine"] = "labber" if page.evaluate("aglabLabberSession.active()") else "legacy"
+        assert row["engine"] == "labber", row  # I-1: ölçüm gerçekte kullanılan motoru adlandırır
         measure("device_add_ms", lambda: page.click('[data-pt-add="PC"]'))
         added = page.evaluate("academyEngine.snapshot().devices.at(-1).id")
         previous = page.evaluate("academyEngine.snapshot().devices.find(d=>d.id==='p0').x")
@@ -153,7 +155,9 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         page.select_option("#ptCliDevice", "p0")
         page.fill("#ptCliInput", "ping 10.0.0.2")
         page.press("#ptCliInput", "Enter")
-        expect(page.locator("#ptTerminal")).to_contain_text("100 percent")
+        # I-1: çalışma alanı Labber'da; PC terminali VPCS. VPCS özet satırı yazmaz, beşinci yanıt
+        # satırı ping'in tamamlandığını gösterir.
+        expect(page.locator("#ptTerminal")).to_contain_text("84 bytes from 10.0.0.2 icmp_seq=5")
         measure("packet_detective_ms", lambda: page.click("#packetDetectiveRefresh"))
         assert page.locator("#packetDetectiveRaw").text_content()
         cdp.send("HeapProfiler.collectGarbage")

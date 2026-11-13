@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 import xml.etree.ElementTree as ET
-from aglab_test_support import ROOT, launch_chromium, import_topology
+from aglab_test_support import ROOT, launch_chromium, import_topology, assert_vpcs_ping
 from convert_pkt_to_aglab import convert
 from playwright.sync_api import sync_playwright
 
@@ -107,9 +107,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
 
     def ping(expected):
         out = command("d2", "ping 192.168.77.2")
-        assert (
-            "Success rate is 100 percent" if expected else "Success rate is 0 percent"
-        ) in out, out
+        # I-1: topoloji Labber'da; PC terminali VPCS
+        assert_vpcs_ping(out, "192.168.77.2", expected)
 
     ping(True)
     for text in [
@@ -130,8 +129,11 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         command("d1", text)
     ping(True)
     # 'all' must already include a VLAN that does not exist yet.
+    # I-1 (Labber, IOS): ayrıcalık kipi cihaz başına oturumdur; eski motorda kip bütün cihazlar
+    # için ortaktı. SW2'ye (d3) de `enable` gerekir (d1 zaten ayrıcalıklı kipte: tekrar zararsız).
     for device_id in ("d1", "d3"):
         for text in [
+            "enable",
             "configure terminal",
             "vlan 333",
             "interface fa0/1",

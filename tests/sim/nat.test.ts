@@ -176,3 +176,14 @@ describe('NAT Simulation Mode izi', () => {
     expect(pingTrace(createLab(lab([])), 'PC1', '203.0.113.8').ok).toBe(false)
   })
 })
+
+describe('NAT ve ICMP hata iletileri (I-1 motor bulgusu)', () => {
+  it('PAT arkasından traceroute: dış router\'ın Time Exceeded\'i özgün UDP girdisiyle geri çevrilir', () => {
+    const rt = createLab(lab([...PAT, 'ip route 0.0.0.0 0.0.0.0 203.0.113.8']))
+    const out = vpcs(rt, 'PC1', 'trace 203.0.113.8')
+    expect(out).toMatch(/^ 2 {3}\*203\.0\.113\.8 .*Destination port unreachable\)$/m)
+    // NAT yokken (başarısız durum) dış yanıt dönmez
+    const plain = createLab(lab(ROLES))
+    expect(vpcs(plain, 'PC1', 'trace 203.0.113.8')).not.toMatch(/port unreachable/)
+  })
+})

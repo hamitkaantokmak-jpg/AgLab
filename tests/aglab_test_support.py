@@ -131,3 +131,37 @@ def _compact(value):
     if isinstance(value, dict):
         return {k: _compact(v) for k, v in value.items()}
     return value
+
+
+def legacy_engine(obj):
+    """I-1: topolojiyi eski motor kararına geçirir (kopya döner).
+
+    Yalnız eski motora özgü araçları sınayan testler için: ``show ethernet events`` (gerçek IOS
+    komutu değil) ve "Paket adımı" ilerleticisi. Bunlar L7'de eski motorla birlikte silinir
+    (UYUMLULUK_MATRISI "L5-i", "I-1"). İlk switch'e köprünün eşlemediği gerçek bir AğLab alanı
+    (``staticRoutes``: switch'te statik rota) eklenir; karar köprüden gelir, zorlanmaz.
+    """
+    data = json.loads(json.dumps(obj))
+    switch = next(d for d in data["devices"] if d["type"] == "Switch")
+    switch["staticRoutes"] = []
+    return data
+
+
+def assert_vpcs_ping(output, target, ok):
+    """I-1: Labber'da PC terminali VPCS'tir. Başarı: 5 adet ``84 bytes from <hedef>``;
+    başarısızlık: hiç yanıt yok (zaman aşımı, ulaşılamaz ya da ARP yok). IOS'un
+    "Success rate" satırı VPCS'te yoktur."""
+    replies = output.count("84 bytes from " + target)
+    assert replies == (5 if ok else 0), (ok, output[-1500:])
+
+
+def ping_succeeded(output, target):
+    """I-1: Labber terminal çıktısından ping sonucu. VPCS (PC): 5 adet ``84 bytes from <hedef>``.
+    IOS (router/switch): ilk ping'de ARP çözülürken ilk paket kaybolabilir (``.!!!!``, %80) —
+    gerçek IOS. Başarısızlık: VPCS'te hiç yanıt yok, IOS'ta %0."""
+    import re as _re
+
+    rates = _re.findall(r"Success rate is (\d+) percent", output)
+    if rates:
+        return int(rates[-1]) >= 80
+    return output.count("84 bytes from " + target) == 5

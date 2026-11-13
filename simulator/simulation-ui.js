@@ -483,7 +483,9 @@
           detail: {
             origin: captured.origin || 'aglab-js',
             raw: e.raw,
-            trace: captured.legacy || [],
+            trace: captured.legacy?.length
+              ? captured.legacy
+              : (captured.events || []).map((x) => x.raw),
           },
         }),
       );

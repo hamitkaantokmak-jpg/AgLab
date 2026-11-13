@@ -95,3 +95,29 @@ describe('300 cihazlık topoloji', () => {
     expect(result.median_ms).toBeLessThan(BUDGET_MS)
   })
 })
+
+describe('STP uzun zincir (I-1 motor bulgusu)', () => {
+  it('64 köprüden uzun döngüsüz zincirde tek kök, bloklu port yok; halka kesilince yol diğer yönden', async () => {
+    const { createLab, runScript } = await import('../../src/sim/index')
+    const { ports } = await import('../../src/sim/util')
+    const N = 100
+    const devices = Array.from({ length: N }, (_, i) => ({ id: `S${i}`, kind: 'switch' as const, model: 'WS-C2960-24TT-L', mac: `5254.${String(i).padStart(4, '0')}.0000`, ports: [...ports('Fa0/1'), ...ports('Gi0/1-2')], x: 0, y: 0 }))
+    const links = Array.from({ length: N }, (_, i) => ({ a: [`S${i}`, 'GigabitEthernet0/1'] as [string, string], b: [`S${(i + 1) % N}`, 'GigabitEthernet0/2'] as [string, string] }))
+    const rt = createLab({
+      id: 'ring', title: '', summary: '', level: 'İleri', tags: [], brief: [], objectives: [], solution: {}, view: { w: 1, h: 1 },
+      devices: [...devices, { id: 'A', kind: 'pc', mac: '0050.0000.000a', x: 0, y: 0 }, { id: 'B', kind: 'pc', mac: '0050.0000.000b', x: 0, y: 0 }],
+      links: [...links, { a: ['A', 'eth0'], b: ['S0', 'FastEthernet0/1'] }, { a: ['B', 'eth0'], b: [`S${N / 2}`, 'FastEthernet0/1'] }],
+      initialPcs: { A: { ip: '10.0.0.1', prefix: 24, gw: null }, B: { ip: '10.0.0.2', prefix: 24, gw: null } },
+    })
+    expect(rt.query().ping('A', '10.0.0.2').ok).toBe(true)
+    const blocked = () => Object.values(rt.derived.stp[1]!).flatMap((b) => Object.values(b.ports).filter((p) => p.state === 'BLK'))
+    expect(blocked()).toHaveLength(1) // halka: tek alternatif port
+    runScript(rt, 'S0', 'configure terminal\ninterface gi0/1\nshutdown\nend')
+    expect(Object.values(rt.derived.stp[1]!).filter((b) => b.isRoot)).toHaveLength(1)
+    expect(blocked()).toHaveLength(0) // döngüsüz zincir
+    expect(rt.query().ping('A', '10.0.0.2').ok).toBe(true)
+    // başarısız durum: iki yön de kesilince erişim yok
+    runScript(rt, 'S0', 'configure terminal\ninterface gi0/2\nshutdown\nend')
+    expect(rt.query().ping('A', '10.0.0.2').ok).toBe(false)
+  })
+})

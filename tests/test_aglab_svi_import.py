@@ -1,3 +1,5 @@
+import re
+
 """Packet Tracer SVI config -> normalized model -> real management ping."""
 
 import base64, json, tempfile
@@ -104,7 +106,14 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             "document.querySelector('#ptCliDevice').value='d1';document.querySelector('#ptCliInput').value='ping 192.168.10.1';document.querySelector('#ptCliForm').requestSubmit()"
         )
         output = page.locator("#ptTerminal").inner_text()[len(before) :]
-        assert ("100 percent" if index == 0 else "0 percent (0/5)") in output, output
+        # I-1: içe aktarılan topoloji Labber'da (IOS switch): ilk ping'de ARP çözülürken ilk
+        # paket kaybolur (".!!!!", %80) — gerçek IOS; başarısızlık %0
+        expected = (
+            r"Success rate is (80|100) percent"
+            if index == 0
+            else r"Success rate is 0 percent \(0/5\)"
+        )
+        assert re.search(expected, output), output
     assert not errors, errors
     browser.close()
 print(

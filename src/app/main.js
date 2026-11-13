@@ -7020,6 +7020,8 @@ labLoadExperiment();
         'startupConfig',
         'ospf',
         'bgp',
+        // FHRP: izlenen nesneler (`track N interface … line-protocol`); ayrıntılı denetim köprüde
+        'tracks',
       ]);
     const interfaceKeys = new Set([
       'ip',
@@ -7037,6 +7039,12 @@ labLoadExperiment();
       'aclOut',
       'portSecurity',
       'errdisabled',
+      // EtherChannel üyeliği {id, mode}; Port-channel arayüzü `po<N>` (Labber modeller)
+      'channelGroup',
+      // FHRP: HSRP/VRRP grupları. Ayrıntılı denetim köprüde (toLabber): geçersiz grup içeriği
+      // reddedilmez, köprü raporu nedeniyle motor kararına gider.
+      'hsrp',
+      'vrrp',
     ]);
     const linkKeys = new Set(['a', 'b', 'portA', 'portB', 'up']);
     for (const d of obj.devices) {
@@ -7107,6 +7115,24 @@ labLoadExperiment();
             Number(iface.vlan) > 4094)
         )
           throw new Error('Arayüz VLAN değeri geçersiz: ' + d.id + '/' + ifName);
+        if (
+          iface.channelGroup !== undefined &&
+          (!iface.channelGroup ||
+            typeof iface.channelGroup !== 'object' ||
+            Object.keys(iface.channelGroup).some((k) => !['id', 'mode'].includes(k)) ||
+            !Number.isInteger(iface.channelGroup.id) ||
+            iface.channelGroup.id < 1 ||
+            iface.channelGroup.id > 48 ||
+            !['on', 'active', 'passive', 'desirable', 'auto'].includes(iface.channelGroup.mode))
+        )
+          throw new Error('EtherChannel channelGroup geçersiz: ' + d.id + '/' + ifName);
+        if (
+          /^po\d+$/i.test(ifName) &&
+          (d.type !== 'Switch' || !(Number(ifName.slice(2)) >= 1 && Number(ifName.slice(2)) <= 48))
+        )
+          throw new Error(
+            "Port-channel arayüzü yalnız switch'te ve 1-48 olmalı: " + d.id + '/' + ifName,
+          );
         if (iface.natRole !== undefined && !['inside', 'outside'].includes(iface.natRole))
           throw new Error('NAT arayüz rolü inside/outside olmalı: ' + d.id + '/' + ifName);
         if (
@@ -7419,10 +7445,80 @@ labLoadExperiment();
     );
     return Math.max(1, Number(obj.nextId) || 1, ...suffixes);
   }
+  /**
+   * I-1: çalışma alanı (içe aktarılan, kayıtlı ya da düzenleyicide kurulan topoloji) için motor
+   * kararı. Sorun Çöz ve Akademi ile aynı mekanizma: köprü topolojiyi ifade edebiliyorsa Labber,
+   * edemiyorsa eski motor; rozet nedeni gösterir. Karar yüklemede bir kez verilir; sonraki
+   * düzenleyici değişiklikleri çalışma zamanını yeniden kurar, motor değişmez (labber-session).
+   * PKT içe aktarımında (switch/router runningConfig metni varsa) çalışma zamanı IOS metin
+   * yoluyla (L5-h, AgLabSim.cliImport) kurulur. Akademi labı ve Labber labı kendi oturumunu
+   * kurar; onlara dokunulmaz.
+   */
+  // Senaryo kurulurken importTopology çalışma alanı kararını vermez: senaryonun motoru
+  // sharedScenarioDecideEngine ile bir kez belirlenir (tek kalıcı çalışma zamanı).
+  let sharedScenarioLoading = false;
+  function workspaceDecideEngine() {
+    if (typeof AgLabSim === 'undefined' || typeof aglabLabber === 'undefined') return null;
+    if ((typeof academyActive !== 'undefined' && academyActive) || aglabLabber.lab()) return null;
+    if (sharedScenarioLoading) return null;
+    aglabLabber.stop();
+    const topo = aglabEngineChoice.snapshot();
+    const decision = aglabEngineChoice.decide(topo);
+    aglabEngineChoice.renderBadge(null, decision);
+    if (decision.engine !== 'labber') return decision;
+    const text = devices.some(
+      (d) =>
+        (d.type === 'Switch' || d.type === 'Router') &&
+        typeof d.config?.runningConfig === 'string' &&
+        d.config.runningConfig.trim(),
+    );
+    // PKT IOS metin yolu yalnız metin cihazları hâlâ tarif ediyorsa: modellenen alanlarda fark
+    // yok ve hostname'ler adlarla aynı. Kayıttan sonra yapılan düzenleme (ör. hostname, VLAN)
+    // metinle çelişir; o zaman yapısal yol kullanılır ve düzenleme korunur.
+    let cli = null;
+    if (text) {
+      cli = AgLabSim.cliImport({ ...topo, importReport: importReportData });
+      let fresh =
+        !cli.diffs.length &&
+        !cli.extended.length &&
+        devices.every((d) => !cli.runtime.running[d.id] || cli.runtime.hostname(d.id) === d.name);
+      // JSON metinden sonra düzenlendiyse (ör. ACL, NAT, natRole eklendi) metin onu tarif etmez:
+      // CLI yolunun AğLab görünümü JSON'la aynı değilse yapısal yol kullanılır. Görünüm AğLab'da
+      // ifade edilemiyorsa (metinde modelin dışında ayar var) metin yolu kalır.
+      if (fresh) {
+        const strip = (list) =>
+          JSON.stringify(
+            list.map((d) =>
+              Object.fromEntries(
+                Object.entries(d).filter(
+                  ([k]) => !['x', 'y', 'w', 'h', 'selected', 'config', 'mode'].includes(k),
+                ),
+              ),
+            ),
+          );
+        try {
+          const view = AgLabSim.toAglab(cli.runtime, topo);
+          fresh = strip(view.devices) === strip(topo.devices);
+        } catch (e) {
+          fresh = true;
+        }
+      }
+      if (!fresh) cli = null;
+    }
+    aglabLabber.start(cli ? cli.runtime : undefined);
+    updatePrompt();
+    return decision;
+  }
+  window.aglabWorkspace = {
+    decide: () => workspaceDecideEngine(),
+    // I-1: çalışma alanı Labber'dayken rehber gibi araçlar terminalle aynı izi üretir.
+    pingTrace: (src, target) => labberSimulationTrace(src, target),
+  };
   function importTopology(obj) {
     validateTopologyData(obj);
     // Yeni içerik: önceki Labber oturumu biter; içerik Labber kararındaysa yeniden başlar.
     aglabLabber.stop();
+    if (typeof resetDeviceCliHistories === 'function') resetDeviceCliHistories();
     sourceArchiveData = obj.sourceArchive || null;
     importReportData = obj.importReport ? clone(obj.importReport) : null;
     const newDevices = JSON.parse(JSON.stringify(obj.devices)),
@@ -7441,6 +7537,7 @@ labLoadExperiment();
     currentInterface = '';
     academyRestoreSession(obj.academySession || null);
     labberLabRestore(obj.labberLab || null);
+    workspaceDecideEngine();
     render();
     syncSelects();
     updateInspector();
@@ -7527,11 +7624,12 @@ labLoadExperiment();
         );
       if (cli.cliDiffs.length)
         say(
-          'IOS METİN YOLU FARKI: dönüştürücü ile CLI ' +
+          // JSON, PKT metninden sonra düzenlenmişse beklenen durum: yapısal (JSON) yol kullanılır
+          'IOS METİN YOLU FARKI: JSON ile runningConfig metni ' +
             cli.cliDiffs.length +
-            ' modellenen alanda farklı sonuç verdi: ' +
+            " modellenen alanda farklı (JSON metinden sonra düzenlenmiş olabilir); motor JSON'u kullanır: " +
             cli.cliDiffs.map((x) => x.device + ' ' + x.field).join(', '),
-          'outerr',
+          'outinfo',
         );
     }
     if (report) {
@@ -7619,6 +7717,7 @@ labLoadExperiment();
   }
   function reset() {
     aglabLabber.stop();
+    if (typeof resetDeviceCliHistories === 'function') resetDeviceCliHistories();
     academyClearSession();
     devices = [];
     links = [];
@@ -7656,6 +7755,7 @@ labLoadExperiment();
       { a: r.id, b: srv.id, portA: 'g0/1', portB: 'eth0', up: true },
     ];
     selected = pc1.id;
+    workspaceDecideEngine();
     render();
     syncSelects();
     updateInspector();
@@ -9153,6 +9253,11 @@ labLoadExperiment();
   // Labber'ın teslimat atlamaları ve l2Domain yolu. Eski motor çalıştırılmaz. Port adları
   // AğLab bağlantılarıyla eşleşsin diye arayüz yazımına çevrilir.
   function labberSimulationTrace(src, target, ttl) {
+    labberSimulationCapture(src, target, ttl);
+    // Simulation Mode açıkken yeni iz eski motor ping'indeki gibi hemen yakalanır.
+    document.dispatchEvent(new CustomEvent('aglab:trace-ready'));
+  }
+  function labberSimulationCapture(src, target, ttl) {
     beginEthernetEvents();
     if (!validIP(target)) return;
     let portName;
@@ -10825,7 +10930,12 @@ labLoadExperiment();
   }
   // Senaryo yüklenince motor kararı içerikten verilir ve rozet gösterilir (engine-choice.js).
   function loadSharedScenario(key) {
-    loadSharedScenarioContent(key);
+    sharedScenarioLoading = true;
+    try {
+      loadSharedScenarioContent(key);
+    } finally {
+      sharedScenarioLoading = false;
+    }
     sharedScenarioDecideEngine();
   }
   function loadSharedScenarioContent(key) {
@@ -11223,6 +11333,7 @@ labLoadExperiment();
       selected = devices.some((d) => d.id === obj.selected) ? obj.selected : devices[0]?.id || '';
       academyRestoreSession(obj.academySession || null);
       labberLabRestore(obj.labberLab || null);
+      workspaceDecideEngine();
       render();
       syncSelects();
       updateInspector();

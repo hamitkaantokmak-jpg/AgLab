@@ -112,6 +112,9 @@ var AgLabSim = (() => {
     toLabber: () => toLabber
   });
 
+  // src/sim/types.ts
+  var noHardwareFaults = () => ({ cut: /* @__PURE__ */ new Set(), off: /* @__PURE__ */ new Set(), nicDown: /* @__PURE__ */ new Set() });
+
   // src/sim/config.ts
   function defaultL2() {
     return {
@@ -189,9 +192,6 @@ var AgLabSim = (() => {
       portfast: c.portfast
     };
   }
-
-  // src/sim/types.ts
-  var noHardwareFaults = () => ({ cut: /* @__PURE__ */ new Set(), off: /* @__PURE__ */ new Set(), nicDown: /* @__PURE__ */ new Set() });
 
   // src/sim/util.ts
   var IF_TYPES = [
@@ -676,7 +676,8 @@ var AgLabSim = (() => {
     const self = (b) => ({ rootPrio: b.prio, rootMac: b.mac, cost: 0, sPrio: b.prio, sMac: b.mac, sPort: 0 });
     const best = {};
     for (const [dev, b] of Object.entries(bridges)) best[dev] = { vec: self(b), via: null };
-    for (let iter = 0; iter < 64; iter++) {
+    const rounds = Object.keys(bridges).length + 1;
+    for (let iter = 0; iter < rounds; iter++) {
       let changed = false;
       const next = {};
       for (const [dev, b] of Object.entries(bridges)) {
@@ -991,7 +992,8 @@ var AgLabSim = (() => {
       if (s.proto ? s.proto === pkt.proto && s.global === pkt.dst && s.gport === pkt.dport : s.global === pkt.dst)
         return { ...pkt, dst: s.local, ...s.proto ? { dport: s.lport } : {} };
     }
-    const ext = table.find((e) => e.dev === dev && e.proto === pkt.proto && e.insideGlobal === pkt.dst && e.gport === pkt.dport);
+    const icmpError = pkt.proto === "icmp" && (pkt.icmpType === "time-exceeded" || pkt.icmpType === "unreachable");
+    const ext = table.find((e) => e.dev === dev && (icmpError ? e.proto !== null : e.proto === pkt.proto) && e.insideGlobal === pkt.dst && e.gport === pkt.dport);
     if (ext) return { ...pkt, dst: ext.insideLocal, dport: ext.lport };
     const simple = table.find((e) => e.dev === dev && e.proto === null && e.insideGlobal === pkt.dst);
     return simple ? { ...pkt, dst: simple.insideLocal } : null;
@@ -1316,11 +1318,11 @@ var AgLabSim = (() => {
       return lookupFor(s.nh, /* @__PURE__ */ new Set([...seen, s.idx]));
     };
     const best = /* @__PURE__ */ new Map();
-    const consider = (e, rank) => {
+    const consider = (e, rank2) => {
       const key = `${e.net}/${e.prefix}`;
       if (out.some((c) => c.code === "C" && `${c.net}/${c.prefix}` === key)) return;
       const cur = best.get(key);
-      if (!cur || rank < cur.rank) best.set(key, { ...e, rank });
+      if (!cur || rank2 < cur.rank) best.set(key, { ...e, rank: rank2 });
     };
     for (const s of statics) {
       const r = resolve(s, /* @__PURE__ */ new Set());
@@ -1364,7 +1366,7 @@ var AgLabSim = (() => {
     return { out: best.out, nh: best.e.code === "C" ? dst : best.e.via ?? best.e.nh };
   }
   function owns(d, dev, ip2) {
-    return l3Ifs(d, dev).some((i) => i.ip === ip2);
+    return l3Ifs(d, dev).some((i) => i.ip === ip2) || fhrpOwns(d, dev, ip2);
   }
   var domainCache = /* @__PURE__ */ new WeakMap();
   function domainOf(d, n) {
@@ -1377,6 +1379,8 @@ var AgLabSim = (() => {
   function arpResolve(d, from, ip2) {
     if (!from.node) return null;
     const dom = domainOf(d, from.node);
+    const virt = fhrpTarget(d, ip2, (n) => dom.nodes.has(nk(n)));
+    if (virt) return virt;
     for (const i of allL3Ifs(d)) {
       if (i.ip !== ip2 || !i.node) continue;
       if (dom.nodes.has(nk(i.node))) return i;
@@ -1404,7 +1408,7 @@ var AgLabSim = (() => {
     let routers = 0;
     if (!l3Ifs(d, from).length) return { kind: "noip", hops };
     const { natPending, ttl: ttl0, ...fields } = spec;
-    let ipTtl = ttl0 ?? Infinity;
+    let ipTtl = ttl0 ?? 255;
     let pkt = { proto: "icmp", icmpType: "echo", ...fields, src: fields.src ?? sourceIp(d, from, dst) ?? l3Ifs(d, from)[0].ip, dst };
     if (pkt.proto === "icmp" && pkt.sport === void 0 && pkt.icmpType === "echo") pkt.sport = 1;
     const table = () => [...d.natTable ?? [], ...natPending ?? [], ...nat];
@@ -1412,7 +1416,7 @@ var AgLabSim = (() => {
     let inIf = null;
     let natted = 0;
     const end = (r) => ({ ...r, acl, pkt, nat, natted });
-    for (let ttl = 0; ttl < 32; ttl++) {
+    for (let ttl = 0; ttl < 256; ttl++) {
       if (cur !== from && inIf && routing(cur)) {
         const back = natInbound(d, cur, inIf, pkt, table());
         if (back) {
@@ -1430,11 +1434,16 @@ var AgLabSim = (() => {
       const r = lookup(d, cur, pkt.dst);
       if (!r) {
         if (cur === from) return end({ kind: "noroute", hops });
+        if (noIcmpError(d, cur, pkt.dst)) return end({ kind: "timeout", hops, suppressedAt: cur });
         const at = hops[hops.length - 1];
         return end({ kind: "unreach", at: cur, atIp: at.ip, hops });
       }
       const target = arpResolve(d, r.out, r.nh);
-      if (!target) return end({ kind: "timeout", hops });
+      if (!target) {
+        if (cur !== from && routing(cur) && !noIcmpError(d, cur, pkt.dst) && !d.arpCache?.has(`${cur}>${r.nh}`))
+          return end({ kind: "unreach", at: cur, atIp: hops[hops.length - 1].ip, hops });
+        return end({ kind: "timeout", hops, ...cur !== from && routing(cur) && noIcmpError(d, cur, pkt.dst) ? { suppressedAt: cur } : {} });
+      }
       if (cur !== from && routing(cur) && inIf) {
         const o = natOutbound(d, cur, inIf, r.out.name, pkt, table());
         if (o === "drop") return end({ kind: "timeout", hops, natMiss: true });
@@ -1456,6 +1465,12 @@ var AgLabSim = (() => {
       cur = target.dev;
     }
     return end({ kind: "timeout", hops });
+  }
+  function noIcmpError(d, dev, dst) {
+    const n = ipToInt(dst);
+    if (n === null) return false;
+    if (n >>> 0 >= 3758096384) return true;
+    return l3Ifs(d, dev).some((i) => i.prefix < 31 && (ipToInt(i.ip) | ~prefixMaskInt(i.prefix)) >>> 0 === n >>> 0);
   }
   function nextHop(d, dev, dst) {
     return lookup(d, dev, dst)?.nh ?? null;
@@ -1560,8 +1575,214 @@ var AgLabSim = (() => {
     return out.sort((a, b) => a.vlan - b.vlan || a.mac.localeCompare(b.mac));
   }
 
+  // src/sim/fhrp.ts
+  var memberId = (m) => `${m.proto}|${m.dev}|${m.ifname}|${m.group}`;
+  var hsrpMac = (group) => "0000.0c07.ac" + group.toString(16).padStart(2, "0");
+  var vrrpMac = (group) => "0000.5e00.01" + group.toString(16).padStart(2, "0");
+  var virtualMac = (m) => m.proto === "hsrp" ? hsrpMac(m.group) : vrrpMac(m.group);
+  function l3Configs(d, dev) {
+    const cfg = d.cfgs[dev];
+    if (!cfg) return [];
+    const out = [];
+    for (const [port, c] of Object.entries(cfg.ifaces)) if (c.routed) out.push([port, c.l3]);
+    for (const [name, si] of Object.entries(cfg.subifs ?? {})) out.push([name, si.l3]);
+    for (const [v, s] of Object.entries(cfg.svis)) out.push(["Vlan" + v, s.l3]);
+    return out;
+  }
+  function lineProtocolUp(d, dev, ifname) {
+    if (d.hw.off.has(dev)) return false;
+    const cfg = d.cfgs[dev];
+    if (!cfg) return false;
+    if (ifname.startsWith("Vlan")) return !!d.svis[dev]?.find((s) => "Vlan" + s.vlan === ifname)?.up;
+    if (ifname.includes(".")) {
+      const si = cfg.subifs?.[ifname];
+      return !!si && !si.shutdown && !!d.lportByName[pk(dev, si.parent)]?.active;
+    }
+    return !!d.lportByName[pk(dev, ifname)]?.active;
+  }
+  function trackStates(d, dev, tracks) {
+    return (tracks ?? []).map((t) => {
+      const iface = t.obj !== void 0 ? d.cfgs[dev]?.tracks?.[String(t.obj)]?.iface ?? null : t.iface ?? null;
+      return { ...t.obj !== void 0 ? { obj: t.obj } : {}, iface, decrement: t.decrement ?? 10, up: !!iface && lineProtocolUp(d, dev, iface) };
+    });
+  }
+  function domainKey(d, node) {
+    const nodes = [...l2Domain(d, node).nodes.values()].map((x) => x.node);
+    const segs = nodes.filter((n) => d.topo.devices[n.dev]?.kind === "switch" && !d.topo.devices[n.dev].router);
+    const keys = (segs.length ? segs : nodes).map((n) => `${n.dev}|${n.vlan}`).sort();
+    return keys[0];
+  }
+  var rank = (a, b) => b.priority - a.priority || (ipToInt(b.ip) ?? 0) - (ipToInt(a.ip) ?? 0);
+  function computeFhrp(d, prevActive) {
+    const members = [];
+    for (const sw of d.topo.switches) {
+      const up = new Map(l3Ifs(d, sw.id).map((i) => [i.name, i]));
+      for (const [ifname, l3] of l3Configs(d, sw.id)) {
+        const iface = up.get(ifname);
+        const node = iface?.node ?? null;
+        for (const proto of ["hsrp", "vrrp"]) {
+          for (const g of (proto === "hsrp" ? l3?.hsrp : l3?.vrrp) ?? []) {
+            const tracks = proto === "hsrp" ? trackStates(d, sw.id, g.tracks) : [];
+            const cfgPriority = g.priority ?? 100;
+            const owner = proto === "vrrp" && !!iface && g.ip === iface.ip;
+            const priority = owner ? 255 : Math.max(0, cfgPriority - tracks.filter((t) => !t.up).reduce((s, t) => s + t.decrement, 0));
+            const m = {
+              proto,
+              dev: sw.id,
+              ifname,
+              group: g.group,
+              vip: g.ip,
+              ip: iface?.ip ?? null,
+              cfgPriority,
+              priority,
+              preempt: owner || (proto === "hsrp" ? !!g.preempt : g.preempt !== false),
+              owner,
+              tracks,
+              state: "Init",
+              key: ""
+            };
+            if (iface && node && g.ip) m.key = proto === "hsrp" ? `hsrp|${g.group}|${domainKey(d, node)}` : `vrrp|${g.group}|${g.ip}|${domainKey(d, node)}`;
+            members.push(m);
+          }
+        }
+      }
+    }
+    const byKey = /* @__PURE__ */ new Map();
+    for (const m of members) if (m.key) byKey.set(m.key, [...byKey.get(m.key) ?? [], m]);
+    const groups = [];
+    for (const [key, list] of byKey) {
+      const sorted = [...list].sort(rank);
+      const best = sorted[0];
+      const prev = list.find((m) => memberId(m) === prevActive.get(key));
+      const active = prev && !(best !== prev && best.preempt && best.priority > prev.priority) ? prev : best;
+      prevActive.set(key, memberId(active));
+      const proto = best.proto;
+      let standby = null;
+      for (const m of sorted) {
+        if (m === active) m.state = proto === "hsrp" ? "Active" : "Master";
+        else if (proto === "hsrp" && !standby) {
+          standby = m;
+          m.state = "Standby";
+        } else m.state = proto === "hsrp" ? "Listen" : "Backup";
+      }
+      groups.push({ key, proto, group: best.group, vip: active.vip, members: list, active, standby });
+    }
+    for (const k of [...prevActive.keys()]) if (!byKey.has(k)) prevActive.delete(k);
+    return { members, groups };
+  }
+  function fhrpTarget(d, ip2, inDomain) {
+    for (const g of d.fhrp?.groups ?? []) {
+      const a = g.active;
+      if (!a || g.vip !== ip2) continue;
+      const base2 = l3Ifs(d, a.dev).find((i) => i.name === a.ifname);
+      if (base2?.node && inDomain(base2.node)) return { ...base2, ip: ip2, mac: virtualMac(a) };
+    }
+    return null;
+  }
+  function fhrpOwns(d, dev, ip2) {
+    return (d.fhrp?.groups ?? []).some((g) => g.vip === ip2 && g.active?.dev === dev);
+  }
+  function membersOf(d, dev, proto) {
+    return (d.fhrp?.members ?? []).filter((m) => m.dev === dev && m.proto === proto);
+  }
+  var groupOf = (d, m) => d.fhrp?.groups.find((g) => g.key === m.key && !!m.key) ?? null;
+  var padR = (s, n) => String(s).length >= n ? String(s) + " " : String(s) + " ".repeat(n - String(s).length);
+  function showStandbyBrief(d, dev) {
+    const ms = membersOf(d, dev, "hsrp");
+    if (!ms.length) return [];
+    const o = ["                     P indicates configured to preempt.", "                     |"];
+    o.push("Interface   Grp  Pri P State   Active          Standby         Virtual IP");
+    for (const m of ms) {
+      const g = groupOf(d, m);
+      const active = !g?.active ? "unknown" : g.active === m ? "local" : g.active.ip;
+      const standby = !g?.standby ? "unknown" : g.standby === m ? "local" : g.standby.ip;
+      o.push(
+        padR(shortIf(m.ifname), 12) + padR(m.group, 5) + String(m.priority).padStart(3) + " " + (m.preempt ? "P " : "  ") + padR(m.state, 8) + padR(active, 16) + padR(standby, 16) + (m.vip ?? "unknown")
+      );
+    }
+    return o;
+  }
+  function showStandby(d, dev) {
+    const o = [];
+    for (const m of membersOf(d, dev, "hsrp")) {
+      const g = groupOf(d, m);
+      const mac = hsrpMac(m.group);
+      o.push(`${m.ifname} - Group ${m.group}`);
+      o.push(`  State is ${m.state}` + (m.state === "Init" && !m.ip ? " (interface down)" : m.state === "Init" && !m.vip ? " (virtual IP not configured)" : ""));
+      o.push(`  Virtual IP address is ${m.vip ?? "unknown"}`);
+      o.push(`  Active virtual MAC address is ${g?.active ? mac : "unknown"}` + (g?.active ? g.active === m ? " (MAC In Use)" : " (MAC Not In Use)" : ""));
+      o.push(`    Local virtual MAC address is ${mac} (v1 default)`);
+      o.push("  Hello time 3 sec, hold time 10 sec");
+      o.push(`  Preemption ${m.preempt ? "enabled" : "disabled"}`);
+      o.push("  Active router is " + (!g?.active ? "unknown" : g.active === m ? "local" : `${g.active.ip}, priority ${g.active.priority}`));
+      o.push("  Standby router is " + (!g?.standby ? "unknown" : g.standby === m ? "local" : `${g.standby.ip}, priority ${g.standby.priority}`));
+      o.push(`  Priority ${m.priority} (configured ${m.cfgPriority})`);
+      for (const t of m.tracks)
+        o.push(
+          (t.obj !== void 0 ? `    Track object ${t.obj}` : `    Track interface ${t.iface}`) + ` state ${t.up ? "Up" : "Down"} decrement ${t.decrement}`
+        );
+      o.push(`  Group name is "hsrp-${shortIf(m.ifname)}-${m.group}" (default)`);
+    }
+    return o;
+  }
+  var downMs = (prio) => 3e3 + Math.floor((256 - prio) * 1e3 / 256);
+  function showVrrpBrief(d, dev) {
+    const ms = membersOf(d, dev, "vrrp");
+    if (!ms.length) return [];
+    const o = ["Interface          Grp Pri Time  Own Pre State   Master addr     Group addr"];
+    for (const m of ms) {
+      const g = groupOf(d, m);
+      o.push(
+        padR(shortIf(m.ifname), 19) + padR(m.group, 4) + padR(m.priority, 4) + padR(downMs(m.priority), 6) + padR(m.owner ? "Y" : "", 4) + padR(m.preempt ? "Y" : "", 4) + padR(m.state, 8) + padR(g?.active?.ip ?? "0.0.0.0", 16) + (m.vip ?? "0.0.0.0")
+      );
+    }
+    return o;
+  }
+  function showVrrp(d, dev) {
+    const o = [];
+    for (const m of membersOf(d, dev, "vrrp")) {
+      const g = groupOf(d, m);
+      o.push(`${m.ifname} - Group ${m.group}`);
+      o.push(`  State is ${m.state}`);
+      o.push(`  Virtual IP address is ${m.vip ?? "0.0.0.0"}`);
+      o.push(`  Virtual MAC address is ${vrrpMac(m.group)}`);
+      o.push("  Advertisement interval is 1.000 sec");
+      o.push(`  Preemption ${m.preempt ? "enabled" : "disabled"}`);
+      o.push(`  Priority is ${m.priority}` + (m.owner ? " (owner)" : ""));
+      const master = g?.active;
+      o.push(
+        "  Master Router is " + (!master ? "unknown" : master === m ? `${m.ip} (local), priority is ${m.priority}` : `${master.ip}, priority is ${master.priority}`)
+      );
+      o.push("  Master Advertisement interval is 1.000 sec");
+      o.push(`  Master Down interval is ${(downMs(m.priority) / 1e3).toFixed(3)} sec`);
+    }
+    return o;
+  }
+  function showTrack(d, dev) {
+    const o = [];
+    const tracks = d.cfgs[dev]?.tracks ?? {};
+    for (const n of Object.keys(tracks).map(Number).sort((a, b) => a - b)) {
+      const iface = tracks[String(n)].iface;
+      const up = lineProtocolUp(d, dev, iface);
+      o.push(`Track ${n}`, `  Interface ${iface} line-protocol`, `  Line protocol is ${up ? "Up" : "Down"}`);
+      const users = (d.fhrp?.members ?? []).filter((m) => m.dev === dev && m.tracks.some((t) => t.obj === n));
+      if (users.length) {
+        o.push("Tracked by:");
+        for (const m of users) o.push(`  HSRP ${m.ifname} ${m.group}`);
+      }
+    }
+    return o;
+  }
+
   // src/sim/cli/help.ts
   var HELP = {
+    // FHRP
+    standby: "HSRP interface configuration commands",
+    vrrp: "VRRP Interface configuration commands",
+    track: "Object tracking configuration commands",
+    preempt: "Overthrow lower priority Active routers",
+    decrement: "Priority decrement",
+    "line-protocol": "Track interface line-protocol",
     // exec
     enable: "Turn on privileged commands",
     disable: "Turn off privileged commands",
@@ -2096,7 +2317,31 @@ var AgLabSim = (() => {
     if (o?.ospfPrio !== void 0) out.push(" ip ospf priority " + o.ospfPrio);
     if (o?.ospfArea) out.push(` ip ospf ${o.ospfArea.pid} area ${o.ospfArea.area}`);
     if (o?.ospfCost) out.push(" ip ospf cost " + o.ospfCost);
+    out.push(...fhrpLines(o));
     return out;
+  }
+  function fhrpLines(o) {
+    const out = [];
+    for (const g of o?.hsrp ?? []) {
+      if (g.ip) out.push(` standby ${g.group} ip ${g.ip}`);
+      if (g.priority !== void 0 && g.priority !== 100) out.push(` standby ${g.group} priority ${g.priority}`);
+      if (g.preempt) out.push(` standby ${g.group} preempt`);
+      for (const t of g.tracks ?? []) {
+        const dec = t.decrement !== void 0 ? t.decrement : null;
+        if (t.obj !== void 0) out.push(` standby ${g.group} track ${t.obj}` + (dec !== null ? ` decrement ${dec}` : ""));
+        else out.push(` standby ${g.group} track ${t.iface}` + (dec !== null ? ` ${dec}` : ""));
+      }
+    }
+    for (const g of o?.vrrp ?? []) {
+      if (g.ip) out.push(` vrrp ${g.group} ip ${g.ip}`);
+      if (g.priority !== void 0 && g.priority !== 100) out.push(` vrrp ${g.group} priority ${g.priority}`);
+      if (g.preempt === false) out.push(` no vrrp ${g.group} preempt`);
+    }
+    return out;
+  }
+  function trackLines(c) {
+    const ids = Object.keys(c.tracks ?? {}).map(Number).sort((a, b) => a - b);
+    return ids.flatMap((n) => ["track " + n + " interface " + c.tracks[String(n)].iface + " line-protocol", "!"]);
   }
   var routeLine = (r) => `ip route ${r.net} ${r.mask} ${r.nh}` + (r.ad && r.ad !== 1 ? " " + r.ad : "");
   function discoveryGlobalLines(c) {
@@ -2117,7 +2362,7 @@ var AgLabSim = (() => {
     o.push("!", "version 15.4", "service timestamps debug datetime msec", "service timestamps log datetime msec", "no service password-encryption", "!");
     o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", "no aaa new-model");
     if (!c.ipRouting) o.push("no ip routing");
-    o.push("!", ...dhcpLines(c), "!");
+    o.push("!", ...dhcpLines(c), "!", ...trackLines(c));
     for (const n of Object.keys(c.loopbacks ?? {}).map(Number).sort((a, b) => a - b)) {
       const l = c.loopbacks[String(n)];
       o.push("interface Loopback" + n);
@@ -2185,7 +2430,7 @@ var AgLabSim = (() => {
     o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", "no aaa new-model");
     o.push("system mtu routing 1500");
     if (c.ipRouting) o.push("ip routing");
-    o.push("!", ...dhcpLines(c), "!", "vtp mode transparent", "!");
+    o.push("!", ...dhcpLines(c), "!", ...trackLines(c), "vtp mode transparent", "!");
     o.push("spanning-tree mode " + c.stpMode, "spanning-tree extend system-id");
     const byPrio = /* @__PURE__ */ new Map();
     for (const [v, p] of Object.entries(c.stpPriority)) byPrio.set(p, [...byPrio.get(p) ?? [], Number(v)]);
@@ -2692,7 +2937,7 @@ var AgLabSim = (() => {
       mac,
       line: ` All    ${mac}    STATIC      CPU`
     }));
-    for (const e of macTable(d, dev, rt.seen))
+    for (const e of macTable(d, dev, rt.seenOn(dev)))
       rows.push({ mac: e.mac, line: padL(e.vlan, 4) + "    " + pad(e.mac, 18) + pad("DYNAMIC", 12) + shortIf(e.port) });
     const shown = only ? rows.filter((r) => r.mac === only) : rows;
     o.push(...shown.map((r) => r.line));
@@ -3097,6 +3342,12 @@ var AgLabSim = (() => {
       // L5-d: NAT (yalnız router; switch'te gizli)
       { p: "show ip nat translations", run: (x) => showNatTranslations(x.cfg, x.dev, x.rt.natTable) },
       { p: "show ip nat statistics", run: (x) => x.natStatistics() },
+      // FHRP
+      { p: "show standby", run: (x) => showStandby(x.rt.derived, x.dev) },
+      { p: "show standby brief", run: (x) => showStandbyBrief(x.rt.derived, x.dev) },
+      { p: "show vrrp", run: (x) => showVrrp(x.rt.derived, x.dev) },
+      { p: "show vrrp brief", run: (x) => showVrrpBrief(x.rt.derived, x.dev) },
+      { p: "show track", run: (x) => showTrack(x.rt.derived, x.dev) },
       { p: "show ip interface <if>", run: (x, a) => showIpInterface(x.rt, x.dev, x.resolveL3(a[3], a[4], 3)) },
       { p: "show port-security address", run: (x) => showPortSecurityAddress(x.rt, x.dev) },
       { p: "show port-security interface <if>", run: (x, a) => showPortSecurityInterface(x.rt, x.dev, x.physName(a[3], a[4], 3)), ifTypes: ["FastEthernet", "GigabitEthernet"] },
@@ -3160,7 +3411,7 @@ var AgLabSim = (() => {
     {
       p: "clear mac address-table dynamic",
       run: (x) => {
-        x.rt.seen.clear();
+        x.rt.clearMacs(x.dev);
         x.rt.emit();
       }
     },
@@ -3198,6 +3449,9 @@ var AgLabSim = (() => {
         }
       },
       { p: "vlan <vlist:ISL VLAN IDs 1-4094>", run: (x, a) => x.enterVlan(a[1]) },
+      // FHRP: izlenen nesne (yalnız arayüz line-protocol'ü modellenir)
+      { p: "track <1-1000:Tracked object> interface <if> line-protocol", run: (x, a) => x.trackObject(Number(a[1]), x.resolveL3(a[3], a[4], 3)) },
+      { p: "no track <1-1000:Tracked object>", run: (x, a) => void delete x.cfg.tracks?.[a[2]] },
       { p: "no vlan <vlist:ISL VLAN IDs 1-4094>", run: (x, a) => x.deleteVlan(a[2]) },
       { p: "interface <if>", run: (x, a) => x.enterIf(a[1], a[2]) },
       { p: "interface range <LINE:Interface range, e.g. fa0/1 - 4, gi0/1>", run: (x, a) => x.enterRange(a[2]) },
@@ -3315,6 +3569,44 @@ var AgLabSim = (() => {
   var ROUTER_HIDDEN_CONFIG = /^(no )?(vlan|spanning-tree|errdisable) /;
   var SWITCH_HIDDEN_SHOW = /^(show|clear) ip nat /;
   var ROUTER_HIDDEN_SHOW = /^show (vlan|spanning-tree|mac address-table|interfaces (trunk|status|switchport)|interfaces <if> switchport|etherchannel|errdisable|vtp|port-security)/;
+  function fhrpIfPatterns() {
+    const HG = "<0-255:group number>", VG = "<1-255:Group number>";
+    const track = (t) => (g) => {
+      const list = (g.tracks ?? []).filter((x) => t.obj !== void 0 ? x.obj !== t.obj : x.iface !== t.iface);
+      g.tracks = [...list, t];
+    };
+    const untrack = (t) => (g) => {
+      g.tracks = (g.tracks ?? []).filter((x) => t.obj !== void 0 ? x.obj !== t.obj : x.iface !== t.iface);
+      if (!g.tracks.length) delete g.tracks;
+    };
+    return [
+      { p: `standby ${HG} ip <A.B.C.D:Virtual IP address>`, run: (x, a) => x.fhrp("hsrp", Number(a[1]), (g) => void (g.ip = a[3])) },
+      { p: "standby ip <A.B.C.D:Virtual IP address>", run: (x, a) => x.fhrp("hsrp", 0, (g) => void (g.ip = a[2])) },
+      { p: `no standby ${HG} ip`, run: (x, a) => x.fhrp("hsrp", Number(a[2]), (g) => void (g.ip = null), false) },
+      { p: `no standby ${HG} ip <A.B.C.D:Virtual IP address>`, run: (x, a) => x.fhrp("hsrp", Number(a[2]), (g) => void (g.ip = null), false) },
+      { p: `standby ${HG} priority <0-255:Priority level>`, run: (x, a) => x.fhrp("hsrp", Number(a[1]), (g) => void (g.priority = Number(a[3]))) },
+      { p: `no standby ${HG} priority`, run: (x, a) => x.fhrp("hsrp", Number(a[2]), (g) => void delete g.priority, false) },
+      { p: `standby ${HG} preempt`, run: (x, a) => x.fhrp("hsrp", Number(a[1]), (g) => void (g.preempt = true)) },
+      { p: `no standby ${HG} preempt`, run: (x, a) => x.fhrp("hsrp", Number(a[2]), (g) => void delete g.preempt, false) },
+      { p: `standby ${HG} track <1-1000:Tracked object number>`, run: (x, a) => x.fhrp("hsrp", Number(a[1]), track({ obj: Number(a[3]) })) },
+      { p: `standby ${HG} track <1-1000:Tracked object number> decrement <1-255:Priority decrement>`, run: (x, a) => x.fhrp("hsrp", Number(a[1]), track({ obj: Number(a[3]), decrement: Number(a[5]) })) },
+      { p: `standby ${HG} track <if>`, run: (x, a) => x.fhrp("hsrp", Number(a[1]), track({ iface: x.resolveL3(a[3], a[4], 3) })) },
+      { p: `standby ${HG} track <if> <1-255:Priority decrement>`, run: (x, a) => x.fhrp("hsrp", Number(a[1]), track({ iface: x.resolveL3(a[3], a[4], 3), decrement: Number(a[5]) })) },
+      { p: `no standby ${HG} track <1-1000:Tracked object number>`, run: (x, a) => x.fhrp("hsrp", Number(a[2]), untrack({ obj: Number(a[4]) }), false) },
+      { p: `no standby ${HG} track <if>`, run: (x, a) => x.fhrp("hsrp", Number(a[2]), untrack({ iface: x.resolveL3(a[4], a[5], 4) }), false) },
+      { p: `no standby ${HG}`, run: (x, a) => x.fhrp("hsrp", Number(a[2]), (g) => void Object.assign(g, { ip: null, priority: void 0, preempt: void 0, tracks: void 0 }), false) },
+      { p: "standby version 1", run: () => void 0 },
+      { p: "standby version 2", run: () => ["% HSRP version 2 is not modelled in this lab."] },
+      { p: `vrrp ${VG} ip <A.B.C.D:IP address>`, run: (x, a) => x.fhrp("vrrp", Number(a[1]), (g) => void (g.ip = a[3])) },
+      { p: `no vrrp ${VG} ip`, run: (x, a) => x.fhrp("vrrp", Number(a[2]), (g) => void (g.ip = null), false) },
+      { p: `no vrrp ${VG} ip <A.B.C.D:IP address>`, run: (x, a) => x.fhrp("vrrp", Number(a[2]), (g) => void (g.ip = null), false) },
+      { p: `vrrp ${VG} priority <1-254:Priority level>`, run: (x, a) => x.fhrp("vrrp", Number(a[1]), (g) => void (g.priority = Number(a[3]))) },
+      { p: `no vrrp ${VG} priority`, run: (x, a) => x.fhrp("vrrp", Number(a[2]), (g) => void delete g.priority, false) },
+      { p: `vrrp ${VG} preempt`, run: (x, a) => x.fhrp("vrrp", Number(a[1]), (g) => void delete g.preempt) },
+      { p: `no vrrp ${VG} preempt`, run: (x, a) => x.fhrp("vrrp", Number(a[2]), (g) => void (g.preempt = false)) },
+      { p: `no vrrp ${VG}`, run: (x, a) => x.fhrp("vrrp", Number(a[2]), (g) => void Object.assign(g, { ip: null, priority: void 0, preempt: void 0 }), false) }
+    ];
+  }
   var l3OptPatterns = [
     { p: "ip ospf cost <1-65535:Cost>", run: (x, a) => x.eachL3((o) => void (o.ospfCost = Number(a[3]))) },
     { p: "no ip ospf cost", run: (x) => x.eachL3((o) => void delete o.ospfCost) },
@@ -3355,6 +3647,7 @@ var AgLabSim = (() => {
     { p: "no ip access-group <WORD:IP access list (standard or extended)> in", run: (x) => x.eachL3((o) => void delete o.aclIn) },
     { p: "no ip access-group <WORD:IP access list (standard or extended)> out", run: (x) => x.eachL3((o) => void delete o.aclOut) },
     { p: "no ip access-group in", run: (x) => x.eachL3((o) => void delete o.aclIn) },
+    ...fhrpIfPatterns(),
     { p: "no ip access-group out", run: (x) => x.eachL3((o) => void delete o.aclOut) }
   ];
   var routerPatterns = [
@@ -3581,7 +3874,9 @@ var AgLabSim = (() => {
         vlan: buildTrie(vlanPatterns),
         router: buildTrie(routerPatterns),
         dhcp: buildTrie(dhcpPoolPatterns),
-        acl: buildTrie(aclPatterns)
+        acl: buildTrie(aclPatterns),
+        // FHRP: `track N interface … line-protocol` alt kipi (gecikme vb. modellenmez)
+        track: buildTrie(commonSub)
       };
       trieCache.set(def, t);
     }
@@ -3627,12 +3922,14 @@ var AgLabSim = (() => {
           return h + "(config-router)#";
         case "dhcp":
           return h + "(dhcp-config)#";
+        case "track":
+          return h + "(config-track)#";
         case "acl":
           return h + (this.cfg.acls?.[this.aclName]?.type === "extended" ? "(config-ext-nacl)#" : "(config-std-nacl)#");
       }
     }
     get inConfig() {
-      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl";
+      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track";
     }
     trie() {
       const t = tries(this.def);
@@ -3675,7 +3972,7 @@ var AgLabSim = (() => {
     }
     run(cmd) {
       let r = parse(this.trie(), cmd);
-      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl") && r.err !== "empty") {
+      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track") && r.err !== "empty") {
         const g = parse(tries(this.def).config, cmd);
         if (g.ok) {
           this.mode = "config";
@@ -3975,6 +4272,32 @@ var AgLabSim = (() => {
       list.entries = list.entries.filter((e) => e.seq !== seq);
     }
     /** An L3 interface name for show commands (physical, subinterface, SVI, loopback). */
+    // ---- FHRP ----
+    trackObject(n, iface) {
+      var _a;
+      ;
+      ((_a = this.cfg).tracks ?? (_a.tracks = {}))[String(n)] = { iface };
+      this.mode = "track";
+    }
+    /** Apply to group `n` of HSRP/VRRP on the interface; empty groups are removed (as IOS). */
+    fhrp(proto, n, fn, create = true) {
+      let out = void 0;
+      this.eachL3((o) => {
+        const list = proto === "hsrp" ? o.hsrp ?? (o.hsrp = []) : o.vrrp ?? (o.vrrp = []);
+        let g = list.find((x) => x.group === n);
+        if (!g && create) {
+          g = { group: n, ip: null };
+          list.push(g);
+          list.sort((a, b) => a.group - b.group);
+        }
+        if (g) out = fn(g);
+        const empty = (x) => !x.ip && x.priority === void 0 && x.preempt === void 0 && !x.tracks?.length;
+        const kept = list.filter((x) => !empty(x));
+        if (proto === "hsrp") kept.length ? o.hsrp = kept : delete o.hsrp;
+        else kept.length ? o.vrrp = kept : delete o.vrrp;
+      });
+      return out;
+    }
     resolveL3(type, num, argIndex) {
       return this.resolveIf(type, num, argIndex, false);
     }
@@ -4441,7 +4764,9 @@ var AgLabSim = (() => {
       const d = this.rt.derived;
       const repeat = o.repeat ?? 5;
       const r = ping(d, this.dev, ip2, o.src ? { src: o.src } : {});
-      this.rt.markSeen(r.forward?.hops ?? [], this.dev);
+      const firstKey = `${this.dev}>${r.firstHopArp?.ip ?? ip2}`;
+      const coldArp = (r.forward?.hops.length ?? 0) > 0 && !this.rt.arp.has(firstKey);
+      this.rt.markExchange(this.dev, r.forward, r.back);
       this.rt.countAcl(repeat, r.forward, r.back);
       this.rt.recordNat(repeat, r.forward, r.back);
       const head = ["Type escape sequence to abort.", `Sending ${repeat}, ${o.size ?? 100}-byte ICMP Echos to ${ip2}, timeout is ${o.timeout ?? 2} seconds:`];
@@ -4450,8 +4775,8 @@ var AgLabSim = (() => {
       let marks;
       let ok = 0;
       if (r.ok) {
-        const key = `${this.dev}>${r.firstHopArp?.ip ?? ip2}`;
-        const cold = !this.rt.arp.has(key);
+        const key = firstKey;
+        const cold = coldArp;
         this.rt.arp.add(key);
         this.rt.arpIncomplete.delete(key);
         marks = (cold ? "." : "!") + "!".repeat(repeat - 1);
@@ -4798,7 +5123,7 @@ var AgLabSim = (() => {
     "clear ip                 Clear IP address, mask and gateway",
     "show [arp|ip]            Print the information of the VPC",
     "ping <address> [-c count] [-T ttl]  Ping the network host",
-    "trace <address>          Print the path packets take to network host",
+    "trace <address> [-m ttl] Print the path packets take to network host",
     "nslookup <name>          Ask the DNS server for the address of a host name",
     "curl [http://]<host>[:port][/path]  Fetch a web page (Labber addition: VPCS has no HTTP client)",
     "help, ?                  Print help",
@@ -4863,7 +5188,12 @@ var AgLabSim = (() => {
       if (c === "show" && (!args[0] || args[0] === "ip")) return this.showIp();
       if (c === "show" && args[0] === "arp") return this.showArp();
       if (c === "ping" && args[0]) return this.pingCmd(args);
-      if ((c === "trace" || c === "tracert" || c === "traceroute") && args[0]) return this.trace(args[0]);
+      if ((c === "trace" || c === "tracert" || c === "traceroute") && args[0]) {
+        if (args.length === 1) return this.trace(args[0]);
+        const m = args[1] === "-m" && /^\d+$/.test(args[2] ?? "") && args.length === 3 ? Number(args[2]) : NaN;
+        if (!(m >= 1 && m <= 255)) return [`Invalid options: ${args.slice(1).join(" ")}`];
+        return this.trace(args[0], m);
+      }
       return ['Bad command: "' + line + '". Use ? for help.'];
     }
     ip(args) {
@@ -4951,7 +5281,7 @@ var AgLabSim = (() => {
       if (!c.ip) return [`curl: (7) Failed to connect to ${host} port ${port}: Network is unreachable`];
       this.rt.hostSends(this.dev);
       const r = httpGet(this.rt.derived, this.dev, host, port);
-      this.rt.markSeen(r.forward?.hops ?? [], this.dev);
+      this.rt.markExchange(this.dev, r.forward, r.back);
       this.rt.countAcl(1, r.forward, r.back);
       this.rt.recordNat(1, r.forward, r.back);
       this.rt.emit();
@@ -5037,8 +5367,8 @@ var AgLabSim = (() => {
       if (!sameSubnet(c.ip, dst, c.prefix) && !c.gw) return [`host (${dst}) not reachable`, ""];
       this.rt.hostSends(this.dev);
       const d = this.rt.derived;
-      const r = ping(d, this.dev, dst, ttlOut !== void 0 ? { ttl: ttlOut } : {});
-      this.rt.markSeen(r.forward?.hops ?? [], this.dev);
+      const r = ping(d, this.dev, dst, { ttl: ttlOut ?? 64 });
+      this.rt.markExchange(this.dev, r.forward, r.back);
       this.rt.countAcl(count, r.forward, r.back);
       this.rt.recordNat(count, r.forward, r.back);
       if (r.firstHopArp) this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`);
@@ -5055,13 +5385,13 @@ var AgLabSim = (() => {
       }
       return ["", ...out, ""];
     }
-    trace(dst) {
+    trace(dst, maxHops = 8) {
       if (ipToInt(dst) === null) return [`Cannot resolve ${dst}`];
       const c = this.rt.pcs[this.dev];
       if (!c.ip) return ["No gateway found"];
       this.rt.hostSends(this.dev);
-      const out = [`trace to ${dst}, 8 hops max, press Ctrl+C to stop`];
-      for (let ttl = 1; ttl <= 8; ttl++) {
+      const out = [`trace to ${dst}, ${maxHops} hops max, press Ctrl+C to stop`];
+      for (let ttl = 1; ttl <= maxHops; ttl++) {
         const p = traceProbe(this.rt.derived, this.dev, dst, ttl, 33434 + ttl - 1);
         this.rt.markSeen(p.forward.hops, this.dev);
         this.rt.countAcl(1, p.forward, p.back);
@@ -5539,6 +5869,11 @@ var AgLabSim = (() => {
       const m = /^([A-Za-z-]+)\s*(\d.*)$/.exec(port);
       return m && canonIf(m[1], m[2]) || port;
     }
+    /** FHRP: the router's interface is HSRP Active / VRRP Master for this group. */
+    fhrpActive(dev, iface, group) {
+      const name = this.canon(iface);
+      return (this.d.fhrp?.groups ?? []).some((g) => g.group === Number(group) && g.active?.dev === dev && g.active.ifname === name);
+    }
     vlanExists(dev, vlan) {
       return vlanExists(this.d.cfgs[dev], vlan);
     }
@@ -5643,6 +5978,33 @@ var AgLabSim = (() => {
   };
 
   // src/sim/runtime.ts
+  var MAC_AGING_SECONDS = 300;
+  var AgingSet = class extends Set {
+    constructor() {
+      super(...arguments);
+      __publicField(this, "at", /* @__PURE__ */ new Map());
+    }
+    add(mac) {
+      this.at?.set(mac, Date.now());
+      return super.add(mac);
+    }
+    delete(mac) {
+      this.at.delete(mac);
+      return super.delete(mac);
+    }
+    clear() {
+      this.at?.clear();
+      super.clear();
+    }
+    /** Süresi dolan dinamik girdileri siler (okunurken: show mac, değerlendirme). */
+    expire(now = Date.now()) {
+      for (const mac of [...this]) {
+        const t = this.at.get(mac);
+        if (t === void 0) this.at.set(mac, now);
+        else if (now - t >= MAC_AGING_SECONDS * 1e3) this.delete(mac);
+      }
+    }
+  };
   var LabRuntime = class {
     constructor(def, applyInitial) {
       this.def = def;
@@ -5653,7 +6015,10 @@ var AgLabSim = (() => {
       __publicField(this, "pcs", {});
       __publicField(this, "derived");
       __publicField(this, "logs", []);
-      __publicField(this, "seen", /* @__PURE__ */ new Set());
+      /** MACs learned by switches (sources of real traffic); dynamic entries age out (IOS: 300 s) */
+      __publicField(this, "seen", new AgingSet());
+      /** I-1: switch başına `clear mac address-table dynamic` ile gizlenen adresler */
+      __publicField(this, "clearedOn", /* @__PURE__ */ new Map());
       __publicField(this, "arp", /* @__PURE__ */ new Set());
       /** 'dev>ip' ARP requests that went unanswered (shown as Incomplete) */
       __publicField(this, "arpIncomplete", /* @__PURE__ */ new Set());
@@ -5679,11 +6044,23 @@ var AgLabSim = (() => {
       __publicField(this, "natHits", 0);
       /** L5-d: packets dropped because the pool had no free address */
       __publicField(this, "natMisses", 0);
+      /** FHRP: group key → member id of the current Active/Master (preemption needs history) */
+      __publicField(this, "fhrpActive", /* @__PURE__ */ new Map());
+      /** FHRP: member id → last state (for %HSRP/%VRRP state change syslog) */
+      __publicField(this, "fhrpStates", /* @__PURE__ */ new Map());
       /** L5-h: per-line result of a lenient (running-config) initial configuration */
       __publicField(this, "configReport");
       __publicField(this, "seq", 0);
       __publicField(this, "t0", Date.now());
       __publicField(this, "listeners", /* @__PURE__ */ new Set());
+      /** FHRP state changes (IOS 15 biçimi; ara Speak/Learn durumları modellenmez). */
+      __publicField(this, "fhrpQuiet", false);
+      /**
+       * MotorBulgusu (I-1, test_aglab_mac_learning): IOS, portun access/native VLAN'ı ya da
+       * çalışma kipi değişince o portta öğrenilmiş dinamik girdileri siler; adres yeni VLAN'da
+       * ancak yeniden trafik gönderince öğrenilir. Labber eski girdiyi yeni VLAN'da gösteriyordu.
+       */
+      __publicField(this, "portSig", /* @__PURE__ */ new Map());
       this.topo = buildTopo(def);
       this.reset();
     }
@@ -5704,6 +6081,8 @@ var AgLabSim = (() => {
       this.natHits = 0;
       this.natMisses = 0;
       this.dhcp = [];
+      this.fhrpActive.clear();
+      this.fhrpStates.clear();
       this.hw = noHardwareFaults();
       for (const l of this.def.links)
         if (l.up === false) for (const [dev, port] of [l.a, l.b]) this.hw.cut.add(pk(dev, port));
@@ -5713,9 +6092,11 @@ var AgLabSim = (() => {
       }
       this.derived = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw);
       this.applyInitial(this);
+      this.fhrpActive.clear();
       this.derived = this.recompute();
       for (const sw of this.topo.switches) this.startup[sw.id] = clone(this.running[sw.id]);
       this.seen.clear();
+      this.clearedOn.clear();
       this.arp.clear();
       this.arpIncomplete.clear();
       this.logs = [];
@@ -5746,6 +6127,7 @@ var AgLabSim = (() => {
     commit() {
       const prev = this.derived;
       this.derived = this.recompute();
+      this.flushRevlannedPorts(prev);
       this.diffLogs(prev, this.derived);
       this.emit();
     }
@@ -5797,7 +6179,27 @@ var AgLabSim = (() => {
         d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw);
       }
       d.natTable = this.natTable;
+      d.arpCache = this.arp;
+      d.fhrp = computeFhrp(d, this.fhrpActive);
+      this.fhrpLog(d.fhrp);
       return d;
+    }
+    fhrpLog(f) {
+      const now = /* @__PURE__ */ new Map();
+      for (const m of f.members) {
+        const id = memberId(m);
+        now.set(id, m.state);
+        const g = m.proto === "hsrp" && m.key ? f.groups.find((x) => x.key === m.key) : void 0;
+        const diff = g?.active && g.active !== m && g.active.vip !== m.vip ? `diffvip:${g.active.vip}` : "";
+        if (diff) now.set(id + "|diffvip", diff);
+        if (diff && this.fhrpStates.get(id + "|diffvip") !== diff && !this.fhrpQuiet)
+          this.log(m.dev, `%HSRP-4-DIFFVIP1: ${shortIf(m.ifname)} Grp ${m.group} active routers virtual IP address ${g.active.vip} is different to the locally configured address ${m.vip}`);
+        const was = this.fhrpStates.get(id) ?? "Init";
+        if (was === m.state || this.fhrpQuiet) continue;
+        const tag = m.proto === "hsrp" ? "%HSRP-5-STATECHANGE" : "%VRRP-6-STATECHANGE";
+        this.log(m.dev, `${tag}: ${shortIf(m.ifname)} Grp ${m.group} state ${was} -> ${m.state}`);
+      }
+      this.fhrpStates = now;
     }
     /**
      * L5-e: a PC puts frames on the wire (ping, trace, DHCP). On a secure access port its source
@@ -5846,6 +6248,18 @@ var AgLabSim = (() => {
       this.commit();
       return true;
     }
+    flushRevlannedPorts(_prev) {
+      const next = /* @__PURE__ */ new Map();
+      for (const [dev, lps] of Object.entries(this.derived.lports))
+        for (const lp of lps) next.set(`${dev}|${lp.name}`, `${lp.opMode}/${lp.cfg.accessVlan}/${lp.cfg.nativeVlan}`);
+      for (const [k, v] of next) {
+        const old = this.portSig.get(k);
+        if (old === void 0 || old === v) continue;
+        const [dev, name] = k.split("|");
+        for (const e of macTable(this.derived, dev, this.seen)) if (e.port === name) this.seen.delete(e.mac);
+      }
+      this.portSig = next;
+    }
     /**
      * Forget MACs a switch learned on this port. The learned set is lab-wide, so those
      * addresses are relearned everywhere on their next frame (real switches age the
@@ -5884,6 +6298,7 @@ var AgLabSim = (() => {
     }
     /** Read-only queries on the current state, including learned MAC addresses. */
     query() {
+      this.seen.expire();
       return new LabQuery(this.derived, this.startup, this.seen, this.dhcp);
     }
     /**
@@ -5997,12 +6412,43 @@ var AgLabSim = (() => {
     }
     markSeen(hops, from) {
       if (!hops.length) return;
-      for (const h of hops) {
-        this.seen.add(h.outIf.mac);
-        const owner = l3Ifs(this.derived, h.dev).find((i) => i.ip === h.ip);
-        if (owner) this.seen.add(owner.mac);
-      }
-      void from;
+      hops.forEach((h, i) => {
+        this.learn(h.outIf.mac);
+        const owner = l3Ifs(this.derived, h.dev).find((x) => x.ip === h.ip);
+        if (owner) this.learn(owner.mac);
+        const prev = i === 0 ? from : hops[i - 1].dev;
+        this.arp.add(`${prev}>${h.ip}`);
+        this.arpIncomplete.delete(`${prev}>${h.ip}`);
+      });
+    }
+    /**
+     * MotorBulgusu (I-1, test_aglab_next_hop): switch'ler yalnız gidiş çerçevelerinden öğreniyordu.
+     * Gerçek switch dönüş çerçevelerinin kaynak MAC'ini de öğrenir (asimetrik yolda farklı router).
+     */
+    markExchange(from, forward, back) {
+      if (forward) this.markSeen(forward.hops, from);
+      if (!back) return;
+      const replier = forward?.kind === "ok" ? forward.hops[forward.hops.length - 1]?.dev ?? from : forward && "at" in forward ? forward.at : null;
+      if (replier) this.markSeen(back.hops, replier);
+    }
+    /** Yeni çerçeve: adres yeniden öğrenilir (temizlenmiş switch'lerde de). */
+    learn(mac) {
+      this.seen.add(mac);
+      for (const hidden of this.clearedOn.values()) hidden.delete(mac);
+    }
+    /**
+     * MotorBulgusu (I-1): `clear mac address-table dynamic` yalnız o switch'in tablosunu
+     * temizler (IOS); öğrenilmiş küme lab geneli olduğu için switch başına gizlenir, adres yeni
+     * trafikte yeniden görünür (doğrulanmadı: trafiğin o switch'ten geçip geçmediği ayrımı yok).
+     */
+    clearMacs(dev) {
+      this.clearedOn.set(dev, new Set(this.seen));
+    }
+    /** Bir switch'in gördüğü öğrenilmiş adresler (temizlenenler hariç). */
+    seenOn(dev) {
+      this.seen.expire();
+      const hidden = this.clearedOn.get(dev);
+      return hidden?.size ? new Set([...this.seen].filter((m) => !hidden.has(m))) : this.seen;
     }
     hostname(dev) {
       return this.running[dev]?.hostname ?? dev;
@@ -6051,7 +6497,7 @@ var AgLabSim = (() => {
       this.running = clone(s.running);
       this.startup = clone(s.startup);
       this.pcs = clone(s.pcs);
-      this.seen = new Set(s.seen);
+      this.seen = new AgingSet(s.seen);
       this.arp = new Set(s.arp);
       this.arpIncomplete = new Set(s.arpIncomplete ?? []);
       this.errdis = new Set(s.errdis ?? []);
@@ -6065,7 +6511,11 @@ var AgLabSim = (() => {
       this.natMisses = s.natMisses ?? 0;
       if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) };
       this.dhcp = clone(s.dhcp ?? []);
+      this.fhrpActive.clear();
+      this.fhrpStates.clear();
+      this.fhrpQuiet = true;
       this.derived = this.recompute();
+      this.fhrpQuiet = false;
       this.emit();
       return true;
     }
@@ -8163,15 +8613,18 @@ write memory`
     "ip",
     "mask"
   ]);
-  var ROUTER_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "staticRoutes", "route", "ospf", "ip", "mask", "gateway", "vlan", "dhcpPools", "dhcpExcluded", "acls", "natOverload", "natTranslations"]);
-  var ROUTER_IF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "helperAddress", "aclIn", "aclOut", "natRole"]);
+  var ROUTER_FIELDS = /* @__PURE__ */ new Set(["enabled", "ports", "interfaces", "staticRoutes", "route", "ospf", "ip", "mask", "gateway", "vlan", "dhcpPools", "dhcpExcluded", "acls", "natOverload", "natTranslations", "tracks"]);
+  var ROUTER_IF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "helperAddress", "aclIn", "aclOut", "natRole", "hsrp", "vrrp"]);
   var ACL_RULE_FIELDS = /* @__PURE__ */ new Set(["id", "action", "protocol", "srcType", "src", "wildcard", "dstType", "dst", "dstWildcard", "port"]);
   var DHCP_POOL_FIELDS = /* @__PURE__ */ new Set(["name", "network", "mask", "defaultRouter", "dnsServer"]);
-  var SUBIF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "parent", "vlan", "encapsulation", "helperAddress", "aclIn", "aclOut", "natRole"]);
+  var SUBIF_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "parent", "vlan", "encapsulation", "helperAddress", "aclIn", "aclOut", "natRole", "hsrp", "vrrp"]);
   var STATIC_ROUTE_FIELDS = /* @__PURE__ */ new Set(["network", "mask", "nextHop", "distance"]);
   var OSPF_FIELDS = /* @__PURE__ */ new Set(["pid", "routerId", "networks"]);
   var SERVER_FIELDS = /* @__PURE__ */ new Set([...PC_FIELDS, "services"]);
-  var PHYS_FIELDS = /* @__PURE__ */ new Set(["mode", "vlan", "allowed", "nativeVlan", "enabled", "portSecurity", "errdisabled"]);
+  var PHYS_FIELDS = /* @__PURE__ */ new Set(["mode", "vlan", "allowed", "nativeVlan", "enabled", "portSecurity", "errdisabled", "channelGroup"]);
+  var PO_FIELDS = /* @__PURE__ */ new Set(["mode", "vlan", "allowed", "nativeVlan", "enabled"]);
+  var CHANNEL_MODES = ["on", "active", "passive", "desirable", "auto"];
+  var channelProto = (m) => m === "on" ? "on" : m === "active" || m === "passive" ? "lacp" : "pagp";
   var PS_FIELDS = ["enabled", "max", "violation", "macs"];
   var colonMac = (dotted) => dotted.replace(/\./g, "").match(/../g).join(":");
   var SVI_FIELDS = /* @__PURE__ */ new Set(["ip", "mask", "enabled", "vlan"]);
@@ -8192,9 +8645,13 @@ write memory`
     aclIn: "ACL Labber'da yok (L5)",
     aclOut: "ACL Labber'da yok (L5)",
     natRole: "NAT Labber'da yok (L5)",
+    hsrp: "HSRP/VRRP yalnız router arayüzünde ve alt arayüzünde eşlenir",
+    vrrp: "HSRP/VRRP yalnız router arayüzünde ve alt arayüzünde eşlenir",
+    tracks: "İzlenen nesne (track) yalnız router'da eşlenir",
     helperAddress: "DHCP relay (helperAddress) yalnız router arayüzünde ve alt arayüzünde eşlenir"
   };
   var sortNum = (a, b) => a - b;
+  var ALL_VLANS2 = Array.from({ length: 4094 }, (_, i) => i + 1);
   function needsEncapFor(model) {
     return /3560/.test(model);
   }
@@ -8366,6 +8823,57 @@ write memory`
       }
       return ok ? lists : null;
     };
+    const fhrpOf = (id, name, iface, ifaceOf) => {
+      const out = {};
+      const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+      for (const proto of ["hsrp", "vrrp"]) {
+        const list = iface[proto];
+        if (list === void 0) continue;
+        const where = `${name}.${proto}`;
+        if (!Array.isArray(list)) {
+          reject(id, where, `${proto} bir liste olmalı`);
+          continue;
+        }
+        const groups = [];
+        for (const [i, raw] of list.entries()) {
+          const g = raw;
+          const at = `${where}[${i}]`;
+          const keys = proto === "hsrp" ? ["group", "ip", "priority", "preempt", "track"] : ["group", "ip", "priority", "preempt"];
+          if (!g || typeof g !== "object" || Array.isArray(g)) {
+            reject(id, at, "Geçersiz FHRP grubu");
+            continue;
+          }
+          for (const k of Object.keys(g)) if (!keys.includes(k)) unsupported(id, `interfaces.${at}.${k}`, `Labber'da karşılığı olmayan ${proto.toUpperCase()} alanı`);
+          const ok = int(g["group"], proto === "hsrp" ? 0 : 1, 255) && (g["ip"] === void 0 || g["ip"] === "" || typeof g["ip"] === "string" && isIp(g["ip"])) && (g["priority"] === void 0 || int(g["priority"], proto === "hsrp" ? 0 : 1, proto === "hsrp" ? 255 : 254)) && (g["preempt"] === void 0 || typeof g["preempt"] === "boolean");
+          if (!ok || groups.some((x) => x.group === g["group"])) {
+            reject(id, at, `Geçersiz ya da yinelenen ${proto.toUpperCase()} grubu (grup, ip, priority, preempt)`);
+            continue;
+          }
+          const grp = { group: g["group"], ip: g["ip"] ? String(g["ip"]) : null };
+          if (g["priority"] !== void 0) grp.priority = g["priority"];
+          if (proto === "hsrp" && g["preempt"] === true) grp.preempt = true;
+          if (proto === "vrrp" && g["preempt"] === false) grp.preempt = false;
+          if (g["track"] !== void 0) {
+            const tracks = [];
+            const ts = g["track"];
+            for (const t of Array.isArray(ts) ? ts : [null]) {
+              const dec = t?.["decrement"];
+              const okDec = dec === void 0 || int(dec, 1, 255);
+              const canon = typeof t?.["interface"] === "string" ? ifaceOf(t["interface"]) : null;
+              if (t && okDec && int(t["object"], 1, 1e3) && t["interface"] === void 0 && Object.keys(t).every((k) => k === "object" || k === "decrement"))
+                tracks.push({ obj: t["object"], ...dec !== void 0 ? { decrement: dec } : {} });
+              else if (t && okDec && canon && t["object"] === void 0 && Object.keys(t).every((k) => k === "interface" || k === "decrement"))
+                tracks.push({ iface: canon, ...dec !== void 0 ? { decrement: dec } : {} });
+              else reject(id, `${at}.track`, "HSRP track: {object, decrement?} ya da cihazdaki {interface, decrement?} olmalı");
+            }
+            if (tracks.length) grp.tracks = tracks;
+          }
+          groups.push(grp);
+        }
+        if (groups.length) out[proto] = groups.sort((a, b) => a.group - b.group);
+      }
+      return Object.keys(out).length ? out : null;
+    };
     const routerToLabber = (d, id, off) => {
       for (const key of ["ip", "mask", "gateway"])
         if (d[key] !== void 0 && d[key] !== "") unsupported(id, key, "Router'da cihaz düzeyi adres alanı AğLab modelinde yok (arayüz adresleri kullanılır)");
@@ -8393,6 +8901,7 @@ write memory`
       const cfg = defaultSwitchConfig(sw);
       cfg.hostname = d.name || id;
       for (const c of canonPorts) cfg.ifaces[c].shutdown = false;
+      const fhrpLater = [];
       for (const [name, iface] of Object.entries(ifaces)) {
         if (name.includes(".")) continue;
         const c = canonPort(name);
@@ -8415,6 +8924,7 @@ write memory`
         if (groups) phys.l3 = { ...phys.l3 ?? {}, ...groups };
         const role2 = natRoleOf(id, name, iface);
         if (role2) phys.l3 = { ...phys.l3 ?? {}, ...role2 };
+        fhrpLater.push([name, iface, (fh) => void (phys.l3 = { ...phys.l3 ?? {}, ...fh })]);
       }
       for (const [name, iface] of Object.entries(ifaces)) {
         if (!name.includes(".")) continue;
@@ -8459,6 +8969,28 @@ write memory`
         if (groups) subs[key].l3 = { ...subs[key].l3 ?? {}, ...groups };
         const role2 = natRoleOf(id, name, iface);
         if (role2) subs[key].l3 = { ...subs[key].l3 ?? {}, ...role2 };
+        fhrpLater.push([name, iface, (fh) => void (subs[key].l3 = { ...subs[key].l3 ?? {}, ...fh })]);
+      }
+      const ifaceOf = (n) => {
+        const dot = n.indexOf(".");
+        const canon = dot < 0 ? canonPort(n) : canonPort(n.slice(0, dot)) + n.slice(dot);
+        return canon && (dot < 0 ? portMap[canon] !== void 0 : !!cfg.subifs?.[canon]) ? canon : null;
+      };
+      for (const [name, iface, apply] of fhrpLater) {
+        const fh = fhrpOf(id, name, iface, ifaceOf);
+        if (fh) apply(fh);
+      }
+      if (d.tracks !== void 0) {
+        const list2 = d.tracks;
+        const tracks = {};
+        for (const t of Array.isArray(list2) ? list2 : [null]) {
+          const n = t?.["id"];
+          const canon = typeof t?.["interface"] === "string" ? ifaceOf(t["interface"]) : null;
+          if (!t || !Number.isInteger(n) || n < 1 || n > 1e3 || !canon || tracks[String(n)] || Object.keys(t).some((k) => k !== "id" && k !== "interface"))
+            reject(id, "tracks", "track: {id 1-1000, interface} (cihazdaki arayüz, yinelenmeyen numara) olmalı");
+          else tracks[String(n)] = { iface: canon };
+        }
+        if (Object.keys(tracks).length) cfg.tracks = tracks;
       }
       if (d.natOverload !== void 0 && d.natOverload !== null) {
         const n = d.natOverload;
@@ -8740,7 +9272,15 @@ write memory`
         if (n === null) reject(id, `stpPriorities.${v}`, "Geçersiz VLAN kimliği");
         else if (value !== null) cfg.stpPriority[String(n)] = value;
       }
+      const poRecords = [];
       for (const [name, iface] of Object.entries(ifaces)) {
+        const po = /^po(\d+)$/i.exec(name);
+        if (po) {
+          const n = Number(po[1]);
+          if (!Number.isInteger(n) || n < 1 || n > 48) reject(id, name, "Port-channel numarası 1-48 olmalı");
+          else poRecords.push([name, n, iface]);
+          continue;
+        }
         if (/^vlan\d+$/i.test(name)) {
           const v = vlanId(name.slice(4));
           if (v === null) {
@@ -8805,7 +9345,53 @@ write memory`
           if (typeof iface.errdisabled !== "boolean") reject(id, `${name}.errdisabled`, "errdisabled true/false olmalı");
           else if (iface.errdisabled) errdis.push(`${id}|${c}`);
         }
+        if (iface["channelGroup"] !== void 0 && iface["channelGroup"] !== null) {
+          const g = iface["channelGroup"];
+          const gid = g?.["id"];
+          if (typeof g !== "object" || Object.keys(g).some((k) => k !== "id" && k !== "mode") || !Number.isInteger(gid) || gid < 1 || gid > 48 || !CHANNEL_MODES.includes(g["mode"]))
+            reject(id, `${name}.channelGroup`, "channelGroup {id: 1-48, mode: on|active|passive|desirable|auto} olmalı");
+          else phys.channel = { id: gid, mode: g["mode"] };
+        }
         cfg.ifaces[c] = phys;
+      }
+      const groups = /* @__PURE__ */ new Map();
+      for (const [c, phys] of Object.entries(cfg.ifaces)) {
+        if (!phys.channel) continue;
+        const p = channelProto(phys.channel.mode);
+        const prev = groups.get(phys.channel.id);
+        if (prev !== void 0 && prev !== p) reject(id, `${c}.channelGroup`, `Port-channel ${phys.channel.id} üyelerinde protokol uyuşmazlığı`);
+        groups.set(phys.channel.id, p);
+      }
+      for (const [name, n, iface] of poRecords) {
+        for (const key of Object.keys(iface))
+          if (!PO_FIELDS.has(key)) unsupported(id, `interfaces.${name}.${key}`, "Labber'da karşılığı olmayan Port-channel alanı");
+        const mode = iface.mode ?? "access";
+        if (mode !== "access" && mode !== "trunk") {
+          reject(id, `${name}.mode`, "Bilinmeyen port modu: " + mode);
+          continue;
+        }
+        const access = vlanId(iface.vlan ?? 1);
+        const native = vlanId(iface.nativeVlan ?? 1);
+        const allowed = (iface.allowed ?? []).map(vlanId);
+        if (access === null || native === null || allowed.some((x) => x === null)) {
+          reject(id, name, "Geçersiz Port-channel VLAN değeri");
+          continue;
+        }
+        cfg.pos[String(n)] = {
+          ...defaultL2(),
+          shutdown: iface.enabled === false,
+          mode,
+          accessVlan: access,
+          nativeVlan: native,
+          allowed: [...new Set(allowed)].sort(sortNum),
+          encapDot1q: mode === "trunk" && !!sw.needsEncap
+        };
+      }
+      for (const [c, phys] of Object.entries(cfg.ifaces)) {
+        if (!phys.channel || cfg.pos[String(phys.channel.id)]) continue;
+        const { channel: _c, routed: _r, ip: _i, l3: _l, bpduguard: _b, portSecurity: _p, cdp: _cd, lldpTx: _t, lldpRx: _x, ...l2 } = phys;
+        cfg.pos[String(phys.channel.id)] = { ...defaultL2(), ...l2, shutdown: false, description: "" };
+        void [_c, _r, _i, _l, _b, _p, _cd, _t, _x, c];
       }
       for (const c of canonPorts)
         if (!Object.keys(ifaces).some((n) => canonPort(n) === c)) {
@@ -8940,7 +9526,27 @@ write memory`
         throw new BridgeError(`${id}: ${what} AğLab modelinde ifade edilemiyor`);
       };
       if (cfg.hostname !== (d.name || id)) d.name = cfg.hostname;
-      if (cfg.pos && Object.keys(cfg.pos).length) fail("Port-channel");
+      d.interfaces = d.interfaces ?? {};
+      for (const name of Object.keys(d.interfaces)) {
+        const m = /^po(\d+)$/i.exec(name);
+        if (m && !cfg.pos[String(Number(m[1]))]) delete d.interfaces[name];
+      }
+      for (const [n, po] of Object.entries(cfg.pos)) {
+        if (po.mode !== "access" && po.mode !== "trunk") fail(`Port-channel${n} modu ${po.mode}`);
+        if (po.allowed === null) fail(`Port-channel${n} "allowed vlan all"`);
+        if (po.nonegotiate) fail(`Port-channel${n} nonegotiate`);
+        if (po.portfast) fail(`Port-channel${n} portfast`);
+        if (po.description) fail(`Port-channel${n} description`);
+        const key = Object.keys(d.interfaces).find((k) => /^po\d+$/i.test(k) && Number(k.slice(2)) === Number(n)) ?? `po${n}`;
+        const prev = d.interfaces[key];
+        const next = prev ? { ...prev } : {};
+        next.mode = po.mode;
+        next.vlan = po.accessVlan;
+        next.allowed = [...po.allowed];
+        next.nativeVlan = po.nativeVlan;
+        next.enabled = !po.shutdown;
+        d.interfaces[key] = next;
+      }
       if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail("Loopback");
       if (cfg.ospf) fail("OSPF");
       if (cfg.routes.length) fail("statik rota");
@@ -8969,13 +9575,13 @@ write memory`
       if (d.stpPriorities !== void 0 || Object.keys(prios).length) d.stpPriorities = prios;
       const back = portNames[id] ?? {};
       d.interfaces = d.interfaces ?? {};
-      for (const [canon, phys] of Object.entries(cfg.ifaces)) {
+      for (const [canon, raw] of Object.entries(cfg.ifaces)) {
         const name = back[canon];
         if (!name) continue;
+        const prevMode = d.interfaces[name]?.mode;
+        const phys = raw.mode === "dynamic-auto" && (prevMode === void 0 || prevMode === "access") ? { ...raw, mode: "access", allowed: raw.allowed ?? (d.interfaces[name]?.allowed ?? [1]) } : raw;
         if (phys.mode !== "access" && phys.mode !== "trunk") fail(`${canon} modu ${phys.mode}`);
-        if (phys.channel) fail(`${canon} channel-group`);
         if (phys.routed) fail(`${canon} routed port`);
-        if (phys.allowed === null) fail(`${canon} "allowed vlan all"`);
         if (phys.portfast) fail(`${canon} portfast`);
         if (phys.nonegotiate) fail(`${canon} nonegotiate`);
         if (phys.description) fail(`${canon} description`);
@@ -8991,7 +9597,7 @@ write memory`
         };
         put("mode", phys.mode, "access");
         put("vlan", phys.accessVlan, def.accessVlan);
-        put("allowed", phys.allowed, []);
+        put("allowed", phys.allowed ?? ALL_VLANS2, []);
         put("nativeVlan", phys.nativeVlan, def.nativeVlan);
         put("enabled", !phys.shutdown, true);
         const ps = phys.portSecurity;
@@ -9004,6 +9610,8 @@ write memory`
           const on = rt.errdis.has(`${id}|${canon}`);
           if (prev && "errdisabled" in prev || on) iface["errdisabled"] = on;
         }
+        if (phys.channel) iface["channelGroup"] = { id: phys.channel.id, mode: phys.channel.mode };
+        else delete iface["channelGroup"];
         if (prev || Object.keys(iface).length) d.interfaces[name] = iface;
       }
       for (const [v, svi2] of Object.entries(cfg.svis)) {
@@ -9042,13 +9650,29 @@ write memory`
       if (!same2 && (d.acls !== void 0 || rules.length)) d.acls = rules;
     }
     d.interfaces = d.interfaces ?? {};
+    const aglabIf = (canon) => {
+      const dot = canon.indexOf(".");
+      const physName = back[dot < 0 ? canon : canon.slice(0, dot)];
+      if (!physName) fail(`${canon} (izlenen arayüz)`);
+      return physName + (dot < 0 ? "" : canon.slice(dot));
+    };
+    {
+      const ids = Object.keys(cfg.tracks ?? {}).map(Number).sort((a, b) => a - b);
+      const list2 = ids.map((n) => ({ id: n, interface: aglabIf(cfg.tracks[String(n)].iface) }));
+      const same2 = orig.tracks?.length === list2.length && list2.every((t, i) => {
+        const o2 = orig.tracks[i];
+        return o2["id"] === t.id && canonPort(String(o2["interface"]).split(".")[0]) === canonPort(t.interface.split(".")[0]) && String(o2["interface"]).split(".")[1] === t.interface.split(".")[1];
+      });
+      if (same2) d.tracks = clone(orig.tracks);
+      else if (list2.length || d.tracks !== void 0) d.tracks = list2;
+    }
     for (const [canon, phys] of Object.entries(cfg.ifaces)) {
       const name = back[canon];
       if (!name) continue;
       if (phys.description) fail(`${canon} description`);
       const helper = helperBack(phys.l3, canon, fail);
       const prev2 = d.interfaces[name];
-      if (!prev2 && !phys.ip && !phys.shutdown && !helper && !phys.l3?.aclIn && !phys.l3?.aclOut && !phys.l3?.nat) continue;
+      if (!prev2 && !phys.ip && !phys.shutdown && !helper && !phys.l3?.aclIn && !phys.l3?.aclOut && !phys.l3?.nat && !phys.l3?.hsrp && !phys.l3?.vrrp) continue;
       const iface = prev2 ? { ...prev2 } : {};
       if (phys.ip) {
         iface.ip = phys.ip.addr;
@@ -9059,6 +9683,7 @@ write memory`
       else if (iface["helperAddress"] !== "") delete iface["helperAddress"];
       groupsBack(iface, phys.l3);
       natRoleBack(iface, phys.l3);
+      fhrpBack(iface, phys.l3, aglabIf);
       d.interfaces[name] = iface;
     }
     const subNames = /* @__PURE__ */ new Set();
@@ -9086,6 +9711,7 @@ write memory`
       else if (iface["helperAddress"] !== "") delete iface["helperAddress"];
       groupsBack(iface, si.l3);
       natRoleBack(iface, si.l3);
+      fhrpBack(iface, si.l3, aglabIf);
       d.interfaces[name] = iface;
     }
     for (const name of Object.keys(d.interfaces)) if (name.includes(".") && !subNames.has(name)) delete d.interfaces[name];
@@ -9135,10 +9761,44 @@ write memory`
   }
   function helperBack(l3, canon, fail) {
     if (!l3) return null;
-    const { helpers: helpers2, aclIn: _in, aclOut: _out, nat: _nat, ...rest } = l3;
+    const { helpers: helpers2, aclIn: _in, aclOut: _out, nat: _nat, hsrp: _h, vrrp: _v, ...rest } = l3;
     if (Object.keys(rest).length) fail(`${canon} arayüz OSPF/L3 ayarı`);
     if (helpers2 && helpers2.length > 1) fail(`${canon} üzerinde birden çok ip helper-address`);
     return helpers2?.[0] ?? null;
+  }
+  function fhrpBack(iface, l3, aglabIf) {
+    for (const proto of ["hsrp", "vrrp"]) {
+      const list = l3?.[proto];
+      if (!list?.length) {
+        if (Array.isArray(iface[proto]) && iface[proto].length === 0) continue;
+        delete iface[proto];
+        continue;
+      }
+      const prevList = Array.isArray(iface[proto]) ? iface[proto] : [];
+      iface[proto] = list.map((g) => {
+        const prev = prevList.find((x) => x?.["group"] === g.group);
+        const o = prev ? clone(prev) : {};
+        o["group"] = g.group;
+        if (g.ip) o["ip"] = g.ip;
+        else if (o["ip"] !== "") delete o["ip"];
+        if (g.priority !== void 0) o["priority"] = g.priority;
+        else if (o["priority"] !== 100) delete o["priority"];
+        const preempt = proto === "hsrp" ? !!g.preempt : g.preempt !== false;
+        if (preempt !== (proto === "vrrp")) o["preempt"] = preempt;
+        else if (o["preempt"] !== preempt) delete o["preempt"];
+        if (proto === "hsrp") {
+          const tracks = (g.tracks ?? []).map((t) => ({
+            ...t.obj !== void 0 ? { object: t.obj } : { interface: aglabIf(t.iface) },
+            ...t.decrement !== void 0 ? { decrement: t.decrement } : {}
+          }));
+          const prevTracks = JSON.stringify(o["track"] ?? []);
+          if (tracks.length) {
+            if (JSON.stringify(tracks) !== prevTracks) o["track"] = tracks;
+          } else if (!(Array.isArray(o["track"]) && o["track"].length === 0)) delete o["track"];
+        }
+        return o;
+      });
+    }
   }
   function natRoleBack(iface, l3) {
     if (l3?.nat) iface["natRole"] = l3.nat;
@@ -9253,10 +9913,39 @@ write memory`
     }
     return steps;
   }
+  function pingDiagnosis(rt, from, dst, r) {
+    if (r.ok) return null;
+    const d = rt.derived;
+    if (r.reason === "off") return "Kaynak cihaz kapalı.";
+    if (r.reason === "noip") return "Kaynakta geçerli IPv4 adresi yok.";
+    if (r.reason === "noroute") return `Kaynakta ${dst} için yol yok (aynı alt ağda değil ve ağ geçidi yok).`;
+    if (r.reason === "unreach") return `${r.unreachFrom} ${dst} için rota bulamadı ya da ACL engelledi (ICMP unreachable).`;
+    if (r.reason === "expired") return `TTL ${r.expiredFrom} üzerinde bitti (ICMP Time Exceeded).`;
+    const at = d.topo.pcAttach[from];
+    if (at) {
+      const lp = d.lportOfPhys[pk(at.dev, at.port)];
+      if (lp?.inactive) return `VLAN ${lp.cfg.accessVlan} ${at.dev} üzerinde tanımlı değil (${at.port} inactive).`;
+      const vlan = lp && lp.opMode === "access" ? lp.cfg.accessVlan : null;
+      if (vlan !== null) {
+        for (const ports2 of Object.values(d.lports))
+          for (const p of ports2)
+            if (p.active && p.opMode === "trunk" && !p.peerIsPc && p.peerDev && !p.routed && !allows(p.cfg, vlan))
+              return `VLAN ${vlan}, ${p.dev} ${p.name} trunk'ında izinli değil (switchport trunk allowed vlan).`;
+      }
+    }
+    return "Yanıt gelmedi: hedefe ya da dönüşte kaynağa katman 2 yolu veya dönüş rotası yok.";
+  }
   function pingTrace(rt, from, dst, portName = (_dev, port) => port, opts = {}) {
     const d = rt.derived;
     const r = ping(d, from, dst, opts.ttl !== void 0 ? { ttl: opts.ttl } : {});
     const records = [];
+    let unreachCode = 1;
+    const pushDiag = () => {
+      const reason = pingDiagnosis(rt, from, dst, r);
+      if (!reason) return;
+      const first = records.findIndex((x) => x.raw.startsWith("discard ") || x.raw.startsWith("icmp-undelivered "));
+      records.splice(first < 0 ? records.length : first, 0, { raw: "diagnostic " + JSON.stringify({ source: from, reason, origin: "adapter-derived" }) });
+    };
     let frameNo = 0;
     let l2 = true;
     const ifOf = (dev, ip2) => l3Ifs(d, dev).find((i) => i.ip === ip2) ?? null;
@@ -9280,7 +9969,7 @@ write memory`
           arp: null,
           // L5-d: NAT'tan sonra kablodaki adresler (hop.src/dst)
           ipv4: { sourceIp: hop.src ?? srcIp, destinationIp: hop.dst ?? dstIp, ttl, protocol: 1 },
-          icmp: { type: kind === "icmp-request" ? 8 : kind === "icmp-time-exceeded" ? 11 : 0, code: 0 }
+          icmp: kind === "icmp-unreachable" ? { type: 3, code: unreachCode } : { type: kind === "icmp-request" ? 8 : kind === "icmp-time-exceeded" ? 11 : 0, code: 0 }
         };
         const ev = { frameId, frame };
         records.push({ raw: `frame ${kind} src ${sender} dst ${frame.destinationMac} vlan ${frame.vlan}`, ...ev });
@@ -9311,6 +10000,7 @@ write memory`
     const src = sourceIp(d, from, dst);
     if (!fwd || !src) {
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "noroute"}` });
+      pushDiag();
       return { ok: false, l2: true, records };
     }
     const reached = walk2("icmp-request", from, fwd.hops, src, dst, opts.ttl ?? 64);
@@ -9321,11 +10011,25 @@ write memory`
       if (!back2 || back2.kind !== "ok" || backTo2 !== from) records.push({ raw: `discard ${backTo2} no-return-path` });
       else records.push({ raw: `icmp-time-exceeded ${from} from ${fwd.at}` });
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "expired"}` });
+      pushDiag();
       return { ok: false, l2, records };
     }
+    if (fwd.kind === "unreach") {
+      unreachCode = fwd.filtered ? 13 : 1;
+      records.push({ raw: `discard ${fwd.at} ${fwd.filtered ? "acl" : "no-route"}` });
+      const back2 = r.back;
+      const backTo2 = back2 ? walk2("icmp-unreachable", fwd.at, back2.hops, fwd.atIp, src, 255) : fwd.at;
+      if (back2 && back2.kind === "ok" && backTo2 === from) records.push({ raw: `icmp-unreachable ${from} from ${fwd.at} code ${unreachCode}` });
+      else records.push({ raw: `discard ${backTo2} no-return-path` });
+      records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "unreach"}` });
+      pushDiag();
+      return { ok: false, l2, records };
+    }
+    if (fwd.kind === "timeout" && fwd.suppressedAt) records.push({ raw: `icmp-error-suppressed ${fwd.suppressedAt}` });
     if (fwd.kind !== "ok") {
-      records.push({ raw: `discard ${reached} ${fwd.kind === "unreach" ? "no-route" : "no-l2-path"}` });
+      records.push({ raw: `discard ${reached} no-l2-path` });
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? fwd.kind}` });
+      pushDiag();
       return { ok: false, l2, records };
     }
     const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from;
@@ -9335,6 +10039,7 @@ write memory`
     if (!r.ok || back.kind !== "ok" || backTo !== from) {
       records.push({ raw: `discard ${backTo} no-return-path` });
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "timeout"}` });
+      pushDiag();
       return { ok: false, l2, records };
     }
     records.push({ raw: `icmp-delivered ${from} from ${replier}` });
