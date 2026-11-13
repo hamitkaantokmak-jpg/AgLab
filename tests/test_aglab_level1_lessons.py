@@ -28,8 +28,22 @@ LESSONS = [
     ("physical", "physical", "fiziksel-baglanti.md", "phy-", "İki uç kuralı", "port ne diyor"),
     ("method", "method", "sorun-giderme-yontemi.md", "method-", "Üç yaklaşım", "tek değişiklik"),
     ("vlan", "vlan", "vlan-trunk.md", "vlan-", "Okuma sırası", "Sahada: DTP ve VTP"),
-    ("intervlan", "intervlan", "vlanlar-arasi-yonlendirme.md", "roas-", "Router-on-a-stick", "Üç kural"),
-    ("devicemgmt", "devicemgmt", "cihaz-yonetimi.md", "mgmt-", "Yönetim adresi ve SSH", "İki yapılandırma"),
+    (
+        "intervlan",
+        "intervlan",
+        "vlanlar-arasi-yonlendirme.md",
+        "roas-",
+        "Router-on-a-stick",
+        "Üç kural",
+    ),
+    (
+        "devicemgmt",
+        "devicemgmt",
+        "cihaz-yonetimi.md",
+        "mgmt-",
+        "Yönetim adresi ve SSH",
+        "İki yapılandırma",
+    ),
 ]
 PARTS = [
     "## 1. Neden önemli",
