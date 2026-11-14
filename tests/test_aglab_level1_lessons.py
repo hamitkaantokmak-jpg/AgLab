@@ -25,7 +25,7 @@ LESSONS = [
     ("dhcp", "dhcp", "dhcp.md", "dhcp-", "169.254", "adres nereden gelir"),
     ("dns", "dns", "dns.md", "dns-", "nslookup", "isim yok"),
     ("routing", "routing", "gateway-statik-routing.md", "gw-", "floating static", "nasıl döner"),
-    ("ip", "ipv4", "ip-adresleme.md", "ip-", "Hızlı hesap", "kim benim ağımda"),
+    ("ip", "ipv4", "ip-adresleme.md", "ip-", "Hızlı hesap", "Kısa yol: blok büyüklüğü"),
     ("physical", "physical", "fiziksel-baglanti.md", "phy-", "İki uç kuralı", "port ne diyor"),
     ("method", "method", "sorun-giderme-yontemi.md", "method-", "Üç yaklaşım", "tek değişiklik"),
     ("vlan", "vlan", "vlan-trunk.md", "vlan-", "Okuma sırası", "Sahada: DTP ve VTP"),
