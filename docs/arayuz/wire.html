@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="tr"><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;background:#eef0f3;font-family:system-ui,sans-serif;overflow:hidden}
+.screen{display:none;width:1440px;height:900px;position:relative}
+.on{display:block}
+.b{background:#d9dde3;border-radius:8px;position:absolute}
+.p{background:#fff;border:1px solid #d5d9df;border-radius:12px;position:absolute}
+.l{background:#e4e7eb;border-radius:4px;position:absolute;height:10px}
+.d{background:#c9ced6;border-radius:6px;position:absolute}
+.a{background:#3b6cf6;border-radius:8px;position:absolute;opacity:.85}
+.as{background:#dfe8ff;border-radius:8px;position:absolute}
+.dark{background:#1d2128;border-radius:12px;position:absolute}
+.dl{background:#3a404b;border-radius:3px;position:absolute;height:8px}
+.n{position:absolute;width:26px;height:26px;border-radius:50%;background:#ff6b3d;color:#fff;font:700 13px system-ui;display:flex;align-items:center;justify-content:center;z-index:5;box-shadow:0 0 0 3px #fff}
+svg{position:absolute;left:0;top:0}
+</style></head><body>
+
+<!-- ortak iskelet üretici -->
+<script>
+const S=(id)=>document.getElementById(id);
+function el(parent,cls,x,y,w,h,extra){const e=document.createElement('div');e.className=cls;Object.assign(e.style,{left:x+'px',top:y+'px',width:w+'px',height:h+'px'},extra||{});parent.appendChild(e);return e}
+function num(parent,k,x,y){const e=el(parent,'n',x,y,26,26);e.textContent=k}
+function lines(parent,x,y,w,n,gap,cls){for(let i=0;i<n;i++)el(parent,cls||'l',x,y+i*(gap||18),i==n-1?w*0.6:w,cls==='dl'?8:10)}
+function chrome(s){
+  el(s,'p',0,0,1440,56,{borderRadius:0,borderWidth:'0 0 1px 0'});
+  el(s,'a',20,16,28,24);el(s,'b',58,20,90,16);
+  for(let i=0;i<4;i++)el(s,i==s._nav?'as':'b',420+i*130,16,112,24);
+  el(s,'b',1080,16,220,24);el(s,'d',1390,12,32,32,{borderRadius:'50%'});
+  el(s,'p',0,56,64,844,{borderRadius:0,borderWidth:'0 1px 0 0'});
+  for(let i=0;i<6;i++)el(s,i==s._rail?'as':'b',16,76+i*52,32,32);
+  num(s,'A',400,14); num(s,'B',8,62);
+}
+</script>
+
+<!-- 1: Müfredat haritası -->
+<div class="screen" id="s1"></div>
+<script>(()=>{const s=S('s1');s._nav=0;s._rail=0;chrome(s);
+el(s,'p',88,80,1012,120);el(s,'b',112,104,320,22);lines(s,112,140,520,2,18);
+el(s,'b',112,176,880,8);el(s,'a',112,176,360,8);num(s,1,1080,72);
+for(let r=0;r<3;r++){const y=224+r*218;
+  el(s,'b',88,y,180,16);el(s,'d',280,y+3,80,10);
+  for(let c=0;c<5;c++){const x=88+c*206;const card=el(s,'p',x,y+28,194,170);
+    el(s,r==0&&c<3?'a':'d',x+16,y+44,32,32,{borderRadius:'8px'});
+    el(s,'b',x+16,y+90,140,14);el(s,'l',x+16,y+114,160,10);el(s,'l',x+16,y+132,110,10);
+    el(s,'b',x+16,y+170,162,6);if(r==0)el(s,'a',x+16,y+170,c<3?162:c==3?60:0,6);
+    for(let k=0;k<3;k++)el(s,'d',x+16+k*24,y+150,18,10,{borderRadius:'3px'});}}
+num(s,2,76,244);num(s,3,282,262);
+el(s,'p',1124,80,296,300);el(s,'b',1144,100,140,16);el(s,'d',1144,132,256,120);lines(s,1144,268,240,2,18);el(s,'a',1144,320,256,40);num(s,4,1408,72);
+el(s,'p',1124,396,296,240);el(s,'b',1144,416,120,16);
+for(let i=0;i<7;i++){const h=30+((i*37)%90);el(s,i==6?'a':'d',1150+i*38,600-h,24,h,{borderRadius:'4px'})}num(s,5,1408,388);
+el(s,'p',1124,652,296,228);el(s,'b',1144,672,140,16);
+for(let i=0;i<4;i++){el(s,'d',1144,706+i*42,28,28,{borderRadius:'50%'});el(s,'l',1184,712+i*42,200,10);el(s,'l',1184,728+i*42,120,8)}num(s,6,1408,644);
+})()</script>
+
+<!-- 2: Konu (ders) sayfası -->
+<div class="screen" id="s2"></div>
+<script>(()=>{const s=S('s2');s._nav=0;s._rail=1;chrome(s);
+el(s,'p',88,80,260,800);el(s,'b',108,100,180,18);el(s,'l',108,128,140,10);
+for(let i=0;i<7;i++){const y=164+i*64;
+  el(s,i<2?'a':i==2?'as':'d',108,y,28,28,{borderRadius:'50%'});
+  if(i<6)el(s,'d',121,y+30,2,34,{borderRadius:0});
+  el(s,i==2?'b':'l',148,y+4,i==2?160:150,i==2?14:10);el(s,'l',148,y+22,90,8)}
+num(s,1,76,150);
+el(s,'b',108,820,220,40);el(s,'d',108,800,220,6);el(s,'a',108,800,70,6);num(s,2,336,800);
+el(s,'p',372,80,740,800);
+el(s,'b',412,112,80,12);el(s,'b',412,136,420,28);lines(s,412,186,660,3,20);
+el(s,'dark',412,262,660,250);
+for(let i=0;i<9;i++){el(s,'dl',436,286+i*24,300+((i*53)%200),8);if(i==2||i==5)el(s,'a',412,280+i*24,4,20,{borderRadius:'2px'})}
+el(s,'as',800,320,250,70);el(s,'as',800,410,250,70);num(s,3,1100,256);
+lines(s,412,536,660,3,20);
+el(s,'d',412,610,320,190);el(s,'d',752,610,320,190);num(s,4,1100,604);
+el(s,'b',412,824,140,36);el(s,'a',932,824,140,36);
+el(s,'p',1136,80,284,380);el(s,'b',1156,100,120,16);
+for(let i=0;i<4;i++){el(s,'p',1156,134+i*76,244,64);el(s,'d',1170,150+i*76,20,20,{borderRadius:'50%'});el(s,'l',1200,152+i*76,180,10);el(s,'l',1200,170+i*76,120,8)}
+num(s,5,1408,72);
+el(s,'p',1136,476,284,404);el(s,'b',1156,496,140,16);el(s,'d',1156,530,244,180);lines(s,1156,730,230,3,18);el(s,'a',1156,820,244,40);num(s,6,1408,468);
+})()</script>
+
+<!-- 3: Lab çalışma alanı -->
+<div class="screen" id="s3"></div>
+<script>(()=>{const s=S('s3');s._nav=1;s._rail=2;chrome(s);
+el(s,'p',64,56,1376,52,{borderRadius:0,borderWidth:'0 0 1px 0'});
+el(s,'b',84,72,260,20);el(s,'as',360,70,120,24);el(s,'b',500,72,80,20);
+el(s,'b',1100,68,100,28);el(s,'b',1210,68,100,28);el(s,'a',1320,68,100,28);
+num(s,1,350,62);num(s,2,1428,62);
+el(s,'p',76,120,268,540);el(s,'b',96,140,160,16);lines(s,96,168,220,3,18);
+for(let i=0;i<5;i++){el(s,i<2?'a':'d',96,240+i*52,20,20,{borderRadius:'5px'});el(s,'l',126,244+i*52,190,10);el(s,'l',126,260+i*52,120,8)}
+el(s,'as',96,520,228,120);num(s,3,64,112);
+el(s,'p',356,120,760,540,{background:'#f8f9fb'});
+const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('width',1440);svg.setAttribute('height',900);
+const nodes=[[736,200],[540,340],[932,340],[450,520],[630,520],[842,520],[1022,520]];
+const edges=[[0,1],[0,2],[1,2],[1,3],[1,4],[2,5],[2,6]];
+svg.innerHTML=edges.map(([a,b])=>`<line x1="${nodes[a][0]}" y1="${nodes[a][1]}" x2="${nodes[b][0]}" y2="${nodes[b][1]}" stroke="#b9bfc8" stroke-width="3"/>`).join('')
+ +`<circle cx="638" cy="270" r="9" fill="#3b6cf6"/>`;
+s.appendChild(svg);
+nodes.forEach(([x,y],i)=>{el(s,i<3?'d':'b',x-34,y-26,68,52,{borderRadius:'10px',zIndex:2});el(s,'l',x-30,y+32,60,8,{zIndex:2})});
+el(s,'p',372,136,40,124,{zIndex:3});for(let i=0;i<4;i++)el(s,'b',380,144+i*28,24,24,{zIndex:3});
+el(s,'p',1004,612,96,32,{zIndex:3});num(s,4,1104,112);num(s,5,360,128);
+el(s,'p',1128,120,300,540);for(let i=0;i<3;i++)el(s,i==0?'as':'b',1144+i*92,136,84,26);
+el(s,'b',1144,180,140,14);
+for(let i=0;i<6;i++){el(s,'l',1144,210+i*26,120,10);el(s,'d',1300,208+i*26,110,14,{borderRadius:'4px'})}
+el(s,'dark',1144,380,268,260);for(let i=0;i<8;i++)el(s,'dl',1160,400+i*26,120+((i*41)%120),8);num(s,6,1416,112);
+el(s,'dark',76,672,1352,212);
+for(let i=0;i<5;i++)el(s,i==1?'as':'d',92+i*120,684,108,24,{background:i==1?'#3b6cf6':'#2c323c'});
+for(let i=0;i<7;i++)el(s,"dl",96,724+i*20,240+((i*97)%400),8);
+el(s,'dl',96,864,14,10,{background:'#3b6cf6'});num(s,7,64,664);
+el(s,'d',760,724,4,140,{background:'#2c323c'});
+el(s,'dl',784,724,180,8);for(let i=0;i<8;i++){el(s,'d',784+i*76,746,60,4,{background:'#2c323c'});el(s,i==3?'a':'d',784+i*76,740,16,16,{borderRadius:'50%',background:i==3?'#3b6cf6':'#4a515d'})}
+for(let i=0;i<4;i++)el(s,'dl',784,780+i*20,400+((i*61)%200),8);num(s,8,1416,664);
+})()</script>
+
+<!-- 4: Arıza senaryosu -->
+<div class="screen" id="s4"></div>
+<script>(()=>{const s=S('s4');s._nav=2;s._rail=3;chrome(s);
+el(s,'p',88,80,1332,110,{background:'#fff7f3',borderColor:'#ffd9c9'});
+el(s,'d',112,104,56,56,{borderRadius:'12px',background:'#ffc3ab'});
+el(s,'b',188,106,380,20);lines(s,188,138,700,2,18);
+el(s,'b',1180,110,100,20);el(s,'b',1296,110,100,20);num(s,1,76,72);
+for(let i=0;i<4;i++){const x=88+i*340;el(s,i==1?'a':i<1?'as':'b',x,210,36,36,{borderRadius:'50%'});el(s,i==1?'b':'l',x+48,222,150,12);if(i<3)el(s,'d',x+216,226,110,3,{borderRadius:0})}
+num(s,2,60,214);
+el(s,'p',88,268,260,612);el(s,'b',108,288,140,16);
+for(let i=0;i<7;i++)el(s,i==2?'a':i==1?'as':'b',108,322+i*58,220,46,{borderRadius:'10px'});
+el(s,'l',108,744,200,10);el(s,'l',108,762,150,10);num(s,3,76,260);
+el(s,'p',364,268,700,330,{background:'#f8f9fb'});
+const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('width',1440);svg.setAttribute('height',900);
+const nodes=[[714,330],[560,440],[868,440],[480,540],[640,540],[948,540]];
+svg.innerHTML=[[0,1],[0,2],[1,3],[1,4],[2,5]].map(([a,b])=>`<line x1="${nodes[a][0]}" y1="${nodes[a][1]}" x2="${nodes[b][0]}" y2="${nodes[b][1]}" stroke="${a==0&&b==2?'#ff6b3d':'#b9bfc8'}" stroke-width="3" ${a==0&&b==2?'stroke-dasharray="8 6"':''}/>`).join('');
+s.appendChild(svg);nodes.forEach(([x,y])=>el(s,'d',x-30,y-22,60,44,{borderRadius:'10px',zIndex:2}));
+num(s,4,1052,260);
+el(s,'dark',364,612,700,268);for(let i=0;i<5;i++)el(s,'d',380+i*110,624,98,22,{background:i==0?'#3b6cf6':'#2c323c'});
+for(let i=0;i<8;i++)el(s,'dl',384,664+i*22,200+((i*83)%380),8);num(s,5,352,604);
+el(s,'p',1080,268,340,370);el(s,'b',1100,288,150,16);
+for(let i=0;i<4;i++){el(s,'p',1100,320+i*72,300,60);el(s,'d',1114,334+i*72,32,32,{borderRadius:'6px'});el(s,'l',1158,338+i*72,200,10);el(s,'l',1158,354+i*72,120,8)}
+el(s,'b',1100,610,300,14,{background:'#e9ecf0'});num(s,6,1408,260);
+el(s,'p',1080,652,340,228);el(s,'b',1100,672,140,16);
+for(let i=0;i<3;i++){el(s,'l',1100,708+i*36,180,10);el(s,'d',1300,704+i*36,100,18,{borderRadius:'9px'})}
+el(s,'a',1100,824,300,40);num(s,7,1408,644);
+})()</script>
+
+<script>const k=(location.hash||'#1').slice(1);document.getElementById('s'+k).classList.add('on')</script>
+</body></html>

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="tr"><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;background:#eef0f3;font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:#1f2430;overflow:hidden}
+.screen{display:none;width:1440px;height:900px}
+.on{display:grid;grid-template-rows:56px 1fr;grid-template-columns:64px 1fr}
+.top{grid-column:1/3;background:#fff;border-bottom:1px solid #dde1e6;display:flex;align-items:center;padding:0 20px;gap:12px}
+.logo{width:28px;height:24px;border-radius:7px;background:#3b6cf6;color:#fff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center}
+.brand{font-weight:700;font-size:16px;width:300px}
+.nav{display:flex;gap:8px;flex:1}
+.nav a{padding:6px 16px;border-radius:8px;color:#5a6270;font-weight:600}
+.nav a.cur{background:#e5ecff;color:#2d55d6}
+.search{width:240px;background:#f1f3f6;border-radius:8px;padding:6px 12px;color:#8a919c}
+.av{width:32px;height:32px;border-radius:50%;background:#c9d4ea;display:flex;align-items:center;justify-content:center;font-weight:700;color:#3a4a6b}
+.rail{background:#fff;border-right:1px solid #dde1e6;display:flex;flex-direction:column;align-items:center;padding-top:16px;gap:12px}
+.rail div{width:36px;height:36px;border-radius:9px;background:#f1f3f6;display:flex;align-items:center;justify-content:center;font-size:16px}
+.rail div.cur{background:#e5ecff}
+.main{padding:20px 20px 20px 24px;overflow:hidden}
+.card{background:#fff;border:1px solid #dde1e6;border-radius:12px}
+h1{font-size:22px} h2{font-size:15px} h3{font-size:13px}
+.muted{color:#6b7380}.small{font-size:11.5px}
+.tag{display:inline-block;padding:1px 7px;border-radius:5px;font-size:10.5px;font-weight:700}
+.t-m{background:#e5ecff;color:#2d55d6}.t-o{background:#f1eadf;color:#8a5a14}.t-g{background:#e2f4ea;color:#1d7a46}
+.bar{height:6px;border-radius:3px;background:#e6e9ee;overflow:hidden}.bar i{display:block;height:100%;background:#3b6cf6}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:8px 14px;border-radius:8px;font-weight:600;background:#f1f3f6;color:#2c3340}
+.btn.p{background:#3b6cf6;color:#fff}
+.term{background:#1d2128;color:#d6dbe3;border-radius:12px;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre}
+.ok{color:#1d9a55}.bad{color:#e0532b}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+</style></head><body>
+
+<template id="chrome">
+<div class="top"><div class="logo">AğL</div><div class="brand">AğLab</div>
+<div class="nav"><a>Öğren</a><a>Lab</a><a>Sorun Çöz</a><a>Gerçek Lab</a></div>
+<div class="search">Konu, komut, senaryo ara…</div><div class="av">HK</div></div>
+<div class="rail"><div>🗺</div><div>📘</div><div>🧪</div><div>🛠</div><div>📦</div><div>⚙</div></div>
+</template>
+
+<!-- ============ 1 MÜFREDAT ============ -->
+<div class="screen" id="s1" data-nav="0" data-rail="0">
+<div class="main" style="display:grid;grid-template-columns:1fr 296px;gap:20px">
+ <div style="display:flex;flex-direction:column;gap:14px">
+  <div class="card" style="padding:18px 22px">
+   <div class="muted small">Müfredat</div><h1>Seviye 1 — Şube temel</h1>
+   <div class="muted" style="margin:4px 0 12px">Şubedeki günlük ağ işinin büyük kısmı. 12 konudan 5'i tamamlandı; sıradaki: Trunk.</div>
+   <div class="bar" style="width:880px"><i style="width:42%"></i></div>
+  </div>
+  <div id="rows"></div>
+ </div>
+ <div style="display:flex;flex-direction:column;gap:14px">
+  <div class="card" style="padding:16px">
+   <h2>Kaldığın yerden devam et</h2>
+   <div style="margin:10px 0;height:96px;border-radius:10px;background:linear-gradient(135deg,#dfe8ff,#eef2ff);padding:12px">
+    <span class="tag t-m">Motor</span><div style="font-weight:700;margin-top:8px">#6 Trunk</div><div class="muted small">Yönlendirmeli lab · adım 3 / 6</div></div>
+   <div class="muted small">Katlar arası trunk kur, izinli VLAN listesini doğrula.</div>
+   <div class="btn p" style="width:100%;margin-top:12px">Labı aç</div>
+  </div>
+  <div class="card" style="padding:16px">
+   <h2>Bu hafta</h2><div class="muted small">4 sa 20 dk · 3 senaryo çözüldü</div>
+   <div style="display:flex;align-items:flex-end;gap:12px;height:130px;margin-top:10px" id="chart"></div>
+   <div style="display:flex;gap:12px" class="muted small" id="days"></div>
+  </div>
+  <div class="card" style="padding:16px;flex:1">
+   <h2>Son arıza senaryoları</h2>
+   <div id="recent" style="margin-top:8px;display:flex;flex-direction:column;gap:10px"></div>
+  </div>
+ </div>
+</div></div>
+
+<!-- ============ 2 DERS ============ -->
+<div class="screen" id="s2" data-nav="0" data-rail="1">
+<div class="main" style="display:grid;grid-template-columns:260px 1fr 284px;gap:20px">
+ <div class="card" style="padding:18px;display:flex;flex-direction:column">
+  <div class="muted small">Konu #5 · Seviye 1</div><h2>VLAN</h2>
+  <div id="steps" style="margin-top:16px;flex:1"></div>
+  <div class="muted small">İlerleme 3 / 7</div><div class="bar" style="margin:6px 0 10px"><i style="width:36%"></i></div>
+  <div class="btn" style="width:100%">Konu listesine dön</div>
+ </div>
+ <div class="card" style="padding:26px 34px;overflow:hidden">
+  <div class="muted small">3 · Çıktı okuma</div><h1 style="margin:2px 0 8px">show vlan brief</h1>
+  <p class="muted" style="margin-bottom:14px">Switch'te hangi VLAN'ların tanımlı olduğunu ve her access portun hangi VLAN'a üye olduğunu tek bakışta gösterir. Bir PC "kimseyi görmüyorsa" ilk bakılacak yerlerden biridir.</p>
+  <div style="display:grid;grid-template-columns:1fr 250px;gap:14px">
+<div class="term" style="padding:14px 16px;font-size:11.5px">SW1#show vlan brief
+
+VLAN Name               Status    Ports
+---- ------------------ --------- -----------------
+1    default            active    Gi0/3, Gi0/4
+<span style="background:#2b3a66">10   MUHASEBE           active    Gi0/1, Gi0/2     </span>
+<span style="background:#2b3a66">20   SATIS              active    Gi0/5            </span>
+1002 fddi-default       act/unsup
+1003 token-ring-default act/unsup
+1004 fddinet-default    act/unsup
+1005 trnet-default      act/unsup</div>
+   <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="background:#e5ecff;border-radius:10px;padding:10px 12px" class="small"><b>VLAN 10 · 20</b><br>Elle oluşturulan VLAN'lar. Ad yoksa "VLAN0010" görünür.</div>
+    <div style="background:#e5ecff;border-radius:10px;padding:10px 12px" class="small"><b>Ports sütunu</b><br>Yalnız access portlar listelenir. Trunk portlar burada <u>görünmez</u>; onlar için <code>show interfaces trunk</code>.</div>
+    <div style="background:#fff4ec;border-radius:10px;padding:10px 12px" class="small"><b>Gi0/3, Gi0/4 VLAN 1'de</b><br>Hiç atanmamış portlar varsayılan VLAN'da kalır. Yeni PC buradaysa sorun bu olabilir.</div>
+   </div>
+  </div>
+  <p class="muted" style="margin:16px 0 12px">1002–1005 satırları eski FDDI/Token Ring için ayrılmış VLAN'lardır; silinemez, günlük işte görmezden gelinir.</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+   <div style="background:#f6f7f9;border-radius:10px;padding:12px;height:150px"><h3>Access port</h3><div class="muted small" style="margin-top:4px">Tek VLAN taşır, çerçeve etiketsiz gider. PC, yazıcı, telefon.</div>
+    <div style="margin-top:14px;display:flex;align-items:center;gap:8px"><span class="tag t-m">PC</span>──── untagged ────<span class="tag t-m">Gi0/1 · VLAN 10</span></div></div>
+   <div style="background:#f6f7f9;border-radius:10px;padding:12px;height:150px"><h3>Trunk port</h3><div class="muted small" style="margin-top:4px">Birden çok VLAN taşır, 802.1Q etiketi ekler. Switch–switch, switch–router.</div>
+    <div style="margin-top:14px;display:flex;align-items:center;gap:8px"><span class="tag t-m">SW1</span>── tag 10 · tag 20 ──<span class="tag t-m">SW2</span></div></div>
+  </div>
+  <div style="display:flex;justify-content:space-between;margin-top:18px"><div class="btn">← Kavram</div><div class="btn p">Yönlendirmeli lab →</div></div>
+ </div>
+ <div style="display:flex;flex-direction:column;gap:14px">
+  <div class="card" style="padding:16px"><h2>Kontrol soruları</h2>
+   <div id="qs" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"></div></div>
+  <div class="card" style="padding:16px;flex:1;display:flex;flex-direction:column">
+   <h2>Bu konunun labı</h2>
+   <div style="margin:10px 0;height:150px;border-radius:10px;background:#f6f7f9;position:relative" id="minitopo"></div>
+   <div style="font-weight:700">Muhasebe ile satışı ayır</div>
+   <div class="muted small">6 adım · ~15 dk · <span class="tag t-m">Motor</span></div>
+   <div style="flex:1"></div><div class="btn p">Labı başlat</div>
+  </div>
+ </div>
+</div></div>
+
+<!-- ============ 3 LAB ============ -->
+<div class="screen" id="s3" data-nav="1" data-rail="2">
+<div style="display:grid;grid-template-rows:52px 1fr 220px;overflow:hidden">
+ <div style="background:#fff;border-bottom:1px solid #dde1e6;display:flex;align-items:center;padding:0 20px;gap:12px">
+  <b style="font-size:15px">Lab · Katlar arası trunk kur</b><span class="tag t-m">Motor: Labber</span><span class="muted small">⏱ 08:42</span>
+  <div style="flex:1"></div><div class="btn">Sıfırla</div><div class="btn">İpucu (2)</div><div class="btn p">Kontrol et</div>
+ </div>
+ <div style="display:grid;grid-template-columns:268px 1fr 300px;gap:12px;padding:12px 12px 0">
+  <div class="card" style="padding:16px;display:flex;flex-direction:column">
+   <h2>Görev</h2><div class="muted small" style="margin:4px 0 12px">1. kat (SW1) ile 2. kat (SW2) arasındaki Gi0/24 bağlantısı muhasebe ve satış VLAN'larını taşımalı.</div>
+   <div id="objs" style="display:flex;flex-direction:column;gap:10px"></div>
+   <div style="flex:1"></div>
+   <div style="background:#e5ecff;border-radius:10px;padding:10px 12px" class="small"><b>İpucu 1</b><br>Trunk iki uçta da kurulmalı. <code>show interfaces trunk</code> her iki switch'te aynı izinli listeyi göstermeli.</div>
+  </div>
+  <div class="card" style="background:#f8f9fb;position:relative;overflow:hidden" id="canvas">
+   <div style="position:absolute;left:12px;top:12px;background:#fff;border:1px solid #dde1e6;border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:6px;font-size:15px;z-index:3"><span>🖥</span><span>🔀</span><span>📡</span><span>🔌</span></div>
+   <div style="position:absolute;right:12px;bottom:12px;background:#fff;border:1px solid #dde1e6;border-radius:8px;padding:5px 10px;z-index:3" class="small">− 100% +</div>
+  </div>
+  <div class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
+   <div style="display:flex;gap:6px"><span class="btn" style="background:#e5ecff;color:#2d55d6;padding:5px 10px">Port</span><span class="btn" style="padding:5px 10px">Cihaz</span><span class="btn" style="padding:5px 10px">Olaylar</span></div>
+   <h3>SW1 · GigabitEthernet0/24</h3>
+   <div id="props" class="small"></div>
+<div class="term" style="padding:10px 12px;font-size:10.5px;flex:1">SW1#show interfaces trunk
+
+Port    Mode  Encap   Status    Native
+Gi0/24  on    802.1q  trunking  1
+
+Port    Vlans allowed on trunk
+Gi0/24  10,20
+
+Port    Vlans allowed and active
+Gi0/24  10,20</div>
+  </div>
+ </div>
+ <div class="term" style="margin:12px;display:grid;grid-template-columns:1fr 1fr;white-space:normal;overflow:hidden">
+  <div style="padding:10px 14px;border-right:1px solid #2c323c;overflow:hidden">
+   <div style="display:flex;gap:6px;margin-bottom:8px;font-family:system-ui" class="small"><span style="background:#2c323c;padding:3px 10px;border-radius:6px">SW1</span><span style="background:#3b6cf6;padding:3px 10px;border-radius:6px;color:#fff">SW2</span><span style="background:#2c323c;padding:3px 10px;border-radius:6px">PC-01</span><span style="background:#2c323c;padding:3px 10px;border-radius:6px">PC-03</span></div>
+<pre>SW2(config)#interface gi0/24
+SW2(config-if)#switchport mode trunk
+SW2(config-if)#switchport trunk allowed vlan 10,20
+SW2(config-if)#end
+SW2#write memory
+Building configuration...
+[OK]
+SW2#<span style="background:#3b6cf6"> </span></pre>
+  </div>
+  <div style="padding:10px 14px;font-family:system-ui">
+   <div class="small" style="color:#9aa3b0;margin-bottom:8px">Simulation Mode · PC-01 → PC-03 ping · olay 4 / 8</div>
+   <div id="tl" style="display:flex;align-items:center;margin-bottom:10px"></div>
+<pre style="font:11.5px/1.55 ui-monospace,Menlo,monospace">4  ICMP Echo Request   SW1 Gi0/24 → SW2 Gi0/24
+   Ethernet  0050.7966.6801 → 0050.7966.6803
+   802.1Q    VLAN 10
+   IPv4      192.168.10.11 → 192.168.10.13  TTL 64</pre>
+  </div>
+ </div>
+</div></div>
+
+<!-- ============ 4 ARIZA ============ -->
+<div class="screen" id="s4" data-nav="2" data-rail="3">
+<div class="main" style="display:grid;grid-template-rows:96px 34px 1fr;gap:14px">
+ <div class="card" style="background:#fff7f3;border-color:#ffd9c9;padding:16px 20px;display:flex;gap:16px;align-items:center">
+  <div style="width:56px;height:56px;border-radius:12px;background:#ffc9b3;display:flex;align-items:center;justify-content:center;font-size:26px">📞</div>
+  <div style="flex:1"><div class="muted small">Sorun Çöz · VLAN · Kolay</div><h2 style="font-size:17px">Yeni muhasebe PC'si kimseyi görmüyor</h2>
+   <div class="muted">"Muhasebeye yeni gelen bilgisayarı 2. kattaki boş prize taktık. Ne yazıcıya ne de diğer muhasebe bilgisayarlarına ulaşıyor. Diğer herkes çalışıyor."</div></div>
+  <span class="btn">⏱ 06:15</span><span class="btn">İpucu (3)</span>
+ </div>
+ <div style="display:flex;align-items:center;gap:14px" id="stepper"></div>
+ <div style="display:grid;grid-template-columns:240px 1fr 340px;gap:14px;min-height:0">
+  <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:8px">
+   <h2>Sorun hangi katmanda?</h2><div class="muted small" style="margin-bottom:4px">Düzeltmeden önce işaretle.</div>
+   <div id="layers" style="display:flex;flex-direction:column;gap:8px"></div>
+   <div class="muted small" style="margin-top:auto">Seçimin değerlendirmede "doğru kök neden" ölçütüne sayılır.</div>
+  </div>
+  <div style="display:grid;grid-template-rows:1fr 258px;gap:14px;min-height:0">
+   <div class="card" style="background:#f8f9fb;position:relative;overflow:hidden" id="canvas4"></div>
+<div class="term" style="padding:10px 16px;overflow:hidden"><div style="display:flex;gap:6px;margin-bottom:6px;font-family:system-ui" class="small"><span style="background:#3b6cf6;padding:3px 10px;border-radius:6px;color:#fff">SW2</span><span style="background:#2c323c;padding:3px 10px;border-radius:6px">SW1</span><span style="background:#2c323c;padding:3px 10px;border-radius:6px">PC-04</span><span style="background:#2c323c;padding:3px 10px;border-radius:6px">PC-02</span></div>SW2#show vlan brief
+
+VLAN Name               Status    Ports
+---- ------------------ --------- -------------------
+1    default            active    <span class="bad" style="background:#3a2a26">Gi0/4</span>, Gi0/6, Gi0/7, Gi0/8
+10   MUHASEBE           active    Gi0/1, Gi0/2, Gi0/3
+20   SATIS              active    Gi0/5
+SW2#<span style="background:#3b6cf6"> </span></div>
+  </div>
+  <div style="display:grid;grid-template-rows:1fr 216px;gap:14px;min-height:0">
+   <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:8px">
+    <h2>Kanıt defteri</h2><div id="ev" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div class="muted small" style="margin-top:auto;border:1px dashed #cfd4db;border-radius:8px;padding:8px;text-align:center">Terminal çıktısından satır seç → buraya iğnele</div>
+   </div>
+   <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:8px">
+    <h2>Değerlendirme</h2>
+    <div class="small" style="display:flex;justify-content:space-between"><span>Bağlantı (PC-04 → yazıcı)</span><span class="tag" style="background:#f1f3f6;color:#6b7380">bekliyor</span></div>
+    <div class="small" style="display:flex;justify-content:space-between"><span>Doğru kök neden</span><span class="tag" style="background:#f1f3f6;color:#6b7380">bekliyor</span></div>
+    <div class="small" style="display:flex;justify-content:space-between"><span>Gereksiz değişiklik yok</span><span class="tag t-g">şimdilik 0</span></div>
+    <div class="btn p" style="margin-top:auto">Teşhisi gönder, düzeltmeye geç</div>
+   </div>
+  </div>
+ </div>
+</div></div>
+
+<script>
+const $=(s,r=document)=>r.querySelector(s);
+const h=(html)=>{const t=document.createElement('template');t.innerHTML=html.trim();return t.content};
+document.querySelectorAll('.screen').forEach(s=>{
+ const c=$('#chrome').content.cloneNode(true);
+ c.querySelectorAll('.nav a')[+s.dataset.nav].classList.add('cur');
+ c.querySelectorAll('.rail div')[+s.dataset.rail].classList.add('cur');
+ s.prepend(c);
+});
+// 1
+const levels=[
+ ['Seviye 1 — Şube temel','5 / 12',[['1','Sorun giderme yöntemi','m',100,'Katman katman teşhis'],['2','IP adresleme ve subnetting','m',100,'Ağ/yayın adresi, aynı ağ mı?'],['3','Ethernet, MAC ve ARP','m',100,'MAC tablosu, ARP önbelleği'],['5','VLAN','m',100,'Access port, show vlan brief'],['6','Trunk','m',45,'802.1Q, izinli ve native VLAN']]],
+ ['Seviye 2 — CCNA','0 / 14',[['13','STP/RSTP ve guard\'lar','m',0,'Root seçimi, PortFast'],['14','EtherChannel (LACP)','m',0,'Port-channel kurulumu'],['15','OSPFv2 tek alan','m',0,'Komşuluk, LSDB'],['16','IPv6 ve SLAAC','m',0,'Adresleme, NDP'],['25','Kablosuz temelleri','o',0,'Okuma: 802.11, WLC']]],
+ ['Seviye 3 — CCNP Enterprise','0 / 23',[['29','İleri STP: MST','m',0,'Instance, bölge'],['31','OSPF çok alan','g',0,'LSA türleri, alan tipleri'],['32','eBGP ve yol seçimi','g',0,'Komşuluk, attribute'],['33','VRF ve GRE','g',0,'Sanal tablolar, tünel'],['36','QoS uygulaması','o',0,'Okuma: işaretleme, kuyruk']]]];
+const T={m:['t-m','Motor'],o:['t-o','Okuma'],g:['t-g','Gerçek Lab']};
+$('#rows').append(h(levels.map(([t,p,cs])=>`<div style="margin-bottom:12px"><div style="display:flex;gap:10px;align-items:baseline;margin-bottom:8px"><h2>${t}</h2><span class="muted small">${p}</span></div>
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">${cs.map(([n,a,k,pr,d])=>`<div class="card" style="padding:14px;height:156px;display:flex;flex-direction:column">
+<div style="display:flex;justify-content:space-between;align-items:center"><div style="width:30px;height:30px;border-radius:8px;background:${pr==100?'#3b6cf6':pr>0?'#9db5fa':'#e6e9ee'};color:${pr?'#fff':'#6b7380'};font-weight:800;display:flex;align-items:center;justify-content:center;font-size:12px">${n}</div><span class="tag ${T[k][0]}">${T[k][1]}</span></div>
+<div style="font-weight:700;margin-top:10px;line-height:1.25">${a}</div><div class="muted small">${d}</div><div style="flex:1"></div>
+<div class="small muted" style="margin-bottom:5px">${pr==100?'✓ ders · lab · senaryo · sınav':pr?'ders ✓ · lab sürüyor':'başlanmadı'}</div><div class="bar"><i style="width:${pr}%"></i></div></div>`).join('')}</div></div>`).join('')));
+[40,75,110,55,95,30,85].forEach((v,i)=>$('#chart').append(h(`<div style="flex:1;height:${v}px;border-radius:4px;background:${i==6?'#3b6cf6':'#cfd6e2'}"></div>`)));
+['Pt','Sa','Ça','Pe','Cu','Ct','Pz'].forEach(d=>$('#days').append(h(`<div style="flex:1;text-align:center">${d}</div>`)));
+[['Trunk · Misafir ağı eklendi, muhasebe koptu','çözüldü · 12 dk','ok'],['Cihaz yönetimi · Gece kesintiden sonra switch\'e ulaşılamıyor','çözüldü · 9 dk','ok'],['VLAN · İki hata birden','yarım kaldı','bad'],['Ethernet · Aynı ağdayım ama ulaşamıyorum','çözüldü · 7 dk','ok']].forEach(([a,b,k])=>$('#recent').append(h(`<div style="display:flex;gap:10px;align-items:center"><span class="dot" style="background:${k=='ok'?'#1d9a55':'#e0532b'}"></span><div><div class="small" style="font-weight:600;line-height:1.3">${a}</div><div class="muted small">${b}</div></div></div>`)));
+// 2
+['Neden önemli','Kavram','Çıktı okuma','Yönlendirmeli lab','Sık hatalar','Arıza senaryosu','Kısa sınav'].forEach((s,i)=>$('#steps').append(h(`<div style="display:flex;gap:12px;position:relative;padding-bottom:22px">
+${i<6?'<div style="position:absolute;left:13px;top:28px;width:2px;height:24px;background:#dde1e6"></div>':''}
+<div style="width:28px;height:28px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;background:${i<2?'#3b6cf6':i==2?'#e5ecff':'#e6e9ee'};color:${i<2?'#fff':i==2?'#2d55d6':'#6b7380'};${i==2?'box-shadow:0 0 0 2px #3b6cf6':''}">${i<2?'✓':i+1}</div>
+<div><div style="font-weight:${i==2?700:500}">${s}</div><div class="muted small">${['2 dk','8 dk · şema','6 dk','6 adım','5 hata','belirti → teşhis','5 soru'][i]}</div></div></div>`)));
+[['Trunk port show vlan brief\'te görünür mü?','✓','ok'],['Gi0/3 neden VLAN 1\'de?','✓','ok'],['VLAN 30 tanımsızsa port ne olur?','?',''],['1002–1005 silinebilir mi?','?','']].forEach(([q,a,k])=>$('#qs').append(h(`<div style="border:1px solid #dde1e6;border-radius:10px;padding:10px;display:flex;gap:10px"><span style="width:20px;height:20px;border-radius:50%;flex:none;background:${k?'#e2f4ea':'#f1f3f6'};color:${k?'#1d9a55':'#6b7380'};font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center">${a}</span><span class="small">${q}</span></div>`)));
+// mini topology helper
+function topo(box,nodes,edges,opt={}){
+ const W=box.clientWidth,H=box.clientHeight;
+ let svg=`<svg width="${W}" height="${H}" style="position:absolute;left:0;top:0">`;
+ edges.forEach(([a,b,st])=>{const A=nodes[a],B=nodes[b];svg+=`<line x1="${A[0]*W}" y1="${A[1]*H}" x2="${B[0]*W}" y2="${B[1]*H}" stroke="${st=='bad'?'#e0532b':st=='trunk'?'#3b6cf6':'#b9bfc8'}" stroke-width="${st=='trunk'?4:2.5}" ${st=='bad'?'stroke-dasharray="7 5"':''}/>`;
+  if(opt.labels&&st&&st!='bad')svg+=`<text x="${(A[0]+B[0])/2*W-80}" y="${(A[1]+B[1])/2*H-14}" font-size="11" fill="#2d55d6" font-weight="700">trunk · Gi0/24</text>`});
+ if(opt.packet)svg+=`<circle cx="${opt.packet[0]*W}" cy="${opt.packet[1]*H}" r="8" fill="#3b6cf6" stroke="#fff" stroke-width="3"/>`;
+ svg+='</svg>';box.insertAdjacentHTML('beforeend',svg);
+ Object.entries(nodes).forEach(([k,[x,y,ic,sub,sel]])=>box.insertAdjacentHTML('beforeend',`<div style="position:absolute;left:${x*W-opt.s}px;top:${y*H-opt.s*0.7}px;width:${opt.s*3}px;margin-left:-${opt.s*0.5}px;text-align:center;z-index:2">
+ <div style="margin:0 auto;width:${opt.s*1.6}px;height:${opt.s*1.2}px;border-radius:10px;background:#fff;border:2px solid ${sel=='bad'?'#e0532b':sel?'#3b6cf6':'#cfd4db'};display:flex;align-items:center;justify-content:center;font-size:${opt.s*0.6}px">${ic}</div>
+ <div style="display:inline-block;background:#f8f9fb;padding:1px 6px;border-radius:5px;margin-top:3px"><div style="font-weight:700;font-size:11.5px">${k}</div>${sub?`<div class="muted" style="font-size:10.5px">${sub}</div>`:''}</div></div>`));
+}
+// 3
+[['SW1 Gi0/24 trunk modunda',1],['SW2 Gi0/24 trunk modunda',1],['İzinli VLAN listesi 10,20 (iki uçta aynı)',1],['PC-01 → PC-03 ping başarılı',0],['Yapılandırma iki switch\'te kaydedildi',0]].forEach(([t,d],i)=>$('#objs').append(h(`<div style="display:flex;gap:10px;align-items:flex-start"><span style="width:20px;height:20px;border-radius:6px;flex:none;background:${d?'#3b6cf6':'#e6e9ee'};color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center">${d?'✓':''}</span><span class="small" style="${d?'color:#6b7380;text-decoration:line-through':''}">${t}</span></div>`)));
+setTimeout(()=>{
+topo($('#minitopo'),{SW1:[.3,.35,'🔀'],SW2:[.7,.35,'🔀'],'PC-M':[.3,.78,'🖥'],'PC-S':[.7,.78,'🖥']},[['SW1','SW2'],['SW1','PC-M'],['SW2','PC-S']],{s:22});
+topo($('#canvas'),{'SW1':[.3,.32,'🔀','1. kat',1],'SW2':[.7,.32,'🔀','2. kat'],'PC-01':[.16,.78,'🖥','VLAN 10 · .11'],'PC-02':[.4,.78,'🖥','VLAN 20 · .21'],'PC-03':[.6,.78,'🖥','VLAN 10 · .13'],'PC-04':[.84,.78,'🖥','VLAN 20 · .23']},
+ [['SW1','SW2','trunk'],['SW1','PC-01'],['SW1','PC-02'],['SW2','PC-03'],['SW2','PC-04']],{s:34,labels:1,packet:[.56,.32]});
+topo($('#canvas4'),{'SW1':[.32,.25,'🔀','1. kat'],'SW2':[.68,.25,'🔀','2. kat',1],'YAZICI':[.14,.72,'🖨','VLAN 10'],'PC-01':[.4,.72,'🖥','VLAN 10'],'PC-02':[.58,.72,'🖥','VLAN 10'],'PC-04':[.86,.72,'🖥','yeni · Gi0/4','bad']},
+ [['SW1','SW2'],['SW1','YAZICI'],['SW1','PC-01'],['SW2','PC-02'],['SW2','PC-04','bad']],{s:28});
+},0);
+$('#props').append(h([['Mod','trunk'],['Kapsülleme','802.1Q'],['Native VLAN','1'],['İzinli VLAN','10, 20'],['Durum','<span class="ok">up / up</span>'],['Komşu','SW2 Gi0/24']].map(([a,b])=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f2f5"><span class="muted">${a}</span><b>${b}</b></div>`).join('')));
+['ARP Req','ARP Rep','ARP Req','ICMP Req','ICMP Req','ICMP Rep','ICMP Rep','ICMP Rep'].forEach((e,i)=>$('#tl').append(h(`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><span style="width:${i==3?16:12}px;height:${i==3?16:12}px;border-radius:50%;background:${i==3?'#3b6cf6':i<3?'#7d8796':'#4a515d'}"></span><span style="font-size:9.5px;color:${i==3?'#fff':'#8a93a0'}">${e}</span></div>`)));
+// 4
+['Belirti','Teşhis','Kanıt','Düzeltme'].forEach((s,i)=>$('#stepper').append(h(`${i?'<div style="flex:1;height:2px;background:#d5d9df"></div>':''}<div style="display:flex;align-items:center;gap:8px"><span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;background:${i==0?'#e5ecff':i==1?'#3b6cf6':'#e6e9ee'};color:${i==0?'#2d55d6':i==1?'#fff':'#6b7380'}">${i==0?'✓':i+1}</span><b style="color:${i>1?'#8a919c':'#1f2430'}">${s}</b></div>`)));
+[['1 · Fiziksel','kablo, port durumu'],['2 · Veri bağı','VLAN, trunk, MAC'],['3 · Ağ','IP, maske, gateway'],['4 · Taşıma','port, oturum'],['5–7 · Uygulama','DNS, DHCP, servis'],['Yapılandırma kaydı','running / startup']].forEach(([a,b],i)=>$('#layers').append(h(`<div style="border-radius:10px;padding:8px 12px;background:${i==1?'#3b6cf6':i==0?'#e5ecff':'#f1f3f6'};color:${i==1?'#fff':'#1f2430'}"><div style="font-weight:700">${a}${i==1?' ✓':''}</div><div class="small" style="opacity:.75">${b}</div></div>`)));
+[['PC-04','ipconfig','192.168.10.24 /24 · gw 192.168.10.1'],['PC-04','ping 192.168.10.12','Request timed out (4/4)'],['SW2','show interfaces Gi0/4 status','connected · a-full · a-1000'],['SW2','show vlan brief','Gi0/4 → VLAN 1 (default)']].forEach(([d,c,r],i)=>$('#ev').append(h(`<div style="border:1px solid ${i==3?'#ffc9b3':'#dde1e6'};background:${i==3?'#fff7f3':'#fff'};border-radius:10px;padding:8px 10px"><div class="small"><b>${d}</b> <code style="color:#2d55d6">${c}</code></div><div class="small muted">${r}</div></div>`)));
+const k=(location.hash||'#1').slice(1);document.getElementById('s'+k).classList.add('on');
+</script>
+</body></html>
