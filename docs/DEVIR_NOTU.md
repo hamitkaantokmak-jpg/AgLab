@@ -44,8 +44,16 @@ Kalan (PR 2–4), her biri ayrı PR, bir öncekinin dalı üstüne (PR 2 → `cl
   `#ptDeviceInfo` verisi, hızlı show çıktısı Labber oturumundan); altta cihaz sekmeli terminal
   (`#ptTerminal`, `#ptCliDevice`, `#ptCliInput`) ve yanında Simulation Mode zaman çizelgesi
   (`simulation-ui.js`). "Çözümü göster": birkaç başarısız Kontrol et ya da bütün ipuçlarından sonra
-  (Akademi öğretmen çözümü HTML'e gömülü değil — gömülmesi gerekirse `verify_packages.py`'deki
-  "Teacher fields embedded in HTML" kuralı bilinçli olarak değiştirilmeli ve PR'da yazılmalı).
+  **Kullanıcı kararı (PR 2'de uygulanacak): öğretmen çözümleri HTML'e gömülür.**
+  `verify_packages.py`'deki "Teacher fields embedded in HTML" yasağı PR 2'de gerekçesiyle
+  kaldırılır — gerekçe: öğrenci/öğretmen ayrımı kalktı (`SONRAKI_ISLER.md`), uygulama kendi kendine
+  öğrenme içindir, Sorun Çöz senaryolarının çözümleri (`network-scenarios.json` `solution`) zaten
+  gömülüdür. Yasağın yerine gelecek denetimler (test + paket doğrulaması):
+  1. Çözüm yalnız "Çözümü göster" kilidi açılınca görünür: kilit açılana kadar çözüm DOM'da
+     **oluşturulmaz** (gizli öğe olarak da bulunmaz).
+  2. Kilit birkaç başarısız "Kontrol et"ten ya da bütün ipuçları kullanıldıktan sonra açılır.
+  3. Çözümler tek pakettedir (`academy/teacher/` ZIP'te) ve her labın öğretmen çözümüyle 100/100
+     kontrolleri sürer.
 - **PR 3 Arıza senaryosu ekranı** (`dolu-4.png`): belirti kartı; Belirti → Teşhis → Kanıt →
   Düzeltme; düzeltmeden önce katman seçici (L1, L2, L3, servis, uygulama); terminalden iğnelenen
   kanıt defteri; kök neden çözülene kadar gizli (#86, `sharedCauseReveal`). Değerlendirme: bağlantı
