@@ -5340,7 +5340,13 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
         else h = w / aspect;
         // Alt ölçek sınırı: çok büyük topolojide düğümler okunmaz ve tıklanamaz olur. Sınırın
         // altında görünüm sol üstten başlar (eski sabit görünümdeki gibi), kalan kısım dışarıda.
-        const KMIN = 0.45;
+        const KMIN = 0.45,
+          // Üst ölçek sınırı: geniş görünümde (1920 px) küçük topoloji dev kartlara dönüşmesin.
+          KMAX = 1.4;
+        if (cw / w > KMAX) {
+          w = cw / KMAX;
+          h = ch / KMAX;
+        }
         if (cw / w < KMIN) box = [x0, y0, cw / KMIN, ch / KMIN];
         else {
           const cx = (x0 + x1) / 2,
@@ -5428,6 +5434,8 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
           svg,
         ).textContent = mid;
       if (!same) {
+        // Kabloya gelince iki ucun portu (etiket çakışmadan gizlenmiş olsa da okunur).
+        el('title', {}, line).textContent = a.name + ' ' + pa + ' ↔ ' + b.name + ' ' + pb;
         // Etiket düğüm kartının kenarının dışında, kablo boyunca (kartın altında kalmaz).
         const exit = (d) =>
           Math.min(
@@ -5444,6 +5452,10 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
               x: a.x + ux * ta + uy * 9 * side,
               y: a.y + uy * ta - ux * 9 * side + 3,
               class: 'pt-port-label',
+              // Çakışmada etiket kendi kablosu boyunca (kartından uzağa) kaydırılabilir.
+              'data-ux': ux,
+              'data-uy': uy,
+              'data-room': Math.max(0, len / 2 - ta - 18),
             },
             svg,
           ).textContent = pa;
@@ -5453,6 +5465,9 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
               x: b.x - ux * tb + uy * 9 * side,
               y: b.y - uy * tb - ux * 9 * side + 3,
               class: 'pt-port-label',
+              'data-ux': -ux,
+              'data-uy': -uy,
+              'data-room': Math.max(0, len / 2 - tb - 18),
             },
             svg,
           ).textContent = pb;
