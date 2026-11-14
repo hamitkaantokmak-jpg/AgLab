@@ -53,7 +53,6 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 |---|---|---|
 | `subif-missing` | Alt arayüz eksik · router-on-a-stick | **Labber** |
 | `ospf-area` | OSPF area uyuşmazlığı | **Labber** |
-| `bgp-as` | BGP remote-AS uyuşmazlığı | Eski motor: BGP Labber'da yok (L5) |
 | `port-security` | Port-security ihlali | **Labber** |
 | `return-route` | return-route | **Labber** |
 | `forward-route` | forward-route | **Labber** |
@@ -62,9 +61,9 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `unresolved-next-hop` | unresolved-next-hop | **Labber** |
 | `lpm-next-hop` | lpm-next-hop | **Labber** |
 | `floating-static` | floating-static | **Labber** |
-| `access-vlan` | access-vlan | **Labber** |
-| `trunk-allowed` | trunk-allowed | **Labber** |
-| `native-vlan` | native-vlan | **Labber** |
+| `access-vlan` | VLAN · Aynı ağdaki iki bilgisayar birbirini görmüyor | **Labber** |
+| `trunk-allowed` | Trunk · Switch'ler arası bağlantı açık, VLAN 10 karşıya geçmiyor | **Labber** |
+| `native-vlan` | Trunk · İki uç trunk ama VLAN 10 karşıya ulaşmıyor | **Labber** |
 | `nat-pat` | nat-pat | **Labber** |
 | `relay-trunk` | relay-trunk | **Labber** |
 | `stp-loop` | stp-loop | **Labber** |
@@ -265,13 +264,12 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 116 | 1 | 117 |
+| Ortak senaryolar | 116 | 0 | 116 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 169 | 1 | 170 |
+| Toplam | 169 | 0 | 169 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
-| BGP Labber'da yok (L5) | 1 |
 
 ACL/NAT için security_smoke ayrı native operatör örnekleridir; mevcut 40 görevin ACL/NAT alanlarını dönüştürdüğü veya native doğruladığı iddia edilmez. ACL 28 ve SNAT/PAT 21 native kontrolü [CI 42205155584 / 6f651fe](https://github.com/hamitkaantokmak-jpg/AgLab/actions/runs/42205155584) güvenlik işlerinde geçti; görev aktarımı sayılmaz.
 

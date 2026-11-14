@@ -337,8 +337,8 @@ window.aglabSharedEngine = {
   reach: (source, target) => {
     const src = devices.find((d) => d.name === source),
       dst = devices.find((d) => d.name === target);
-    // Eski motorun ping'i (görünüm üzerinde); tests/test_aglab_sim_parity.py bunu Labber'la
-    // karşılaştıran oracle olarak kullanır.
+    // Eski motorun ping'i (görünüm üzerinde). L7a: tarayıcı paritesi (test_aglab_sim_parity)
+    // emekliye ayrıldı; oracle karşılaştırması vitest parity.test.ts'de ürün dışından yapılır.
     return !!(src && dst && ping(src.id, dst.ip).ok);
   },
   routes: (id) => clone(dynamicRoutes(get(id) || devices.find((d) => d.name === id))),
@@ -372,23 +372,11 @@ sharedPanel.setAttribute('role', 'region');
 sharedPanel.setAttribute('aria-labelledby', 'sharedScenarioTitle');
 $p('sharedScenarioStatus').setAttribute('aria-live', 'polite');
 for (const [topic, note] of Object.entries({
-  ospf: 'Ortak motorda: router ospf, router-id, network wildcard area, show ip ospf neighbor ve O rotaları. Tek area bileşenleri/anlık eğitim modeli; passive-interface, timer, LSDB, redistribution ve policy desteklenmez.',
-  bgp: 'Ortak motorda: router bgp, karşılıklı neighbor remote-as, bağlı ağ için network mask, show ip bgp summary ve B rotaları. Doğrudan eBGP eğitim modeli; iBGP, prefix-list, route-map ve path policy desteklenmez.',
+  ospf: 'Labber motorunda: router ospf, router-id, network wildcard area, passive-interface, ip ospf cost, show ip ospf neighbor ve O / O IA rotaları. Zamanlayıcılar ve LSDB ayrıntısı modellenmez.',
+  bgp: 'BGP simülatörde modellenmez (kapsam dışı); Sorun Çöz ve protokol atölyesindeki BGP alıştırmaları kavramsaldır (motor yok).',
 })) {
   if (typeof learningDeep !== 'undefined' && learningDeep[topic])
     learningDeep[topic].commands += ' <br><b>Simülatör kapsamı:</b> ' + note;
-}
-if (typeof scenarios !== 'undefined') {
-  for (const [id, title] of Object.entries({
-    bgp: 'BGP remote-AS uyuşmazlığı',
-    ospf: 'OSPF area uyuşmazlığı',
-    portsec: 'Port-security ihlali · ortak motor',
-    subif: 'Eksik alt arayüz · ortak motor',
-  })) {
-    const row = scenarios.find((s) => s.id === id);
-    if (row) row.title = title;
-  }
-  if (typeof renderList === 'function') renderList();
 }
 // Meaningful names for existing controls whose context used to be visual only.
 for (const [id, label] of Object.entries({

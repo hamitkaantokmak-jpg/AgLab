@@ -167,50 +167,8 @@ class CommonEngineTests(unittest.TestCase):
     def last_output(self):
         return self.page.locator("#ptTerminal").inner_text().split("show ip")[-1]
 
-    def test_04_bgp_reciprocal_remote_as_and_ad(self):
-        self.load("bgp-as")
-        self.command("R1", ["show ip bgp summary"])
-        expect(self.page.locator("#ptTerminal")).to_contain_text("remote-as uyuşmazlığı")
-        self.assertFalse(self.probe()["ok"])
-        self.solve("bgp-as")
-        self.assertTrue(self.probe()["ok"])
-        self.assertTrue(
-            any(r["distance"] == 20 for r in self.run_js("aglabSharedEngine.routes('R1')"))
-        )
-        self.command(
-            "R1",
-            [
-                "enable",
-                "configure terminal",
-                "ip route 192.168.20.0 255.255.255.0 10.0.12.2 5",
-                "end",
-                "show ip route 192.168.20.20",
-            ],
-        )
-        self.assertIn("S 192.168.20.0/24", self.page.locator("#ptTerminal > div").last.inner_text())
-        self.command(
-            "R1",
-            [
-                "enable",
-                "configure terminal",
-                "no ip route 192.168.20.0 255.255.255.0 10.0.12.2 5",
-                "end",
-                "show ip route 192.168.20.20",
-            ],
-        )
-        self.assertIn("B 192.168.20.0/24", self.page.locator("#ptTerminal > div").last.inner_text())
-        self.command(
-            "R2",
-            [
-                "enable",
-                "configure terminal",
-                "router bgp 65002",
-                "no neighbor 10.0.12.1 remote-as 65001",
-                "end",
-            ],
-        )
-        self.assertFalse(self.probe()["ok"])
-        self.assertFalse(self.run_js("aglabSharedEngine.routes('R1')"))
+    # L7a: test_04 (BGP remote-as / AD) silindi. Yalnız eski motorda çalışan `bgp-as` senaryosunu
+    # sınıyordu; BGP Labber'da modellenmez (kapsam dışı) ve kavramsal alıştırma olarak kaldı (L6).
 
     def test_05_port_security_modes_and_recovery(self):
         """L5-e: port-security Labber kararında; probe() kaynak PC'nin gerçek trafiğidir."""
@@ -260,7 +218,7 @@ class CommonEngineTests(unittest.TestCase):
         self.assertTrue(self.probe()["ok"])
 
     def test_06_round_trip_and_reject_unknown_nested_fields(self):
-        for scenario in ["ospf-area", "bgp-as", "port-security"]:
+        for scenario in ["ospf-area", "port-security"]:
             self.load(scenario)
             self.solve(scenario)
             expected = self.run_js("academyEngine.snapshot()")
@@ -271,14 +229,10 @@ class CommonEngineTests(unittest.TestCase):
             device = next(
                 d
                 for d in bad["devices"]
-                if d.get("ospf")
-                or d.get("bgp")
-                or any(i.get("portSecurity") for i in d["interfaces"].values())
+                if d.get("ospf") or any(i.get("portSecurity") for i in d["interfaces"].values())
             )
             if "ospf" in device:
                 device["ospf"]["unknown"] = True
-            elif "bgp" in device:
-                device["bgp"]["neighbors"][0]["unknown"] = True
             else:
                 device["interfaces"]["fa0/1"]["portSecurity"]["unknown"] = True
             self.assertTrue(
@@ -339,8 +293,7 @@ class CommonEngineTests(unittest.TestCase):
         self.page.keyboard.press("Escape")
         self.page.click('[data-area="troubleshoot"]')
         # L6: eski metin senaryoları `TROUBLESHOOT_TASKS` (kimlik ve sıra aynı) Labber karşılığına
-        # açılır. BGP Labber'da modellenmez (kapsam dışı): `bgp` artık eski motordaki `bgp-as`'e
-        # değil, motorsuz olduğu açıkça etiketli kavramsal alıştırmaya açılır.
+        # açılır. BGP Labber'da modellenmez (kapsam dışı): `bgp` motorsuz olduğu açıkça etiketli kavramsal alıştırmaya açılır.
         for legacy, shared in [
             ("ospf", "ospf-area"),
             ("portsec", "port-security"),

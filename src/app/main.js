@@ -8006,97 +8006,6 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     el.style.border = '1px solid ' + (ok ? '#27856a' : '#536579');
     el.style.background = ok ? 'rgba(22,130,93,.18)' : 'rgba(100,116,139,.15)';
   }
-  function loadSharedSwitchScenario(key) {
-    academyClearSession();
-    devices = [];
-    links = [];
-    sourceArchiveData = null;
-    importReportData = null;
-    nextId = 1;
-    cliMode = 'user';
-    currentInterface = '';
-    macTables.clear();
-    arpTables.clear();
-    beginEthernetEvents();
-    packetWalk = null;
-    const pc1 = addDevice('PC', 85, 170),
-      sw1 = addDevice('Switch', 285, 170),
-      sw2 = addDevice('Switch', 520, 170),
-      pc2 = addDevice('PC', 735, 170);
-    pc1.name = 'PC-01';
-    pc1.ip = '192.168.10.10';
-    pc1.mask = '255.255.255.0';
-    pc1.gateway = '0.0.0.0';
-    pc1.vlan = 10;
-    pc2.name = 'PC-02';
-    pc2.ip = '192.168.10.20';
-    pc2.mask = '255.255.255.0';
-    pc2.gateway = '0.0.0.0';
-    pc2.vlan = 10;
-    sw1.name = 'SW-01';
-    sw2.name = 'SW-02';
-    for (const sw of [sw1, sw2]) {
-      sw.vlans = [1, 10, 20];
-      Object.entries(sw.interfaces).forEach(([n, i]) => {
-        i.enabled = true;
-        if (n.startsWith('gi')) {
-          i.mode = 'trunk';
-          i.allowed = [10, 20];
-        } else {
-          i.mode = 'access';
-          i.vlan = 10;
-        }
-      });
-    }
-    if (key === 'access-vlan') sw1.interfaces['fa0/1'].vlan = 20;
-    if (key === 'trunk-allowed') sw1.interfaces['gi0/1'].allowed = [20];
-    if (key === 'native-vlan') {
-      sw1.interfaces['gi0/1'].nativeVlan = 10;
-      sw2.interfaces['gi0/1'].nativeVlan = 1;
-    }
-    links = [
-      { a: pc1.id, b: sw1.id, portA: 'eth0', portB: 'fa0/1', up: true },
-      { a: sw1.id, b: sw2.id, portA: 'gi0/1', portB: 'gi0/1', up: true },
-      { a: sw2.id, b: pc2.id, portA: 'fa0/1', portB: 'eth0', up: true },
-    ];
-    selected = pc1.id;
-    sharedScenario = { active: true, key, sourceId: pc1.id, target: pc2.ip };
-    render();
-    syncSelects();
-    $p('ptCliDevice').value = pc1.id;
-    updateInspector();
-    updatePrompt();
-    saveTopology(true);
-    $p('ptTerminal').replaceChildren();
-    const instructions =
-      key === 'access-vlan'
-        ? '<b>Arıza:</b> PC-01 için beklenen VLAN 10; ancak SW-01 Fa0/1 access portu VLAN 20’de.<br><b>Görev:</b> İlk olarak PC-01 üzerinde <code>ping 192.168.10.20</code> çalıştır. Ardından SW-01’i seç, <code>enable</code> → <code>configure terminal</code> → <code>interface fa0/1</code> → <code>switchport mode access</code> → <code>switchport access vlan 10</code> komutlarını uygula. Ping’i tekrar çalıştır; senaryo yalnızca başarılı ping ile tamamlanır.'
-        : key === 'trunk-allowed'
-          ? '<b>Arıza:</b> SW-01 ile SW-02 arasındaki trunk bağlantısı up; fakat SW-01 Gi0/1 allowed VLAN listesinde VLAN 10 eksik.<br><b>Görev:</b> PC-01 üzerinde <code>ping 192.168.10.20</code> ile hatayı doğrula. SW-01’de <code>enable</code> → <code>configure terminal</code> → <code>interface gi0/1</code> → <code>switchport mode trunk</code> → <code>switchport trunk allowed vlan 10,20</code> komutlarını uygula. Ping’i tekrar çalıştır; senaryo yalnızca başarılı ping ile tamamlanır.'
-          : '<b>Arıza:</b> SW-01 Gi0/1 native VLAN 10, SW-02 Gi0/1 native VLAN 1. VLAN 10 trafiği bir tarafta etiketsiz gönderildiği için karşı tarafta farklı VLAN’a eşlenir.<br><b>Görev:</b> PC-01 üzerinde <code>ping 192.168.10.20</code> ile arızayı doğrula. SW-01’i seçip <code>enable</code> → <code>configure terminal</code> → <code>interface gi0/1</code> → <code>switchport trunk native vlan 1</code> komutlarını uygula. <code>show interfaces trunk</code> ile native VLAN ve uyarıyı kontrol et; ardından ping’i tekrarla.';
-    $p('sharedScenarioInstructions').innerHTML = instructions;
-    const prog = sharedProgress();
-    if (prog[key])
-      sharedStatus(
-        'Bu switching senaryosu daha önce tamamlanmış. Topoloji arızalı durumda yeniden yüklendi; tekrar çözebilirsin.',
-        true,
-      );
-    else
-      sharedStatus(
-        'Arızalı switching topolojisi yüklendi. Önce ping başarısız olmalı; yapılandırmayı düzeltip yeniden ping at.',
-      );
-    say(
-      'Ortak motorlu switching senaryosu yüklendi: ' +
-        ({
-          'access-vlan': 'yanlış access VLAN',
-          'trunk-allowed': 'trunk allowed VLAN eksik',
-          'native-vlan': 'trunk native VLAN uyuşmazlığı',
-          'nat-pat': 'NAT/PAT overload eksikliği',
-        }[key] || key) +
-        '. Komutlar switch port yapılandırmasını değiştirir.',
-      'outinfo',
-    );
-  }
   function loadSharedStpScenario() {
     academyClearSession();
     devices = [];
@@ -8357,10 +8266,6 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     }
     if (key === 'relay-trunk') {
       loadSharedRelayTrunkScenario();
-      return;
-    }
-    if (key === 'access-vlan' || key === 'trunk-allowed' || key === 'native-vlan') {
-      loadSharedSwitchScenario(key);
       return;
     }
     if (key === 'nat-pat') {

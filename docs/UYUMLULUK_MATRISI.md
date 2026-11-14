@@ -126,13 +126,13 @@ v13, traceroute, icmp) `tests/sim/routing-acceptance.test.ts`'de karşılaştır
 | Routing senaryolarındaki sunucu (`SRV-01`) | Şablonla DHCP/DNS/HTTP servisleri açık | Servissiz sunucu bir uçtur; servisli sunucu L5'e kadar eski motorda | **Senaryoda servisler kapatıldı** (yalnız ICMP hedefi; servisler senaryoda kullanılmıyordu). |
 | Alt arayüz (router-on-a-stick: `subif-missing`, `roas-*`) | Var | **L5-a: destekleniyor** | Labber kararında; aşağıdaki "L5-a" bölümü. |
 | DHCP sunucusu/relay/istemci, DNS (`relay-trunk`) | Var | **L5-b: destekleniyor** | Labber kararında; aşağıdaki "L5-b" bölümü. |
-| Router'da ACL, NAT, BGP; sunucuda HTTP | Var | **Desteklenmiyor (L5)** | Eski motorda kalır (`nat-pat`, `bgp-as`). |
+| Router'da ACL, NAT, BGP; sunucuda HTTP | Var | **Desteklenmiyor (L5)** | ACL, NAT, HTTP L5'te Labber'a geçti. BGP kapsam dışı: `bgp-as` L7a'da kaldırıldı, BGP kavramsal alıştırmadır (L6). |
 
 ## L5-a: router alt arayüzü / 802.1Q (Labber kararları)
 
 `subif-missing` ve router-on-a-stick senaryoları (`roas-*`) Labber kararındadır. Oracle
 paritesi: `tests/node/test_engine_routing.cjs` dot1q vakaları `tests/sim/parity.test.ts`'de
-birebir; tarayıcı ping paritesi (`test_aglab_sim_parity`) bu içerikte de fark göstermez;
+birebir; tarayıcı ping paritesi (`test_aglab_sim_parity`, L7a'da emekliye ayrıldı) bu içerikte de fark göstermezdi;
 `test_aglab_next_hop`'un rastgele alt arayüz numaralı adımı `routing-acceptance.test.ts`'de
 Labber'da aynı sonucu verir.
 
@@ -402,7 +402,7 @@ tamamlanmış sayılır. Görev kimlikleri ve sırası değişmedi.
 | `dhcp` | 2 · `dhcp-client-static` (yeni) | Karşılık senaryoların hiçbiri "istemci DHCP'de değil, elle 169.254" değil. |
 | `mac`, `unknown` | 2 · `eth-mac-learning`, `eth-unknown-unicast` (yeni) | Arızasız gözlem görevleri (tablo trafikle dolar; bilinmeyen hedef taşırılır, kaynak öğrenilir). Taşırma Labber'da ayrı olay olarak gösterilmez; öğrenme sonucu (`macPort`, hiç göndermeyen PC'nin tabloda olmaması) sınanır. Tarifte `verify.observation: true`: arıza olmadığı için hedef ping'i başta başarılıdır; test başta hedefin sağlanmadığını, hedef ping'inin (trafiğin) onu sağladığını denetler (`test_aglab_lesson_scenarios`). |
 | `acl` | 2 · `acl-http-blocked` (yeni) | Eski görev "ICMP geçiyor, TCP 80 engelli"ydi; `acl-*` senaryolarında ping de düşüyor ya da arıza başka. |
-| `bgp` | 3 · kavramsal alıştırma | BGP Labber'da modellenmez (kapsam dışı); `bgp-as` eski motordadır. Hikâye, verilen (canlı olmayan) kanıt satırları ve teşhis seçenekleri; terminal ve motor sonucu yok; rozet "motor yok". |
+| `bgp` | 3 · kavramsal alıştırma | BGP Labber'da modellenmez (kapsam dışı); eski motordaki `bgp-as` L7a'da kaldırıldı. Hikâye, verilen (canlı olmayan) kanıt satırları ve teşhis seçenekleri; terminal ve motor sonucu yok; rozet "motor yok". |
 | Hazır deneyler (9) | 1 · Labber karşılığı; `dhcp` 2 · `dhcp-service-down` (yeni) | "Sağlıklı ağ" deneyi kaldırıldı (öğretim yok: Lab'ın varsayılan topolojisi aynı gözlemi Labber'da verir). `uplink` (yanlış access VLAN + trunk izin listesi) → `vlan-two-faults`; `routerdown` → `roas-physical-shutdown`. "Paketi topolojide göster" animasyonu Simulation Mode'dadır. |
 | Rota atölyesi: AD, LPM, varsayılan rota | 1 · `ospf-static-overrides`, `lpm-next-hop`, `default-route` | Aynı seçim kuralı gerçek senaryoda. |
 | Rota atölyesi: metric, ECMP | 2 · Labber görünümü | Karşılık senaryo yok. R1→(R2/R3)→R4 OSPF topolojisi Labber'da kurulur; R1 `show ip route ospf` çıktısı ve `LabQuery.routeFor` (next-hop, metric, eşit yollar) motordan gelir; "Değişikliği uygula" gerçek `ip ospf cost` komutunu çalıştırır. |
@@ -421,5 +421,21 @@ Tarifli (`network-scenarios.json`) senaryolarda kök neden alıştırmanın ceva
 belirtiyle birlikte basılmaz. İpuçları kutusunun yanında ayrı ve kapalı bir "Kök nedeni göster"
 kutusundadır; senaryo çözülünce (hedefler sağlanıp hedef ping'i başarılı) kendiliğinden açılır ve
 "BAŞARILI" durumunun yanına taşınır. Gözlem senaryolarında (`verify.observation`) de aynıdır.
-Kodla kurulan eski üç switching senaryosunun (`access-vlan`, `trunk-allowed`, `native-vlan`) yönerge
-metni arızayı ve çözüm komutlarını hâlâ doğrudan yazar (bu PR'ın kapsamı dışında).
+Kodla kurulan eski üç switching senaryosu (`access-vlan`, `trunk-allowed`, `native-vlan`) L7a'da
+tarife taşındı (aşağıda); yönergeleri artık yalnız belirtiyi söyler.
+
+## L7a: eski motora düşen son içerik ve oracle
+
+Ürün HTML'inde eski motora düşen içerik kalmadı; eski motorun kaldırılması L7b'dedir.
+
+| Öğe | Önce | Karar | Gerekçe |
+|---|---|---|---|
+| `bgp-as` | Tek eski motor kararındaki ortak senaryo | **Kaldırıldı** | BGP Labber'da modellenmez (kapsam dışı). BGP, Sorun Çöz'deki `bgp` ve protokol atölyesindeki üç BGP durumunda kavramsal alıştırmadır (L6); ikinci bir kavramsal kopya eklenmedi. Kayıtlı ilerleme anahtarı (`aglab-shared-engine-progress-v1` içindeki `bgp-as`) okunur ama gösterilecek senaryo olmadığı için listede görünmez. |
+| `access-vlan`, `trunk-allowed`, `native-vlan` | `main.js` `loadSharedSwitchScenario` ile kodla kurulan topoloji; yönerge arızayı ve komutu söylüyordu | **Tarif** (`network-scenarios.json`: `topology` + `verify.kind: query`) | Topoloji aynı (PC-01 192.168.10.10 — SW-01 fa0/1, SW-01 gi0/1 — SW-02 gi0/1, SW-02 fa0/1 — PC-02 192.168.10.20). Başlıklar belirti; kök neden ve çözüm `cause`/`solution`'da, kök neden kutusu kapalı (#86). Hedefler: `access-vlan` PC-01 portu VLAN 10 + ping; `trunk-allowed` SW-01 gi0/1 VLAN 10'u taşır + ping; `native-vlan` iki yönde ping. `test_aglab_lesson_scenarios` her birinin başta başarısız, çözümle başarılı olduğunu sınar. |
+| `test_aglab_sim_parity` (tarayıcı ping paritesi) | Ürün HTML'indeki eski motor `aglabSharedEngine.reach` ⇄ Labber `LabQuery.ping` | **Emekliye ayrıldı** (dosya silindi, `sim-parity-browser.json` kanıtı ZIP'ten çıkarıldı) | Oracle tarafı ürüne gömülü `main.js` ping'iydi (DOM'a bağlı, ürün dışına taşınamaz); L7b eski motoru üründen kaldırınca karşılaştıracak taraf kalmaz. Gerçek davranış ölçütü Labber'dır: her tarif başta başarısız / çözümle başarılı (`test_aglab_lesson_scenarios`), Akademi labları başlangıç/hedef (`test_aglab_academy*`). Bilinen 13 farkın hepsi eski motorun yanlışıydı (dönüş yolu, EtherChannel, IP çakışması). |
+| `src/engine` | Ürüne gömülü (`//@@module ENGINE@@`) + vitest oracle | **Yalnız test oracle'ı** | `tests/sim/parity.test.ts` oracle'ı ürün dışından (`src/engine/*.js` doğrudan) kullanır; değişmedi. Ürüne gömülmesi L7b'de kaldırılır. |
+
+`test ethernet` / `show ethernet events` (gerçek IOS/VPCS komutu değil) ve bunlara dayanan
+`test_aglab_frame_forwarding` / `test_aglab_routed_frames` bölümleri, eski motor CLI'siyle birlikte
+L7b'de silinir ya da Labber karşılığına (`show mac address-table`, Simulation Mode olayları)
+uyarlanır; ürün içeriği bu komutlara dayanmaz.
