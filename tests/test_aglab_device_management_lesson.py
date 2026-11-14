@@ -51,7 +51,7 @@ class DeviceManagementLessonUiTests(unittest.TestCase):
             self.assertIn("running ve startup", sheet.text_content())
             sheet.locator("button", has_text="Ayrıntılı öğren").evaluate("b => b.click()")
             page.wait_for_function(
-                "document.getElementById('sfSheet').textContent.includes('dün çalışıyordu')"
+                "document.getElementById('sfSheet').textContent.includes('Dün çalışıyordu')"
             )
             self.assertIn("Save? [yes/no]: no", sheet.text_content())
             browser.close()
