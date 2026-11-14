@@ -312,16 +312,61 @@ class SimWorkspaceTests(unittest.TestCase):
         p.reload()
         p.click('[data-area="lab"]')
         expect(btn).to_be_disabled()
-        # Kilidin ipucu yolu: bütün hedeflerin komut basamağı açılınca (basamaklar sırayla açıldığı
-        # için toplam basamak sayısı kadar "İpucu").
-        for used in range(total):
-            expect(btn).to_be_disabled()
-            self.assertEqual(self.lock()["hintsUsed"], used)
-            p.click("#agSimLabberHint")
-        expect(p.locator("#agSimLabberHint")).to_have_text("İpucu · hepsi açık")
-        expect(p.locator("#agSimLabberHint")).to_be_disabled()
-        expect(btn).to_be_enabled()
         self.assertEqual(self.lock()["fails"], 0)
+
+    def test_labber_lock_opens_when_every_unmet_goal_has_its_command_hint(self):
+        """Labber labında kilidin ipucu yolu: sağlanmamış her hedefin son (komut) basamağı
+        açılınca. Sağlanmış hedeflerin ipuçları gerekmez (bütün ipuçları beklenmez)."""
+        p = self.page
+        # Başlangıçta hem sağlanmış hem sağlanmamış hedefi olan ilk lab.
+        chosen = None
+        for lab in p.evaluate("aglabLabberLabs.list().map(l=>l.id)"):
+            p.select_option("#labberLabSelect", lab)
+            p.click("#labberLabStart")
+            p.wait_for_function("(id)=>aglabLabberLabs.active()===id", arg=lab)
+            goals = p.evaluate("aglabLabberLabs.goals()")
+            if any(g["ok"] for g in goals) and any(not g["ok"] for g in goals):
+                chosen = lab
+                break
+        self.assertIsNotNone(chosen, "başlangıçta kısmen sağlanmış bir Labber labı yok")
+        unmet = [g for g in goals if not g["ok"]]
+        total = sum(len(g["hints"]) for g in goals)
+        needed = sum(len(g["hints"]) for g in unmet)
+        self.assertLess(needed, total)
+        btn = p.locator("#agSimSolutionBtn")
+        meta = p.locator("#agSimMeta")
+        expect(meta).to_contain_text("komut ipucu 0/%d hedef" % len(unmet))
+        expect(p.locator("#agSimSolutionLock")).to_contain_text(
+            "sağlanmamış her hedefin komut ipucu"
+        )
+        done = 0
+        for click in range(needed):
+            expect(btn).to_be_disabled()
+            p.click("#agSimLabberHint")
+            if (click + 1) % 3 == 0:
+                done += 1
+                expect(meta).to_contain_text("komut ipucu %d/%d hedef" % (done, len(unmet)))
+        # Sağlanmamış hedeflerin hepsinin komut basamağı açık: kilit açılır; sağlanmış hedeflerin
+        # ipuçları kullanılmadı.
+        expect(btn).to_be_enabled()
+        lock = self.lock()
+        self.assertEqual(lock["fails"], 0)
+        self.assertEqual((lock["commandsOpen"], lock["commandsNeeded"]), (len(unmet), len(unmet)))
+        self.assertEqual(lock["hintsUsed"], needed)
+        self.assertLess(lock["hintsUsed"], lock["hintsTotal"])
+        expect(p.locator("#agSimLabberHint")).not_to_have_text("İpucu · hepsi açık")
+        for g in unmet:
+            expect(
+                p.locator('#agSimLabberHints > li[data-goal="%s"] [data-step="3"]' % g["id"])
+            ).to_contain_text(g["hint"])
+        for g in goals:
+            if g["ok"]:
+                self.assertEqual(
+                    p.locator('#agSimLabberHints > li[data-goal="%s"]' % g["id"]).count(), 0
+                )
+        self.assertEqual(p.locator("#agSimSolution").count(), 0)
+        btn.click()
+        expect(p.locator("#agSimSolution")).to_be_visible()
 
     def test_labber_hint_tiers_are_graded(self):
         """Her Labber lab hedefinin üç basamağı var; ilk iki basamak komut vermez."""

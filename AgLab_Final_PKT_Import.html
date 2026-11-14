@@ -67383,12 +67383,20 @@ function workshopView(ids, cases) {
         level = hintLevels(e);
       const total = rows.reduce((n, o) => n + o.hints.length, 0),
         used = rows.reduce((n, o) => n + Math.min(level[o.id] || 0, o.hints.length), 0);
+      // İpucu yolu: sağlanmamış her hedefin son (komut) basamağı açılınca kilit açılır; sağlanmış
+      // hedeflerin ipuçları gerekmez. Sağlanmamış hedef kümesi öğrenci ilerledikçe küçülür.
+      const unmet = rows.filter((o) => !o.ok),
+        commandsOpen = unmet.filter((o) => (level[o.id] || 0) >= o.hints.length).length;
       return {
         hasSolution: true,
         fails: e.fails,
         hintsUsed: used,
         hintsTotal: total,
-        unlocked: e.fails >= SOLUTION_FAILS || (total > 0 && used >= total),
+        commandsOpen,
+        commandsNeeded: unmet.length,
+        unlocked:
+          e.fails >= SOLUTION_FAILS ||
+          (rows.length > 0 && unmet.length > 0 && commandsOpen === unmet.length),
       };
     }
     // Ortak senaryoların ipucu/çözüm/kök neden düzeni Sorun Çöz ekranında (PR 3).
@@ -67989,9 +67997,17 @@ function workshopView(ids, cases) {
       labberHint.title = n ? 'Sıradaki: ' + n.goal.title : 'Bütün ipucu basamakları açıldı.';
     }
     meta.textContent =
-      c.kind === 'academy' || c.kind === 'labber'
+      c.kind === 'academy'
         ? 'Başarısız kontrol: ' + st.fails + ' · ipucu ' + st.hintsUsed + '/' + st.hintsTotal
-        : '';
+        : c.kind === 'labber'
+          ? 'Başarısız kontrol: ' +
+            st.fails +
+            ' · komut ipucu ' +
+            st.commandsOpen +
+            '/' +
+            st.commandsNeeded +
+            ' hedef'
+          : '';
     solutionBtn.hidden = !st.hasSolution;
     const shown = !!$('agSimSolution');
     solutionBtn.disabled = !st.unlocked || shown;
@@ -68000,7 +68016,10 @@ function workshopView(ids, cases) {
       ? 'Çözüm kilidi açık.'
       : 'Çözüm ' +
         SOLUTION_FAILS +
-        ' başarısız kontrolden ya da bütün ipuçları kullanıldıktan sonra açılır.';
+        ' başarısız kontrolden ya da ' +
+        (c.kind === 'labber'
+          ? 'sağlanmamış her hedefin komut ipucu (son basamak) açıldıktan sonra açılır.'
+          : 'bütün ipuçları kullanıldıktan sonra açılır.');
     solutionBtn.title = lockNote.textContent;
     hintBox.hidden = !(
       (c.kind === 'academy' && st.hintsUsed > 0) ||
