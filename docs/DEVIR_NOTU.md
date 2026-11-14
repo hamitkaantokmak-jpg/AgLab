@@ -53,6 +53,14 @@ PR 2 (dal `claude/arayuz-2-simulator`):
 - Simülatör açıkken `scroll-behavior: auto` (üst çubuk ⇄ katalog arası yumuşak kaydırma testleri
   ~3 kat yavaşlatıyordu). Akademi "değiştir" onayı basılan düğmenin yanında açılır.
 - Test: yeni `test_aglab_sim_workspace.py`; uyarlananlar PR açıklamasında. Tam hat 89 PASS.
+- Kullanıcı testi düzeltmeleri (aynı PR): 1024 px üst bar/sütunlar, palet ayrı sütun, tuval üstü
+  araç çubuğu yok (kablo işlemleri paletteki kablo aracında `#agSimCablePanel`; testler
+  `open_cable_tool`), zaman çizelgesi etiketleri + ayrıntı satırı, Olaylar sekmesi kendiliğinden
+  güncellenir, show çıktısı satır kırar, istem ve `.tag` kontrastı, şerit zemini, görev kartında
+  hedefler üstte, bağlantı etiketleri port adları. Labber lab ipuçları kademeli
+  (`src/labs/hint-tiers.ts`: neye bak → kavram → komut).
+- PR 3'e not: Sorun Çöz "LABBER MOTORU" rozetinin açık tema kontrastı ortak `.tag` kuralıyla
+  düzeldi; Sorun Çöz ekranının kendisi ve ortak senaryo ipuçlarının kademesi/çözüm kilidi PR 3'te.
 
 Kalan (PR 3–4), her biri ayrı PR, bir öncekinin dalı üstüne (PR 2 → `claude/arayuz-1-iskelet`):
 
