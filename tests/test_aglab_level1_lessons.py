@@ -23,7 +23,7 @@ FLOW = (ROOT / "src/app/student-flow.js").read_text(encoding="utf-8")
 LESSONS = [
     ("discovery", "discovery", "cdp-lldp.md", "cdp-", "LLDP", "çizimi olmayan ağı çıkarmak"),
     ("dhcp", "dhcp", "dhcp.md", "dhcp-", "169.254", "başka binadaki resepsiyon"),
-    ("dns", "dns", "dns.md", "dns-", "nslookup", "isim yok"),
+    ("dns", "dns", "dns.md", "dns-", "nslookup", "İki test"),
     ("routing", "routing", "gateway-statik-routing.md", "gw-", "floating static", "Gidiş ve dönüş"),
     ("ip", "ipv4", "ip-adresleme.md", "ip-", "Hızlı hesap", "Kısa yol: blok büyüklüğü"),
     ("physical", "physical", "fiziksel-baglanti.md", "phy-", "İki uç kuralı", "İki uç kuralı"),
