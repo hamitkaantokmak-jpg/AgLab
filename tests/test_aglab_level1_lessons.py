@@ -24,7 +24,7 @@ LESSONS = [
     ("discovery", "discovery", "cdp-lldp.md", "cdp-", "LLDP", "çizimi olmayan ağı çıkarmak"),
     ("dhcp", "dhcp", "dhcp.md", "dhcp-", "169.254", "adres nereden gelir"),
     ("dns", "dns", "dns.md", "dns-", "nslookup", "isim yok"),
-    ("routing", "routing", "gateway-statik-routing.md", "gw-", "floating static", "nasıl döner"),
+    ("routing", "routing", "gateway-statik-routing.md", "gw-", "floating static", "Gidiş ve dönüş"),
     ("ip", "ipv4", "ip-adresleme.md", "ip-", "Hızlı hesap", "Kısa yol: blok büyüklüğü"),
     ("physical", "physical", "fiziksel-baglanti.md", "phy-", "İki uç kuralı", "İki uç kuralı"),
     (
