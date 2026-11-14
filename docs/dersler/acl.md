@@ -74,6 +74,7 @@ Topoloji: R1 g0/0 muhasebe (192.168.10.0/24, PC-10), g0/1 misafir (192.168.20.0/
 | E3 | Yanlış yön / arayüz | Kural hiç çalışmıyor ya da dönüş trafiği kesiliyor | `show ip interface`: liste beklenmeyen yönde | `no ip access-group … out` → `ip access-group … in` |
 | E4 | Yanlış wildcard (yanlış hesap ya da maske yazmak) | Ağın bir kısmı ya da kimse eşleşmiyor | Listedeki aralık ağı kapsamıyor (0.0.0.127 bir /25'tir); maske yazıldıysa adres 0.0.0.0'a dönmüş | Doğru wildcard (0.0.0.255) ile yeniden yaz |
 | E5 | Standart ACL'yi kaynağa yakın koymak | Kaynağın başka yerlere giden izinli trafiği de kesiliyor | Liste kaynak arayüzde `in` | Standart listeyi hedefe yakın uygula |
+| E6 | Kural uygulamanın portunu engelliyor | Ping geçiyor, uygulama (ör. web) açılmıyor | Web isteğinden sonra `deny tcp … eq www` satırının sayacı artıyor | Engelleyen satırı kaldır ya da daralt; ping'in geçmesi uygulamanın geçtiğini kanıtlamaz |
 
 ## 6. Arıza senaryoları
 
@@ -119,7 +120,7 @@ Topoloji: R1 g0/0 muhasebe (192.168.10.0/24, PC-10), g0/1 misafir (192.168.20.0/
 
 ### Ek · L6'dan gelen senaryo
 
-- `acl-http-blocked` · **Sunucuya ping gidiyor, web sayfası açılmıyor (E1).** Eski Sorun Çöz metin
+- `acl-http-blocked` · **Sunucuya ping gidiyor, web sayfası açılmıyor (E6).** Eski Sorun Çöz metin
   senaryosu (motor yok) gerçek topolojiye çevrildi; S1 topolojisi. R1 g0/1'deki WEB listesinin 10.
   satırı misafir ağından sunucuya TCP 80'i engelliyor, ICMP `permit ip any any`'ye uyuyor. Ders:
   ACL katman 4'e göre süzer; ping'in geçmesi uygulamanın geçtiğini kanıtlamaz. Çözüm: `no 10`.

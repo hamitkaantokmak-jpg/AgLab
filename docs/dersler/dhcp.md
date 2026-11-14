@@ -115,8 +115,10 @@ Topoloji: R1'in üç arayüzü var. Gi0/0 1. kata (192.168.10.0/24), Gi0/1 2. ka
 | E3 | Havuzda yanlış gateway | Adres alınıyor, aynı ağ çalışıyor, dışarı çıkış yok | İstemcide GATEWAY yanlış; havuzda `default-router` yanlış | Havuzda `default-router`'ı düzelt, istemcide yenile |
 | E4 | Havuzda adres kalmadı | Eski cihazlar çalışıyor, **yeni** gelen 169.254 alıyor | `show ip dhcp pool`'da Current index 0.0.0.0; dışlama havuzun tamamını kapsıyor ya da havuz gerçekten dolu | Dışlamayı daralt, havuzu büyüt ya da kira süresini kısalt |
 | E5 | Dışlama unutulmuş | Ağda aralıklı "IP çakışması" uyarıları | Gateway ya da yazıcı adresi `show ip dhcp binding`'de bir PC'ye verilmiş | Statik adresleri `excluded-address` ile dışla |
+| E6 | İstemci DHCP'de değil | Yalnız o bilgisayar ulaşamıyor; yanındakiler sorunsuz | `show ip`'te adres elle yazılmış ve ağın planına uymuyor (ör. eski şubeden kalma); kira yok | İstemciyi DHCP'ye al (`ip dhcp` / `ipconfig /renew`) |
+| E7 | Sunucuda DHCP servisi kapalı | Relay doğru, sunucuya ping var, yine 169.254 | Sunucuda `show services`: DHCP kapalı | Servisi aç, istemcide yenile |
 
-E3 ile E1'i ayıran şey 169.254'tür: E1'de istemcinin adresi yoktur, E3'te adresi vardır ama yanlış gateway'i vardır. E4'ün ayırt edici izi, sorunun yalnız **yeni** cihazlarda görülmesidir; eski cihazlar kiraları bitene kadar çalışmaya devam eder.
+E7 ile E2'yi ayıran şey helper adresidir: E2'de adres yanlış, E7'de adres doğru ve sunucuya ping gidiyor ama servis kapalı. E6 tek bir bilgisayarı etkiler; havuz ve relay sağlamdır. E3 ile E1'i ayıran şey 169.254'tür: E1'de istemcinin adresi yoktur, E3'te adresi vardır ama yanlış gateway'i vardır. E4'ün ayırt edici izi, sorunun yalnız **yeni** cihazlarda görülmesidir; eski cihazlar kiraları bitene kadar çalışmaya devam eder.
 
 ## 6. Arıza senaryoları
 
@@ -174,10 +176,10 @@ Eski Sorun Çöz metin senaryosu ve eski "Hazır deneyler" mini lab'ı motor kul
 karşılığı yoktu. Aynı öğretim gerçek topolojiye çevrildi (lab topolojisi S3 ile aynı; R1 havuzunun
 `default-router`'ı doğru):
 
-- `dhcp-client-static` · **Bilgisayar 169.254 adresinde kalmış (E1).** PC-11 DHCP istemcisi değil;
-  kartında elle yazılmış link-local adres var. Havuz sağlam. Çözüm: PC-11'de `ip dhcp`. Hedef:
-  kira R1'den, PC-11 → SRV ping.
-- `dhcp-service-down` · **Sunucu ayakta ama 2. kat adres alamıyor (E3).** Relay doğru; SRV'de DHCP
+- `dhcp-client-static` · **Bilgisayarda eski ağın statik adresi kalmış (E6).** PC-11 DHCP istemcisi
+  değil; kartında başka şubeden kalma 192.168.50.20/24 elle yazılı. Havuz sağlam. Çözüm: PC-11'de
+  `ip dhcp`. Hedef: kira R1'den, PC-11 → SRV ping.
+- `dhcp-service-down` · **Sunucu ayakta ama 2. kat adres alamıyor (E7).** Relay doğru; SRV'de DHCP
   servisi kapalı. Çözüm: SRV'de `service dhcp on`, PC-21'de `ip dhcp`. Hedef: kira SRV'den
   (relay ile), PC-21 → SRV ping.
 

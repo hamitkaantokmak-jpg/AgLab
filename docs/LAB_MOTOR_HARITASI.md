@@ -153,7 +153,7 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `psec-printer-typo` | Port security · Yazıcı sessizce kayboldu | **Labber** |
 | `psec-swapped-desks` | Port security · Masalar değişti, iki bilgisayar da kopuk | **Labber** |
 | `psec-two-faults` | Port security · Yazıcı ve toplantı odası birlikte | **Labber** |
-| `dhcp-client-static` | DHCP · Bilgisayar 169.254 adresinde kalmış | **Labber** |
+| `dhcp-client-static` | DHCP · Bilgisayarda eski ağın statik adresi kalmış | **Labber** |
 | `dhcp-service-down` | DHCP · Sunucu ayakta ama 2. kat adres alamıyor | **Labber** |
 | `eth-mac-learning` | Ethernet/ARP · MAC tablosu boş, ağ bozuk mu? | **Labber** |
 | `eth-unknown-unicast` | Ethernet/ARP · Hedef MAC bilinmiyorsa çerçeve nereye gider? | **Labber** |
