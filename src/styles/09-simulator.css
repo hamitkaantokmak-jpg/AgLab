@@ -37,7 +37,7 @@ html:not([data-theme='light']) {
 }
 #ptWorkbench.ag-sim {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) 236px;
+  grid-template-rows: auto minmax(0, 1fr) var(--ag-dock-h, 236px);
   height: calc(100vh - 56px);
   min-height: 700px;
   margin: 0;
@@ -591,6 +591,7 @@ html:not([data-theme='light']) {
 }
 /* ---- alt şerit: terminal | Simulation Mode */
 .ag-sim-dock {
+  position: relative;
   margin: 12px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -873,7 +874,7 @@ html:not([data-theme='light']) {
   #ptWorkbench.ag-sim {
     height: auto;
     min-height: 0;
-    grid-template-rows: auto auto 236px;
+    grid-template-rows: auto auto var(--ag-dock-h, 236px);
   }
   .ag-sim-body {
     grid-template-columns: 220px minmax(0, 1fr);
@@ -1514,4 +1515,137 @@ html:has(#area-lab.active) {
   padding: 5px 10px;
   margin: 0;
   font-size: 12px;
+}
+
+/* ---- Arayüz PR 3: terminal şeridi yükseklik tutamağı */
+.ag-sim-dockgrip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  z-index: 2;
+  cursor: row-resize;
+  touch-action: none;
+}
+.ag-sim-dockgrip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 44px;
+  height: 4px;
+  margin-left: -22px;
+  border-radius: 2px;
+  background: var(--ag-term-line);
+}
+.ag-sim-dockgrip:hover::after,
+.ag-sim-dockgrip:focus-visible::after {
+  background: var(--ag-term-muted);
+}
+#ptWorkbench .ag-sim-widebtn {
+  min-width: 38px;
+  font-size: 16px;
+}
+/* Yan şerit düğmeleri yalnız geniş görünümde. */
+.ag-sim-striptoggle {
+  display: none;
+}
+/* ---- Arayüz PR 3: geniş çalışma alanı (html.ag-wide; yalnız Simülatör açıkken) */
+html.ag-wide #agTop,
+html.ag-wide #agRail,
+html.ag-wide #agSimCatalog {
+  display: none !important;
+}
+html.ag-wide .ag-shell {
+  grid-template-columns: minmax(0, 1fr);
+  background: none;
+}
+html.ag-wide .ag-main {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  padding: 0;
+}
+html.ag-wide .ag-main > #area-lab.workspace.active {
+  margin: 0;
+}
+@container agmain (min-width: 761px) {
+  html.ag-wide #ptWorkbench.ag-sim {
+    height: 100vh;
+    min-height: 520px;
+    grid-template-rows: auto minmax(0, 1fr) var(--ag-dock-h, 236px);
+  }
+  html.ag-wide #ptWorkbench .ag-sim-body {
+    grid-template-columns: 48px minmax(0, 1fr) 48px;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  html.ag-wide #ptWorkbench[data-task-open] .ag-sim-body {
+    grid-template-columns: 268px minmax(0, 1fr) 48px;
+  }
+  html.ag-wide #ptWorkbench[data-inspect-open] .ag-sim-body {
+    grid-template-columns: 48px minmax(0, 1fr) 300px;
+  }
+  html.ag-wide #ptWorkbench[data-task-open][data-inspect-open] .ag-sim-body {
+    grid-template-columns: 268px minmax(0, 1fr) 300px;
+  }
+  html.ag-wide #ptWorkbench .ag-sim-task,
+  html.ag-wide #ptWorkbench .ag-sim-stage,
+  html.ag-wide #ptWorkbench .ag-sim-inspect {
+    grid-row: 1;
+    max-height: none;
+  }
+  html.ag-wide #ptWorkbench .ag-sim-task {
+    grid-column: 1;
+  }
+  html.ag-wide #ptWorkbench .ag-sim-stage {
+    grid-column: 2;
+  }
+  html.ag-wide #ptWorkbench .ag-sim-inspect {
+    grid-column: 3;
+  }
+  html.ag-wide #ptWorkbench .ag-sim-striptoggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    margin: 0 0 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 15px;
+    flex: none;
+  }
+  html.ag-wide #ptWorkbench .ag-sim-striptoggle[aria-expanded='true'] {
+    background-color: var(--accent-soft) !important;
+  }
+  /* Kapalı şerit: yalnız açma düğmesi görünür. */
+  html.ag-wide #ptWorkbench:not([data-task-open]) .ag-sim-task,
+  html.ag-wide #ptWorkbench:not([data-inspect-open]) .ag-sim-inspect {
+    padding: 8px 7px;
+    overflow: hidden;
+  }
+  html.ag-wide #ptWorkbench:not([data-task-open]) .ag-sim-task > :not(.ag-sim-striptoggle),
+  html.ag-wide #ptWorkbench:not([data-inspect-open]) .ag-sim-inspect > :not(.ag-sim-striptoggle) {
+    display: none !important;
+  }
+  /* Açık şerit: kapatma düğmesi sağ üst köşede (ayrı satır kaplamaz). */
+  html.ag-wide #ptWorkbench[data-task-open] .ag-sim-task,
+  html.ag-wide #ptWorkbench[data-inspect-open] .ag-sim-inspect {
+    position: relative;
+  }
+  html.ag-wide #ptWorkbench[data-task-open] .ag-sim-task > .ag-sim-striptoggle,
+  html.ag-wide #ptWorkbench[data-inspect-open] .ag-sim-inspect > .ag-sim-striptoggle {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    margin: 0;
+    z-index: 1;
+  }
+}
+/* Dar kapta (≤ 760 px) geniş görünüm yalnız gezinmeyi gizler; yerleşim alt altadır. */
+@container agmain (max-width: 760px) {
+  .ag-sim-dockgrip {
+    display: none;
+  }
 }

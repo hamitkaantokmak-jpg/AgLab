@@ -1597,6 +1597,139 @@
   watch($('sharedScenarioStatus'), { childList: true, characterData: true, subtree: true });
   watch(workspaceEngine, { childList: true, characterData: true, subtree: true });
   watch(cliSelect, { childList: true });
+  // ---------------------------------------------------------------- geniş çalışma alanı
+  // Arayüz PR 3: "Genişlet / Daralt". Genişken çalışma alanı pencereyi kaplar (üst gezinme,
+  // ikon şeridi ve Görev seç kataloğu gizlenir); tuval ortada büyür, altta terminal +
+  // Simulation şeridi kalır. Görev ve İnceleme daraltılabilir yan şerit olur. Kısayol
+  // Alt+Shift+F; Esc dar görünüme döner. Seçim, yan şeritler ve terminal yüksekliği tarayıcıda
+  // hatırlanır. Tuval sığdırma ResizeObserver ile yeni boyuta göre yeniden hesaplanır.
+  const WIDE_KEY = 'aglab-sim-wide-v1',
+    DOCK_KEY = 'aglab-sim-dock-h-v1';
+  const store = {
+    get(k) {
+      try {
+        return localStorage.getItem(k);
+      } catch (e) {
+        return null;
+      }
+    },
+    set(k, v) {
+      try {
+        localStorage.setItem(k, v);
+      } catch (e) {}
+    },
+  };
+  let widePref = { wide: false, task: false, inspect: false };
+  try {
+    widePref = { ...widePref, ...(JSON.parse(store.get(WIDE_KEY) || '{}') || {}) };
+  } catch (e) {}
+  const wideBtn = make('button', {
+    type: 'button',
+    id: 'agSimWide',
+    class: 'ag-btn ag-sim-widebtn',
+    'aria-keyshortcuts': 'Alt+Shift+F',
+  });
+  actions.prepend(wideBtn);
+  const strip = (id, icon, label, pane) => {
+    const b = make('button', {
+      type: 'button',
+      id,
+      class: 'ag-sim-striptoggle',
+      'aria-controls': pane.id,
+      title: label,
+      'aria-label': label,
+      text: icon,
+    });
+    pane.prepend(b);
+    return b;
+  };
+  const taskToggle = strip('agSimTaskToggle', '🎯', 'Görev ve hedefler paneli', task);
+  const inspectToggle = strip('agSimInspectToggle', '🔍', 'İnceleme paneli', inspect);
+  const labActive = () => area.classList.contains('active');
+  function applyWide() {
+    const on = widePref.wide && labActive();
+    document.documentElement.classList.toggle('ag-wide', on);
+    work.toggleAttribute('data-wide', on);
+    work.toggleAttribute('data-task-open', widePref.task);
+    work.toggleAttribute('data-inspect-open', widePref.inspect);
+    wideBtn.textContent = widePref.wide ? '⤡' : '⤢';
+    const label = widePref.wide
+      ? 'Daralt: normal görünüm (Esc)'
+      : 'Genişlet: çalışma alanı tüm pencere (Alt+Shift+F)';
+    wideBtn.setAttribute('aria-label', label);
+    wideBtn.title = label;
+    wideBtn.setAttribute('aria-pressed', String(!!widePref.wide));
+    taskToggle.setAttribute('aria-expanded', String(!!widePref.task));
+    inspectToggle.setAttribute('aria-expanded', String(!!widePref.inspect));
+  }
+  function setWide(patch) {
+    widePref = { ...widePref, ...patch };
+    store.set(WIDE_KEY, JSON.stringify(widePref));
+    applyWide();
+    if (widePref.wide && labActive()) schedule();
+  }
+  wideBtn.addEventListener('click', () => setWide({ wide: !widePref.wide }));
+  taskToggle.addEventListener('click', () => setWide({ task: !widePref.task }));
+  inspectToggle.addEventListener('click', () => setWide({ inspect: !widePref.inspect }));
+  document.addEventListener('keydown', (e) => {
+    if (!labActive()) return;
+    if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyF') {
+      e.preventDefault();
+      setWide({ wide: !widePref.wide });
+    } else if (e.key === 'Escape' && widePref.wide && !e.defaultPrevented) {
+      if (document.querySelector('dialog[open]')) return;
+      setWide({ wide: false });
+      wideBtn.focus({ preventScroll: true });
+    }
+  });
+  // Bölüm değişince (hash bağlantısı vb.) geniş görünüm yalnız Simülatör'de uygulanır.
+  new MutationObserver(applyWide).observe(area, { attributes: true, attributeFilter: ['class'] });
+  // Terminal şeridinin yüksekliği: üst kenardaki tutamak sürüklenir (klavye: ↑/↓).
+  const grip = make('div', {
+    class: 'ag-sim-dockgrip',
+    id: 'agSimDockGrip',
+    role: 'separator',
+    tabindex: '0',
+    'aria-orientation': 'horizontal',
+    'aria-label': 'Terminal şeridinin yüksekliği',
+    'aria-controls': 'agSimDock',
+    'aria-valuemin': '140',
+  });
+  dock.prepend(grip);
+  const dockMax = () => Math.max(200, Math.round(window.innerHeight * 0.7));
+  let dockH = 236; // ızgara satırı (--ag-dock-h); şeridin kutusu kenar boşluğu kadar küçüktür
+  function setDock(h, save = true) {
+    h = Math.round(Math.min(dockMax(), Math.max(140, h)));
+    dockH = h;
+    work.style.setProperty('--ag-dock-h', h + 'px');
+    grip.setAttribute('aria-valuenow', String(h));
+    grip.setAttribute('aria-valuemax', String(dockMax()));
+    if (save) store.set(DOCK_KEY, String(h));
+  }
+  setDock(Number(store.get(DOCK_KEY)) || 236, false);
+  grip.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const y0 = e.clientY,
+      h0 = dockH;
+    grip.setPointerCapture?.(e.pointerId);
+    const move = (ev) => setDock(h0 - (ev.clientY - y0), false);
+    const up = (ev) => {
+      setDock(h0 - (ev.clientY - y0));
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  });
+  grip.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      setDock(dockH + (e.key === 'ArrowUp' ? 24 : -24));
+    }
+  });
+  applyWide();
   academyHint?.addEventListener('click', schedule);
   selectTab('port');
   refresh();
@@ -1611,5 +1744,6 @@
     },
     tab: (key) => selectTab(key),
     refresh,
+    wide: () => ({ ...widePref, applied: work.hasAttribute('data-wide') }),
   };
 })();
