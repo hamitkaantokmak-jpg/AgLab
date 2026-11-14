@@ -16,7 +16,7 @@ Her adım ayrı PR, bir öncekinin dalı üstüne; birleştirilmez.
 | PR 1 iskelet, adlandırma, tek paket | #91 | birleşti |
 | PR 2 Simülatör çalışma alanı, çözüm kilidi | #92 | birleşti |
 | PR 2b Simülatör artıkları | #93, `claude/arayuz-2b-simulator` (taban `main`) | açık |
-| PR 3 Sorun Çöz | — | sırada (#93 dalından) |
+| PR 3 Sorun Çöz | #94, `claude/dreamy-wright-f5x0dz` (taban `main`) | ön adım + ekler (aşağıda); ekranın kendisi sırada |
 | PR 4 Müfredat haritası ve ders | — | sırada |
 
 PR 1:
@@ -76,6 +76,51 @@ PR 2b (dal `claude/arayuz-2b-simulator`, main'den):
   ≤ 520 px: palet tek satır, tuval yüksekliği ≥ ekran genişliği.
 - Tema: kayıtlı seçim yoksa `prefers-color-scheme`, yoksa açık; düğme eylemi söyler + aria-label.
 - PC/sunucu hızlı show: `show ip`, `show arp` (+ sunucuda `show services`).
+
+PR 3 ön adımı (kullanıcı isteği "PR 3'e ek, önce bunlar"; dal `claude/dreamy-wright-f5x0dz`):
+- Kodla kurulan son on hazır senaryo (yedi statik rota, `nat-pat`, `relay-trunk`, `stp-loop`)
+  `network-scenarios.json`'a taşındı; `main.js` kurucuları ve `index.html`'deki sabit seçenekler
+  silindi (seçim listesi tamamen tariften). Görev metni belirti + kanıtın toplanacağı cihaz; kök
+  neden `cause`, komut kilitli çözümde (#86). Regresyon denetiminin NAT maddesi kaynak metni
+  yerine tarifin topolojisine bakar. Ayrıntı: UYUMLULUK_MATRISI "Ortak senaryo panelinde kök neden".
+- Ortak senaryo paneli artık ipucu/çözüm kutusu basmaz. Simülatör üst çubuğunda hazır senaryo
+  için Sıfırla / İpucu (kademeli, `hints` sırasıyla) / Kontrol et (`aglabSharedEngine.check()`:
+  `sharedRecipeGoal`; başarıda ilerleme + kök neden açılır) ve aynı kilit (`aglab-solution-lock-v1`,
+  anahtar `shared:<id>`; 3 başarısız kontrol ya da bütün ipuçları). Çözüm (kök neden + komutlar)
+  yalnız "Çözümü göster" ile DOM'a eklenir.
+- Katalog "Hazır senaryolar": konu süzgeci `#agSimSharedTopic` (kimlik önekinden; öneksiz eski
+  kimlikler `LEGACY_TOPIC` ile) ve arama `#agSimSharedSearch` (ad, kimlik, konu); seviye sütununda
+  konu adı. Durum boşsa "başlanmadı" (üç kart).
+- `#agSimTitle` tek satır, taşan kısım üç nokta; tam ad `title` özniteliğinde.
+- Test: yeni `test_aglab_ready_scenarios.py`; `test_aglab_scenario_cause` uyarlandı (ipucu kutusu
+  yok, kök neden kutusu panelin son öğesi).
+- Ek istekler (#94'e):
+  - Kök neden kutusu `#sharedScenarioCause` yüklemede DOM'da yok (`sharedCauseBox`): kilit
+    açılınca kapalı olarak görev metninin altına (`aglabSharedEngine.unlockCause`, çalışma alanı
+    yenilemesi), çözülünce açık olarak durum satırının yanına.
+  - Tuval sığdırma (`main.js` `fitView`/`fitDrawn`): `importTopology` anahtarı sıfırlar (aynı
+    kimlikli d1…dN topoloji eski görünümde kalıyordu: varsayılan topolojiden sonra statik rota
+    senaryosunda SRV-01 sağdan taşıyordu); çizimden sonra kartların çizilmiş kutusu (yazı dahil)
+    görünümü aşarsa yeniden sığdırılır. Test: 116 senaryo × 1024/1280/1920, sıra ve ters sıra.
+  - Üst çubuk sayacı kısa biçim `✗0 · 💡0/3` (uzun metin `.ag-sim-sr` + `title`); başlık kabı
+    kalan yeri alır (ayraç 0), `contain: inline-size` dar ekranda sayfayı genişletmez.
+  - `LabQuery.routeFor(dev, ip)`: rota tablosu girdisi + `prefix` ("ağ/uzunluk"), `prefixLength`,
+    `nextHop`, `ad`, `source` (C/S/O/default). `SHARED_QUERY_FNS`'e `routeFor`;
+    `aglabSharedEngine.queryCheck(check)` tek hedef satırını dener. Not: `prefix` önceden sayıydı;
+    tek tüketici (ağ denetimi metni) uyarlandı.
+  - Geniş çalışma alanı (`sim-workspace.js`): `#agSimWide` (Alt+Shift+F, Esc), `html.ag-wide`
+    yalnız Simülatör açıkken; yan şerit düğmeleri `#agSimTaskToggle`, `#agSimInspectToggle`;
+    terminal yükseklik tutamağı `#agSimDockGrip` (`--ag-dock-h`, ↑/↓). Kayıt
+    `aglab-sim-wide-v1` ({wide, task, inspect}), `aglab-sim-dock-h-v1`. ≤ 760 px kapta yalnız
+    gezinme gizlenir. Test `test_aglab_sim_wide.py`; görüntüler `docs/arayuz/pr3/genis-*.png`
+    (yoksa ya da `AGLAB_UPDATE_SHOTS=1` ile yazılır).
+  - Canlı Lab üst gezinmeden ve şeritten kalktı: `#area-live` yok; Gelişmiş'te `#advancedLive`
+    "Canlı Lab (operatör)" (`#liveLabPanel`: rapor, dışa aktarım, `#academyRealLab`). Eski
+    bağlantılar (#canli-lab, #gercek-lab, #real-lab, #area-live) → #gelismis.
+    `real-lab/test_student_ui.py`'ye kullanıcı onayıyla tek satır (Gelişmiş'e git); Canlı Lab kodu
+    ve `real-lab-live.yml` aynı.
+- Kalan PR 3: belirti kartı, Belirti → Teşhis → Kanıt → Düzeltme, katman seçici, kanıt defteri,
+  gereksiz değişiklik uyarısı (aşağıdaki PR 3 maddesi).
 
 Kalan (PR 3–4; PR 3 → `claude/arayuz-2b-simulator` dalından), bir öncekinin dalı üstüne (PR 2 → `claude/arayuz-1-iskelet`):
 

@@ -60,21 +60,18 @@
         relay ? 'relay-trunk → ' + relay.target : 'relay-trunk görevi bulunamadı',
       );
       const srcText = [...document.scripts].map((x) => x.textContent || '').join('\n');
-      const natSetupStart = srcText.indexOf('function loadSharedNatScenario');
-      const natSetupEnd = srcText.indexOf('function loadSharedScenario', natSetupStart + 1);
-      // Kaynak metni boşluktan bağımsız karşılaştırılır; biçimlendirme denetimin sonucunu değiştirmez.
-      const natSetup = (
-        natSetupStart >= 0
-          ? srcText.slice(natSetupStart, natSetupEnd > natSetupStart ? natSetupEnd : undefined)
-          : ''
-      ).replace(/\s+/g, '');
+      // Hazır senaryolar veri tariflidir (network-scenarios.json): NAT/PAT tarifinde R1'in iç
+      // ve dış arayüz rolleri tanımlı olmalı.
+      const natRecipe = (window.aglabSharedEngine?.recipes() || []).find((r) => r.id === 'nat-pat');
+      const natRoles = (natRecipe?.topology?.devices || []).flatMap((d) =>
+        Object.values(d.interfaces || {}).map((i) => i.natRole),
+      );
       add(
         'NAT/PAT ortak motor senaryosu tanımlı',
         optionValues.includes('nat-pat') &&
-          natSetup.includes("key:'nat-pat'") &&
-          natSetup.includes("natRole:'inside'") &&
-          natSetup.includes("natRole:'outside'"),
-        'NAT/PAT, ortak topoloji yükleyicisi üzerinden tanımlanıyor; öğrenme senaryoları dizisinde aranmaz.',
+          natRoles.includes('inside') &&
+          natRoles.includes('outside'),
+        'NAT/PAT, senaryo tarifinin topolojisinden denetlenir (inside/outside arayüz rolleri).',
       );
       add(
         'NAT overload komutu ve akış kontrolü kodda var',

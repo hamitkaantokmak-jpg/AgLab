@@ -418,11 +418,27 @@ kullandığı CSS kuralları silindi. Eski topoloji motorunun CLI'si (ör. `test
 ### Ortak senaryo panelinde kök neden
 
 Tarifli (`network-scenarios.json`) senaryolarda kök neden alıştırmanın cevabıdır: yüklemede
-belirtiyle birlikte basılmaz. İpuçları kutusunun yanında ayrı ve kapalı bir "Kök nedeni göster"
-kutusundadır; senaryo çözülünce (hedefler sağlanıp hedef ping'i başarılı) kendiliğinden açılır ve
+belirtiyle birlikte basılmaz. Görev metninin altında ayrı ve kapalı bir "Kök nedeni göster"
+kutusundadır (arayüz PR 3'ten beri ipuçları ve çözüm komutları panelde değil: Simülatör üst
+çubuğunda kademeli İpucu ve kilitli "Çözümü göster"); senaryo çözülünce (hedefler sağlanıp hedef ping'i başarılı) kendiliğinden açılır ve
 "BAŞARILI" durumunun yanına taşınır. Gözlem senaryolarında (`verify.observation`) de aynıdır.
 Kodla kurulan eski üç switching senaryosu (`access-vlan`, `trunk-allowed`, `native-vlan`) L7a'da
 tarife taşındı (aşağıda); yönergeleri artık yalnız belirtiyi söyler.
+
+Arayüz PR 3: kodla kurulan son on senaryo da tarife taşındı: statik rota (`return-route`,
+`forward-route`, `default-route`, `wrong-prefix`, `unresolved-next-hop`, `lpm-next-hop`,
+`floating-static`), `nat-pat`, `relay-trunk`, `stp-loop`. Topolojiler eski `main.js`
+kurucularının ürettiği cihaz/bağlantı kayıtlarıdır (aynı adresler, roller, rotalar, STP
+öncelikleri); hedef türleri (`ping`, `dhcp`, `stp-root`) ve çözümler değişmedi, yalnız
+`verify.source`/`target` açıkça yazıldı (statik rota 10.20.0.10, NAT 203.0.113.8, DHCP relay
+10.10.20.2). Eski yönergeler "Arıza:" ile kök nedeni, "Görev:" ile tam düzeltme komutunu
+veriyordu; artık görev metni belirti + kanıtın toplanacağı cihaz, kök neden `cause`'da, komut
+kilitli çözümde. Başlıklar belirtiyi söyler (ör. "Statik rota · İstek gidiyor, yanıt dönmüyor").
+`stp-loop` eskiden arıza değil keşif metniydi; tarifte hedef (VLAN 10 kökü SW-03) görev olarak
+yazıldı. Eski kuruculardaki sabit "daha önce tamamlamışsın" durum metni ve senaryo adlı terminal
+duyurusu kalktı (tarifli senaryolarda da yoktu). `test_aglab_ready_scenarios`: hiçbir tarifin
+görev metni (`symptom` ve yüklenince görünen panel) `cause` metnini ya da düzeltme komutunu
+içermez.
 
 ## L7a: eski motora düşen son içerik ve oracle
 

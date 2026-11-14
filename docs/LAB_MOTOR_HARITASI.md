@@ -54,19 +54,19 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `subif-missing` | Alt arayüz eksik · router-on-a-stick | **Labber** |
 | `ospf-area` | OSPF area uyuşmazlığı | **Labber** |
 | `port-security` | Port-security ihlali | **Labber** |
-| `return-route` | return-route | **Labber** |
-| `forward-route` | forward-route | **Labber** |
-| `default-route` | default-route | **Labber** |
-| `wrong-prefix` | wrong-prefix | **Labber** |
-| `unresolved-next-hop` | unresolved-next-hop | **Labber** |
-| `lpm-next-hop` | lpm-next-hop | **Labber** |
-| `floating-static` | floating-static | **Labber** |
+| `return-route` | Statik rota · İstek gidiyor, yanıt dönmüyor | **Labber** |
+| `forward-route` | Statik rota · Paket ilk router'da kalıyor | **Labber** |
+| `default-route` | Statik rota · Tek çıkışlı şube dışarı çıkamıyor | **Labber** |
+| `wrong-prefix` | Statik rota · Rota eklendi ama sunucuya ulaşılmıyor | **Labber** |
+| `unresolved-next-hop` | Statik rota · Yapılandırmadaki rota işe yaramıyor | **Labber** |
+| `lpm-next-hop` | Statik rota · Geniş rota varken sunucuya ulaşılmıyor | **Labber** |
+| `floating-static` | Statik rota · Asıl hat yokken yedek yol kullanılmıyor | **Labber** |
 | `access-vlan` | VLAN · Aynı ağdaki iki bilgisayar birbirini görmüyor | **Labber** |
 | `trunk-allowed` | Trunk · Switch'ler arası bağlantı açık, VLAN 10 karşıya geçmiyor | **Labber** |
 | `native-vlan` | Trunk · İki uç trunk ama VLAN 10 karşıya ulaşmıyor | **Labber** |
-| `nat-pat` | nat-pat | **Labber** |
-| `relay-trunk` | relay-trunk | **Labber** |
-| `stp-loop` | stp-loop | **Labber** |
+| `nat-pat` | NAT · İç ağ dıştaki sunucuya ulaşamıyor | **Labber** |
+| `relay-trunk` | DHCP · PC adres alamıyor, relay yapılandırılmış | **Labber** |
+| `stp-loop` | STP · Kök köprü tasarımdaki switch değil | **Labber** |
 | `vlan-wrong-access` | VLAN · Yeni muhasebe PC'si kimseyi görmüyor | **Labber** |
 | `vlan-uplink-not-trunk` | Trunk · Katlar arası hiçbir şey çalışmıyor | **Labber** |
 | `vlan-allowed-overwritten` | Trunk · Misafir ağı eklendi, muhasebe koptu | **Labber** |

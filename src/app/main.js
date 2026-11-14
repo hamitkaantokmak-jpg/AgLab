@@ -5036,6 +5036,8 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   };
   function importTopology(input) {
     validateTopologyData(input);
+    // Yeni topoloji: görünüm yeniden sığdırılır (aynı cihaz kimlikleri eski görünümde kalmasın).
+    viewFit.key = '';
     // v23 ve öncesi: eski `startupConfig` alanları oturum kurulunca Labber startup'ına çevrilir.
     const { obj, startups } = takeLegacyStartups(input);
     // Yeni içerik: önceki Labber oturumu biter ve bu içerik için yeniden kurulur.
@@ -5305,18 +5307,31 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   // (bırakınca topoloji kaymaz). Küçük ölçekte düğüm yazıları okunur kalsın diye karşı-ölçeklenir.
   let viewFit = { key: '', box: [0, 0, 850, 420] },
     canvasDragging = false;
-  function fitView() {
+  /**
+   * Görünümü bütün düğümlere sığdırır. Kutular cihazın kart dikdörtgeninden (d.w × d.h) ve —
+   * çizimden sonra — kartın gerçek çizilmiş kutusundan (ad/IP yazısı kartı aşabilir) alınır.
+   * `extents` verilirse ([x0, y0, x1, y1], kullanıcı birimi) sığdırma ona göre yeniden yapılır.
+   * Anahtar: cihaz kimlikleri + tuval boyutu; yeni topoloji (importTopology) anahtarı sıfırlar,
+   * böylece aynı kimlikli (d1…dN) başka bir topoloji eski görünümde kalmaz.
+   */
+  function fitView(extents) {
     const cw = svg.clientWidth || 850,
       ch = svg.clientHeight || 420;
     const key = devices.map((d) => d.id).join(',') + '|' + Math.round(cw) + 'x' + Math.round(ch);
-    if (!canvasDragging && key !== viewFit.key) {
+    if (!canvasDragging && (key !== viewFit.key || extents)) {
       let box = [0, 0, 850, 420];
       if (devices.length) {
         const pad = 46;
-        let x0 = Math.min(...devices.map((d) => d.x - d.w / 2)) - pad,
-          y0 = Math.min(...devices.map((d) => d.y - d.h / 2)) - pad,
-          x1 = Math.max(...devices.map((d) => d.x + d.w / 2)) + pad,
-          y1 = Math.max(...devices.map((d) => d.y + d.h / 2)) + pad;
+        const e = extents || [
+          Math.min(...devices.map((d) => d.x - d.w / 2)),
+          Math.min(...devices.map((d) => d.y - d.h / 2)),
+          Math.max(...devices.map((d) => d.x + d.w / 2)),
+          Math.max(...devices.map((d) => d.y + d.h / 2)),
+        ];
+        let x0 = e[0] - pad,
+          y0 = e[1] - pad,
+          x1 = e[2] + pad,
+          y1 = e[3] + pad;
         // Tek cihaz dev görünmesin: en az 420×240 birimlik alan.
         let w = Math.max(x1 - x0, 420),
           h = Math.max(y1 - y0, 240);
@@ -5343,7 +5358,10 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   }
   if (typeof ResizeObserver === 'function')
     new ResizeObserver(() => {
-      if (!canvasDragging && svg.isConnected) fitView();
+      if (!canvasDragging && svg.isConnected) {
+        fitView();
+        fitDrawn();
+      }
     }).observe(svg);
   function render() {
     svg.innerHTML = '';
@@ -5545,8 +5563,40 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
         window.addEventListener('pointercancel', cancel);
       });
     });
+    fitDrawn();
     $p('ptCanvasStatus').textContent = `${devices.length} cihaz · ${links.length} bağlantı`;
     saveTopology(true);
+  }
+  /**
+   * Çizimden sonra: bir kartın çizilmiş kutusu (yazılar dahil) görünümün dışına taşıyorsa
+   * görünüm çizilmiş kutulara göre yeniden sığdırılır (taşma yoksa görünüm değişmez).
+   */
+  function fitDrawn() {
+    if (canvasDragging || !devices.length || !svg.isConnected || !svg.clientWidth) return;
+    let x0 = Infinity,
+      y0 = Infinity,
+      x1 = -Infinity,
+      y1 = -Infinity;
+    for (const g of svg.querySelectorAll('g.pt-node')) {
+      const d = get(g.dataset.id);
+      if (!d) continue;
+      let b;
+      try {
+        b = g.getBBox();
+      } catch (e) {
+        continue;
+      }
+      const ox = d.x - d.w / 2,
+        oy = d.y - d.h / 2;
+      x0 = Math.min(x0, ox + Math.min(0, b.x));
+      y0 = Math.min(y0, oy + Math.min(0, b.y));
+      x1 = Math.max(x1, ox + Math.max(d.w, b.x + b.width));
+      y1 = Math.max(y1, oy + Math.max(d.h, b.y + b.height));
+    }
+    if (!Number.isFinite(x0)) return;
+    const [bx, by, bw, bh] = viewFit.box;
+    if (x0 >= bx && y0 >= by && x1 <= bx + bw && y1 <= by + bh) return;
+    fitView([x0, y0, x1, y1]);
   }
   function deleteSelected() {
     const d = get(selected);
@@ -5804,8 +5854,6 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
                 ' via ' +
                 r.nextHop +
                 '; çözümleme rotası ' +
-                route.net +
-                '/' +
                 route.prefix +
                 '.',
             );
@@ -6085,235 +6133,19 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       return {};
     }
   }
+  function sharedSaveProgress(key) {
+    const prog = sharedProgress();
+    prog[key] = { completed: true, at: new Date().toISOString() };
+    try {
+      localStorage.setItem(sharedProgressKey, JSON.stringify(prog));
+    } catch (e) {}
+  }
   function sharedStatus(message, ok = false) {
     const el = $p('sharedScenarioStatus');
     if (!el) return;
     el.textContent = message;
     el.style.border = '1px solid ' + (ok ? '#27856a' : '#536579');
     el.style.background = ok ? 'rgba(22,130,93,.18)' : 'rgba(100,116,139,.15)';
-  }
-  function loadSharedStpScenario() {
-    academyClearSession();
-    devices = [];
-    links = [];
-    sourceArchiveData = null;
-    importReportData = null;
-    nextId = 1;
-    beginEthernetEvents();
-    const pc1 = addDevice('PC', 55, 180),
-      sw1 = addDevice('Switch', 245, 90),
-      sw2 = addDevice('Switch', 495, 90),
-      sw3 = addDevice('Switch', 370, 300),
-      pc2 = addDevice('PC', 685, 300);
-    pc1.name = 'PC-01';
-    pc1.ip = '192.168.10.10';
-    pc1.mask = '255.255.255.0';
-    pc1.gateway = '0.0.0.0';
-    pc1.vlan = 10;
-    pc2.name = 'PC-02';
-    pc2.ip = '192.168.10.20';
-    pc2.mask = '255.255.255.0';
-    pc2.gateway = '0.0.0.0';
-    pc2.vlan = 10;
-    [sw1, sw2, sw3].forEach((sw, i) => {
-      sw.name = 'SW-0' + (i + 1);
-      sw.vlans = [1, 10];
-      sw.stpPriority = i === 1 ? 4096 : 32768;
-      Object.entries(sw.interfaces).forEach(([n, it]) => {
-        it.enabled = true;
-        it.mode = 'trunk';
-        it.allowed = [1, 10];
-        it.nativeVlan = 1;
-      });
-    });
-    // Access-facing ports on the endpoint switches.
-    sw1.interfaces['fa0/1'].mode = 'access';
-    sw1.interfaces['fa0/1'].vlan = 10;
-    sw3.interfaces['fa0/1'].mode = 'access';
-    sw3.interfaces['fa0/1'].vlan = 10;
-    links = [
-      { a: pc1.id, b: sw1.id, portA: 'eth0', portB: 'fa0/1', up: true },
-      { a: sw1.id, b: sw2.id, portA: 'gi0/1', portB: 'gi0/1', up: true },
-      { a: sw2.id, b: sw3.id, portA: 'gi0/2', portB: 'gi0/1', up: true },
-      { a: sw3.id, b: sw1.id, portA: 'gi0/2', portB: 'gi0/2', up: true },
-      { a: sw3.id, b: pc2.id, portA: 'fa0/1', portB: 'eth0', up: true },
-    ];
-    selected = pc1.id;
-    sharedScenario = { active: true, key: 'stp-loop', sourceId: pc1.id, target: pc2.ip };
-    render();
-    syncSelects();
-    $p('ptCliDevice').value = pc1.id;
-    updateInspector();
-    updatePrompt();
-    saveTopology(true);
-    $p('ptTerminal').replaceChildren();
-    $p('sharedScenarioInstructions').innerHTML =
-      '<b>Görev:</b> Üç switch arasında yedekli halka bağlantısı var. STP, döngüyü önlemek için yedek switch-switch bağlantısını forwarding ağacının dışında bırakır. <code>show spanning-tree</code> ile root bridge ve port durumlarını incele; ardından PC-01’den <code>ping 192.168.10.20</code> çalıştır. Root bridge seçimini değiştirmek için switch üzerinde <code>enable</code> → <code>configure terminal</code> → <code>spanning-tree vlan 10 priority 4096</code> benzeri bir komut kullanabilirsin. Bu eğitim modeli port maliyeti, BPDU zamanlayıcıları ve gerçek IOS STP yakınsamasını simüle etmez.';
-    sharedStatus(
-      'STP halka topolojisi yüklendi. Ping, STP forwarding ağacında kalan bağlantılar üzerinden ilerler.',
-    );
-    say(
-      'STP halka topolojisi yüklendi; yedek switch bağlantısı döngüsüz forwarding ağacına alınmaz.',
-      'outinfo',
-    );
-  }
-  function loadSharedNatScenario() {
-    academyClearSession();
-    devices = [];
-    links = [];
-    sourceArchiveData = null;
-    importReportData = null;
-    nextId = 1;
-    beginEthernetEvents();
-    const pc = addDevice('PC', 55, 170),
-      swIn = addDevice('Switch', 220, 170),
-      r = addDevice('Router', 390, 170),
-      swOut = addDevice('Switch', 560, 170),
-      srv = addDevice('Server', 735, 170);
-    pc.name = 'PC-01';
-    pc.ip = '192.168.1.10';
-    pc.mask = '255.255.255.0';
-    pc.gateway = '192.168.1.1';
-    pc.vlan = 10;
-    swIn.name = 'SW-LAN';
-    swOut.name = 'SW-WAN';
-    r.name = 'R1';
-    srv.name = 'WEB-PUBLIC';
-    srv.ip = '203.0.113.8';
-    srv.mask = '255.255.255.0';
-    // L5-d: genel adres alanındaki sunucunun özel ağa rotası yoktur (ağ geçidi yok): NAT'sız
-    // 192.168.1.10 kaynaklı paket sunucuya ulaşır ama yanıt dönemez (gerçek IOS davranışı).
-    // L5-g: sunucunun HTTP servisi (TCP 80) Labber'da; PC'den `curl 203.0.113.8` ile denenir.
-    srv.gateway = '';
-    srv.services = { http: true };
-    [swIn, swOut].forEach((sw) => {
-      sw.vlans = [1, 10];
-      Object.entries(sw.interfaces).forEach(([n, i]) => {
-        i.enabled = true;
-        i.mode = 'access';
-        i.vlan = 10;
-        i.allowed = [10, 20];
-      });
-    });
-    r.interfaces = {
-      'g0/0': { ip: '192.168.1.1', mask: '255.255.255.0', enabled: true, natRole: 'inside' },
-      'g0/1': { ip: '203.0.113.1', mask: '255.255.255.0', enabled: true, natRole: 'outside' },
-    };
-    r.staticRoutes = [];
-    r.acls = [
-      {
-        id: '1',
-        action: 'permit',
-        protocol: 'ip',
-        srcType: 'network',
-        src: '192.168.1.0',
-        wildcard: '0.0.0.255',
-        dstType: 'any',
-        dst: '',
-      },
-    ];
-    r.natTranslations = [];
-    links = [
-      { a: pc.id, b: swIn.id, portA: 'eth0', portB: 'fa0/1', up: true },
-      { a: swIn.id, b: r.id, portA: 'fa0/2', portB: 'g0/0', up: true },
-      { a: r.id, b: swOut.id, portA: 'g0/1', portB: 'fa0/1', up: true },
-      { a: swOut.id, b: srv.id, portA: 'fa0/2', portB: 'eth0', up: true },
-    ];
-    selected = pc.id;
-    sharedScenario = { active: true, key: 'nat-pat', sourceId: pc.id, target: srv.ip };
-    render();
-    syncSelects();
-    $p('ptCliDevice').value = pc.id;
-    updateInspector();
-    updatePrompt();
-    saveTopology(true);
-    $p('ptTerminal').replaceChildren();
-    $p('sharedScenarioInstructions').innerHTML =
-      '<b>Arıza:</b> R1 üzerinde LAN arayüzü NAT inside, WAN arayüzü NAT outside; kaynak ACL 1 izin veriyor. Ancak NAT overload kuralı eksik.<br><b>Görev:</b> PC-01’den <code>ping 203.0.113.8</code> ile başarısızlığı gözle. R1’i seç, <code>enable</code> → <code>configure terminal</code> → <code>ip nat inside source list 1 interface g0/1 overload</code> komutlarını uygula. Ardından PC-01’den ping’i tekrar çalıştır ve R1 üzerinde <code>show ip nat translations</code> ile çeviriyi doğrula.';
-    sharedStatus(
-      'NAT/PAT senaryosu yüklendi. İlk ping NAT overload eksikliği nedeniyle başarısız olmalı.',
-    );
-    say(
-      'Gerçek motorlu NAT/PAT senaryosu yüklendi; çeviri tablosu yalnızca başarılı dış trafik testinde oluşur.',
-      'outinfo',
-    );
-  }
-  function loadSharedRelayTrunkScenario() {
-    academyClearSession();
-    devices = [];
-    links = [];
-    sourceArchiveData = null;
-    importReportData = null;
-    nextId = 1;
-    beginEthernetEvents();
-    const pc = addDevice('PC', 55, 170),
-      sw1 = addDevice('Switch', 230, 170),
-      sw2 = addDevice('Switch', 410, 170),
-      r = addDevice('Router', 590, 170),
-      srv = addDevice('Server', 770, 170);
-    pc.name = 'PC-01';
-    pc.ip = '169.254.30.8';
-    pc.mask = '255.255.0.0';
-    pc.gateway = '0.0.0.0';
-    pc.vlan = 10;
-    pc.dhcpLease = false;
-    sw1.name = 'SW-01';
-    sw2.name = 'SW-02';
-    r.name = 'R1';
-    srv.name = 'DHCP-SRV';
-    for (const sw of [sw1, sw2]) {
-      sw.vlans = [1, 10, 20];
-      Object.entries(sw.interfaces).forEach(([n, i]) => {
-        i.enabled = true;
-        if (n.startsWith('gi')) {
-          i.mode = 'trunk';
-          i.allowed = [10, 20];
-          i.nativeVlan = 1;
-        } else {
-          i.mode = 'access';
-          i.vlan = 10;
-        }
-      });
-    }
-    sw1.interfaces['gi0/1'].allowed = [20];
-    r.interfaces = {
-      'g0/0': {
-        ip: '192.168.1.1',
-        mask: '255.255.255.0',
-        enabled: true,
-        helperAddress: '10.10.20.2',
-      },
-      'g0/1': { ip: '10.10.20.1', mask: '255.255.255.0', enabled: true },
-    };
-    srv.ip = '10.10.20.2';
-    srv.mask = '255.255.255.0';
-    srv.gateway = '10.10.20.1';
-    // L5-b: senaryo yalnız DHCP servisini kullanır; şablonun DNS/HTTP servisleri kapalıdır.
-    srv.services = { dhcp: true, dns: false, http: false };
-    links = [
-      { a: pc.id, b: sw1.id, portA: 'eth0', portB: 'fa0/1', up: true },
-      { a: sw1.id, b: sw2.id, portA: 'gi0/1', portB: 'gi0/1', up: true },
-      { a: sw2.id, b: r.id, portA: 'fa0/1', portB: 'g0/0', up: true },
-      { a: r.id, b: srv.id, portA: 'g0/1', portB: 'eth0', up: true },
-    ];
-    selected = pc.id;
-    sharedScenario = { active: true, key: 'relay-trunk', sourceId: pc.id, target: srv.ip };
-    render();
-    syncSelects();
-    $p('ptCliDevice').value = pc.id;
-    updateInspector();
-    updatePrompt();
-    saveTopology(true);
-    $p('ptTerminal').replaceChildren();
-    $p('sharedScenarioInstructions').innerHTML =
-      '<b>Arıza:</b> R1 üzerinde DHCP relay etkin ve DHCP sunucusu açık; ancak SW-01 ile SW-02 arasındaki trunk yalnızca VLAN 20’yi taşıyor. PC-01 APIPA adresinde kalıyor.<br><b>Görev:</b> PC-01’de <code>ip dhcp</code> ile başarısızlığı gözle. SW-01 CLI’sinde <code>enable</code> → <code>configure terminal</code> → <code>interface gi0/1</code> → <code>switchport trunk allowed vlan 10,20</code> uygula. PC-01’e dönüp <code>ip dhcp</code> ile DHCP adresini al; <code>show ip</code> ile doğrula.';
-    sharedStatus(
-      'DHCP relay/trunk senaryosu yüklendi. VLAN 10 trunk üzerinde olmadığı için ilk DHCP yenilemesi başarısız olmalı.',
-    );
-    say(
-      'DHCP relay/trunk senaryosu yüklendi; DHCP sunucusu ve relay hazır, trunk VLAN 10’u engelliyor.',
-      'outinfo',
-    );
   }
   // Senaryo yüklenince Labber oturumu kurulur ve rozet gösterilir (engine-choice.js).
   function loadSharedScenario(key) {
@@ -6326,158 +6158,13 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     sharedScenarioStartSession();
   }
   function loadSharedScenarioContent(key) {
-    // Önceki içeriğin Labber oturumu yeni senaryo kurulurken (kodla kurulanlar importTopology
-    // kullanmaz) uzlaştırılmaya çalışılmasın; motor kararı yüklemeden sonra verilir.
+    // Önceki içeriğin Labber oturumu yeni senaryo kurulurken uzlaştırılmaya çalışılmasın; motor
+    // kararı yüklemeden sonra verilir.
     aglabLabber.stop();
     sharedCauseClear();
-    if (loadNetworkScenario(key)) return;
-    if (key === 'stp-loop') {
-      loadSharedStpScenario();
-      return;
-    }
-    if (key === 'relay-trunk') {
-      loadSharedRelayTrunkScenario();
-      return;
-    }
-    if (key === 'nat-pat') {
-      loadSharedNatScenario();
-      return;
-    }
-    academyClearSession();
-    devices = [];
-    links = [];
-    sourceArchiveData = null;
-    importReportData = null;
-    nextId = 1;
-    beginEthernetEvents();
-    const pc = addDevice('PC', 70, 120),
-      sw1 = addDevice('Switch', 220, 120),
-      r1 = addDevice('Router', 360, 120),
-      r2 = addDevice('Router', 500, 270),
-      sw2 = addDevice('Switch', 650, 270),
-      srv = addDevice('Server', 760, 270);
-    pc.name = 'PC-01';
-    pc.ip = '192.168.1.10';
-    pc.mask = '255.255.255.0';
-    pc.gateway = '192.168.1.1';
-    pc.vlan = 10;
-    sw1.name = 'SW-01';
-    sw2.name = 'SW-02';
-    r1.name = 'R1';
-    r2.name = 'R2';
-    srv.name = 'SRV-01';
-    r1.interfaces = {
-      'g0/0': { ip: '192.168.1.1', mask: '255.255.255.0', enabled: true },
-      'g0/1': { ip: '10.0.0.1', mask: '255.255.255.252', enabled: true },
-    };
-    r2.interfaces = {
-      'g0/0': { ip: '10.0.0.2', mask: '255.255.255.252', enabled: true },
-      'g0/1': { ip: '10.20.0.1', mask: '255.255.255.0', enabled: true },
-    };
-    r1.staticRoutes = [];
-    r2.staticRoutes = [];
-    srv.ip = '10.20.0.10';
-    srv.mask = '255.255.255.0';
-    srv.gateway = '10.20.0.1';
-    // L4: routing senaryolarında sunucu yalnız ICMP hedefidir; DHCP/DNS/HTTP servisleri
-    // senaryoda kullanılmaz ve Labber'da modellenmez (L5). Servissiz sunucu Labber'da bir uçtur.
-    srv.services = {};
-    for (const sw of [sw1, sw2]) {
-      sw.vlans = [1, 10, 20];
-      Object.entries(sw.interfaces).forEach(([n, i]) => {
-        i.mode = 'access';
-        i.vlan = 10;
-        i.allowed = [10, 20];
-        i.enabled = true;
-      });
-    }
-    links = [
-      { a: pc.id, b: sw1.id, portA: 'eth0', portB: 'fa0/1', up: true },
-      { a: sw1.id, b: r1.id, portA: 'fa0/2', portB: 'g0/0', up: true },
-      { a: r1.id, b: r2.id, portA: 'g0/1', portB: 'g0/0', up: true },
-      { a: r2.id, b: sw2.id, portA: 'g0/1', portB: 'fa0/1', up: true },
-      { a: sw2.id, b: srv.id, portA: 'fa0/2', portB: 'eth0', up: true },
-    ];
-    if (key === 'return-route') {
-      r1.staticRoutes = [
-        { network: '10.20.0.0', mask: '255.255.255.0', nextHop: '10.0.0.2', distance: 1 },
-      ];
-    } else {
-      r2.staticRoutes = [
-        { network: '192.168.1.0', mask: '255.255.255.0', nextHop: '10.0.0.1', distance: 1 },
-      ];
-      if (key === 'wrong-prefix')
-        r1.staticRoutes = [
-          { network: '10.20.1.0', mask: '255.255.255.0', nextHop: '10.0.0.2', distance: 1 },
-        ];
-      if (key === 'unresolved-next-hop')
-        r1.staticRoutes = [
-          { network: '10.20.0.0', mask: '255.255.255.0', nextHop: '10.0.1.2', distance: 1 },
-        ];
-      if (key === 'lpm-next-hop')
-        r1.staticRoutes = [
-          { network: '10.20.0.0', mask: '255.255.0.0', nextHop: '10.0.0.2', distance: 1 },
-          { network: '10.20.0.0', mask: '255.255.255.0', nextHop: '192.168.1.254', distance: 1 },
-        ];
-      if (key === 'floating-static')
-        r1.staticRoutes = [
-          { network: '10.20.0.0', mask: '255.255.255.0', nextHop: '10.0.1.2', distance: 1 },
-        ];
-    }
-    selected = pc.id;
-    sharedScenario = { active: true, key, sourceId: pc.id, target: '10.20.0.10' };
-    render();
-    syncSelects();
-    $p('ptCliDevice').value = pc.id;
-    updateInspector();
-    updatePrompt();
-    saveTopology(true);
-    $p('ptTerminal').replaceChildren();
-    const instructions = {
-      'floating-static':
-        '<b>Arıza:</b> R1 üzerinde 10.20.0.0/24 için AD 1 olan statik rota var ancak next-hop 10.0.1.2 çözümlenemiyor. Yedek rota henüz yok.<br><b>Görev:</b> R1 CLI’sinde <code>show ip route 10.20.0.10</code> ile arızayı kanıtla. <code>enable</code> → <code>configure terminal</code> ardından <code>ip route 10.20.0.0 255.255.255.0 10.0.0.2 5</code> ile AD 5 yedek statik rotayı ekle. Motor çözümlenemeyen AD 1 rotasını kullanamayınca AD 5 rotasına geçmeli. PC-01’den <code>ping 10.20.0.10</code> ile doğrula.<br><b>Not:</b> Bu senaryo, çözümlenemeyen rotanın devre dışı kalmasıyla yedek rotanın seçilmesini öğretir; gerçek IOS cihazlarında rota kurulumu/AD davranışı platformun RIB ve recursive resolution kurallarına bağlıdır.',
-      'return-route':
-        '<b>Arıza:</b> R1 üzerinde 10.20.0.0/24 rotası var; R2 dönüş ağını bilmiyor.<br><b>Görev:</b> R2 CLI’sinde <code>show ip route</code> ile kanıt topla. Sonra <code>enable</code> → <code>configure terminal</code> → <code>ip route 192.168.1.0 255.255.255.0 10.0.0.1</code> komutlarını uygula. PC-01’e dönüp <code>ping 10.20.0.10</code> çalıştır.',
-      'forward-route':
-        '<b>Arıza:</b> R2 dönüş rotasını biliyor; R1 hedef LAN’a giden rotayı bilmiyor.<br><b>Görev:</b> R1 CLI’sinde <code>show ip route</code> ile kanıt topla. Sonra <code>enable</code> → <code>configure terminal</code> → <code>ip route 10.20.0.0 255.255.255.0 10.0.0.2</code> komutlarını uygula. PC-01’e dönüp <code>ping 10.20.0.10</code> çalıştır.',
-      'default-route':
-        '<b>Arıza:</b> R2 dönüş rotasını biliyor; R1 üzerinde uzak ağlar için uygun rota yok.<br><b>Görev:</b> R1 CLI’sinde <code>show ip route</code> ile kanıt topla. <code>enable</code> → <code>configure terminal</code> ardından <code>ip route 0.0.0.0 0.0.0.0 10.0.0.2</code> komutuyla varsayılan rota ekle. PC-01’e dönüp <code>ping 10.20.0.10</code> çalıştır. Bu senaryo, daha özel bir rota yerine varsayılan rotanın kullanılabildiğini gösterir.',
-      'wrong-prefix':
-        '<b>Arıza:</b> R1’de 10.20.1.0/24 ağına rota var; hedef sunucu ise 10.20.0.0/24 ağında. Komut sözdizimi doğru olsa bile yanlış hedef prefix sorunu çözmez.<br><b>Görev:</b> R1’de <code>show ip route</code> ile mevcut rotayı incele. <code>enable</code> → <code>configure terminal</code> ardından <code>ip route 10.20.0.0 255.255.255.0 10.0.0.2</code> komutunu ekle. Sonra PC-01’den <code>ping 10.20.0.10</code> ile doğrula.',
-      'unresolved-next-hop':
-        '<b>Arıza:</b> R1’de 10.20.0.0/24 rotası var ama next-hop 10.0.1.2, R1’in doğrudan bağlı ağlarında değil ve başka bir rotayla da çözümlenemiyor.<br><b>Görev:</b> R1’de <code>show ip route</code> ile kullanılabilir olmayan rotayı gör. <code>enable</code> → <code>configure terminal</code> ardından önce <code>no ip route 10.20.0.0 255.255.255.0 10.0.1.2</code> ile hatalı rotayı kaldır; sonra <code>ip route 10.20.0.0 255.255.255.0 10.0.0.2</code> ekle. PC-01’den <code>ping 10.20.0.10</code> ile doğrula.',
-      'lpm-next-hop':
-        '<b>Arıza:</b> R1’de hedefi kapsayan iki rota var: 10.20.0.0/16 via 10.0.0.2 ve daha spesifik 10.20.0.0/24 via 192.168.1.254. LPM kuralı /24 rotasını seçer; ancak 192.168.1.254 adresinde komşu cihaz olmadığı için ARP/next-hop çözümlemesi başarısız olur.<br><b>Görev:</b> <code>show ip route 10.20.0.10</code> ile seçilen rotayı incele. R1’de <code>enable</code> → <code>configure terminal</code> ardından <code>no ip route 10.20.0.0 255.255.255.0 192.168.1.254</code> komutuyla hatalı /24 rotasını kaldır. /16 rotasının kullanılmasını ve PC-01’den <code>ping 10.20.0.10</code> sonucunun başarılı olmasını doğrula.',
-    }[key];
-    $p('sharedScenarioInstructions').innerHTML = instructions;
-    const prog = sharedProgress();
-    if (prog[key])
-      sharedStatus(
-        'Bu gerçek motorlu senaryoyu daha önce başarıyla tamamlamışsın. Yeni topoloji yine arızalı olarak yüklendi; tekrar çözebilirsin.',
-        true,
-      );
-    else
-      sharedStatus(
-        'Arızalı topoloji yüklendi. İlk ping başarısız olmalı; doğru rotayı ekledikten sonra ping ile doğrula.',
-      );
-    say(
-      'Gerçek motorlu senaryo yüklendi: ' +
-        ({
-          'return-route': 'dönüş rotası eksik',
-          'forward-route': 'ileri rota eksik',
-          'default-route': 'varsayılan rota eksik',
-          'wrong-prefix': 'yanlış hedef prefix',
-          'unresolved-next-hop': 'çözümlenemeyen recursive next-hop',
-          'lpm-next-hop': 'LPM ile seçilen daha spesifik rotanın next-hop arızası',
-          'floating-static': 'Administrative Distance ve yedek statik rota',
-          'access-vlan': 'yanlış access VLAN',
-          'trunk-allowed': 'trunk allowed VLAN eksik',
-          'native-vlan': 'trunk native VLAN uyuşmazlığı',
-          'nat-pat': 'NAT/PAT overload eksikliği',
-        }[key] || key) +
-        '. CLI komutları topolojiyi gerçekten değiştirir.',
-      'outinfo',
-    );
+    // Bütün hazır senaryolar veri tariflidir (simulator/network-scenarios.json); eski kodla
+    // kurulan statik rota, NAT/PAT, DHCP relay ve STP senaryoları da oraya taşındı.
+    if (!loadNetworkScenario(key)) throw new Error('Senaryo tarifi bulunamadı: ' + key);
   }
   function recordSharedPing(src, target, result) {
     if (
@@ -6510,11 +6197,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       ),
       flow = (sourceDevice?.name || src) + ' → ' + (targetDevice?.name || target);
     if (result.ok) {
-      const prog = sharedProgress();
-      prog[sharedScenario.key] = { completed: true, at: new Date().toISOString() };
-      try {
-        localStorage.setItem(sharedProgressKey, JSON.stringify(prog));
-      } catch (e) {}
+      sharedSaveProgress(sharedScenario.key);
       sharedStatus(
         'BAŞARILI: ' +
           flow +

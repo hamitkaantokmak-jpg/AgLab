@@ -5777,6 +5777,7 @@ var AgLabSim = (() => {
   }
 
   // src/sim/query.ts
+  var OSPF_AD2 = 110;
   var LabQuery = class {
     constructor(d, startup = {}, learned = /* @__PURE__ */ new Set(), leases = []) {
       this.d = d;
@@ -5850,6 +5851,13 @@ var AgLabSim = (() => {
     /**
      * Route the device would use for dst (longest match over the installed table), or null.
      * L4: Akademi kaynak arayüzlü ICMP ölçütü bunu eski motorun routeLookup'ı gibi kullanır.
+     *
+     * Arayüz PR 3: senaryo hedefleri için özet alanlar da döner (rota tablosu girdisinin alanları
+     * — code, net, nh, ifname, paths, via — korunur):
+     * - `prefix`: "ağ/uzunluk" (ör. "10.20.0.0/24"); `prefixLength` sayı olarak
+     * - `nextHop`: yapılandırılmış next-hop (bağlı ağda null)
+     * - `ad`: yönetimsel uzaklık (bağlı 0, statik yapılandırılan ya da 1, OSPF 110)
+     * - `source`: 'C' | 'S' | 'O' | 'default' (0.0.0.0/0 ne kaynaktan gelirse gelsin 'default')
      */
     routeFor(dev, dst) {
       const n = ipToInt(dst);
@@ -5861,7 +5869,10 @@ var AgLabSim = (() => {
         if ((n & m) >>> 0 !== (ipToInt(e.net) & m) >>> 0) continue;
         if (!best || e.prefix > best.prefix) best = e;
       }
-      return best;
+      if (!best) return null;
+      const source = best.prefix === 0 ? "default" : best.code === "C" ? "C" : best.code === "S" ? "S" : "O";
+      const ad = best.code === "C" ? 0 : best.code === "S" ? best.ad ?? 1 : OSPF_AD2;
+      return { ...best, prefix: `${best.net}/${best.prefix}`, prefixLength: best.prefix, nextHop: best.code === "C" ? null : best.nh, ad, source };
     }
     errDisabled(dev, port) {
       return !!this.d.phys[pk(dev, this.canon(port))]?.errDisabled;

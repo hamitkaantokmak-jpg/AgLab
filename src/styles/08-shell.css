@@ -117,6 +117,19 @@ html[data-theme='light'] body {
   background-color: var(--panel2) !important;
   color: var(--text) !important;
 }
+/* Klavye odağı form alanlarında da görünür (01-base.css input:focus { outline: none } kuralı
+   network-scenarios.js'nin genel :focus-visible halkasını eziyordu). */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #8b3c00;
+  outline-offset: 2px;
+}
+html[data-theme='dark'] input:focus-visible,
+html[data-theme='dark'] select:focus-visible,
+html[data-theme='dark'] textarea:focus-visible {
+  outline-color: #ffe08a;
+}
 .ag-search::placeholder {
   color: var(--muted);
 }
@@ -205,7 +218,7 @@ html[data-theme='light'] body {
 }
 .ag-live-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 14px;
   align-items: start;
 }
@@ -219,6 +232,15 @@ html[data-theme='light'] body {
 }
 .ag-advanced-body {
   padding: 16px;
+}
+/* Arayüz PR 3: Canlı Lab (operatör) Gelişmiş bölümünde. */
+.ag-advanced-live {
+  margin-top: 14px;
+  padding: 16px;
+}
+.ag-advanced-live h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
 }
 @media (max-width: 760px) {
   .ag-shell {
