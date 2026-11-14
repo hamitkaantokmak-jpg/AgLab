@@ -73,7 +73,7 @@ LESSONS = [
         "etherchannel.md",
         "ec-",
         "Mod çiftleri",
-        "Bayraklarla teşhis",
+        "Mod çiftleri",
     ),
     ("fhrp", "fhrp", "fhrp.md", "fhrp-", "Sanal gateway", "Tek gateway sorunu"),
     ("ipv6", "ipv6", "ipv6.md", None, "NDP ve SLAAC", "Router'da IPv6"),
