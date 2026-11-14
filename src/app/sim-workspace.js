@@ -1178,13 +1178,39 @@
     const kept = [];
     const hit = (a, b) =>
       a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
-    for (const t of canvas.querySelectorAll('text.pt-edge-label, text.pt-port-label')) {
+    const clash = (b) => kept.some((k) => hit(k, b)) || rects.some((r) => hit(r, b));
+    // Önce ortadaki bağlantı etiketleri, sonra port etiketleri: port etiketi çakışırsa önce
+    // kendi kablosu boyunca kartından uzağa kaydırılır, yer yoksa gizlenir (kabloya gelince
+    // title iki portu da söyler).
+    const labels = [
+      ...canvas.querySelectorAll('text.pt-edge-label'),
+      ...canvas.querySelectorAll('text.pt-port-label'),
+    ];
+    for (const t of labels) {
       t.classList.remove('ag-label-hidden');
-      const b = t.getBoundingClientRect();
+      if (t.dataset.x0 === undefined) {
+        t.dataset.x0 = t.getAttribute('x');
+        t.dataset.y0 = t.getAttribute('y');
+      }
+      const x0 = +t.dataset.x0,
+        y0 = +t.dataset.y0,
+        ux = +t.dataset.ux || 0,
+        uy = +t.dataset.uy || 0,
+        room = +t.dataset.room || 0;
+      t.setAttribute('x', x0);
+      t.setAttribute('y', y0);
+      let b = t.getBoundingClientRect();
       if (!b.width) continue;
-      if (kept.some((k) => hit(k, b)) || rects.some((r) => hit(r, b)))
+      for (let step = 6; clash(b) && step <= room; step += 6) {
+        t.setAttribute('x', x0 + ux * step);
+        t.setAttribute('y', y0 + uy * step);
+        b = t.getBoundingClientRect();
+      }
+      if (clash(b)) {
+        t.setAttribute('x', x0);
+        t.setAttribute('y', y0);
         t.classList.add('ag-label-hidden');
-      else kept.push(b);
+      } else kept.push(b);
     }
   }
   new MutationObserver(() => {

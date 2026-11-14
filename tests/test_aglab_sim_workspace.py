@@ -879,6 +879,46 @@ class SimWorkspaceTests(unittest.TestCase):
         )
         expect(nxt).to_be_hidden()
 
+    def test_wide_1920_scale_cap_and_labels(self):
+        """Geniş görünümde (1920 px) büyütme en fazla 1.4×; görünen etiketler çakışmaz; kablonun
+        title'ı iki ucun portunu söyler."""
+        p = self.page
+        p.set_viewport_size({"width": 1920, "height": 1080})
+        p.click("#agSimWide")
+        for lab in p.evaluate("aglabLabberLabs.list().map(l=>l.id)"):
+            p.evaluate("(id)=>aglabLabberLabs.start(id)", lab)
+            p.wait_for_timeout(120)
+            r = p.evaluate("""() => {
+                  const svg = document.getElementById('ptCanvas');
+                  const k = svg.clientWidth / svg.viewBox.baseVal.width;
+                  const vis = [...svg.querySelectorAll('text.pt-edge-label, text.pt-port-label')]
+                    .filter((t) => !t.classList.contains('ag-label-hidden'))
+                    .map((t) => t.getBoundingClientRect());
+                  const cards = [...svg.querySelectorAll('g[data-id] rect')].map((x) => x.getBoundingClientRect());
+                  const hit = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+                  let bad = 0;
+                  vis.forEach((a, i) => { if (vis.slice(i + 1).some((b) => hit(a, b)) || cards.some((c) => hit(a, c))) bad++; });
+                  return { k, bad, n: vis.length };
+                }""")
+            self.assertLessEqual(r["k"], 1.4 + 0.01, (lab, r))
+            self.assertEqual(r["bad"], 0, (lab, r))
+            self.assertGreater(r["n"], 0, lab)
+        title = p.locator("#ptCanvas line title").first.text_content()
+        self.assertIn("↔", title)
+
+    def test_scenario_load_resets_terminal(self):
+        """Hazır senaryo ya da Labber labı yüklenince önceki topolojinin metni terminalde kalmaz."""
+        p = self.page
+        self.assertIn("Başlangıç topolojisi", p.inner_text("#ptTerminal"))
+        p.evaluate("aglabSharedEngine.load('lpm-next-hop')")
+        text = p.inner_text("#ptTerminal")
+        self.assertNotIn("Başlangıç topolojisi", text)
+        self.assertNotIn("PC-02", text)
+        p.evaluate("aglabLabberLabs.start(aglabLabberLabs.list()[0].id)")
+        self.assertNotIn(
+            "Topoloji doğrulandı ve içe aktarıldı: 6 cihaz", p.inner_text("#ptTerminal")
+        )
+
     def test_pc_quick_show_includes_arp(self):
         p = self.page
         snap = p.evaluate("academyEngine.snapshot()")

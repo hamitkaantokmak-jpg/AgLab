@@ -21632,7 +21632,13 @@ const AgLabModel = (() => {
         else h = w / aspect;
         // Alt ölçek sınırı: çok büyük topolojide düğümler okunmaz ve tıklanamaz olur. Sınırın
         // altında görünüm sol üstten başlar (eski sabit görünümdeki gibi), kalan kısım dışarıda.
-        const KMIN = 0.45;
+        const KMIN = 0.45,
+          // Üst ölçek sınırı: geniş görünümde (1920 px) küçük topoloji dev kartlara dönüşmesin.
+          KMAX = 1.4;
+        if (cw / w > KMAX) {
+          w = cw / KMAX;
+          h = ch / KMAX;
+        }
         if (cw / w < KMIN) box = [x0, y0, cw / KMIN, ch / KMIN];
         else {
           const cx = (x0 + x1) / 2,
@@ -21720,6 +21726,8 @@ const AgLabModel = (() => {
           svg,
         ).textContent = mid;
       if (!same) {
+        // Kabloya gelince iki ucun portu (etiket çakışmadan gizlenmiş olsa da okunur).
+        el('title', {}, line).textContent = a.name + ' ' + pa + ' ↔ ' + b.name + ' ' + pb;
         // Etiket düğüm kartının kenarının dışında, kablo boyunca (kartın altında kalmaz).
         const exit = (d) =>
           Math.min(
@@ -21736,6 +21744,10 @@ const AgLabModel = (() => {
               x: a.x + ux * ta + uy * 9 * side,
               y: a.y + uy * ta - ux * 9 * side + 3,
               class: 'pt-port-label',
+              // Çakışmada etiket kendi kablosu boyunca (kartından uzağa) kaydırılabilir.
+              'data-ux': ux,
+              'data-uy': uy,
+              'data-room': Math.max(0, len / 2 - ta - 18),
             },
             svg,
           ).textContent = pa;
@@ -21745,6 +21757,9 @@ const AgLabModel = (() => {
               x: b.x - ux * tb + uy * 9 * side,
               y: b.y - uy * tb - ux * 9 * side + 3,
               class: 'pt-port-label',
+              'data-ux': -ux,
+              'data-uy': -uy,
+              'data-room': Math.max(0, len / 2 - tb - 18),
             },
             svg,
           ).textContent = pb;
@@ -65519,6 +65534,8 @@ function loadNetworkScenario(key) {
   const row = sharedScenarioRecipe(key);
   if (!row?.topology) return false;
   academyClearSession();
+  // Yeni senaryo temiz terminalle açılır: önceki topolojinin tanıtım metni ve çıktısı kalmaz.
+  $p('ptTerminal').replaceChildren();
   importTopology(clone(row.topology));
   // Hedef ping'i: tarifte verilmişse verify.source/target, yoksa PC-01 → PC-02.
   const source = devices.find((d) => d.name === (row.verify.source || 'PC-01')),
@@ -71271,13 +71288,39 @@ function workshopView(ids, cases) {
     const kept = [];
     const hit = (a, b) =>
       a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
-    for (const t of canvas.querySelectorAll('text.pt-edge-label, text.pt-port-label')) {
+    const clash = (b) => kept.some((k) => hit(k, b)) || rects.some((r) => hit(r, b));
+    // Önce ortadaki bağlantı etiketleri, sonra port etiketleri: port etiketi çakışırsa önce
+    // kendi kablosu boyunca kartından uzağa kaydırılır, yer yoksa gizlenir (kabloya gelince
+    // title iki portu da söyler).
+    const labels = [
+      ...canvas.querySelectorAll('text.pt-edge-label'),
+      ...canvas.querySelectorAll('text.pt-port-label'),
+    ];
+    for (const t of labels) {
       t.classList.remove('ag-label-hidden');
-      const b = t.getBoundingClientRect();
+      if (t.dataset.x0 === undefined) {
+        t.dataset.x0 = t.getAttribute('x');
+        t.dataset.y0 = t.getAttribute('y');
+      }
+      const x0 = +t.dataset.x0,
+        y0 = +t.dataset.y0,
+        ux = +t.dataset.ux || 0,
+        uy = +t.dataset.uy || 0,
+        room = +t.dataset.room || 0;
+      t.setAttribute('x', x0);
+      t.setAttribute('y', y0);
+      let b = t.getBoundingClientRect();
       if (!b.width) continue;
-      if (kept.some((k) => hit(k, b)) || rects.some((r) => hit(r, b)))
+      for (let step = 6; clash(b) && step <= room; step += 6) {
+        t.setAttribute('x', x0 + ux * step);
+        t.setAttribute('y', y0 + uy * step);
+        b = t.getBoundingClientRect();
+      }
+      if (clash(b)) {
+        t.setAttribute('x', x0);
+        t.setAttribute('y', y0);
         t.classList.add('ag-label-hidden');
-      else kept.push(b);
+      } else kept.push(b);
     }
   }
   new MutationObserver(() => {

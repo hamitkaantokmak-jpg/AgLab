@@ -58,6 +58,8 @@ function loadNetworkScenario(key) {
   const row = sharedScenarioRecipe(key);
   if (!row?.topology) return false;
   academyClearSession();
+  // Yeni senaryo temiz terminalle açılır: önceki topolojinin tanıtım metni ve çıktısı kalmaz.
+  $p('ptTerminal').replaceChildren();
   importTopology(clone(row.topology));
   // Hedef ping'i: tarifte verilmişse verify.source/target, yoksa PC-01 → PC-02.
   const source = devices.find((d) => d.name === (row.verify.source || 'PC-01')),
