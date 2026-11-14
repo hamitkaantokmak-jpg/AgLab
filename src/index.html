@@ -21,6 +21,7 @@
 <style id="ux-v14-style">@@include src/styles/07-ux-v14-lab-focus.css@@</style>
 <style id="agShellStyle">@@include src/styles/08-shell.css@@</style>
 <style id="agSimStyle">@@include src/styles/09-simulator.css@@</style>
+<style id="agLessonStyle">@@include src/styles/10-lesson.css@@</style>
 </head>
 <body>
 <div class="app ag-shell">
@@ -48,7 +49,7 @@
   <h2>Öğrenme yolun</h2>
   <p class="sf-sub">Bir konu seç ve sırayla ilerle: <b>Öğren → Örnek → Test → Simülatör → Sorun Çöz.</b> Diğer araçlar gerektiğinde açılabilir.</p>
   <div class="sf-metrics" aria-label="İlerleme özeti"><div class="sf-metric"><strong id="sfVisited">0</strong><span>Çalışılan konu</span></div><div class="sf-metric"><strong id="sfMastered">0</strong><span>70+ test puanı</span></div><div class="sf-metric"><strong id="sfProgress">0%</strong><span>Genel konu başarısı</span></div></div>
-  <div class="sf-tools"><label for="sfLevel">Seviye <select id="sfLevel"><option value="all">Tüm seviyeler</option><option value="beginner">Başlangıç</option><option value="intermediate">Orta</option><option value="advanced">İleri</option></select></label><label for="sfSearch">Konu ara <input id="sfSearch" type="search" placeholder="Ör. subnetting, SD-WAN, VLAN"></label></div>
+  <div class="sf-tools"><label for="sfLevel">Seviye <select id="sfLevel"><option value="all">Tüm seviyeler</option><option value="beginner">Seviye 1 · Şube</option><option value="intermediate">Seviye 2 · CCNA</option><option value="advanced">Seviye 3 · CCNP</option></select></label><label for="sfSearch">Konu ara <input id="sfSearch" type="search" placeholder="Ör. subnetting, SD-WAN, VLAN"></label></div>
   <div class="sf-layout"><nav id="sfList" class="sf-list" aria-label="Konu listesi"></nav><article id="sfSheet" class="sf-sheet" aria-live="polite"></article></div>
   <details><summary>İlerlememi yedekle veya geri yükle</summary><p class="sf-sub">Bu dosyanın eğitim verileri bu tarayıcıda yerel olarak tutulur. Cihazlar arası eşitleme veya kimlik doğrulama yapılmaz.</p><div class="sf-toolbar"><button id="sfExport" class="sf-action">JSON yedeğini indir</button><label class="sf-action" for="sfImport">JSON yedeğini yükle <input id="sfImport" type="file" accept="application/json,.json" style="max-width:100%;display:block"></label><button id="sfReset" class="sf-action">İlerlememi sıfırla</button></div><p id="sfStorage" role="status"></p></details>
   <details><summary>7 kurumsal ağ atölyesi ve önceki kayıtlarım</summary><p class="sf-sub">Kurumsal atölyedeki mevcut senaryolar ayrı bir eğitim aracı olarak korunmuştur. Atölyenin yerel kayıtları bu birleşik ilerleme sayacına otomatik dahil edilmez.</p><button id="sfLoadWorkshop" class="sf-action">Kurumsal atölyeyi aç</button><iframe id="sfWorkshop" title="AğLab kurumsal ağ eğitim atölyesi" sandbox="allow-scripts allow-same-origin allow-downloads" style="width:100%;min-height:710px;border:1px solid #4c6378;border-radius:9px;margin-top:12px" hidden></iframe></details>
@@ -210,6 +211,8 @@
 <script>@@include src/app/shell.js@@</script>
 <script id="sfCourseData" type="application/json">@@include src/data/courses.json@@</script>
 <script id="sfDetailData" type="application/json">@@include src/data/course-details.json@@</script>
+<script id="sfLessonData" type="application/json">@@lessons@@</script>
+<script id="sfLessonReader">@@include src/app/lesson-reader.js@@</script>
 <script id="sfStudentFlowScript">@@include src/app/student-flow.js@@</script>
 <script id="ux-v12-code">@@include src/app/ux-v12.js@@</script>
 <script id="ux-v13-code">@@include src/app/ux-v13.js@@</script>

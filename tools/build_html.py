@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -86,6 +87,28 @@ def module_block(title: str) -> str:
     return f"// BEGIN {title} GENERATED\n{body}\n// END {title} GENERATED\n"
 
 
+LESSONS = "@@lessons@@"
+FIGURE_REF = re.compile(r"!\[[^\]]*\]\((gorseller/[\w./-]+\.svg)\)")
+
+
+def lessons_json() -> str:
+    """docs/dersler/*.md + başvurdukları şemalar → {konu: {"md": ..., "figs": {yol: svg}}}.
+
+    Metin <script type="application/json"> içine girer: "</" kaçışlanır."""
+    data = {}
+    base = ROOT / "docs" / "dersler"
+    for md_path in sorted(base.glob("*.md")):
+        md = md_path.read_text(encoding="utf-8")
+        figs = {}
+        for rel in FIGURE_REF.findall(md):
+            fig = base / rel
+            if not fig.exists():
+                raise SystemExit(f"{md_path.name}: şema yok: {rel} (python tools/build_figures.py)")
+            figs[rel] = fig.read_text(encoding="utf-8")
+        data[md_path.stem] = {"md": md, "figs": figs}
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+
 def expand(text: str, seen: tuple[str, ...] = ()) -> str:
     def include(match: re.Match[str]) -> str:
         rel = match.group(1)
@@ -94,6 +117,8 @@ def expand(text: str, seen: tuple[str, ...] = ()) -> str:
         return expand(read(rel), seen + (rel,))
 
     text = INCLUDE.sub(include, text)
+    if LESSONS in text:
+        text = text.replace(LESSONS, lessons_json())
     return MODULE.sub(lambda m: module_block(m.group(1)), text)
 
 

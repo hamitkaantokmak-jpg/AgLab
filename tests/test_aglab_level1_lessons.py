@@ -79,7 +79,7 @@ PARTS = [
     "## 5. Sık hatalar",
     "## 6. Arıza senaryoları",
     "## 7. Kısa sınav",
-    "## 8. Doğrulama notları",
+    "Doğrulama notları",
 ]
 
 

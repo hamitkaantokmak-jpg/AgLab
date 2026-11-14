@@ -8,7 +8,6 @@
       'commands': ['diagnostics'],
       'devicemgmt': ['devicemgmt'],
       'nat': ['natpat'],
-      'vpn': ['vpnipsec'],
       'dns': ['dns'],
       'dhcp': ['dhcp'],
       'vlan': ['vlan'],
@@ -23,14 +22,15 @@
       'etherchannel': ['etherchannel'],
       'ospf': ['ospf'],
       'acl': ['acl'],
-      'bgp': ['bgp'],
       'ipv6': ['ipv6'],
-      'qos': ['qos'],
-      'nac': ['nac'],
-      'dot1x': ['dot1x'],
-      'sdwan': ['sdwan'],
     },
     detailById = new Map(details.map((d) => [d.id, d]));
+  // Müfredat seviyeleri (docs/MUFREDAT.md): kurs verisindeki level alanı.
+  const LEVEL_NAME = {
+    beginner: 'Seviye 1 · Şube',
+    intermediate: 'Seviye 2 · CCNA',
+    advanced: 'Seviye 3 · CCNP',
+  };
   const KEY = 'aglab.student.flow.v10',
     VERSION = 1;
   const $ = (id) => document.getElementById(id);
@@ -130,8 +130,9 @@
           s = el(
             'small',
             (state.lessons[c.id]?.best >= 70 ? '✓ Tamamlandı · ' : '') +
-              ({ 'beginner': 'Başlangıç', 'intermediate': 'Orta', 'advanced': 'İleri' }[c.level] ||
-                c.level),
+              (c.num ? 'Konu #' + c.num + ' · ' : '') +
+              (LEVEL_NAME[c.level] || c.level) +
+              (c.kind === 'okuma' ? ' · okuma' : ''),
           );
         x.append(t, s);
         x.onclick = () => choose(c.id);
@@ -180,8 +181,9 @@
     sheet.append(
       el(
         'small',
-        ({ 'beginner': 'BAŞLANGIÇ', 'intermediate': 'ORTA', 'advanced': 'İLERİ' }[c.level] ||
-          'DERS') +
+        (LEVEL_NAME[c.level] || 'Ders').toLocaleUpperCase('tr-TR') +
+          (c.num ? ' · KONU #' + c.num : '') +
+          (c.kind === 'okuma' ? ' · OKUMA DERSİ' : '') +
           ' · ' +
           (rec().best ? 'En iyi puan ' + rec().best + '/100' : 'Henüz puan yok'),
       ),
@@ -211,7 +213,10 @@
       if (c.extraBlock) sheet.append(el('p', typeof c.extraBlock === 'string' ? c.extraBlock : ''));
     }
     if (phase === 1) {
-      if (dd.length) {
+      // Dersin tam hali (docs/dersler/<doc>.md, şemalarıyla) varsa o gösterilir.
+      if (c.doc && window.aglabLessonReader?.has(c.doc)) {
+        window.aglabLessonReader.show(sheet, c.doc);
+      } else if (dd.length) {
         dd.forEach((d) => {
           sheet.append(title(d.title, 4));
           if (d.story) textBlock(sheet, 'Önce problemi düşün', d.story);

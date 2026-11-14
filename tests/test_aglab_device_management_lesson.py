@@ -17,7 +17,8 @@ DETAILS = json.loads((ROOT / "src/data/course-details.json").read_text(encoding=
 class DeviceManagementLessonDataTests(unittest.TestCase):
     def test_course_and_detail_are_well_formed(self):
         ids = [c["id"] for c in COURSES]
-        self.assertEqual(ids.index("devicemgmt"), ids.index("commands") + 1)
+        # Müfredat sırası: Konu #11 Cihaz yönetimi, #12 CDP/LLDP (docs/MUFREDAT.md).
+        self.assertEqual(ids.index("discovery"), ids.index("devicemgmt") + 1)
         self.assertEqual(len(ids), len(set(ids)))
         course = COURSES[ids.index("devicemgmt")]
         self.assertEqual(len(course["quiz"]), 10)
