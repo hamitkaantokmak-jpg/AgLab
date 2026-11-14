@@ -1,12 +1,66 @@
-
 /* Adapted from supplied v4: accessible, non-inverting theme toggle. */
-html{color-scheme:dark}
-html[data-theme="light"]{color-scheme:light;--bg:#edf3fb;--panel:#fff;--panel2:#e8f0fa;--line:#b9c9dd;--text:#13233b;--muted:#415675;--blue:#245cbd;--cyan:#075e68;--green:#11643b;--red:#a32235;--amber:#875600;--term:#f5f9ff;--shadow:0 10px 30px #18335317}
-html[data-theme="light"] body{background:var(--bg);color:var(--text)}
-html[data-theme="light"] .panel,html[data-theme="light"] .pt-device-card,html[data-theme="light"] .area-tab,html[data-theme="light"] .hero{background:var(--panel);color:var(--text)}
-html[data-theme="light"] .pt-terminal,html[data-theme="light"] .terminal,html[data-theme="light"] .lab-console{background:#eaf2ff;color:#13233b}
-html[data-theme="light"] .pt-terminal *,html[data-theme="light"] .terminal *{color:inherit}
-html[data-theme="light"] input,html[data-theme="light"] select,html[data-theme="light"] button{color:var(--text)}
-.aglab-theme-toggle{position:fixed;right:14px;bottom:14px;z-index:9999;padding:9px 13px;border-radius:999px;box-shadow:0 5px 18px #0003}
-:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+html {
+  color-scheme: dark;
+}
+html[data-theme='light'] {
+  color-scheme: light;
+  --bg: #edf3fb;
+  --panel: #fff;
+  --panel2: #e8f0fa;
+  --line: #b9c9dd;
+  --text: #13233b;
+  --muted: #415675;
+  --blue: #245cbd;
+  --cyan: #075e68;
+  --green: #11643b;
+  --red: #a32235;
+  --amber: #875600;
+  --term: #f5f9ff;
+  --shadow: 0 10px 30px #18335317;
+}
+html[data-theme='light'] body {
+  background: var(--bg);
+  color: var(--text);
+}
+html[data-theme='light'] .panel,
+html[data-theme='light'] .pt-device-card,
+html[data-theme='light'] .area-tab,
+html[data-theme='light'] .hero {
+  background: var(--panel);
+  color: var(--text);
+}
+html[data-theme='light'] .pt-terminal,
+html[data-theme='light'] .terminal {
+  background: #eaf2ff;
+  color: #13233b;
+}
+html[data-theme='light'] .pt-terminal *,
+html[data-theme='light'] .terminal * {
+  color: inherit;
+}
+html[data-theme='light'] input,
+html[data-theme='light'] select,
+html[data-theme='light'] button {
+  color: var(--text);
+}
+.aglab-theme-toggle {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 9999;
+  padding: 9px 13px;
+  border-radius: 999px;
+  box-shadow: 0 5px 18px #0003;
+}
+:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,2197 +1,258 @@
 'use strict';
 // Labber ağ motoru (src/sim → src/sim.generated.js). L0: gömülü ama hiçbir ürün kodu çağırmaz.
 //@@module SIM@@
-const BASE = {
-  ip: '192.168.1.20',
-  mask: '255.255.255.0',
-  gateway: '192.168.1.1',
-  dns: '8.8.8.8',
-  dhcp: false,
-  link: true,
-};
-const scenarios = [
+// L6: Sorun Çöz'ün eski metin senaryoları kendi oyuncak modelleriyle çalışıyordu (motor yok).
+// Hepsi Labber'daki karşılığına açılır; kimlik ve sıra korunur (kayıtlı ilerleme
+// `aglab-passed-final` ve sıra numaraları). Karşılığı olmayan BGP (kapsam dışı) kavramsal
+// alıştırmadır: terminal ya da motor sonucu yoktur.
+const TROUBLESHOOT_TASKS = [
   {
     id: 'gateway',
     title: 'Dış ağlara erişim sorunu',
     topic: 'Bağlantı sorunu',
-    level: 'Kolay',
-    story:
-      'Ayşe yerel ağda olduğunu söylüyor ancak dış ağlardaki adreslere erişemiyor. Mevcut durumu komutlarla incele, arızanın kaynağına dair kanıt topla ve bağlantıyı geri getir.',
-    start: { ...BASE, gateway: '192.168.1.254' },
-    fault: 'Varsayılan ağ geçidi yanlış ayarlanmış.',
-    hints: [
-      'Önce ipconfig çıktısındaki ağ yapılandırmasını incele.',
-      'Yerel ağdaki bir adrese ve dış ağdaki bir IP adresine ayrı ayrı ping at.',
-      'İki testin sonuçlarını karşılaştır; hangi ağ adımında sorun olduğunu belirle.',
-    ],
-    options: [
-      [
-        'DNS sunucusu yanlış',
-        false,
-        "DNS sorunu isim çözümlemeyi etkiler; burada dış IP'ye erişim de başarısız.",
-      ],
-      [
-        'Varsayılan ağ geçidi yanlış',
-        true,
-        'Bilgisayarın gateway ayarı 192.168.1.254; gerçek router adresi 192.168.1.1.',
-      ],
-      ['Router kapalı', false, '192.168.1.1 yanıt verdiği için router erişilebilir.'],
-    ],
-    fix: 'set gateway 192.168.1.1',
-    verify: 'ping 8.8.8.8',
-    solved: (c) => c.gateway === '192.168.1.1',
+    target: 'gw-pc-wrong-gateway',
   },
   {
     id: 'dns',
     title: 'Alan adlarına erişilemiyor',
     topic: 'Ad çözümleme sorunu',
-    level: 'Kolay',
-    story:
-      'Mehmet bazı IP adreslerine erişebiliyor ancak alan adlarıyla açılan sitelere ulaşamıyor. Komut çıktılarından sorunun hangi aşamada olduğunu belirle ve erişimi geri getir.',
-    start: { ...BASE, dns: '10.0.0.53' },
-    fault: 'DNS adresi erişilemeyen bir sunucuya ayarlı.',
-    hints: [
-      'ipconfig ile istemcinin ağ ayarlarını görüntüle.',
-      'Bir dış IP adresine ping at ve ardından nslookup example.com çalıştır.',
-      'İki komutun sonuçları arasındaki farkı kullanarak arızanın hangi aşamada olduğunu belirle.',
-    ],
-    options: [
-      ['Gateway yanlış', false, "Dış IP'ye ping başarılı; temel yönlendirme çalışıyor."],
-      [
-        'DNS sunucusu yanlış/ulaşılamıyor',
-        true,
-        '10.0.0.53 yanıt vermiyor. Erişilebilir bir DNS sunucusu yapılandır.',
-      ],
-      [
-        'Ethernet kablosu kopuk',
-        false,
-        "Dış IP'ye erişilebilmesi fiziksel bağlantının çalıştığını gösteriyor.",
-      ],
-    ],
-    fix: 'set dns 8.8.8.8',
-    verify: 'nslookup example.com',
-    solved: (c) => c.dns === '8.8.8.8' || c.dns === '1.1.1.1',
+    target: 'dns-wrong-server-pc',
   },
   {
     id: 'duplicate',
     title: 'Aralıklı bağlantı kesintileri',
-    topic: 'Kararsız bağlantı',
-    level: 'Kolay',
-    story:
-      'Elif ağ bağlantısının aralıklarla kesildiğini ve paket kaybı yaşadığını bildiriyor. Ağ durumunu ve komşu cihaz kayıtlarını inceleyerek kesintinin nedenini bul.',
-    start: { ...BASE, ip: '192.168.1.20' },
-    fault: 'Aynı IP adresini kullanan iki cihaz var.',
-    hints: [
-      "Router'a birkaç ping at; paket kaybı var mı?",
-      'arp -a çıktısında 192.168.1.20 için kaç MAC adresi görünüyor?',
-      'Aynı IP iki cihazda kullanılırsa ARP yanıtı kararsız hale gelebilir.',
-    ],
-    options: [
-      [
-        'IP adresi çakışması',
-        true,
-        "Aynı IP için iki farklı MAC görülüyor. PC'ye ağda kullanılmayan farklı bir IP ver.",
-      ],
-      ['DNS çalışmıyor', false, "DNS sorunu tek başına router'a ping kaybını açıklamaz."],
-      ['Gateway yanlış', false, 'Gateway adresi doğru; ARP tablosu IP çakışmasına işaret ediyor.'],
-    ],
-    fix: 'set ip 192.168.1.21',
-    verify: 'ping 192.168.1.1',
-    solved: (c) => c.ip === '192.168.1.21',
+    topic: 'IP çakışması',
+    target: 'eth-duplicate-ip',
   },
   {
     id: 'mask',
     title: 'Yerel hedefe erişim sorunu',
-    topic: 'Yerel erişim',
-    level: 'Kolay',
-    story:
-      'PC-01, 192.168.1.30 adresindeki yazıcıya erişemiyor. İstemci ve hedefin ağ bilgilerini karşılaştır; erişim probleminin kaynağını bul.',
-    start: { ...BASE, mask: '255.255.0.0' },
-    fault: 'Alt ağ maskesi yanlış; bu laboratuvarda istemcinin /24 olması gerekiyor.',
-    hints: [
-      'ipconfig çıktısındaki IP adresi, maske ve gateway bilgilerini birlikte incele.',
-      'Hedef IP için ping çalıştır ve sonucu yorumla.',
-      'İstemcinin hedefi yerel ağda mı yoksa uzak ağda mı gördüğünü hesapla.',
-    ],
-    options: [
-      ['DNS yanlış', false, 'Yazıcıya IP ile erişimde DNS kullanılmaz.'],
-      [
-        'Alt ağ maskesi yanlış',
-        true,
-        'İstemci yanlış ağ kapsamı hesaplıyor. Maskeyi 255.255.255.0 yap.',
-      ],
-      ['Dış ağ kesintisi', false, 'Sorun yerel ağdaki hedefe erişimle ilgili.'],
-    ],
-    fix: 'set mask 255.255.255.0',
-    verify: 'ping 192.168.1.30',
-    solved: (c) => c.mask === '255.255.255.0',
+    topic: 'Alt ağ maskesi',
+    target: 'eth-wrong-mask',
   },
   {
     id: 'dhcp',
     title: 'Ağ yapılandırması alınamıyor',
-    topic: 'İstemci yapılandırması',
-    level: 'Kolay',
-    story:
-      'Yeni bağlanan PC ağ kaynaklarına erişemiyor ve beklenen ağ yapılandırmasına sahip görünmüyor. Mevcut IP bilgilerini incele ve istemcinin ağa katılmasını sağla.',
-    start: { ...BASE, ip: '169.254.12.44', gateway: '0.0.0.0', dns: '0.0.0.0', dhcp: false },
-    fault: 'DHCP istemcisi etkin değil; PC kendine link-local adres atamış.',
-    hints: [
-      "ipconfig çıktısında 169.254 ile başlayan IP'ye dikkat et.",
-      'Bu adres genellikle DHCP sunucusundan yanıt alınamadığında otomatik atanır.',
-      'Simülatörde DHCP istemcisini etkinleştirerek doğru adresi alabilirsin.',
-    ],
-    options: [
-      ['DNS sunucusu yanlış', false, 'Öncelikli sorun IP ve gateway alınamamış olması.'],
-      ['DHCP istemcisi kapalı', true, "İstemci DHCP'den adres alamıyor. DHCP'yi etkinleştir."],
-      ['BGP rotası eksik', false, 'Bu basit istemci ağında ilk kontrol IP yapılandırmasıdır.'],
-    ],
-    fix: 'set dhcp on',
-    verify: 'ipconfig',
-    solved: (c) => c.dhcp === true,
+    topic: 'DHCP istemcisi',
+    target: 'dhcp-client-static',
   },
   {
     id: 'link',
     title: 'Ağ bağlantısı kurulamıyor',
-    topic: 'Arayüz durumu',
-    level: 'Kolay',
-    story:
-      'Kullanıcı kablonun takılı olduğunu söylüyor ancak bilgisayar ağa erişemiyor. Arayüz ve bağlantı durumunu inceleyip sorunun kaynağını belirle.',
-    start: { ...BASE, link: false },
-    fault: "PC'nin Ethernet arayüzü administratively down durumda.",
-    hints: [
-      'ipconfig bağlantı durumunu gösterebilir; sonra interface komutunu kullan.',
-      'Bu senaryoda adresleme doğru ama fiziksel/link katmanı çalışmıyor.',
-      "Arayüzü etkinleştir ve gateway'e ping at.",
-    ],
-    options: [
-      ['DNS yanlış', false, 'Link kapalıyken DNS ayarı sonucu değiştirmez.'],
-      ['Ethernet arayüzü kapalı', true, 'Arayüz down. no shutdown komutuyla etkinleştir.'],
-      ['Yanlış subnet', false, 'Adresleme doğru; arayüz durumu arızalı.'],
-    ],
-    fix: 'interface up',
-    verify: 'ping 192.168.1.1',
-    solved: (c) => c.link === true,
+    topic: 'Fiziksel bağlantı',
+    target: 'phy-port-shutdown',
   },
   {
     id: 'wrongip',
     title: 'Ağ kaynaklarına erişilemiyor',
-    topic: 'IP yapılandırması',
-    level: 'Kolay',
-    story:
-      'PC-01, yerel ağdaki kaynaklara erişemiyor. IP adresleme bilgilerini ve yönlendirme davranışını inceleyerek yapılandırmadaki sorunu bul.',
-    start: { ...BASE, ip: '192.168.2.20' },
-    fault: "PC'nin IP adresi yanlış alt ağda.",
-    hints: [
-      "ipconfig ile IP, maske ve gateway'i birlikte incele.",
-      'Gateway 192.168.1.1; istemci aynı 192.168.1.0/24 ağında olmalı.',
-      'Bu senaryoda istemciye 192.168.1.30 adresini ver.',
-    ],
-    options: [
-      ['IP adresi yanlış ağda', true, '192.168.2.20 yerine 192.168.1.30 kullan.'],
-      ['DNS yanıt vermiyor', false, "Sorun DNS'ten önce IP ağ üyeliğiyle ilgili."],
-      ['Router kapalı', false, 'Bu senaryoda router erişilebilir; istemci adreslemesi yanlış.'],
-    ],
-    fix: 'set ip 192.168.1.30',
-    verify: 'ping 192.168.1.1',
-    solved: (c) => c.ip === '192.168.1.30',
+    topic: 'IP adresleme',
+    target: 'ip-wrong-network',
   },
   {
     id: 'service',
     title: 'İç uygulama yanıt vermiyor',
-    topic: 'Uygulamaya erişim',
-    level: 'Kolay',
-    story:
-      'Kullanıcı intranet uygulamasını açamıyor. Sunucuya erişim ve isim çözümleme adımlarını ayrı ayrı test et; sorunun ağ bağlantısında mı yoksa uygulama yanıtında mı olduğunu belirle.',
-    start: { ...BASE, service: false },
-    fault: 'Ağ bağlantısı sağlam ama web hizmeti kapalı.',
-    hints: [
-      'Önce gateway ve dış IP pinglerini kontrol et.',
-      'nslookup başarılıysa DNS çözümlemesi çalışıyor.',
-      'ping 192.168.1.50 başarılı ama test http başarısızsa uygulama servisine bak.',
-    ],
-    options: [
-      ['Varsayılan gateway yanlış', false, "Gateway'e ping başarılı."],
-      ['DNS çalışmıyor', false, 'Alan adı çözümlemesi başarılı.'],
-      ['Web hizmeti kapalı', true, 'Ağ erişimi var ama HTTP servisi çalışmıyor. Servisi başlat.'],
-    ],
-    fix: 'service http on',
-    verify: 'test http 192.168.1.50',
-    solved: (c) => c.service === true,
+    topic: 'Uygulama katmanı',
+    target: 'method-app-top-down',
   },
   {
     id: 'vlan',
     title: "PC doğru IP'de ama gateway'e erişemiyor",
-    topic: 'Switching · Access VLAN',
-    level: 'Orta',
-    story:
-      "PC-01 IP yapılandırmasını doğru almış görünüyor; ancak aynı ağdaki gateway'e erişemiyor. Switch portunun VLAN üyeliğini ve arayüz durumunu incele.",
-    start: { ...BASE, accessVlan: 20 },
-    fault: "PC'nin switch portu yanlış access VLAN'a atanmış.",
-    hints: [
-      'ipconfig doğru IP gösterse bile Layer 2 VLAN üyeliği yanlış olabilir.',
-      "show vlan brief ile PC portunun hangi VLAN'da olduğunu incele.",
-      "PC portunu bu senaryoda VLAN 10'a al ve gateway ping'ini tekrarla.",
-    ],
-    options: [
-      [
-        'DNS sunucusu yanlış',
-        false,
-        "IP adresiyle gateway'e ping atılamaması DNS ile ilgili değil.",
-      ],
-      ["Access port yanlış VLAN'da", true, "PC portu VLAN 20'de; bu ağ için VLAN 10 bekleniyor."],
-      ['HTTP servisi kapalı', false, 'Sorun uygulama katmanından önce ortaya çıkıyor.'],
-    ],
-    fix: 'set access-vlan 10',
-    verify: 'ping 192.168.1.1',
-    solved: (c) => Number(c.accessVlan) === 10,
+    topic: 'VLAN',
+    target: 'access-vlan',
   },
   {
     id: 'trunk',
     title: "İki switch arasındaki bazı VLAN'lar çalışmıyor",
-    topic: 'Switching · Trunk',
-    level: 'Orta',
-    story:
-      "Aynı VLAN'daki uç cihazlar farklı switch'lere bağlandığında haberleşemiyor. Trunk durumunu ve izin verilen VLAN listesini kontrol et.",
-    start: { ...BASE, trunkMode: 'trunk', trunkAllowed: '20', vlan: 10 },
-    fault: "Trunk'ın allowed VLAN listesinde VLAN 10 eksik.",
-    hints: [
-      'show interfaces trunk çıktısında trunk ve allowed VLAN bilgilerini ara.',
-      "VLAN 10 yerel switch'te tanımlı olsa bile trunk'ta taşınmıyorsa karşı switch'e ulaşamaz.",
-      "Allowed listesine VLAN 10'u ekle ve uzak PC'ye ping at.",
-    ],
-    options: [
-      ['DNS sorunu', false, "Aynı VLAN'daki IP iletişimi DNS'e bağlı değildir."],
-      [
-        'Trunk allowed VLAN listesi eksik',
-        true,
-        "Trunk VLAN 20'ye izin veriyor; VLAN 10 listede yok.",
-      ],
-      [
-        "PC'nin HTTP servisi kapalı",
-        false,
-        'Uçtan uca Layer 2 erişimi uygulama servisinden önce kontrol edilir.',
-      ],
-    ],
-    fix: 'set trunk-allowed 10,20',
-    verify: 'ping 192.168.1.11',
-    solved: (c) =>
-      String(c.trunkAllowed || '')
-        .split(',')
-        .map((x) => x.trim())
-        .includes('10'),
+    topic: 'Trunk',
+    target: 'trunk-allowed',
   },
   {
     id: 'subif',
     title: "VLAN'lar arası yönlendirme çalışmıyor",
-    topic: 'Routing · 802.1Q',
-    level: 'Orta',
-    story:
-      "VLAN 10 içindeki istemci kendi ağında çalışıyor fakat VLAN 20'deki sunucuya ulaşamıyor. Router-on-a-stick yapılandırmasında alt arayüz ve VLAN etiketlemesini incele.",
-    start: { ...BASE, routerSubif: false },
-    fault: 'Router üzerinde VLAN 20 için 802.1Q alt arayüzü eksik/kapalı.',
-    hints: [
-      'show ip interface brief ile router arayüzlerini kontrol et.',
-      "VLAN'lar arasında iletişim için Layer 3 gateway gerekir.",
-      'Bu simülasyonda router alt arayüzünü etkinleştirip 192.168.20.10 adresine ping at.',
-    ],
-    options: [
-      ['DNS yanlış', false, 'Hedefe IP adresiyle erişim başarısız; DNS belirleyici değil.'],
-      ['Router alt arayüzü eksik', true, 'VLAN 20 için 802.1Q alt arayüzü etkin değil.'],
-      [
-        "PC'nin MAC adresi değişmeli",
-        false,
-        "MAC adresini değiştirmek VLAN'lar arası routing sağlamaz.",
-      ],
-    ],
-    fix: 'set router-subif on',
-    verify: 'ping 192.168.20.10',
-    solved: (c) => c.routerSubif === true,
+    topic: 'Router-on-a-stick',
+    target: 'subif-missing',
   },
-  {
-    id: 'route',
-    title: 'Uzak ağa erişim yok',
-    topic: 'Layer 3 · Routing',
-    level: 'Orta',
-    story:
-      'Yerel gateway yanıt veriyor ancak uzak ağdaki sunucuya erişilemiyor. Yönlendirme tablosunda hedef ağ için uygun rota olup olmadığını kontrol et.',
-    start: { ...BASE, route: false },
-    fault: "Router'da uzak ağ için statik rota eksik.",
-    hints: [
-      "Önce gateway'e ping atarak yerel erişimi doğrula.",
-      'show route komutu ile yönlendirme tablosunu incele.',
-      'Uzak ağ rotasını ekle ve 10.20.0.10 hedefine ping at.',
-    ],
-    options: [
-      ['DNS sunucusu yanlış', false, 'Uzak hedef IP ile test ediliyor; DNS bu testi etkilemez.'],
-      [
-        'Uzak ağ rotası eksik',
-        true,
-        'Yönlendirme tablosunda 10.20.0.0/24 ağı için rota bulunmuyor.',
-      ],
-      [
-        "PC'nin access VLAN'ı yanlış",
-        false,
-        'Gateway yanıt verdiği için istemcinin yerel VLAN erişimi çalışıyor.',
-      ],
-    ],
-    fix: 'set route on',
-    verify: 'ping 10.20.0.10',
-    solved: (c) => c.route === true,
-  },
+  { id: 'route', title: 'Uzak ağa erişim yok', topic: 'Statik rota', target: 'forward-route' },
   {
     id: 'mac',
     title: 'MAC ve ARP tabloları boş görünüyor',
-    topic: 'Switching · ARP · MAC öğrenme',
-    level: 'Orta',
-    story:
-      'Bir switch üzerinde MAC adres tablosu boş, istemcide de gateway için ARP kaydı görünmüyor. Bu durumun mutlaka arıza anlamına gelip gelmediğini test et; trafik üret, tabloları incele ve sonucu doğrula.',
-    start: { ...BASE, traffic: false, arpViewed: false, macViewed: false },
-    fault:
-      'Başlangıçta henüz trafik üretilmediği için dinamik MAC ve ARP kayıtları oluşmamış. Bu tek başına arıza değildir.',
-    hints: [
-      'Önce show mac address-table ve arp -a ile mevcut durumu gözlemle.',
-      'Switch, gelen çerçevelerin kaynak MAC adresini geldiği portta öğrenir.',
-      "Gateway'e ping at; ardından arp -a ve show mac address-table komutlarını yeniden çalıştır.",
-    ],
-    options: [
-      [
-        'Henüz trafik üretilmediği için tablolar boş',
-        true,
-        'Dinamik MAC ve ARP kayıtları trafik/komşuluk çözümlemesi sonrasında oluşur; tek başına boş tablo arıza kanıtı değildir.',
-      ],
-      [
-        'DNS sunucusu yanlış',
-        false,
-        'DNS, yerel gateway için ARP veya switch MAC öğrenmesini oluşturmaz.',
-      ],
-      [
-        'Statik rota eksik',
-        false,
-        'Aynı yerel ağdaki gateway için önce ARP ve Layer 2 erişimi değerlendirilir.',
-      ],
-    ],
-    fix: 'ping 192.168.1.1 ardından arp -a ve show mac address-table',
-    verify: 'show mac address-table',
-    solved: (c) => c.traffic === true && c.arpViewed === true && c.macViewed === true,
+    topic: 'MAC/ARP öğrenme',
+    target: 'eth-mac-learning',
   },
-  {
-    id: 'native',
-    title: 'Trunk native VLAN uyuşmazlığı',
-    topic: 'Switching · 802.1Q · Native VLAN',
-    level: 'Orta',
-    story:
-      "İki switch arasındaki trunk up görünüyor; ancak etiketsiz trafik beklenmedik VLAN'a düşüyor ve bazı iletişimler bozuluyor. İki uçtaki native VLAN değerlerini karşılaştır, yapılandırmayı düzelt ve ping ile doğrula.",
-    start: { ...BASE, nativeVlan: 10, peerNativeVlan: 1 },
-    fault: "Trunk'ın iki ucundaki native VLAN değerleri uyuşmuyor.",
-    hints: [
-      'show interfaces trunk ile yerel trunk native VLAN değerini incele.',
-      'Native VLAN, trunk üzerindeki etiketsiz çerçeveler için kullanılır; iki uçta uyumlu olmalıdır.',
-      "Bu senaryoda karşı switch native VLAN 1 kullanıyor. Yerel native VLAN'ı 1 yapıp ping'i tekrarla.",
-    ],
-    options: [
-      ['DNS sunucusu yanlış', false, 'Sorun isim çözümlemeden önce Layer 2 trunk davranışında.'],
-      [
-        'Native VLAN uyuşmazlığı',
-        true,
-        'Yerel native VLAN 10, karşı uç native VLAN 1. Değerleri eşleştir.',
-      ],
-      [
-        'Statik rota eksik',
-        false,
-        'Aynı VLAN içindeki erişimde önce trunk ve VLAN taşınmasını kontrol et.',
-      ],
-    ],
-    fix: 'set native-vlan 1',
-    verify: 'ping 192.168.1.11',
-    solved: (c) => Number(c.nativeVlan) === Number(c.peerNativeVlan),
-  },
+  { id: 'native', title: 'Trunk native VLAN uyuşmazlığı', topic: 'Trunk', target: 'native-vlan' },
   {
     id: 'relay',
     title: 'Uzak ağdaki DHCP sunucusundan adres alınamıyor',
-    topic: 'DHCP · Relay / Helper',
-    level: 'Orta',
-    story:
-      "İstemci doğru VLAN'da görünüyor, DHCP sunucusu ise başka IP ağında. İstemci adres alamıyor. Relay yapılandırmasını kontrol et, gerekli ayarı yap ve DHCP yenileme ile doğrula.",
-    start: {
-      ...BASE,
-      ip: '169.254.30.8',
-      gateway: '0.0.0.0',
-      dns: '0.0.0.0',
-      dhcp: false,
-      dhcpRelay: false,
-      dhcpRenewed: false,
-    },
-    fault: 'Router üzerinde DHCP relay yapılandırılmamış.',
-    hints: [
-      'ipconfig çıktısında 169.254.x.x adresini ve gateway eksikliğini gör.',
-      "DHCP Discover broadcast'ı router üzerinden başka ağa kendiliğinden geçmez.",
-      "Relay'i etkinleştir, sonra ipconfig /renew ile istemcinin yapılandırma almasını dene.",
-    ],
-    options: [
-      [
-        'DNS adresi yanlış',
-        false,
-        'İstemci henüz geçerli IP yapılandırması alamamış; ilk sorun DNS değil.',
-      ],
-      [
-        'DHCP relay eksik',
-        true,
-        'Sunucu farklı ağda olduğundan router DHCP isteğini relay etmelidir.',
-      ],
-      ['HTTP servisi kapalı', false, 'DHCP adres alma işlemi HTTP hizmetinden bağımsızdır.'],
-    ],
-    fix: 'set dhcp-relay on',
-    verify: 'ipconfig /renew',
-    solved: (c) => c.dhcpRelay === true && c.dhcpRenewed === true,
+    topic: 'DHCP relay',
+    target: 'dhcp-no-helper',
   },
   {
     id: 'relay-trunk',
     title: "DHCP relay var ama trunk VLAN'ı taşımıyor",
-    topic: 'DHCP · VLAN · Trunk',
-    level: 'İleri',
-    story:
-      "DHCP relay yapılandırılmış olsa bile istemci VLAN'ı trunk üzerinden taşınmıyorsa DHCP Discover router'a ulaşamaz. Önce trunk allowed VLAN listesini düzelt, sonra relay üzerinden DHCP yenilemesini doğrula.",
-    start: {
-      ...BASE,
-      ip: '169.254.30.8',
-      gateway: '0.0.0.0',
-      dns: '0.0.0.0',
-      dhcp: false,
-      dhcpRelay: true,
-      dhcpRenewed: false,
-      trunkAllowed: '20',
-      clientVlan: 10,
-    },
-    fault: 'DHCP relay etkin; ancak trunk allowed listesinde istemci VLAN 10 yok.',
-    hints: [
-      'show interfaces trunk ile allowed VLAN listesini incele.',
-      "DHCP relay broadcast'ı yönlendirebilir ama istemci VLAN'ının Layer 2 yolunda taşınması gerekir.",
-      "Trunk allowed listesine VLAN 10'u ekle; ardından ipconfig /renew çalıştır.",
-    ],
-    options: [
-      [
-        'DHCP relay eksik',
-        false,
-        "Bu senaryoda relay etkin; sorun VLAN 10'un trunk üzerinden taşınmaması.",
-      ],
-      [
-        'Trunk allowed listesinde VLAN 10 eksik',
-        true,
-        "Trunk yalnızca VLAN 20'yi taşıyor; istemci VLAN 10 trunk'tan geçemiyor.",
-      ],
-      [
-        'DNS adresi yanlış',
-        false,
-        'DHCP adresi alınamamasının ilk nedeni DNS değil, Layer 2 VLAN yolu.',
-      ],
-    ],
-    fix: 'set trunk-allowed 10,20',
-    verify: 'ipconfig /renew',
-    solved: (c) =>
-      c.dhcpRelay === true &&
-      c.dhcpRenewed === true &&
-      String(c.trunkAllowed || '')
-        .split(',')
-        .map((x) => x.trim())
-        .includes('10'),
+    topic: 'DHCP relay · trunk',
+    target: 'relay-trunk',
   },
   {
     id: 'unknown',
     title: "Switch bilinmeyen hedef MAC'i tüm portlara mı gönderiyor?",
-    topic: 'Switching · Unknown unicast · MAC learning',
-    level: 'Orta',
-    story:
-      "Bir switch'in MAC tablosunda hedef cihazın adresi yok. İlk çerçevenin nasıl iletildiğini gözlemle; aynı VLAN içindeki flood davranışını ve yanıt sonrası MAC öğrenmesini ayırt et. Her flood arıza değildir.",
-    start: { ...BASE, unknownPing: false, unknownTableViewed: false },
-    fault:
-      "Hedef MAC henüz öğrenilmediği için ilk bilinmeyen unicast çerçevesi aynı VLAN'daki uygun portlara flood edilir; yanıt geldiğinde kaynak MAC öğrenilir.",
-    hints: [
-      'Önce show mac address-table ile mevcut kayıtları incele.',
-      "Switch hedef MAC'i bilmiyorsa çerçeveyi aynı VLAN'daki diğer uygun portlara flood edebilir; giriş portuna geri göndermez.",
-      'ping 192.168.1.11 çalıştır, ardından MAC tablosunu tekrar incele.',
-    ],
-    options: [
-      [
-        'Switch arızalı; flood her zaman hatadır',
-        false,
-        'Bilinmeyen unicast flood, hedef MAC öğrenilene kadar normal Layer 2 davranışıdır.',
-      ],
-      [
-        'Hedef MAC bilinmiyor; flood beklenen davranış',
-        true,
-        "Switch hedef MAC'i bilmiyor; aynı VLAN'da flood eder ve kaynak MAC'leri öğrenir.",
-      ],
-      [
-        'DNS kaydı eksik',
-        false,
-        'MAC tablosu ve Ethernet iletimi DNS isim çözümlemesinden bağımsızdır.',
-      ],
-    ],
-    fix: 'ping 192.168.1.11 ardından show mac address-table',
-    verify: 'show mac address-table',
-    solved: (c) => c.unknownPing === true && c.unknownTableViewed === true,
+    topic: 'Bilinmeyen unicast',
+    target: 'eth-unknown-unicast',
   },
   {
     id: 'acl',
     title: 'Uygulamaya erişim ACL tarafından engelleniyor',
-    topic: 'Security · ACL',
-    level: 'Orta',
-    story:
-      'Kullanıcı sunucuya ping atabiliyor ancak HTTP uygulamasına erişemiyor. Router üzerindeki erişim kontrol listesini incele; gerekli trafiğe izin ver ve uygulama testiyle doğrula.',
-    start: { ...BASE, aclHttp: false },
-    fault: 'ACL, TCP/80 trafiğini engelliyor; ICMP erişimi çalışıyor.',
-    hints: [
-      'Önce ping ile IP erişimini doğrula, sonra test http komutunu çalıştır.',
-      'show access-lists çıktısında TCP/80 için deny kuralını ara.',
-      'Bu senaryoda HTTP trafiğine izin ver ve test http 192.168.1.50 ile doğrula.',
-    ],
-    options: [
-      ['DNS bozuk', false, 'Hedef IP ile test ediliyor; DNS bu sorunu açıklamaz.'],
-      [
-        'ACL HTTP trafiğini engelliyor',
-        true,
-        "ICMP çalışırken TCP/80 başarısız; ACL'deki HTTP deny kuralını incele.",
-      ],
-      ['Fiziksel link down', false, 'Ping başarılı; temel IP erişimi mevcut.'],
-    ],
-    fix: 'set acl permit-http',
-    verify: 'test http 192.168.1.50',
-    solved: (c) => c.aclHttp === true,
+    topic: 'ACL',
+    target: 'acl-http-blocked',
   },
   {
     id: 'nat',
     title: 'İç ağdan internete çıkış yok',
-    topic: 'Routing · NAT/PAT',
-    level: 'Orta',
-    story:
-      "İstemci gateway'e erişebiliyor ancak dış IP adreslerine ulaşamıyor. Router'ın NAT/PAT durumunu kontrol et, çeviriyi etkinleştir ve dış IP ping'iyle doğrula.",
-    start: { ...BASE, natEnabled: false },
-    fault: 'İç ağ trafiği için NAT/PAT yapılandırması etkin değil.',
-    hints: [
-      "Önce ping 192.168.1.1 ile yerel gateway'i test et.",
-      'show ip nat translations çıktısında çeviri olmadığını gözlemle.',
-      "NAT'ı etkinleştir ve ping 8.8.8.8 ile tekrar dene.",
-    ],
-    options: [
-      ['DNS kaydı eksik', false, 'Dış hedef IP adresiyle test ediliyor; DNS kullanılmıyor.'],
-      ['NAT/PAT eksik', true, 'Gateway çalışıyor ancak özel IP adresi dış ağa çevrilmiyor.'],
-      ["PC VLAN'ı yanlış", false, "Gateway'e erişim başarılı; sorun çıkış/NAT aşamasında."],
-    ],
-    fix: 'set nat on',
-    verify: 'ping 8.8.8.8',
-    solved: (c) => c.natEnabled === true,
+    topic: 'NAT/PAT',
+    target: 'nat-missing-rule',
   },
   {
     id: 'portsec',
     title: 'Switch portu güvenlik ihlali nedeniyle kapalı',
-    topic: 'Switching · Port Security',
-    level: 'Orta',
-    story:
-      "Bir PC switch'e bağlı görünmesine rağmen trafik geçiremiyor. Port-security durumunu ve ihlal sayacını kontrol et; simülasyonda portu güvenli şekilde yeniden etkinleştirip gateway erişimini doğrula.",
-    start: { ...BASE, portSecurityViolation: true },
-    fault: 'Port-security ihlali portu err-disabled durumuna düşürmüş.',
-    hints: [
-      'show interfaces status ile port durumunu incele.',
-      'show port-security çıktısında violation ve err-disabled bilgisini ara.',
-      "Simülatörde ihlal durumunu temizle, sonra gateway'e ping at.",
-    ],
-    options: [
-      ['DNS sunucusu yanlış', false, 'Port güvenlik nedeniyle kapalı; DNS bu aşamayı etkilemez.'],
-      [
-        'Port-security ihlali',
-        true,
-        'Port err-disabled durumda; ihlali temizleyip portu yeniden etkinleştir.',
-      ],
-      ['Statik rota eksik', false, "Yerel gateway'e erişim öncesinde port durumu düzeltilmeli."],
-    ],
-    fix: 'clear port-security',
-    verify: 'ping 192.168.1.1',
-    solved: (c) => c.portSecurityViolation === false,
+    topic: 'Port security',
+    target: 'port-security',
   },
-  {
-    id: 'ospf',
-    title: 'OSPF komşuluğu kurulamıyor',
-    topic: 'Routing · OSPF',
-    level: 'Orta',
-    story:
-      'R1 ile R2 arasında fiziksel bağlantı açık ve IP adresleri aynı bağlantı ağında. Buna rağmen komşuluk kurulmuyor ve 10.20.0.0/24 ağı öğrenilmiyor. OSPF arayüz alanını incele, hatayı düzelt ve rotayı doğrula.',
-    start: { ...BASE, ospfArea: 1, ospfExpectedArea: 0, ospfNeighbor: false },
-    fault:
-      'OSPF arayüzü yanlış area numarasına atanmış; komşular aynı bağlantıda area uyuşmazlığı nedeniyle komşu olamıyor.',
-    hints: [
-      'show ip ospf neighbor ile komşuluk durumunu kontrol et.',
-      'show ip ospf interface çıktısında arayüzün area numarasını incele.',
-      'Bu senaryoda iki uç için beklenen area 0. Alanı düzeltip komşuluğu ve rotayı yeniden kontrol et.',
-    ],
-    options: [
-      ['DNS sunucusu yanlış', false, 'DNS, OSPF komşuluğunun kurulmasını etkilemez.'],
-      [
-        'OSPF area uyuşmazlığı',
-        true,
-        'R1 area 1, karşı uç area 0 kullanıyor; ortak bağlantıdaki area ayarları eşleşmeli.',
-      ],
-      ['Trunk allowed VLAN eksik', false, 'Senaryoda sorun Layer 3 OSPF parametresinde.'],
-    ],
-    fix: 'set ospf-area 0',
-    verify: 'ping 10.20.0.10',
-    solved: (c) => Number(c.ospfArea) === Number(c.ospfExpectedArea) && c.ospfNeighbor === true,
-  },
+  { id: 'ospf', title: 'OSPF komşuluğu kurulamıyor', topic: 'OSPF', target: 'ospf-area' },
   {
     id: 'bgp',
     title: 'BGP komşuluğu kurulu ama prefix ilan edilmiyor',
     topic: 'Routing · BGP',
-    level: 'İleri',
-    story:
-      "BGP oturumu Established durumda; buna rağmen karşı AS, beklenen 203.0.113.0/24 prefix'ini öğrenmiyor. Komşuluk durumunu rota tablosundan ayrı değerlendir, ilan edilen rotaları incele ve prefix ilanını düzelt.",
-    start: { ...BASE, bgpEstablished: true, bgpAdvertised: false },
-    fault: 'BGP komşuluğu çalışıyor ancak beklenen prefix ilan edilmemiş.',
-    hints: [
-      'show ip bgp ile yerel BGP tablosunda prefix olup olmadığını kontrol et.',
-      'show ip bgp neighbors advertised-routes çıktısı karşı komşuya ilan edilen rotaları gösterir.',
-      'Established yalnızca BGP oturumunun kurulduğunu gösterir; prefix ilan edildiğini kanıtlamaz.',
-    ],
-    options: [
-      [
-        'BGP TCP oturumu kapalı',
-        false,
-        'Oturum Established; sorun oturumun kurulmasından sonraki rota ilanı aşamasında.',
+    concept: {
+      story:
+        "BGP oturumu Established durumda; buna rağmen karşı AS, beklenen 203.0.113.0/24 prefix'ini öğrenmiyor. Komşuluk durumunu rota tablosundan ayrı değerlendir.",
+      evidence: [
+        'show ip bgp summary → komşu Established, alınan/gönderilen prefix sayısı',
+        'show ip bgp → 203.0.113.0/24 yerel BGP tablosunda yok',
+        'show ip bgp neighbors <komşu> advertised-routes → ilan listesi boş',
       ],
-      [
-        'Prefix ilan edilmiyor',
-        true,
-        'Komşuluk kurulmuş ancak 203.0.113.0/24 ilan listesinde yok.',
+      options: [
+        [
+          'BGP TCP oturumu kapalı',
+          false,
+          'Oturum Established; sorun oturumdan sonraki rota ilanı aşamasında.',
+        ],
+        [
+          'Prefix ilan edilmiyor',
+          true,
+          'Komşuluk kurulmuş ama 203.0.113.0/24 ilan listesinde yok: router bgp altında network 203.0.113.0 mask 255.255.255.0 eksik (ve prefix rota tablosunda olmalı).',
+        ],
+        [
+          'İstemci DNS ayarı yanlış',
+          false,
+          'Sorun BGP kontrol düzlemi ve prefix duyurusu ile ilgili.',
+        ],
       ],
-      [
-        'İstemci DNS ayarı yanlış',
-        false,
-        'Sorun BGP kontrol düzlemi ve prefix duyurusu ile ilgili.',
-      ],
-    ],
-    fix: 'set bgp-advertise on',
-    verify: 'ping 203.0.113.10',
-    solved: (c) => c.bgpEstablished === true && c.bgpAdvertised === true,
+    },
   },
   {
     id: 'returnroute',
     title: 'Gidiş rotası var, dönüş rotası eksik',
-    topic: 'Routing · Asimetrik erişim',
-    level: 'İleri',
-    story:
-      'R1, 10.20.0.0/24 ağına giden rotaya sahip. Uzak sunucuya yönelik istek karşı ağa ulaşıyor gibi görünse de ping yanıtı geri dönemiyor. Gidiş ve dönüş yönlerini ayrı ayrı incele; uzak taraftaki dönüş rotasını düzeltip testi yeniden çalıştır.',
-    start: { ...BASE, returnRoute: false },
-    fault:
-      'Uzak router üzerinde 192.168.1.0/24 kaynak ağına dönüş rotası yok. Gidiş rotası tek başına uçtan uca iletişim için yeterli değildir.',
-    hints: [
-      "show route ile R1'in hedef ağa giden rotasının bulunduğunu doğrula.",
-      "İstek hedefe ulaşsa bile yanıtın kaynak ağa dönebilmesi gerekir; uzak router'ın 192.168.1.0/24 için rotasını kontrol et.",
-      "Simülasyonda uzak router'a dönüş rotası ekle, ardından ping 10.20.0.10 komutunu tekrar çalıştır.",
-    ],
-    options: [
-      ['DNS sunucusu yanlış', false, 'IP adresine ping atıldığı için DNS bu sorunu açıklamaz.'],
-      ['Gidiş rotası yok', false, "R1'in hedef ağ için gidiş rotası mevcut; sorun yanıt yolunda."],
-      [
-        'Uzak ağda kaynak ağa dönüş rotası eksik',
-        true,
-        'Uzak router, 192.168.1.0/24 ağına dönüş yolunu bilmiyor. İki yönlü yönlendirmeyi doğrula.',
-      ],
-    ],
-    fix: 'Ortak motor: ip route 192.168.1.0 255.255.255.0 10.0.0.1',
-    verify: 'ping 10.20.0.10',
-    solved: () => false,
+    topic: 'Statik rota',
+    target: 'return-route',
   },
   {
     id: 'lpm',
     title: 'Daha spesifik rota yanlış next-hop seçiyor',
-    topic: 'Routing · Longest Prefix Match',
-    level: 'İleri',
-    story:
-      "Router tablosunda 10.20.0.0/16 için çalışan bir rota var; ancak 10.20.0.0/24 için daha spesifik bir rota yanlış next-hop'a işaret ediyor. 10.20.0.10 hedefine erişim başarısız. Router'ın en uzun prefix eşleşmesi kuralını kullanarak hangi rotayı seçtiğini kanıtla ve yanlış spesifik rotayı kaldır.",
-    start: { ...BASE, lpmFixed: false },
-    fault:
-      '10.20.0.0/24 rotası, 10.20.0.0/16 rotasından daha spesifiktir ve next-hop yanlış yola yönlendirse bile tercih edilir. Bu senaryoda next-hop yerel olarak erişilebilir ancak hedef ağa doğru yönlendirme yapmaz. Yanlış /24 rotası kaldırılınca çalışan /16 rotası kullanılır.',
-    hints: [
-      'show route ile hedefi kapsayan iki rotayı ve prefix uzunluklarını karşılaştır.',
-      "10.20.0.10 hem 10.20.0.0/24 hem 10.20.0.0/16 aralığına uyar; en uzun prefix /24'tür.",
-      'Simülatörde yanlış 10.20.0.0/24 rotasını kaldır, ardından aynı hedefe ping at.',
-    ],
-    options: [
-      ['DNS çözümleme hatası', false, 'Hedef IP ile test yapılıyor; DNS bu sorunun nedeni değil.'],
-      [
-        "Daha spesifik /24 rotası yanlış next-hop'a işaret ediyor",
-        true,
-        "Router /16 yerine /24 rotasını seçer. /24 yanlış next-hop'a gittiğinden trafik başarısız olur.",
-      ],
-      [
-        "/16 rotası her zaman /24'ten önce seçilir",
-        false,
-        'Longest Prefix Match kuralında daha uzun prefix seçilir; administrative distance ancak uygun rotaların seçimi bağlamında değerlendirilir.',
-      ],
-    ],
-    fix: 'Ortak motor: no ip route 10.20.0.0 255.255.255.0 192.168.1.254',
-    verify: 'ping 10.20.0.10',
-    solved: () => false,
+    topic: 'En uzun önek',
+    target: 'lpm-next-hop',
   },
   {
     id: 'routechoice',
     title: 'Administrative Distance: yedek statik rota',
-    topic: 'Routing · Administrative Distance',
-    level: 'İleri',
-    story:
-      'R1 üzerinde hedef prefix için AD 1 olan statik rota var ancak next-hop çözümlenemiyor. Daha yüksek AD değerli bir yedek rota ekleyerek motorun kullanılabilir rotayı seçmesini sağla ve ping ile doğrula.',
-    start: { ...BASE, routeChoiceFixed: false },
-    fault:
-      "Birincil statik rotanın next-hop'u çözümlenemiyor. Kullanılabilir AD 5 yedek statik rota eklenene kadar hedefe erişim başarısız.",
-    hints: [
-      'show ip route 10.20.0.10 ile hedef için seçilen rotayı ve next-hop çözümlemesini incele.',
-      'AD değeri tek başına yeterli değildir: next-hop da çözümlenebilir olmalıdır.',
-      "R1 üzerinde ip route 10.20.0.0 255.255.255.0 10.0.0.2 5 komutunu ekle ve PC-01'den ping'i tekrar çalıştır.",
-    ],
-    options: [
-      [
-        'Yalnızca DNS sunucusunu değiştirmek',
-        false,
-        'Hedef IP ile test yapılıyor; DNS bu yönlendirme arızasını çözmez.',
-      ],
-      [
-        'Çözümlenebilir next-hop kullanan AD 5 yedek statik rota eklemek',
-        true,
-        'Birincil rota kullanılamıyorsa motor yedek rotayı değerlendirebilir.',
-      ],
-      [
-        'AD değerini 255 yapmak',
-        false,
-        "AD'yi artırmak next-hop çözümleme sorununu kendi başına gidermez.",
-      ],
-    ],
-    fix: '',
-    verify: 'ping 10.20.0.10',
-    solved: () => false,
+    topic: 'Yönetimsel uzaklık',
+    target: 'floating-static',
   },
 ];
-let cur = 0,
-  level = 0,
-  hintUsed = 0,
-  diagnosed = false,
-  diagnosisCorrect = false,
-  passed = (function () {
-    const done = {};
-    try {
-      const ids = JSON.parse(localStorage.getItem('aglab-passed-final') || '[]');
-      if (Array.isArray(ids))
-        scenarios.forEach((s, i) => {
-          if (ids.includes(s.id)) done[i] = true;
-        });
-    } catch (e) {}
-    return done;
-  })(),
-  state = {};
-function persistScenarioProgress() {
-  try {
-    localStorage.setItem(
-      'aglab-passed-final',
-      JSON.stringify(scenarios.filter((s, i) => passed[i]).map((s) => s.id)),
-    );
-  } catch (e) {}
-}
+const CONCEPT_BADGE = 'Kavramsal alıştırma (motor yok)';
+let cur = -1;
 const $ = (id) => document.getElementById(id);
 const clone = (o) => JSON.parse(JSON.stringify(o));
-function current() {
-  return scenarios[cur];
+function troubleshootPassed() {
+  // Eski görev kimlikleri (kayıtlı ilerleme) + Labber karşılığı tamamlanmış görevler
+  const done = new Set();
+  try {
+    const ids = JSON.parse(localStorage.getItem('aglab-passed-final') || '[]');
+    if (Array.isArray(ids)) ids.forEach((id) => done.add(id));
+    const shared = JSON.parse(localStorage.getItem('aglab-shared-engine-progress-v1') || '{}');
+    for (const t of TROUBLESHOOT_TASKS)
+      if (t.target && shared?.[t.target]?.completed) done.add(t.id);
+  } catch (e) {}
+  return done;
 }
-function resetState() {
-  state[cur] = clone(current().start);
-  hintUsed = 0;
-  diagnosed = false;
-  diagnosisCorrect = false;
-  $('hints').innerHTML = '';
-  $('hintCount').textContent = '0 / 3';
-  $('diagnosis').innerHTML = '';
-  $('nextBtn').disabled = !passed[cur];
-  $('fixText').textContent = 'Sorunu düzelttikten sonra ilgili komutla yeniden test et.';
+function persistConceptProgress(id) {
+  try {
+    const ids = JSON.parse(localStorage.getItem('aglab-passed-final') || '[]');
+    if (Array.isArray(ids) && !ids.includes(id))
+      localStorage.setItem('aglab-passed-final', JSON.stringify([...ids, id]));
+  } catch (e) {}
 }
 function renderList() {
-  $('countText').textContent = scenarios.length + ' görev';
-  $('scenarioList').innerHTML = scenarios
-    .map(
-      (s, i) =>
-        `<button class="scenario ${i === cur ? 'selected' : ''} ${passed[i] ? 'done' : ''}" data-s="${i}"><span class="snum">${passed[i] ? '✓' : String(i + 1).padStart(2, '0')}</span><span><strong>${s.title}</strong><small>${s.topic}${['route', 'returnroute', 'lpm', 'routechoice', 'vlan', 'trunk', 'native'].includes(s.id) ? ' · Ortak motor' : ''}</small></span></button>`,
-    )
-    .join('');
-  $('progressText').textContent =
-    `${Object.keys(passed).filter((k) => passed[k]).length} / ${scenarios.length} senaryo tamamlandı`;
-  $('progressBar').style.width =
-    (Object.keys(passed).filter((k) => passed[k]).length / scenarios.length) * 100 + '%';
+  const done = troubleshootPassed();
+  $('countText').textContent = TROUBLESHOOT_TASKS.length + ' görev';
+  $('scenarioList').innerHTML = TROUBLESHOOT_TASKS.map(
+    (s, i) =>
+      `<button class="scenario ${i === cur ? 'selected' : ''} ${done.has(s.id) ? 'done' : ''}" data-s="${i}"><span class="snum">${done.has(s.id) ? '✓' : String(i + 1).padStart(2, '0')}</span><span><strong>${s.title}</strong><small>${s.topic} · ${s.target ? 'Labber' : CONCEPT_BADGE}</small></span></button>`,
+  ).join('');
+  const n = TROUBLESHOOT_TASKS.filter((t) => done.has(t.id)).length;
+  $('progressText').textContent = `${n} / ${TROUBLESHOOT_TASKS.length} senaryo tamamlandı`;
+  $('progressBar').style.width = (n / TROUBLESHOOT_TASKS.length) * 100 + '%';
 }
-function renderOptions() {
-  $('options').innerHTML = current()
-    .options.map(
-      (o, i) =>
-        `<button class="option" data-o="${i}">${String.fromCharCode(65 + i)}. ${o[0]}</button>`,
-    )
-    .join('');
+function renderConcept(task) {
+  const c = task.concept;
+  $('mission').innerHTML =
+    `<div class="mission-top"><span class="tag" id="conceptBadge">${CONCEPT_BADGE.toUpperCase()}</span><span class="difficulty">${task.topic}</span></div><h3>${task.title}</h3><p>${c.story}</p>` +
+    '<p><b>Verilen kanıt (canlı ağdan değil; BGP Labber motorunda modellenmez):</b></p><ul>' +
+    c.evidence.map((x) => '<li><code>' + x.replace(/</g, '&lt;') + '</code></li>').join('') +
+    '</ul><h3>Teşhis koy</h3><div class="options" id="options">' +
+    c.options
+      .map(
+        (o, i) =>
+          `<button class="option" data-o="${i}">${String.fromCharCode(65 + i)}. ${o[0]}</button>`,
+      )
+      .join('') +
+    '</div><div id="diagnosis" class="diagnose-result" role="status"></div>';
+  $('options').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-o]');
+    if (!b) return;
+    const o = c.options[+b.dataset.o];
+    $('diagnosis').innerHTML =
+      `<div class="feedback ${o[1] ? 'good' : 'bad'}"><b>${o[1] ? 'Teşhis doğru.' : 'Bu teşhis kanıtla uyuşmuyor.'}</b><br>${o[2]}</div>`;
+    if (o[1]) {
+      persistConceptProgress(task.id);
+      renderList();
+    }
+  });
 }
 function load(i) {
-  const requested = scenarios[i];
-  const sharedTarget = {
-    subif: 'subif-missing',
-    portsec: 'port-security',
-    ospf: 'ospf-area',
-    bgp: 'bgp-as',
-  }[requested?.id];
-  if (sharedTarget) {
-    showArea('lab');
-    const sel = document.getElementById('sharedScenarioSelect');
-    sel.value = sharedTarget;
-    document.getElementById('sharedScenarioLoad').click();
-    document.getElementById('sharedScenarioPanel').scrollIntoView({ block: 'start' });
-    return;
-  }
-  // v43 migration: these routing tasks now run on the topology editor's shared routing + ping engine.
-  // Do not execute the old flag-based mini-simulation for them.
-  if (requested && requested.id === 'route') {
-    showArea('lab');
-    const sel = document.getElementById('sharedScenarioSelect');
-    const btn = document.getElementById('sharedScenarioLoad');
-    if (sel && btn) {
-      sel.value = 'forward-route';
-      btn.click();
-      document
-        .getElementById('sharedScenarioPanel')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    return;
-  }
-  if (requested && requested.id === 'lpm') {
-    showArea('lab');
-    const sel = document.getElementById('sharedScenarioSelect');
-    const btn = document.getElementById('sharedScenarioLoad');
-    if (sel && btn) {
-      sel.value = 'lpm-next-hop';
-      btn.click();
-      document
-        .getElementById('sharedScenarioPanel')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    return;
-  }
-  if (requested && requested.id === 'routechoice') {
-    showArea('lab');
-    const sel = document.getElementById('sharedScenarioSelect');
-    const btn = document.getElementById('sharedScenarioLoad');
-    if (sel && btn) {
-      sel.value = 'floating-static';
-      btn.click();
-      document
-        .getElementById('sharedScenarioPanel')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    return;
-  }
-  if (requested && requested.id === 'returnroute') {
-    showArea('lab');
-    const sel = document.getElementById('sharedScenarioSelect');
-    const btn = document.getElementById('sharedScenarioLoad');
-    if (sel && btn) {
-      sel.value = 'return-route';
-      btn.click();
-      document
-        .getElementById('sharedScenarioPanel')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    return;
-  }
-  if (requested && requested.id === 'vlan') {
-    showArea('lab');
-    const sel = document.getElementById('sharedScenarioSelect');
-    const btn = document.getElementById('sharedScenarioLoad');
-    if (sel && btn) {
-      sel.value = 'access-vlan';
-      btn.click();
-      document
-        .getElementById('sharedScenarioPanel')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    return;
-  }
-  if (requested && requested.id === 'trunk') {
-    showArea('lab');
-    const sel = document.getElementById('sharedScenarioSelect');
-    const btn = document.getElementById('sharedScenarioLoad');
-    if (sel && btn) {
-      sel.value = 'trunk-allowed';
-      btn.click();
-      document
-        .getElementById('sharedScenarioPanel')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    return;
-  }
-  if (requested && requested.id === 'native') {
-    showArea('lab');
-    const sel = document.getElementById('sharedScenarioSelect');
-    const btn = document.getElementById('sharedScenarioLoad');
-    if (sel && btn) {
-      sel.value = 'native-vlan';
-      btn.click();
-      document
-        .getElementById('sharedScenarioPanel')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    return;
-  }
+  const task = TROUBLESHOOT_TASKS[i];
+  if (!task) return;
   cur = i;
-  resetState();
   renderList();
-  renderOptions();
-  const s = current();
-  $('mission').innerHTML =
-    `<div class="mission-top"><span class="tag">GÖREV ${String(i + 1).padStart(2, '0')} · ${s.topic.toUpperCase()}</span><span class="difficulty">${s.level}</span></div><h3>${s.title}</h3><p>${s.story}</p>`;
-  $('pcIp').textContent = state[cur].ip;
-  $('gwIp').textContent = state[cur].gateway;
-  $('topoStatus').textContent =
-    state[cur].link === false
-      ? 'PC arayüzü down'
-      : s.id === 'gateway'
-        ? 'Gateway yapılandırmasını doğrula'
-        : 'Belirtileri komutlarla incele';
-  $('l1').setAttribute('class', 'link ' + (state[cur].link === false ? 'bad' : 'ok'));
-  $('l2').setAttribute('class', 'link ' + (s.id === 'gateway' ? 'bad' : 'ok'));
-  $('l3').setAttribute('class', 'link ' + (['dns', 'service'].includes(s.id) ? 'bad' : 'ok'));
-  updateTopo();
-  $('terminal').innerHTML = '';
-  say([
-    'AğLab terminali hazır. Komutları görmek için help yaz.',
-    'Görev: Sorunu komutlarla teşhis et, düzelt ve sonucu doğrula.',
-  ]);
-  $('command').value = '';
-  $('command').focus();
-  $('nextBtn').disabled = !passed[cur];
+  if (task.concept) {
+    renderConcept(task);
+    return;
+  }
+  // Labber karşılığı: ortak senaryo panelinde aç (çözüm ve değerlendirme Labber motorunda)
+  showArea('lab');
+  const sel = document.getElementById('sharedScenarioSelect');
+  sel.value = task.target;
+  document.getElementById('sharedScenarioLoad').click();
+  document.getElementById('sharedScenarioPanel').scrollIntoView({ block: 'start' });
 }
-function say(lines, kind = '') {
-  const t = $('terminal');
-  for (const line of lines) {
-    const d = document.createElement('div');
-    d.className = 'line ' + kind;
-    d.textContent = line;
-    t.appendChild(d);
-  }
-  t.scrollTop = t.scrollHeight;
-}
-function ipvalid(ip) {
-  return /^\d{1,3}(\.\d{1,3}){3}$/.test(ip) && ip.split('.').every((n) => +n >= 0 && +n <= 255);
-}
-function ping(target) {
-  const s = current(),
-    c = state[cur];
-  if (!c.link) return [`Ping ${target}: genel hata. Ethernet bağlantısı kapalı.`];
-  if (s.id === 'gateway') {
-    if (target === '192.168.1.1')
-      return ['Yanıt: 192.168.1.1 süre<1ms', 'Gönderilen=4, alınan=4, kayıp=0 (%0)'];
-    if (target === '192.168.1.254')
-      return ['Hedef ana bilgisayara ulaşılamıyor.', 'Gönderilen=4, alınan=0, kayıp=4 (%100)'];
-    return c.gateway === '192.168.1.1'
-      ? ['Yanıt: ' + target + ' süre=14ms', 'Gönderilen=4, alınan=4, kayıp=0 (%0)']
-      : ['Hedef ana bilgisayara ulaşılamıyor.', 'Gönderilen=4, alınan=0, kayıp=4 (%100)'];
-  }
-  if (s.id === 'dns' && target === '10.0.0.53')
-    return ['İstek zaman aşımına uğradı.', 'Gönderilen=4, alınan=0, kayıp=4 (%100)'];
-  if (s.id === 'duplicate' && target === '192.168.1.1' && c.ip === '192.168.1.20')
-    return [
-      'Yanıt: 192.168.1.1 süre=2ms',
-      'İstek zaman aşımına uğradı.',
-      'Yanıt: 192.168.1.1 süre=3ms',
-      'İstek zaman aşımına uğradı.',
-      'Gönderilen=4, alınan=2, kayıp=2 (%50)',
-    ];
-  if (s.id === 'mask' && target === '192.168.1.30' && c.mask !== '255.255.255.0')
-    return ['Hedef ana bilgisayara ulaşılamıyor.', 'Gönderilen=4, alınan=0, kayıp=4 (%100)'];
-  if (s.id === 'wrongip' && target === '192.168.1.1' && c.ip !== '192.168.1.30')
-    return ['Hedef ana bilgisayara ulaşılamıyor.', 'Gönderilen=4, alınan=0, kayıp=4 (%100)'];
-  if (s.id === 'dhcp' && !c.dhcp)
-    return ['169.254.x.x adresiyle hedefe erişilemiyor.', 'Gönderilen=4, alınan=0, kayıp=4 (%100)'];
-  if (s.id === 'vlan' && target === '192.168.1.1' && Number(c.accessVlan) !== 10)
-    return [
-      "Hedef ana bilgisayara ulaşılamıyor: PC portu VLAN 10'da değil.",
-      'Gönderilen=4, alınan=0, kayıp=4 (%100)',
-    ];
-  if (
-    s.id === 'trunk' &&
-    target === '192.168.1.11' &&
-    !String(c.trunkAllowed || '')
-      .split(',')
-      .map((x) => x.trim())
-      .includes('10')
-  )
-    return [
-      'Uzak hedefe ulaşılamıyor: VLAN 10 trunk allowed listesinde yok.',
-      'Gönderilen=4, alınan=0, kayıp=4 (%100)',
-    ];
-  if (s.id === 'subif' && target === '192.168.20.10' && !c.routerSubif)
-    return [
-      'Hedef ağa erişilemiyor: VLAN 20 için router alt arayüzü etkin değil.',
-      'Gönderilen=4, alınan=0, kayıp=4 (%100)',
-    ];
-  if (s.id === 'route' && target === '10.20.0.10' && !c.route)
-    return [
-      'Hedef ağa erişilemiyor: 10.20.0.0/24 için rota bulunamadı.',
-      'Gönderilen=4, alınan=0, kayıp=4 (%100)',
-    ];
-  if (s.id === 'returnroute' && target === '10.20.0.10' && !c.returnRoute)
-    return [
-      'Echo Request R1 → R2: hedef ağa ulaştı.',
-      'Echo Reply R2 → 192.168.1.20: başarısız; 192.168.1.0/24 için dönüş rotası yok.',
-      'Gönderilen=4, alınan=0, kayıp=4 (%100)',
-    ];
-  if (s.id === 'lpm' && target === '10.20.0.10' && !c.lpmFixed)
-    return [
-      'Route lookup: 10.20.0.0/24 via 192.168.1.254 seçildi (en uzun prefix eşleşmesi).',
-      'Next-hop 192.168.1.254 yerel olarak erişilebilir ancak hedef ağı doğru yönlendirmiyor; paket kayboldu.',
-      'Gönderilen=4, alınan=0, kayıp=4 (%100)',
-    ];
-  if (s.id === 'lpm' && target === '10.20.0.10' && c.lpmFixed)
-    return [
-      'Route lookup: 10.20.0.0/16 via 192.168.1.2 seçildi.',
-      'Yanıt: 10.20.0.10 süre=14ms',
-      'Gönderilen=4, alınan=4, kayıp=0 (%0)',
-    ];
-  if (s.id === 'routechoice' && target === '10.30.0.10' && !c.routeChoiceFixed)
-    return [
-      'Route lookup: 10.30.0.0/24 via 192.168.1.254 seçildi (Static, AD 1).',
-      "OSPF alternatifi: 10.30.0.0/24 via 192.168.1.2 [110/20] mevcut ancak RIB'e kurulmamış.",
-      'Statik next-hop hedefe doğru yönlendirmiyor.',
-      'Gönderilen=4, alınan=0, kayıp=4 (%100)',
-    ];
-  if (s.id === 'routechoice' && target === '10.30.0.10' && c.routeChoiceFixed)
-    return [
-      'Route lookup: 10.30.0.0/24 via 192.168.1.2 seçildi (OSPF, AD 110).',
-      'Yanıt: 10.30.0.10 süre=15ms',
-      'Gönderilen=4, alınan=4, kayıp=0 (%0)',
-    ];
-  if (s.id === 'ospf' && target === '10.20.0.10' && !c.ospfNeighbor)
-    return [
-      'Hedef ağa erişilemiyor: OSPF komşuluğu kurulmamış ve 10.20.0.0/24 rotası öğrenilmemiş.',
-      'Gönderilen=4, alınan=0, kayıp=4 (%100)',
-    ];
-  if (s.id === 'bgp' && target === '203.0.113.10' && !c.bgpAdvertised)
-    return [
-      'Hedef ağa erişilemiyor: BGP komşuluğu Established ancak 203.0.113.0/24 ilan edilmemiş.',
-      'Gönderilen=4, alınan=0, kayıp=4 (%100)',
-    ];
-  return [
-    'Yanıt: ' + target + ' süre=' + (target === '192.168.1.1' ? '1' : '14') + 'ms',
-    'Gönderilen=4, alınan=4, kayıp=0 (%0)',
-  ];
-}
-function execute(raw) {
-  const cmd = raw.trim();
-  if (!cmd) return;
-  say(['PC-01> ' + cmd], 'cmd');
-  const p = cmd.split(/\s+/),
-    a = p[0].toLowerCase(),
-    arg = p.slice(1).join(' '),
-    c = state[cur],
-    s = current();
-  if (a === 'help') {
-    say([
-      'Tanılama: ipconfig, ping <IP>, nslookup <alan adı>, arp -a',
-      'Ek: show interface, show route, test http <IP>',
-      'Düzeltme: set ip|mask|gateway|dns <IP>',
-      'DHCP: set dhcp on | Arayüz: interface up',
-      'Switching: VLAN ve trunk senaryolarını Lab bölümündeki ortak motor ve IOS-benzeri switchport komutlarıyla çöz',
-      'Routing: show ip interface brief, show route, set router-subif on, set route on, show ip ospf neighbor, show ip ospf interface, set ospf-area 0, show ip bgp, show ip bgp neighbors advertised-routes, set bgp-advertise on\nEk switching/DHCP: set native-vlan <id>, set dhcp-relay on, set trunk-allowed 10,20, ipconfig /renew',
-      'Güvenlik: show access-lists | set acl permit-http | show port-security | clear port-security\nNAT: show ip nat translations | set nat on\nServis: service http on | clear',
-    ]);
-    return;
-  }
-  if ((a === 'clear' && !p[1]) || a === 'cls') {
-    $('terminal').innerHTML = '';
-    return;
-  }
-  if (a === 'ipconfig' && p[1] === '/renew') {
-    if (s.id === 'relay' || s.id === 'relay-trunk') {
-      if (!c.link) {
-        say(
-          [
-            'DHCP Discover gönderilemedi: istemci bağlantısı kapalı.',
-            'Ethernet bağlantısını düzeltmeden DHCP yenilemesi yapılamaz; mevcut APIPA adresi korunuyor.',
-          ],
-          'error',
-        );
-        return;
-      }
-      if (!c.dhcpRelay) {
-        say(
-          [
-            'DHCP Discover gönderildi; farklı ağdaki sunucuya relay yok.',
-            'DHCP isteği zaman aşımına uğradı; APIPA adresi korunuyor.',
-          ],
-          'error',
-        );
-        return;
-      }
-      if (
-        s.id === 'relay-trunk' &&
-        !String(c.trunkAllowed || '')
-          .split(',')
-          .map((x) => x.trim())
-          .includes('10')
-      ) {
-        say(
-          [
-            'DHCP Discover istemci VLAN 10 üzerinden gönderilemedi: trunk allowed listesinde VLAN 10 yok.',
-            'DHCP relay etkin olsa da Layer 2 VLAN yolu kapalı; istek sunucuya ulaşmadı.',
-            'DHCP isteği zaman aşımına uğradı; APIPA adresi korunuyor.',
-          ],
-          'error',
-        );
-        return;
-      }
-      c.dhcpRenewed = true;
-      c.dhcp = true;
-      c.ip = '192.168.1.100';
-      c.mask = '255.255.255.0';
-      c.gateway = '192.168.1.1';
-      c.dns = '8.8.8.8';
-      say(
-        [
-          'DHCP Discover → Router relay → DHCP Server',
-          'DHCPOFFER alındı: 192.168.1.100/24',
-          'DHCPACK alındı: gateway 192.168.1.1, DNS 8.8.8.8',
-        ],
-        'good',
-      );
-      updateTopo();
-      checkSolved();
-      return;
-    }
-    say(['DHCP yenileme simülasyonu yalnızca ilgili DHCP senaryosunda etkin.'], 'warn');
-    return;
-  }
-  if (a === 'ipconfig') {
-    say([
-      'Ethernet bağdaştırıcısı:',
-      '   IPv4 Adresi . . . . . : ' + c.ip,
-      '   Alt Ağ Maskesi . . . : ' + c.mask,
-      '   Varsayılan Ağ Geçidi . : ' + c.gateway,
-      '   DNS Sunucusu . . . . . : ' + c.dns,
-      '   DHCP etkin . . . . . . : ' + (c.dhcp ? 'Evet' : 'Hayır'),
-      '   Medya durumu . . . . . : ' + (c.link ? 'Bağlı' : 'Bağlantı kesildi'),
-    ]);
-    return;
-  }
-  if (a === 'ping') {
-    if (!arg) {
-      say(['Kullanım: ping <IP>'], 'warn');
-      return;
-    }
-    if (s.id === 'unknown' && arg === '192.168.1.11') {
-      c.unknownPing = true;
-      say(
-        [
-          'ARP: 192.168.1.11 için who-has broadcast gönderiliyor.',
-          "SW-01: hedef MAC bilinmiyor; unknown-unicast flood yalnızca aynı VLAN'daki uygun portlara.",
-          "PC-02 yanıt verdi; switch yanıtın kaynak MAC'ini geldiği portta öğrendi.",
-          'Ping başarılı: 4 gönderildi, 4 alındı, %0 kayıp.',
-        ],
-        'good',
-      );
-      updateTopo();
-      checkSolved();
-      return;
-    }
-    if (
-      s.id === 'native' &&
-      arg === '192.168.1.11' &&
-      Number(c.nativeVlan) !== Number(c.peerNativeVlan)
-    ) {
-      say(
-        [
-          'Ping başarısız: trunk native VLAN uyuşmazlığı.',
-          'Yerel native VLAN: ' + c.nativeVlan + '; karşı uç native VLAN: ' + c.peerNativeVlan,
-        ],
-        'error',
-      );
-      return;
-    }
-    if ((s.id === 'relay' || s.id === 'relay-trunk') && arg === '192.168.1.1' && !c.dhcpRenewed) {
-      say(
-        [
-          'Ping başarısız: istemci geçerli IP/gateway almamış.',
-          'Önce DHCP relay ve ipconfig /renew adımlarını kontrol et.',
-        ],
-        'error',
-      );
-      return;
-    }
-    if (s.id === 'mac' && arg === '192.168.1.1') {
-      c.traffic = true;
-      say(
-        [
-          'ARP: 192.168.1.1 için who-has isteği gönderiliyor (broadcast).',
-          'Gateway ARP yanıtı: 192.168.1.1 → a4-2b-b0-11-22-33',
-          'ICMP Echo Request gönderildi; Echo Reply alındı.',
-          'Switch kaynak MAC 001a.2b3c.4d5e adresini Ethernet0/1 portunda öğrendi.',
-        ],
-        'good',
-      );
-      updateTopo();
-      checkSolved();
-      return;
-    }
-    if (s.id === 'nat' && arg === '8.8.8.8' && !c.natEnabled) {
-      say(
-        [
-          'Gateway 192.168.1.1 yanıt veriyor.',
-          '8.8.8.8 için yanıt yok: NAT/PAT çevirisi bulunamadı.',
-          'Gönderilen=4, alınan=0, kayıp=4 (%100)',
-        ],
-        'error',
-      );
-      return;
-    }
-    say(ping(arg), arg.includes('0.0.0.0') ? 'error' : '');
-    checkSolved();
-    return;
-  }
-  if (a === 'nslookup') {
-    if (s.id === 'dns' && c.dns !== '8.8.8.8' && c.dns !== '1.1.1.1')
-      say(['DNS isteği zaman aşımına uğradı.', 'Sunucu: ' + c.dns + ' yanıt vermiyor.'], 'error');
-    else if (!c.link || (s.id === 'dhcp' && !c.dhcp))
-      say(['DNS isteği başarısız: istemci ağ bağlantısını doğrula.'], 'error');
-    else
-      say(
-        [
-          'Sunucu: ' + c.dns,
-          'Address: ' + c.dns,
-          'Ad: ' + (arg || 'example.com'),
-          'Address: 93.184.216.34',
-        ],
-        'good',
-      );
-    return;
-  }
-  if (a === 'arp' && p[1] === '-a') {
-    if (s.id === 'mac') {
-      if (!c.traffic)
-        say(['Arayüz: ' + c.ip, 'ARP tablosu boş. Henüz gateway ile iletişim kurulmadı.'], 'warn');
-      else {
-        say(
-          [
-            'Arayüz: ' + c.ip,
-            '  İnternet Adresi   Fiziksel Adres',
-            '  192.168.1.1       a4-2b-b0-11-22-33  dynamic',
-          ],
-          'good',
-        );
-        c.arpViewed = true;
-        checkSolved();
-      }
-      return;
-    }
-    if (s.id === 'unknown') {
-      say(
-        [
-          'Arayüz: ' + c.ip,
-          '  İnternet Adresi   Fiziksel Adres',
-          '  192.168.1.1       a4-2b-b0-11-22-33  dynamic',
-          'Not: ARP IP→MAC eşlemesidir; switch MAC tablosuyla aynı tablo değildir.',
-        ],
-        'good',
-      );
-      return;
-    }
-    if (s.id === 'duplicate' && c.ip === '192.168.1.20')
-      say(
-        [
-          'Arayüz: ' + c.ip,
-          '  İnternet Adresi   Fiziksel Adres',
-          '  192.168.1.1       a4-2b-b0-11-22-33',
-          '  192.168.1.20      00-1a-2b-3c-4d-5e',
-          '  192.168.1.20      00-1a-2b-99-88-77',
-          'UYARI: Aynı IP için iki MAC yanıt verdi.',
-        ],
-        'warn',
-      );
-    else
-      say(
-        [
-          'Arayüz: ' + c.ip,
-          '  İnternet Adresi   Fiziksel Adres',
-          '  192.168.1.1       a4-2b-b0-11-22-33',
-          '  192.168.1.255     ff-ff-ff-ff-ff-ff',
-        ],
-        'good',
-      );
-    return;
-  }
-  if (a === 'show' && p[1] === 'interface') {
-    say([
-      'Interface Ethernet0/0',
-      '  Status: ' + (c.link ? 'up' : 'administratively down'),
-      '  IPv4: ' + c.ip + '/' + (c.mask === '255.255.255.0' ? '24' : '16'),
-    ]);
-    return;
-  }
-  if (a === 'show' && p[1] === 'route' && s.id === 'lpm') {
-    say(
-      [
-        'IPv4 Route Table',
-        'S 10.20.0.0/16 via 192.168.1.2 [1/0]',
-        '' +
-          (c.lpmFixed
-            ? '! Yanlış daha spesifik rota kaldırıldı'
-            : 'S 10.20.0.0/24 via 192.168.1.254 [1/0]  ← longest prefix match'),
-        'Lookup 10.20.0.10: ' +
-          (c.lpmFixed ? '10.20.0.0/16 via 192.168.1.2' : '10.20.0.0/24 via 192.168.1.254'),
-      ],
-      c.lpmFixed ? 'good' : 'error',
-    );
-    return;
-  }
-  if (a === 'show' && p[1] === 'route' && s.id === 'routechoice') {
-    say(
-      [
-        'IPv4 Route Table · 10.30.0.10 için lookup',
-        ...(c.routeChoiceFixed
-          ? [
-              'O 10.30.0.0/24 [110/20] via 192.168.1.2',
-              'Statik rota kaldırıldı; OSPF rotası kuruldu.',
-            ]
-          : [
-              'S 10.30.0.0/24 [1/0] via 192.168.1.254  ← seçilen rota',
-              'O 10.30.0.0/24 [110/20] via 192.168.1.2  ← OSPF alternatifi',
-              "Aynı prefix: daha düşük AD'li statik rota seçiliyor.",
-            ]),
-      ],
-      c.routeChoiceFixed ? 'good' : 'error',
-    );
-    return;
-  }
-  if (a === 'show' && p[1] === 'route' && s.id === 'returnroute') {
-    say(
-      [
-        'R1 IPv4 Route Table',
-        'C 192.168.1.0/24 is directly connected, Gi0/0',
-        'S 10.20.0.0/24 via 192.168.1.2',
-        'R2 IPv4 Route Table',
-        'C 10.20.0.0/24 is directly connected, Gi0/1',
-        ...(c.returnRoute
-          ? ['S 192.168.1.0/24 via 10.20.0.1']
-          : [
-              '% 192.168.1.0/24 için eşleşen rota yok',
-              'Uzak router Echo Reply için kaynak ağa dönüş yolu bulamıyor.',
-            ]),
-      ],
-      c.returnRoute ? 'good' : 'error',
-    );
-    return;
-  }
-  if (a === 'show' && p[1] === 'route') {
-    say([
-      'IPv4 Route Table',
-      'C  ' +
-        (c.mask === '255.255.255.0' ? '192.168.1.0/24' : '192.168.0.0/16') +
-        ' is directly connected',
-      'S* 0.0.0.0/0 via ' + c.gateway,
-    ]);
-    return;
-  }
-  if (a === 'show' && p[1] === 'mac' && p[2] === 'address-table') {
-    let vlan = Number(c.accessVlan || 10);
-    if (s.id === 'mac') {
-      if (!c.traffic)
-        say(
-          [
-            '          Mac Address Table',
-            'Vlan    Mac Address       Type       Ports',
-            '----    -----------       --------   -----',
-            '% MAC tablosu boş: switch henüz kaynak çerçeve almadı.',
-          ],
-          'warn',
-        );
-      else {
-        say(
-          [
-            '          Mac Address Table',
-            'Vlan    Mac Address       Type       Ports',
-            '----    -----------       --------   -----',
-            ' 10      001a.2b3c.4d5e    DYNAMIC    Ethernet0/1',
-            ' 10      a42b.b011.2233    DYNAMIC    GigabitEthernet0/1',
-          ],
-          'good',
-        );
-        c.macViewed = true;
-        checkSolved();
-      }
-      return;
-    }
-    if (s.id === 'unknown') {
-      if (!c.unknownPing) {
-        say(
-          [
-            '          Mac Address Table',
-            'Vlan    Mac Address       Type       Ports',
-            '----    -----------       --------   -----',
-            ' 10      001a.2b3c.4d5e    DYNAMIC    Ethernet0/1',
-            'Hedef 00aa.bbcc.ddee henüz tabloda yok; bu tek başına arıza değildir.',
-          ],
-          'warn',
-        );
-      } else {
-        say(
-          [
-            '          Mac Address Table',
-            'Vlan    Mac Address       Type       Ports',
-            '----    -----------       --------   -----',
-            ' 10      001a.2b3c.4d5e    DYNAMIC    Ethernet0/1',
-            ' 10      00aa.bbcc.ddee    DYNAMIC    GigabitEthernet0/2',
-            'Yanıt sonrası kaynak MAC öğrenildi.',
-          ],
-          'good',
-        );
-        c.unknownTableViewed = true;
-        checkSolved();
-      }
-      return;
-    }
-    if (s.id === 'vlan' && vlan !== 10)
-      say(
-        [
-          '          Mac Address Table',
-          'Vlan    Mac Address       Type       Ports',
-          '----    -----------       --------   -----',
-          ' 20      001a.2b3c.4d5e    DYNAMIC    Ethernet0/1',
-          "Not: PC VLAN 20'de; gateway VLAN 10 tarafında.",
-        ],
-        'warn',
-      );
-    else if (
-      s.id === 'trunk' &&
-      !String(c.trunkAllowed || '')
-        .split(',')
-        .map((x) => x.trim())
-        .includes('10')
-    )
-      say(
-        [
-          '          Mac Address Table',
-          'Vlan    Mac Address       Type       Ports',
-          '----    -----------       --------   -----',
-          ' 10      001a.2b3c.4d5e    DYNAMIC    Ethernet0/1',
-          'Uyarı: VLAN 10 trunk üzerinden taşınmıyor; uzak MAC öğrenilemiyor.',
-        ],
-        'warn',
-      );
-    else
-      say(
-        [
-          '          Mac Address Table',
-          'Vlan    Mac Address       Type       Ports',
-          '----    -----------       --------   -----',
-          ' 10      001a.2b3c.4d5e    DYNAMIC    Ethernet0/1',
-          ' 10      00aa.bbcc.ddee    DYNAMIC    GigabitEthernet0/1',
-        ],
-        'good',
-      );
-    return;
-  }
-  if ((a === 'trace' || a === 'tracert' || a === 'traceroute') && p[1]) {
-    let target = p[1];
-    say(
-      [
-        'İzleme başlatılıyor: ' + target,
-        '1  PC-01 → SW-01  ' + (c.link ? 'OK' : 'DURDU: Ethernet down'),
-      ],
-      c.link ? 'good' : 'error',
-    );
-    if (!c.link) return;
-    if (s.id === 'vlan' && Number(c.accessVlan) !== 10) {
-      say(['2  SW-01 → R1  DURDU: access VLAN uyumsuz (VLAN ' + c.accessVlan + ')'], 'error');
-      return;
-    }
-    if (
-      s.id === 'trunk' &&
-      !String(c.trunkAllowed || '')
-        .split(',')
-        .map((x) => x.trim())
-        .includes('10')
-    ) {
-      say(['2  SW-01 → SW-02  DURDU: VLAN 10 allowed listesinde yok'], 'error');
-      return;
-    }
-    if (s.id === 'subif' && !c.routerSubif) {
-      say(['2  R1  DURDU: VLAN 20 alt arayüzü eksik'], 'error');
-      return;
-    }
-    if (s.id === 'route' && !c.route) {
-      say(['2  R1  DURDU: 10.20.0.0/24 rotası yok'], 'error');
-      return;
-    }
-    if (s.id === 'ospf' && !c.ospfNeighbor) {
-      say(
-        ['2  R1  DURDU: OSPF neighbor state INIT; area mismatch', '3  Uzak ağ rotası yok'],
-        'error',
-      );
-      return;
-    }
-    if (s.id === 'bgp' && !c.bgpAdvertised) {
-      say(
-        [
-          '2  Edge-R1  BGP state Established',
-          "3  DURDU: 203.0.113.0/24 prefix'i ilan edilen rotalarda yok",
-        ],
-        'error',
-      );
-      return;
-    }
-    if (s.id === 'lpm' && !c.lpmFixed) {
-      say(
-        [
-          '2  R1 route lookup: 10.20.0.0/24 daha spesifik olduğu için seçildi',
-          '3  DURDU: next-hop 192.168.1.254 hedef ağı doğru yönlendirmiyor',
-        ],
-        'error',
-      );
-      return;
-    }
-    if (s.id === 'routechoice' && !c.routeChoiceFixed) {
-      say(
-        [
-          '2  R1 route lookup: Static 10.30.0.0/24 [AD 1] seçildi',
-          "3  DURDU: statik next-hop yanlış; OSPF [AD 110] alternatifi RIB'e kurulmamış",
-        ],
-        'error',
-      );
-      return;
-    }
-    say(
-      [
-        '2  SW-01 → R1  OK',
-        '3  R1 → hedef ağ  OK',
-        'İz tamamlandı. Uçtan uca sonucu ping ile doğrula.',
-      ],
-      'good',
-    );
-    return;
-  }
-  if (a === 'show' && p[1] === 'access-lists') {
-    if (s.id === 'acl' && !c.aclHttp)
-      say(
-        [
-          'Extended IP access list EDGE-FILTER',
-          '10 deny tcp any host 192.168.1.50 eq 80',
-          '20 permit ip any any',
-          'Match count: deny tcp/80 = 18',
-        ],
-        'warn',
-      );
-    else
-      say(
-        [
-          'Extended IP access list EDGE-FILTER',
-          '10 permit tcp any host 192.168.1.50 eq 80',
-          '20 permit ip any any',
-          'HTTP rule permits TCP/80',
-        ],
-        'good',
-      );
-    return;
-  }
-  if (a === 'show' && p[1] === 'ip' && p[2] === 'nat' && p[3] === 'translations') {
-    if (s.id === 'nat' && !c.natEnabled)
-      say(
-        [
-          'Pro  Inside global       Inside local        Outside local      Outside global',
-          '---  -----------------   -----------------   ----------------   ----------------',
-          '% NAT translation tablosu boş.',
-        ],
-        'warn',
-      );
-    else
-      say(
-        [
-          'Pro  Inside global       Inside local        Outside local      Outside global',
-          'icmp 203.0.113.10       192.168.1.20        8.8.8.8            8.8.8.8',
-          'PAT translation active',
-        ],
-        'good',
-      );
-    return;
-  }
-  if (a === 'show' && p[1] === 'port-security') {
-    if (s.id === 'portsec' && c.portSecurityViolation)
-      say(
-        [
-          'Port Security              : Enabled',
-          'Port Status                : Secure-shutdown / err-disabled',
-          'Violation Mode             : shutdown',
-          'Security Violation Count   : 1',
-        ],
-        'error',
-      );
-    else
-      say(
-        [
-          'Port Security              : Enabled',
-          'Port Status                : Secure-up',
-          'Violation Mode             : shutdown',
-          'Security Violation Count   : 1 (cleared in this simulation)',
-        ],
-        'good',
-      );
-    return;
-  }
-  if (a === 'clear' && p[1] === 'port-security') {
-    if (s.id !== 'portsec') {
-      say(['Bu senaryoda temizlenecek port-security ihlali yok.'], 'warn');
-      return;
-    }
-    c.portSecurityViolation = false;
-    say(
-      [
-        'Port-security ihlal durumu temizlendi.',
-        'Simülasyon portu yeniden etkinleştirdi; link state up.',
-      ],
-      'good',
-    );
-    updateTopo();
-    checkSolved();
-    return;
-  }
-  if (a === 'set' && p[1] === 'trunk-allowed') {
-    if (s.id !== 'relay-trunk' && s.id !== 'trunk') {
-      say(['Bu senaryoda trunk allowed VLAN değişikliği yok.'], 'warn');
-      return;
-    }
-    const list = p[2];
-    if (
-      !list ||
-      !list
-        .split(',')
-        .every((v) => /^\d+$/.test(v.trim()) && Number(v.trim()) >= 1 && Number(v.trim()) <= 4094)
-    ) {
-      say(['Kullanım: set trunk-allowed 10,20'], 'warn');
-      return;
-    }
-    c.trunkAllowed = list
-      .split(',')
-      .map((v) => v.trim())
-      .join(',');
-    say(
-      [
-        'Trunk allowed VLAN listesi güncellendi: ' + c.trunkAllowed,
-        'VLAN 10 ' +
-          (c.trunkAllowed.split(',').includes('10')
-            ? 'taşınabilir durumda.'
-            : 'listede yok; DHCP istemci trafiği geçemez.'),
-      ],
-      'good',
-    );
-    updateTopo();
-    checkSolved();
-    return;
-  }
-  if (a === 'set' && p[1] === 'acl' && p[2] === 'permit-http') {
-    if (s.id !== 'acl') {
-      say(['Bu senaryoda ACL değişikliği yok.'], 'warn');
-      return;
-    }
-    c.aclHttp = true;
-    say(
-      ['ACL güncellendi: permit tcp any host 192.168.1.50 eq 80', 'HTTP akışına izin verildi.'],
-      'good',
-    );
-    updateTopo();
-    checkSolved();
-    return;
-  }
-  if (a === 'set' && p[1] === 'nat' && p[2] === 'on') {
-    if (s.id !== 'nat') {
-      say(['Bu senaryoda NAT değişikliği yok.'], 'warn');
-      return;
-    }
-    c.natEnabled = true;
-    say(
-      ['NAT/PAT etkinleştirildi.', 'Inside: 192.168.1.0/24 · Outside: WAN · overload: enabled'],
-      'good',
-    );
-    updateTopo();
-    checkSolved();
-    return;
-  }
-  if (a === 'show' && p[1] === 'ip' && p[2] === 'ospf' && p[3] === 'neighbor') {
-    if (s.id !== 'ospf') {
-      say(['OSPF komşuluk çıktısı bu görevde simüle edilmiyor.'], 'warn');
-      return;
-    }
-    say(
-      c.ospfNeighbor
-        ? [
-            'Neighbor ID     Pri   State           Address         Interface',
-            '2.2.2.2           1   FULL/DR         192.168.12.2    Gi0/0',
-            'Komşuluk FULL; LSDB değişimleri ve rota öğrenimi kontrol edilebilir.',
-          ]
-        : [
-            'Neighbor ID     Pri   State           Address         Interface',
-            '2.2.2.2           1   INIT            192.168.12.2    Gi0/0',
-            'Komşuluk kurulamadı: ortak bağlantıda area uyuşmazlığı. Yerel area ' +
-              c.ospfArea +
-              ', beklenen area ' +
-              c.ospfExpectedArea +
-              '.',
-          ],
-      c.ospfNeighbor ? 'good' : 'error',
-    );
-    return;
-  }
-  if (a === 'show' && p[1] === 'ip' && p[2] === 'ospf' && p[3] === 'interface') {
-    if (s.id !== 'ospf') {
-      say(['OSPF arayüz ayrıntısı bu görevde simüle edilmiyor.'], 'warn');
-      return;
-    }
-    say(
-      [
-        'GigabitEthernet0/0 is up, line protocol is up',
-        'Internet Address 192.168.12.1/30, Area ' + c.ospfArea,
-        'Process ID 1, Network Type BROADCAST',
-        'Hello 10, Dead 40',
-        'Area mismatch: ' +
-          (Number(c.ospfArea) === Number(c.ospfExpectedArea)
-            ? 'yok'
-            : 'karşı uç area 0 kullanıyor'),
-      ],
-      Number(c.ospfArea) === Number(c.ospfExpectedArea) ? 'good' : 'error',
-    );
-    return;
-  }
-  if (a === 'set' && p[1] === 'ospf-area') {
-    if (s.id !== 'ospf') {
-      say(['Bu senaryoda OSPF area değişikliği gerekmiyor.'], 'warn');
-      return;
-    }
-    const area = Number(p[2]);
-    if (!Number.isInteger(area) || area < 0 || area > 4294967295) {
-      say(['Kullanım: set ospf-area <area-id>'], 'warn');
-      return;
-    }
-    c.ospfArea = area;
-    c.ospfNeighbor = area === Number(c.ospfExpectedArea);
-    say(
-      [
-        'R1 Gi0/0 OSPF area ' + area + ' olarak ayarlandı.',
-        c.ospfNeighbor
-          ? 'Komşuluk FULL durumuna geçti.'
-          : 'Komşuluk hâlâ kurulmadı; karşı uç area ayarını kontrol et.',
-      ],
-      c.ospfNeighbor ? 'good' : 'error',
-    );
-    updateTopo();
-    checkSolved();
-    return;
-  }
-  if (a === 'show' && p[1] === 'ip' && p[2] === 'bgp' && p.length === 3) {
-    if (s.id !== 'bgp') {
-      say(['BGP tablosu bu görevde simüle edilmiyor.'], 'warn');
-      return;
-    }
-    say(
-      [
-        'BGP table version is 4, local router ID 1.1.1.1',
-        'Status codes: * valid, > best',
-        'Network              Next Hop          Path',
-        '' +
-          (c.bgpAdvertised
-            ? '*> 203.0.113.0/24     0.0.0.0           i'
-            : '% 203.0.113.0/24 henüz BGP tablosunda yok'),
-      ],
-      c.bgpAdvertised ? 'good' : 'error',
-    );
-    return;
-  }
-  if (
-    a === 'show' &&
-    p[1] === 'ip' &&
-    p[2] === 'bgp' &&
-    p[3] === 'neighbors' &&
-    p[4] === 'advertised-routes'
-  ) {
-    if (s.id !== 'bgp') {
-      say(['BGP advertised-routes çıktısı bu görevde simüle edilmiyor.'], 'warn');
-      return;
-    }
-    say(
-      [
-        'BGP neighbor 198.51.100.2, remote AS 65002',
-        'BGP state = Established',
-        'Advertised prefixes:',
-        ...(c.bgpAdvertised
-          ? ['  203.0.113.0/24']
-          : [
-              '  <boş>',
-              'Beklenen prefix ilan edilmiyor; Established olması rota ilanını garanti etmez.',
-            ]),
-      ],
-      c.bgpAdvertised ? 'good' : 'error',
-    );
-    return;
-  }
-  if (a === 'set' && p[1] === 'bgp-advertise' && p[2] === 'on') {
-    if (s.id !== 'bgp') {
-      say(['Bu senaryoda BGP prefix ilanı değişikliği gerekmiyor.'], 'warn');
-      return;
-    }
-    c.bgpAdvertised = true;
-    say(
-      [
-        "203.0.113.0/24 prefix'i ilan listesine eklendi.",
-        'BGP oturumu Established; ilan edilen prefix karşı komşuya gönderildi (eğitim simülasyonu).',
-      ],
-      'good',
-    );
-    updateTopo();
-    checkSolved();
-    return;
-  }
-  if (a === 'show' && p[1] === 'running-config') {
-    say(
-      [
-        '! Simüle edilen yapılandırma',
-        'interface Ethernet0/1',
-        ' switchport mode access',
-        ' switchport access vlan ' + (c.accessVlan || 10),
-        'interface GigabitEthernet0/1',
-        ' switchport mode ' + (c.trunkMode || 'trunk'),
-        ' switchport trunk allowed vlan ' + (c.trunkAllowed || '10,20'),
-        ' switchport trunk native vlan ' + (c.nativeVlan || 1),
-        'interface GigabitEthernet0/0.20',
-        ' encapsulation dot1Q 20',
-        ' ip address 192.168.20.1 255.255.255.0',
-        '! DHCP relay: ' + (c.dhcpRelay ? 'etkin' : 'yapılandırılmamış'),
-        '! route state: ' + (c.route ? '10.20.0.0/24 mevcut' : '10.20.0.0/24 eksik'),
-      ],
-      'good',
-    );
-    return;
-  }
-  if (a === 'show' && p[1] === 'vlan' && p[2] === 'brief') {
-    say([
-      'VLAN Name                             Status    Ports',
-      '---- -------------------------------- --------- ----------------',
-      '10   USERS                            active    ' +
-        (Number(c.accessVlan || 10) === 10 ? 'Ethernet0/1' : ''),
-      '20   SERVERS                          active    ' +
-        (Number(c.accessVlan) === 20 ? 'Ethernet0/1' : ''),
-      'Port VLAN assignment: Ethernet0/1 access VLAN ' + (c.accessVlan || 10),
-    ]);
-    return;
-  }
-  if (a === 'show' && p[1] === 'interfaces' && p[2] === 'trunk') {
-    say([
-      'Port        Mode        Status      Native vlan',
-      'Gi0/1       ' +
-        (c.trunkMode || 'trunk') +
-        '       trunking    ' +
-        (s.id === 'native' ? c.nativeVlan || 10 : 1),
-      'Port        Vlans allowed on trunk',
-      'Gi0/1       ' + (c.trunkAllowed || '10,20'),
-      'Port        Vlans in spanning tree forwarding state',
-      'Gi0/1       ' +
-        String(c.trunkAllowed || '10,20')
-          .split(',')
-          .map((x) => x.trim())
-          .join(', '),
-    ]);
-    return;
-  }
-  if (a === 'show' && p[1] === 'ip' && p[2] === 'interface' && p[3] === 'brief') {
-    say([
-      'Interface              IP-Address       Status    Protocol',
-      'GigabitEthernet0/0     192.168.1.1      up        up',
-      'GigabitEthernet0/0.20  ' +
-        (c.routerSubif ? '192.168.20.1' : 'unassigned') +
-        '   ' +
-        (c.routerSubif ? 'up        up' : 'administratively down down'),
-    ]);
-    return;
-  }
-  if (a === 'test' && p[1] === 'http') {
-    if (s.id === 'acl' && !c.aclHttp)
-      say(
-        [
-          'TCP/80 bağlantısı engellendi: ACL deny kuralı eşleşti.',
-          'ICMP ping başarılı olabilir; bu, uygulama portunun açık olduğunu kanıtlamaz.',
-        ],
-        'error',
-      );
-    else if (s.id === 'service' && !c.service)
-      say(['TCP 80 bağlantısı başarısız: hedef erişilebilir, hizmet yanıt vermiyor.'], 'error');
-    else say(['HTTP/1.1 200 OK', 'Web hizmeti yanıt verdi.'], 'good');
-    checkSolved();
-    return;
-  }
-  if (
-    a === 'set' &&
-    ['dhcp', 'ip', 'mask', 'gateway', 'dns'].includes((p[1] || '').toLowerCase())
-  ) {
-    const key = (p[1] || '').toLowerCase(),
-      val = p[2];
-    const map = { ip: 'ip', mask: 'mask', gateway: 'gateway', dns: 'dns' };
-    if (key === 'dhcp' && val === 'on') {
-      c.dhcp = true;
-      c.ip = '192.168.1.100';
-      c.mask = '255.255.255.0';
-      c.gateway = '192.168.1.1';
-      c.dns = '8.8.8.8';
-      say(
-        ['DHCP Discover... Offer alındı.', 'DHCP ACK: 192.168.1.100/24, gateway 192.168.1.1'],
-        'good',
-      );
-    } else if (map[key]) {
-      if (!ipvalid(val)) {
-        say(['Geçersiz IPv4 adresi. Örnek: set ' + key + ' 192.168.1.10'], 'error');
-        return;
-      }
-      c[map[key]] = val;
-      say(['Ayar uygulandı: ' + key + ' = ' + val], 'good');
-    } else {
-      say(['Kullanım: set ip|mask|gateway|dns <IP> veya set dhcp on'], 'warn');
-      return;
-    }
-    updateTopo();
-    checkSolved();
-    return;
-  }
-  if (a === 'set' && p[1] === 'router-subif' && p[2] === 'on') {
-    c.routerSubif = true;
-    say(
-      ['GigabitEthernet0/0.20 etkinleştirildi; encapsulation dot1Q 20, IP 192.168.20.1/24.'],
-      'good',
-    );
-    updateTopo();
-    checkSolved();
-    return;
-  }
-  if (a === 'set' && p[1] === 'route' && p[2] === 'on') {
-    c.route = true;
-    say(['Statik rota eklendi: 10.20.0.0/24 via 192.168.1.2.'], 'good');
-    updateTopo();
-    checkSolved();
-    return;
-  }
-  if (a === 'set' && p[1] === 'native-vlan') {
-    const v = Number(p[2]);
-    if (!Number.isInteger(v) || v < 1 || v > 4094) {
-      say(['Kullanım: set native-vlan <1-4094>'], 'warn');
-      return;
-    }
-    c.nativeVlan = v;
-    say(['Trunk native VLAN ' + v + ' olarak ayarlandı.'], 'good');
-    updateTopo();
-    checkSolved();
-    return;
-  }
-  if (a === 'set' && p[1] === 'dhcp-relay' && p[2] === 'on') {
-    c.dhcpRelay = true;
-    say(['DHCP relay etkinleştirildi; istemci broadcast isteği sunucu ağına aktarılacak.'], 'good');
-    updateTopo();
-    checkSolved();
-    return;
-  }
-  if (a === 'interface' && p[1] === 'up') {
-    c.link = true;
-    say(['Ethernet0/0 etkinleştirildi. Link state: up'], 'good');
-    updateTopo();
-    checkSolved();
-    return;
-  }
-  if (a === 'service' && p[1] === 'http' && p[2] === 'on') {
-    c.service = true;
-    say(['HTTP hizmeti başlatıldı. Port TCP/80 dinlemede.'], 'good');
-    checkSolved();
-    return;
-  }
-  say(['Komut tanınmadı: ' + a + '. Kullanılabilir komutlar için help yaz.'], 'warn');
-}
-function updateTopo() {
-  const c = state[cur],
-    s = current();
-  $('pcIp').textContent = c.ip;
-  $('gwIp').textContent = c.gateway;
-  $('l1').setAttribute('class', 'link ' + (c.link ? 'ok' : 'bad'));
-  let l2ok =
-    s.id === 'vlan'
-      ? Number(c.accessVlan) === 10
-      : s.id === 'trunk'
-        ? String(c.trunkAllowed || '')
-            .split(',')
-            .map((x) => x.trim())
-            .includes('10')
-        : s.id === 'subif'
-          ? c.routerSubif === true
-          : s.id === 'route'
-            ? c.route === true
-            : s.id === 'returnroute'
-              ? c.returnRoute === true
-              : s.id === 'lpm'
-                ? c.lpmFixed === true
-                : s.id === 'routechoice'
-                  ? c.routeChoiceFixed === true
-                  : s.id === 'native'
-                    ? Number(c.nativeVlan) === Number(c.peerNativeVlan)
-                    : s.id === 'relay'
-                      ? c.dhcpRelay === true
-                      : s.id === 'acl'
-                        ? c.aclHttp === true
-                        : s.id === 'nat'
-                          ? c.natEnabled === true
-                          : s.id === 'portsec'
-                            ? c.portSecurityViolation === false
-                            : s.solved(c);
-  $('l2').setAttribute('class', 'link ' + (l2ok ? 'ok' : 'bad'));
-  let l3ok =
-    !(s.id === 'dns' && c.dns !== '8.8.8.8' && c.dns !== '1.1.1.1') &&
-    !(s.id === 'route' && !c.route) &&
-    !(s.id === 'subif' && !c.routerSubif);
-  $('l3').setAttribute('class', 'link ' + (l3ok ? 'ok' : 'bad'));
-  $('topoStatus').textContent = !c.link
-    ? 'Ethernet arayüzü kapalı'
-    : s.id === 'vlan'
-      ? 'PC access VLAN: ' + (c.accessVlan || 10)
-      : s.id === 'trunk'
-        ? 'Trunk allowed VLANs: ' + (c.trunkAllowed || '10,20')
-        : s.id === 'subif'
-          ? 'Router-on-a-stick alt arayüzü: ' + (c.routerSubif ? 'up' : 'eksik')
-          : s.id === 'route'
-            ? 'Uzak ağ rotası: ' + (c.route ? 'var' : 'eksik')
-            : s.id === 'returnroute'
-              ? 'Dönüş rotası: ' + (c.returnRoute ? 'var' : 'eksik')
-              : s.id === 'lpm'
-                ? 'LPM seçimi: ' + (c.lpmFixed ? 'çalışan /16 rota' : 'yanlış /24 rota')
-                : s.id === 'routechoice'
-                  ? 'Rota kaynağı: ' +
-                    (c.routeChoiceFixed ? 'OSPF rotası kuruldu' : 'statik rota seçiliyor')
-                  : s.id === 'native'
-                    ? 'Native VLAN: ' + c.nativeVlan + ' / karşı uç: ' + c.peerNativeVlan
-                    : s.id === 'relay'
-                      ? 'DHCP relay: ' + (c.dhcpRelay ? 'etkin' : 'eksik')
-                      : s.id === 'acl'
-                        ? 'HTTP ACL: ' + (c.aclHttp ? 'izinli' : 'engelli')
-                        : s.id === 'nat'
-                          ? 'NAT/PAT: ' + (c.natEnabled ? 'etkin' : 'eksik')
-                          : s.id === 'portsec'
-                            ? 'Port-security: ' + (c.portSecurityViolation ? 'err-disabled' : 'up')
-                            : s.id === 'ospf'
-                              ? 'OSPF komşuluğu: ' +
-                                (c.ospfNeighbor ? 'FULL' : 'INIT · area uyuşmazlığı')
-                              : s.id === 'bgp'
-                                ? 'BGP: Established · prefix ' +
-                                  (c.bgpAdvertised ? 'ilan edildi' : 'ilan edilmiyor')
-                                : s.solved(c)
-                                  ? 'Yapılandırma düzeltildi; doğrulama bekleniyor'
-                                  : 'Belirtiyi komutlarla araştır';
-}
-function checkSolved() {
-  const s = current(),
-    c = state[cur];
-  if (!s.solved(c)) return;
-  if (!passed[cur]) {
-    say(['Yapılandırma değişikliği algılandı. Uygun testlerle sonucu doğrula.'], 'good');
-    $('fixText').textContent =
-      'Değişikliğin işe yarayıp yaramadığını uygun test komutuyla doğrula.';
-  }
-  updateTopo();
-}
-function finish() {
-  if (passed[cur]) return;
-  passed[cur] = true;
-  persistScenarioProgress();
-  renderList();
-  $('nextBtn').disabled = false;
-  $('fixText').textContent = 'Başarılı! Arızayı düzelttin ve doğruladın.';
-  $('diagnosis').innerHTML =
-    '<div class="feedback good"><b>✓ Senaryo tamamlandı.</b><br>' +
-    current().fault +
-    '<br>Gözlem → teşhis → düzeltme → doğrulama döngüsünü tamamladın.</div>';
-  toast('Görev tamamlandı!');
-}
-function verifyAfter(cmd) {
-  const s = current(),
-    c = state[cur];
-  if (!s.solved(c)) return;
-  let ok = false;
-  if (s.id === 'service') ok = cmd.startsWith('test http 192.168.1.50') && c.service;
-  else if (s.id === 'dns')
-    ok = cmd.startsWith('nslookup ') && (c.dns === '8.8.8.8' || c.dns === '1.1.1.1');
-  else if (s.id === 'dhcp')
-    ok = (cmd === 'ipconfig' && c.dhcp) || (cmd === 'ping 192.168.1.1' && c.dhcp);
-  else if (s.id === 'duplicate') ok = cmd === 'ping 192.168.1.1' && c.ip === '192.168.1.21';
-  else if (s.id === 'link') ok = cmd === 'ping 192.168.1.1' && c.link;
-  else if (s.id === 'gateway') ok = cmd === 'ping 8.8.8.8' && c.gateway === '192.168.1.1';
-  else if (s.id === 'mask') ok = cmd === 'ping 192.168.1.30' && c.mask === '255.255.255.0';
-  else if (s.id === 'wrongip') ok = cmd === 'ping 192.168.1.1' && c.ip === '192.168.1.30';
-  else if (s.id === 'vlan') ok = cmd === 'ping 192.168.1.1' && Number(c.accessVlan) === 10;
-  else if (s.id === 'trunk')
-    ok =
-      cmd === 'ping 192.168.1.11' &&
-      String(c.trunkAllowed || '')
-        .split(',')
-        .map((x) => x.trim())
-        .includes('10');
-  else if (s.id === 'subif') ok = cmd === 'ping 192.168.20.10' && c.routerSubif === true;
-  else if (s.id === 'route') ok = cmd === 'ping 10.20.0.10' && c.route === true;
-  else if (s.id === 'returnroute') ok = cmd === 'ping 10.20.0.10' && c.returnRoute === true;
-  else if (s.id === 'lpm') ok = cmd === 'ping 10.20.0.10' && c.lpmFixed === true;
-  else if (s.id === 'routechoice') ok = cmd === 'ping 10.30.0.10' && c.routeChoiceFixed === true;
-  else if (s.id === 'mac')
-    ok =
-      cmd === 'show mac address-table' &&
-      c.traffic === true &&
-      c.arpViewed === true &&
-      c.macViewed === true;
-  else if (s.id === 'native')
-    ok = cmd === 'ping 192.168.1.11' && Number(c.nativeVlan) === Number(c.peerNativeVlan);
-  else if (s.id === 'relay')
-    ok = cmd === 'ipconfig /renew' && c.dhcpRelay === true && c.dhcpRenewed === true;
-  else if (s.id === 'relay-trunk')
-    ok =
-      cmd === 'ipconfig /renew' &&
-      c.dhcpRelay === true &&
-      c.dhcpRenewed === true &&
-      String(c.trunkAllowed || '')
-        .split(',')
-        .map((x) => x.trim())
-        .includes('10');
-  else if (s.id === 'unknown')
-    ok =
-      cmd === 'show mac address-table' && c.unknownPing === true && c.unknownTableViewed === true;
-  else if (s.id === 'acl') ok = cmd.startsWith('test http 192.168.1.50') && c.aclHttp === true;
-  else if (s.id === 'nat') ok = cmd === 'ping 8.8.8.8' && c.natEnabled === true;
-  else if (s.id === 'portsec') ok = cmd === 'ping 192.168.1.1' && c.portSecurityViolation === false;
-  else if (s.id === 'ospf')
-    ok =
-      cmd === 'ping 10.20.0.10' &&
-      c.ospfNeighbor === true &&
-      Number(c.ospfArea) === Number(c.ospfExpectedArea);
-  else if (s.id === 'bgp')
-    ok = cmd === 'ping 203.0.113.10' && c.bgpEstablished === true && c.bgpAdvertised === true;
-  if (ok) finish();
-}
-function toast(t) {
-  const el = $('toast');
-  el.textContent = t;
-  el.style.display = 'block';
-  setTimeout(() => (el.style.display = 'none'), 2200);
-}
-$('cmdForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const c = $('command').value.trim();
-  $('command').value = '';
-  execute(c);
-  verifyAfter(c);
-});
 $('scenarioList').addEventListener('click', (e) => {
   const b = e.target.closest('[data-s]');
   if (b) load(+b.dataset.s);
+});
+$('mission').innerHTML =
+  '<div class="mission-top"><span class="tag">LABBER MOTORU</span></div><h3>Bir arıza görevi seç</h3><p>Her görev Lab bölümünde gerçek bir topolojide açılır: belirtiyi cihaz terminallerinden araştır, düzelt ve başarıyı gerçek ping ile doğrula. Kavramsal alıştırmalar motor kullanmaz ve öyle etiketlidir.</p>';
+renderList();
+// Labber'da tamamlanan karşılıklar listeye yansısın
+document.addEventListener('click', (e) => {
+  if (e.target.closest?.('[data-area="troubleshoot"]')) renderList();
 });
 
 function topologyTaskHints(message) {
@@ -2201,7 +262,7 @@ function topologyTaskHints(message) {
   if (/route|rota|next-hop|gateway|yönlendirme/.test(m))
     return 'Önerilen kanıt komutları: show ip route · show ip interface brief · ping &lt;next-hop&gt;';
   if (/acl|access-list/.test(m))
-    return 'Önerilen kanıt komutları: show access-lists · show running-config · test http <IP>';
+    return 'Önerilen kanıt komutları: show access-lists · show running-config · curl <IP> (PC)';
   if (/nat|pat|inside|outside/.test(m))
     return 'Önerilen kanıt komutları: show ip nat translations · show running-config · ping <hedef>';
   if (/dhcp|helper|relay/.test(m))
@@ -2350,55 +411,6 @@ $('verifyTopologyTask').addEventListener('click', () => {
   }
   feedback.innerHTML =
     '<div class="feedback good"><b>Görev doğrulandı.</b><br>Son ağ denetimi hata ve uyarı vermiyor. Bu sonuç statik yapılandırma kontrollerine dayanır.</div>';
-});
-
-document.querySelectorAll('[data-cmd]').forEach((b) =>
-  b.addEventListener('click', () => {
-    const c = b.dataset.cmd;
-    execute(c);
-    verifyAfter(c);
-  }),
-);
-$('hintBtn').addEventListener('click', () => {
-  const h = current().hints;
-  if (hintUsed >= h.length) return;
-  const d = document.createElement('div');
-  d.className = 'hint';
-  d.innerHTML = '<b>İpucu ' + (hintUsed + 1) + ':</b> ' + h[hintUsed];
-  $('hints').appendChild(d);
-  hintUsed++;
-  $('hintCount').textContent = hintUsed + ' / ' + h.length;
-  if (hintUsed >= h.length) $('hintBtn').disabled = true;
-});
-$('options').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-o]');
-  if (!b) return;
-  const o = current().options[+b.dataset.o];
-  diagnosed = true;
-  if (o[1]) {
-    diagnosisCorrect = true;
-    $('diagnosis').innerHTML =
-      '<div class="feedback good"><b>Teşhis doğru.</b><br>Şimdi bulgularına göre uygun değişikliği kendin belirle, uygula ve test ederek doğrula.</div>';
-    $('fixText').textContent =
-      'Çözüm komutu verilmez. Bulgularına göre ayarı değiştir ve sonucu bir test komutuyla doğrula.';
-  } else {
-    diagnosisCorrect = false;
-    $('diagnosis').innerHTML =
-      '<div class="feedback bad"><b>Bu teşhis doğrulanmadı.</b><br>Bir komut daha çalıştır, çıktıyı incele ve bulgularını karşılaştır.</div>';
-  }
-});
-$('resetBtn').addEventListener('click', () => {
-  delete passed[cur];
-  persistScenarioProgress();
-  state[cur] = clone(current().start);
-  load(cur);
-  renderList();
-  toast('Senaryo başlangıç durumuna döndürüldü.');
-});
-$('nextBtn').addEventListener('click', () => {
-  if (!passed[cur]) return;
-  if (cur < scenarios.length - 1) load(cur + 1);
-  else toast('Başlangıç bölümündeki tüm senaryolar tamamlandı!');
 });
 
 const lessons = [
@@ -6226,10 +4238,6 @@ function showArea(name) {
   document
     .querySelectorAll('[data-area]')
     .forEach((el) => el.classList.toggle('active', el.dataset.area === name));
-  if (name === 'lab' && !labConsoleStarted) {
-    labSay('AğLab sanal laboratuvarı hazır. help yazarak komutları görebilirsin.', 'info');
-    labConsoleStarted = true;
-  }
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 $('areaTabs').addEventListener('click', (e) => {
@@ -6237,622 +4245,16 @@ $('areaTabs').addEventListener('click', (e) => {
   if (b) showArea(b.dataset.area);
 });
 
-// AğLab çok bileşenli, deterministik eğitim simülatörü.
-// Gerçek donanıma bağlanmaz; temel L2/L3/servis davranışlarını öğretici biçimde modeller.
-const labBase = {
-  ip: '192.168.1.10',
-  mask: '255.255.255.0',
-  gateway: '192.168.1.1',
-  dns: '8.8.8.8',
-  vlan: '10',
-  experiment: 'clean',
-  defaultRoute: true,
-  uplinkMode: 'trunk',
-  allowedVlans: '10,20',
-  routerState: 'up',
-  dhcpState: 'on',
-  dnsState: 'on',
-  httpState: 'on',
-};
-let labCfg = { ...labBase },
-  labConsoleStarted = false;
-function labSay(line, kind = '') {
-  const el = $('labConsole');
-  const d = document.createElement('div');
-  d.className = kind;
-  d.textContent = line;
-  el.appendChild(d);
-  el.scrollTop = el.scrollHeight;
-}
-function labNetwork(ip, mask) {
-  if (!labValidIp(ip) || !labValidMask(mask)) return null;
-  const a = ip.split('.').map(Number),
-    m = mask.split('.').map(Number);
-  return a.map((n, i) => n & m[i]).join('.');
-}
-function labValidIp(ip) {
-  return /^\d{1,3}(\.\d{1,3}){3}$/.test(ip) && ip.split('.').every((n) => +n >= 0 && +n <= 255);
-}
-function labValidMask(mask) {
-  if (!labValidIp(mask)) return false;
-  const bits = mask
-    .split('.')
-    .map(Number)
-    .map((n) => n.toString(2).padStart(8, '0'))
-    .join('');
-  return /^1*0*$/.test(bits);
-}
-function labVlanPath() {
-  const allowed = labCfg.allowedVlans.split(',').map((v) => v.trim());
-  if (labCfg.uplinkMode === 'down') return 'SW-01 uplink shutdown durumda.';
-  if (labCfg.vlan === '20' && labCfg.uplinkMode !== 'trunk')
-    return 'VLAN 20, router uplink access VLAN 10 üzerinden taşınamıyor.';
-  if (labCfg.vlan === '20' && !allowed.includes('20'))
-    return 'Trunk allowed VLAN listesinde VLAN 20 yok.';
-  if (labCfg.vlan === '10' && labCfg.uplinkMode === 'access') return '';
-  return '';
-}
-function labGatewayReach() {
-  if (labCfg.routerState !== 'up') return 'Router LAN arayüzü administratively down.';
-  if (labCfg.vlan !== '10' && labCfg.vlan !== '20')
-    return 'İstemcinin VLAN yapılandırması beklenen VLAN’lardan biri değil.';
-  const path = labVlanPath();
-  if (path) return path;
-  if (labCfg.vlan === '20')
-    return 'VLAN 20 için router üzerinde gateway alt arayüzü (subinterface) tanımlı değil.';
-  const net = labNetwork(labCfg.ip, labCfg.mask);
-  if (!net || net !== labNetwork('192.168.1.1', '255.255.255.0'))
-    return 'PC IP/maskesi ile gateway aynı alt ağda görünmüyor.';
-  if (labCfg.gateway !== '192.168.1.1') return 'Varsayılan gateway yanlış: 192.168.1.1 bekleniyor.';
-  return '';
-}
-function labReach(target) {
-  if (!labValidIp(labCfg.ip) || !labValidMask(labCfg.mask))
-    return { ok: false, why: 'IP adresi veya subnet maskesi geçersiz.' };
-  const gwErr = labGatewayReach();
-  if (target === '192.168.1.1')
-    return gwErr
-      ? { ok: false, why: gwErr }
-      : { ok: true, why: 'PC → switch → router LAN yolu çalışıyor.' };
-  if (target === '192.168.1.50') {
-    if (gwErr) return { ok: false, why: gwErr };
-    if (labCfg.vlan === '20')
-      return {
-        ok: false,
-        why: 'Sunucu VLAN 10’da; bu modelde VLAN 20 için inter-VLAN routing yapılandırılmamış.',
-      };
-    if (labCfg.experiment === 'mask' && labCfg.mask !== '255.255.255.0')
-      return { ok: false, why: 'Bu görevde istemci için /24 maskesi gerekiyor.' };
-    if (labCfg.experiment === 'http')
-      return {
-        ok: true,
-        why: 'Sunucu IP katmanında erişilebilir; HTTP servisi ayrıca kontrol edilmeli.',
-      };
-    return { ok: true, why: 'Sunucuya IP erişimi başarılı.' };
-  }
-  if (target === '8.8.8.8') {
-    if (gwErr) return { ok: false, why: gwErr };
-    if (!labCfg.defaultRoute)
-      return { ok: false, why: 'Router routing tablosunda 0.0.0.0/0 varsayılan rotası yok.' };
-    return { ok: true, why: 'Modelde dış ağ rotası üzerinden erişim başarılı.' };
-  }
-  return { ok: false, why: 'Bu hedef eğitim topolojisinde tanımlı değil.' };
-}
-function labPill(id, text, ok) {
-  const el = $(id);
-  el.textContent = text;
-  el.className = 'lab-status-pill ' + (ok ? 'up' : 'down');
-}
-function labRenderTopo() {
-  $('labTopoIp').textContent = labCfg.ip;
-  $('labTopoGw').textContent = labCfg.gateway;
-  $('labTopoVlan').textContent = 'VLAN ' + labCfg.vlan;
-  const gwErr = labGatewayReach(),
-    path = labVlanPath(),
-    link1ok = labCfg.uplinkMode !== 'down',
-    link2ok = !gwErr && !path,
-    link3ok = labCfg.routerState === 'up';
-  $('labLink1').setAttribute('class', 'link ' + (link1ok ? 'ok' : 'bad'));
-  $('labLink2').setAttribute('class', 'link ' + (link2ok ? 'ok' : 'bad'));
-  $('labLink3').setAttribute('class', 'link ' + (link3ok ? 'ok' : 'bad'));
-  for (const [id, ok, upText, downText] of [
-    ['labLink1State', link1ok, 'LINK UP', 'LINK DOWN'],
-    [
-      'labLink2State',
-      link2ok,
-      labCfg.uplinkMode === 'trunk' ? 'TRUNK / FORWARDING' : 'ACCESS / CHECK',
-      'VLAN / L2-L3 ISSUE',
-    ],
-    ['labLink3State', link3ok, 'SERVER PATH UP', 'ROUTER PATH DOWN'],
-  ]) {
-    const el = $(id);
-    el.textContent = ok ? upText : downText;
-    el.setAttribute('class', 'topo-state' + (ok ? '' : ' bad'));
-  }
-  const net = labNetwork(labCfg.ip, labCfg.mask);
-  const prefix = labCfg.mask
-    .split('.')
-    .map((n) => Number(n).toString(2).padStart(8, '0'))
-    .join('')
-    .replace(/0/g, '').length;
-  $('labTopoSubnet').textContent =
-    'PC ağı: ' +
-    (net ? net + '/' + prefix : 'Geçersiz IP / maske') +
-    ' · Access VLAN ' +
-    labCfg.vlan +
-    ' · Allowed: ' +
-    labCfg.allowedVlans;
-  $('labTopoService').textContent =
-    'DHCP: ' +
-    labCfg.dhcpState.toUpperCase() +
-    ' · DNS: ' +
-    labCfg.dnsState.toUpperCase() +
-    ' · HTTP: ' +
-    labCfg.httpState.toUpperCase() +
-    ' · Default route: ' +
-    (labCfg.defaultRoute ? 'VAR' : 'YOK');
-  $('labTopoStatus').textContent =
-    gwErr ||
-    path ||
-    (labCfg.experiment === 'dns' && labCfg.dnsState === 'off'
-      ? 'DNS servisi kapalı'
-      : labCfg.experiment === 'http' && labCfg.httpState === 'off'
-        ? 'HTTP kapalı; IP yolu açık'
-        : 'Bağlantı ve servis durumu yapılandırmadan hesaplanıyor');
-  $('labDashIp').textContent =
-    labCfg.ip + ' / ' + (labCfg.mask === '255.255.255.0' ? '24' : labCfg.mask);
-  $('labDashGw').textContent = labCfg.gateway;
-  $('labDashVlan').textContent = labCfg.vlan;
-  labPill('labDashDhcp', labCfg.dhcpState === 'on' ? 'Açık' : 'Kapalı', labCfg.dhcpState === 'on');
-  labPill('labDashAccess', 'Access VLAN ' + labCfg.vlan, labCfg.vlan === '10');
-  labPill(
-    'labDashTrunk',
-    labCfg.uplinkMode === 'trunk'
-      ? 'Trunk up'
-      : labCfg.uplinkMode === 'access'
-        ? 'Access mode'
-        : 'Shutdown',
-    labCfg.uplinkMode !== 'down',
-  );
-  $('labDashAllowed').textContent = labCfg.allowedVlans;
-  labPill(
-    'labDashRouter',
-    labCfg.routerState === 'up' ? 'Up / up' : 'Administratively down',
-    labCfg.routerState === 'up',
-  );
-  labPill('labDashDns', labCfg.dnsState === 'on' ? 'Açık' : 'Kapalı', labCfg.dnsState === 'on');
-  labPill('labDashHttp', labCfg.httpState === 'on' ? 'Açık' : 'Kapalı', labCfg.httpState === 'on');
-  labPill('labDashRoute', labCfg.defaultRoute ? 'Var' : 'Varsayılan rota yok', labCfg.defaultRoute);
-  if (typeof window.refreshProtocolWorkshop === 'function') window.refreshProtocolWorkshop();
-}
-function labTracePacket() {
-  const target = '192.168.1.50',
-    r = labReach(target),
-    dot = $('labPacketDot'),
-    btn = $('labTraceBtn');
-  dot.setAttribute('opacity', '1');
-  btn.disabled = true;
-  const pts = r.ok
-    ? [
-        [65, 62],
-        [160, 62],
-        [252, 62],
-        [345, 62],
-        [438, 62],
-        [510, 62],
-        [572, 62],
-      ]
-    : [
-        [65, 62],
-        [160, 62],
-        [252, 62],
-        [345, 62],
-      ];
-  let i = 0;
-  dot.setAttribute('cx', pts[0][0]);
-  dot.setAttribute('cy', pts[0][1]);
-  const step = () => {
-    if (i >= pts.length) {
-      dot.setAttribute('opacity', '0');
-      btn.disabled = false;
-      if (r.ok)
-        labSay(
-          'Paket yolu: PC-01 → SW-01 (VLAN ' + labCfg.vlan + ') → R1 → SRV-01. Hedef yanıt verdi.',
-          'ok',
-        );
-      else labSay('Paket router/gateway yolunu geçemedi: ' + r.why, 'bad');
-      return;
-    }
-    dot.setAttribute('cx', pts[i][0]);
-    dot.setAttribute('cy', pts[i][1]);
-    i++;
-    setTimeout(step, 220);
-  };
-  step();
-}
-function labSyncFields() {
-  for (const [id, key] of [
-    ['labVlan', 'vlan'],
-    ['labIp', 'ip'],
-    ['labMask', 'mask'],
-    ['labGateway', 'gateway'],
-    ['labDns', 'dns'],
-    ['labUplinkMode', 'uplinkMode'],
-    ['labAllowedVlans', 'allowedVlans'],
-    ['labRouterState', 'routerState'],
-    ['labDhcpState', 'dhcpState'],
-    ['labDnsState', 'dnsState'],
-    ['labHttpState', 'httpState'],
-  ])
-    $(id).value = labCfg[key];
-}
-function labLoadExperiment() {
-  const exp = $('labExperiment').value;
-  labCfg = { ...labBase, experiment: exp };
-  if (exp === 'gateway') labCfg.gateway = '192.168.1.254';
-  if (exp === 'mask') labCfg.mask = '255.255.0.0';
-  if (exp === 'vlan') labCfg.vlan = '20';
-  if (exp === 'dns') labCfg.dns = '10.0.0.53';
-  if (exp === 'dhcp') labCfg.dhcpState = 'off';
-  if (exp === 'uplink') ((labCfg.vlan = '20'), (labCfg.allowedVlans = '10'));
-  if (exp === 'routerdown') labCfg.routerState = 'down';
-  if (exp === 'route') labCfg.defaultRoute = false;
-  if (exp === 'http') labCfg.httpState = 'off';
-  labSyncFields();
-  $('labConsole').innerHTML = '';
-  labSay('Deney yüklendi: ' + $('labExperiment').selectedOptions[0].textContent, 'info');
-  labSay(
-    'İlk olarak show vlan brief, show interfaces trunk ve show ip route çıktılarından kanıt topla.',
-  );
-  labRenderTopo();
-}
-function labApply() {
-  const fields = {
-    ip: $('labIp').value.trim(),
-    mask: $('labMask').value.trim(),
-    gateway: $('labGateway').value.trim(),
-    dns: $('labDns').value.trim(),
-    vlan: $('labVlan').value,
-  };
-  for (const k of ['ip', 'gateway', 'dns'])
-    if (!labValidIp(fields[k])) {
-      labSay('Ayar uygulanmadı: ' + k + ' geçerli bir IPv4 adresi olmalı.', 'bad');
-      return;
-    }
-  if (!labValidMask(fields.mask)) {
-    labSay(
-      'Ayar uygulanmadı: subnet maskesi ardışık 1 bitleri ve ardından 0 bitleri içermeli.',
-      'bad',
-    );
-    return;
-  }
-  labCfg = { ...labCfg, ...fields };
-  labSay(
-    'İstemci yapılandırması uygulandı. IP=' +
-      labCfg.ip +
-      ' / maske=' +
-      labCfg.mask +
-      ' / gateway=' +
-      labCfg.gateway +
-      ' / DNS=' +
-      labCfg.dns +
-      ' / access VLAN=' +
-      labCfg.vlan,
-    'ok',
-  );
-  labRenderTopo();
-}
-function labApplyDevices() {
-  labCfg.uplinkMode = $('labUplinkMode').value;
-  labCfg.allowedVlans = $('labAllowedVlans')
-    .value.split(',')
-    .map((v) => v.trim())
-    .filter(Boolean)
-    .join(',');
-  labCfg.routerState = $('labRouterState').value;
-  labCfg.dhcpState = $('labDhcpState').value;
-  labCfg.dnsState = $('labDnsState').value;
-  labCfg.httpState = $('labHttpState').value;
-  if (!labCfg.allowedVlans.split(',').every((v) => /^\d{1,4}$/.test(v) && +v >= 1 && +v <= 4094)) {
-    labSay('Allowed VLAN listesi geçersiz. Örnek: 10,20,30', 'bad');
-    return;
-  }
-  labSay(
-    'Switch/router/servis yapılandırması uygulandı. show running-config ile kontrol et.',
-    'ok',
-  );
-  labRenderTopo();
-}
-function labRun(raw) {
-  const cmd = raw.trim();
-  if (!cmd) return;
-  const device = $('labDeviceSelect').value;
-  labSay(device + '> ' + cmd, 'info');
-  const p = cmd.toLowerCase().split(/\s+/),
-    gwErr = labGatewayReach(),
-    path = labVlanPath();
-  if (p[0] === 'help') {
-    [
-      'İSTEMCİ: ipconfig | ping <IP> | nslookup <ad> | tracert <IP>',
-      'SWITCH: show vlan brief | show interfaces trunk | show mac address-table',
-      'ROUTER: show ip interface brief | show ip route | show arp | show running-config',
-      'YAPILANDIR: switchport access vlan <ID> | switchport mode access|trunk',
-      'YAPILANDIR: switchport trunk allowed vlan 10,20 | interface gi0/1 shutdown|no shutdown',
-      'SERVİS: service dhcp|dns|http on|off | ipconfig /renew',
-      'ROUTING: ip route default <next-hop> (R1)',
-      'clear',
-    ].forEach((x) => labSay(x));
-    return;
-  }
-  const swCmd =
-    p[0] === 'switchport' ||
-    (p[0] === 'show' && (p[1] === 'vlan' || p[1] === 'interfaces' || p[1] === 'mac')) ||
-    (p[0] === 'interface' && p[1] === 'gi0/1');
-  const rCmd =
-    p[0] === 'service' ||
-    (p[0] === 'ip' && p[1] === 'route') ||
-    (p[0] === 'show' && p[1] === 'ip') ||
-    (p[0] === 'interface' && p[1] === 'gi0/0') ||
-    (p[0] === 'show' && p[1] === 'arp');
-  if (swCmd && device !== 'SW-01') {
-    labSay('Bu komut SW-01 üzerinde çalıştırılmalı. Cihaz seçimini değiştir.', 'bad');
-    return;
-  }
-  if (rCmd && device !== 'R1') {
-    labSay('Bu komut R1 üzerinde çalıştırılmalı. Cihaz seçimini değiştir.', 'bad');
-    return;
-  }
-  if (['ipconfig', 'ping', 'nslookup', 'tracert', 'set'].includes(p[0]) && device !== 'PC-01') {
-    labSay('Bu komut istemci tarafında çalıştırılmalı. PC-01 cihazını seç.', 'bad');
-    return;
-  }
-  if (p[0] === 'clear' || p[0] === 'cls') {
-    $('labConsole').innerHTML = '';
-    return;
-  }
-  if (p[0] === 'ipconfig' && p[1] === '/renew') {
-    if (labCfg.dhcpState === 'off') {
-      labSay('DHCP yenileme başarısız: DHCP sunucusu/servisi yanıt vermiyor.', 'bad');
-      return;
-    }
-    labCfg.ip = '192.168.1.101';
-    labCfg.mask = '255.255.255.0';
-    labCfg.gateway = '192.168.1.1';
-    labCfg.dns = '8.8.8.8';
-    labSyncFields();
-    labRenderTopo();
-    labSay('DHCP Discover → Offer → Request → ACK', 'ok');
-    labSay('Yeni kira: 192.168.1.101/24, gateway 192.168.1.1, DNS 8.8.8.8', 'ok');
-    return;
-  }
-  if (p[0] === 'ipconfig') {
-    labSay('IPv4 Adresi . . . . . : ' + labCfg.ip);
-    labSay('Alt Ağ Maskesi . . . : ' + labCfg.mask);
-    labSay('Varsayılan Ağ Geçidi : ' + labCfg.gateway);
-    labSay('DNS Sunucusu . . . . : ' + labCfg.dns);
-    labSay('Switch access VLAN . : ' + labCfg.vlan);
-    labSay('DHCP servisi . . . . : ' + labCfg.dhcpState);
-    return;
-  }
-  if (p[0] === 'show' && p[1] === 'vlan' && p[2] === 'brief') {
-    labSay('VLAN Name                 Status    Ports');
-    labSay('10   USERS                 active    ' + (labCfg.vlan === '10' ? 'PC-01' : 'Gi0/1'));
-    labSay('20   SERVERS               active    ' + (labCfg.vlan === '20' ? 'PC-01' : 'Gi0/2'));
-    labSay('PC-01 access VLAN: ' + labCfg.vlan);
-    return;
-  }
-  if (p[0] === 'show' && p[1] === 'interfaces' && p[2] === 'trunk') {
-    labSay('Port   Mode    Status       Allowed VLANs');
-    labSay(
-      'Gi0/1  ' +
-        labCfg.uplinkMode +
-        '   ' +
-        (labCfg.uplinkMode === 'down' ? 'down' : 'trunking') +
-        '      ' +
-        labCfg.allowedVlans,
-    );
-    if (path) labSay('Uyarı: ' + path, 'bad');
-    return;
-  }
-  if (p[0] === 'show' && p[1] === 'mac' && p[2] === 'address-table') {
-    labSay('Vlan   Mac Address       Type       Ports');
-    labSay(labCfg.vlan + '     00aa.11bb.22cc     DYNAMIC    Fa0/1');
-    if (gwErr) labSay('Router MAC öğrenilemedi; L2/L3 yolu kontrol edilmeli.', 'bad');
-    else labSay('10     00dd.33ee.44ff     DYNAMIC    Gi0/1', 'ok');
-    return;
-  }
-  if (p[0] === 'show' && p[1] === 'ip' && p[2] === 'interface' && p[3] === 'brief') {
-    labSay('Interface      IP-Address      Status      Protocol');
-    labSay(
-      'GigabitEthernet0/0 192.168.1.1  ' +
-        (labCfg.routerState === 'up' ? 'up' : 'administratively down') +
-        '  ' +
-        (labCfg.routerState === 'up' ? 'up' : 'down'),
-    );
-    labSay('GigabitEthernet0/1 10.10.20.1   up          up');
-    return;
-  }
-  if (p[0] === 'ip' && p[1] === 'route' && p[2] === 'default' && p[3]) {
-    if (!labValidIp(p[3])) {
-      labSay('Next-hop geçerli bir IPv4 adresi olmalı.', 'bad');
-      return;
-    }
-    labCfg.defaultRoute = true;
-    labRenderTopo();
-    labSay('Varsayılan rota eklendi: 0.0.0.0/0 via ' + p[3], 'ok');
-    return;
-  }
-  if (p[0] === 'show' && p[1] === 'ip' && p[2] === 'route') {
-    labSay(
-      'Gateway of last resort is ' +
-        (labCfg.defaultRoute ? '192.168.1.1 to network 0.0.0.0' : 'not set'),
-    );
-    labSay('C 192.168.1.0/24 is directly connected, Gi0/0');
-    labSay('C 10.10.20.0/24 is directly connected, Gi0/1');
-    if (!labCfg.defaultRoute) labSay('Uzak ağlara varsayılan rota yok.', 'bad');
-    return;
-  }
-  if (p[0] === 'show' && p[1] === 'route') {
-    labSay(
-      'C ' +
-        (labNetwork(labCfg.ip, labCfg.mask) || 'geçersiz') +
-        ' / mask ' +
-        labCfg.mask +
-        ' doğrudan bağlı',
-    );
-    labSay('S* 0.0.0.0/0 via ' + labCfg.gateway);
-    return;
-  }
-  if (p[0] === 'show' && p[1] === 'arp') {
-    labSay('Protocol  Address        Age  Hardware Addr');
-    labSay('Internet  192.168.1.1    2    aabb.cc00.0100');
-    if (gwErr) labSay('Gateway ARP kaydı bulunamadı veya L2 erişimi bozuk.', 'bad');
-    return;
-  }
-  if (p[0] === 'show' && p[1] === 'running-config') {
-    labSay('! SW-01 / R1 simüle yapılandırma');
-    labSay('switchport access vlan ' + labCfg.vlan);
-    labSay('switchport mode ' + (labCfg.uplinkMode === 'trunk' ? 'trunk' : 'access'));
-    labSay('switchport trunk allowed vlan ' + labCfg.allowedVlans);
-    labSay('router interface Gi0/0 ' + labCfg.routerState);
-    labSay('ip default-gateway ' + labCfg.gateway);
-    labSay('service dhcp ' + labCfg.dhcpState);
-    labSay('service dns ' + labCfg.dnsState);
-    labSay('service http ' + labCfg.httpState);
-    labSay('ip route default ' + (labCfg.defaultRoute ? '192.168.1.1' : 'YOK'));
-    return;
-  }
-  if (p[0] === 'show' && p[1] === 'ip' && p[2] === 'dhcp' && p[3] === 'binding') {
-    if (labCfg.dhcpState === 'off') labSay('DHCP service kapalı; binding bulunamadı.', 'bad');
-    else labSay('192.168.1.101   0100.aa11.bb22.cc   Automatic   Active', 'ok');
-    return;
-  }
-  if (p[0] === 'ping' && p[1]) {
-    const r = labReach(p[1]);
-    if (r.ok) {
-      labSay('Yanıt: ' + p[1] + ' süre<1–14ms', 'ok');
-      labSay('Gönderilen=4, alınan=4, kayıp=0 (%0)', 'ok');
-    } else {
-      labSay('Hedefe erişilemiyor: ' + r.why, 'bad');
-      labSay('Gönderilen=4, alınan=0, kayıp=4 (%100)', 'bad');
-    }
-    return;
-  }
-  if (p[0] === 'tracert' && p[1]) {
-    const r = labReach(p[1]);
-    labSay('1  ' + (gwErr ? '* * *' : labCfg.gateway + '  <1ms'));
-    if (r.ok) labSay('2  ' + p[1] + '  12ms', 'ok');
-    else labSay('2  * * *  Hedefe ulaşılamadı: ' + r.why, 'bad');
-    return;
-  }
-  if (p[0] === 'nslookup') {
-    if (
-      labCfg.dnsState === 'off' ||
-      (labCfg.experiment === 'dns' && labCfg.dns !== '8.8.8.8' && labCfg.dns !== '1.1.1.1')
-    )
-      labSay('DNS isteği zaman aşımına uğradı. Sunucu ' + labCfg.dns + ' yanıt vermiyor.', 'bad');
-    else if (gwErr)
-      labSay('DNS sorgusu başarısız: önce istemcinin VLAN/gateway yolunu doğrula.', 'bad');
-    else
-      (labSay('Sunucu: ' + labCfg.dns, 'ok'),
-        labSay('Ad: ' + (p[1] || 'example.com') + ' → Address: 93.184.216.34', 'ok'));
-    return;
-  }
-  if (p[0] === 'test' && p[1] === 'http') {
-    if (labCfg.httpState === 'off')
-      labSay('TCP/80 bağlantısı başarısız: hedef IP erişilebilir ama HTTP servisi kapalı.', 'bad');
-    else labSay('HTTP/1.1 200 OK — servis yanıt verdi.', 'ok');
-    return;
-  }
-  if (p[0] === 'set' && ['ip', 'mask', 'gateway', 'dns'].includes(p[1])) {
-    const key = p[1],
-      val = p[2];
-    if (key === 'mask' ? !labValidMask(val) : !labValidIp(val)) {
-      labSay('Geçersiz ' + key + ' değeri.', 'bad');
-      return;
-    }
-    labCfg[key] = val;
-    labSyncFields();
-    labRenderTopo();
-    labSay(key + ' = ' + val + ' yapılandırıldı.', 'ok');
-    return;
-  }
-  if (p[0] === 'switchport' && p[1] === 'access' && p[2] === 'vlan' && p[3]) {
-    if (!/^\d+$/.test(p[3]) || +p[3] < 1 || +p[3] > 4094) {
-      labSay('VLAN ID 1–4094 aralığında olmalı.', 'bad');
-      return;
-    }
-    labCfg.vlan = p[3];
-    labSyncFields();
-    labRenderTopo();
-    labSay('PC-01 access port VLAN ' + p[3] + ' olarak ayarlandı.', 'ok');
-    return;
-  }
-  if (p[0] === 'switchport' && p[1] === 'mode' && ['access', 'trunk'].includes(p[2])) {
-    labCfg.uplinkMode = p[2];
-    labSyncFields();
-    labRenderTopo();
-    labSay('SW-01 uplink mode: ' + p[2], 'ok');
-    return;
-  }
-  if (p[0] === 'switchport' && p[1] === 'trunk' && p[2] === 'allowed' && p[3] === 'vlan' && p[4]) {
-    labCfg.allowedVlans = p
-      .slice(4)
-      .join('')
-      .replace(/[^0-9,]/g, '');
-    labSyncFields();
-    labRenderTopo();
-    labSay('Trunk allowed VLANs: ' + labCfg.allowedVlans, 'ok');
-    return;
-  }
-  if (p[0] === 'interface' && p[1] === 'gi0/1' && ['shutdown', 'no'].includes(p[2])) {
-    labCfg.uplinkMode = p[2] === 'shutdown' ? 'down' : 'trunk';
-    labSyncFields();
-    labRenderTopo();
-    labSay(
-      'Gi0/1 durumu: ' + (labCfg.uplinkMode === 'down' ? 'shutdown' : 'no shutdown / trunk'),
-      'ok',
-    );
-    return;
-  }
-  if (p[0] === 'interface' && p[1] === 'gi0/0' && ['shutdown', 'no'].includes(p[2])) {
-    labCfg.routerState = p[2] === 'shutdown' ? 'down' : 'up';
-    labSyncFields();
-    labRenderTopo();
-    labSay('R1 Gi0/0: ' + labCfg.routerState, 'ok');
-    return;
-  }
-  if (
-    p[0] === 'service' &&
-    ['dhcp', 'dns', 'http'].includes(p[1]) &&
-    ['on', 'off'].includes(p[2])
-  ) {
-    labCfg[p[1] + 'State'] = p[2];
-    labSyncFields();
-    labRenderTopo();
-    labSay(p[1].toUpperCase() + ' servisi ' + (p[2] === 'on' ? 'açıldı' : 'kapatıldı') + '.', 'ok');
-    return;
-  }
-  labSay('Komut tanınmadı veya eksik. help yazıp desteklenen komutları görüntüle.', 'bad');
-}
-$('labDeviceSelect').addEventListener('change', () => {
-  $('labPromptLabel').textContent = $('labDeviceSelect').value + ' >';
-});
-$('labTraceBtn').addEventListener('click', labTracePacket);
-$('labExperiment').addEventListener('change', labLoadExperiment);
-$('labApply').addEventListener('click', labApply);
-$('labDeviceApply').addEventListener('click', labApplyDevices);
-$('labReset').addEventListener('click', labLoadExperiment);
-$('labForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const v = $('labCommand').value;
-  $('labCommand').value = '';
-  labRun(v);
-});
-document
-  .querySelectorAll('[data-labcmd]')
-  .forEach((b) => b.addEventListener('click', () => labRun(b.dataset.labcmd)));
-labLoadExperiment();
+// L6: "Hazır deneyler" mini lab'ı (labRun, kendi oyuncak modeli) kaldırıldı; her deney Labber'daki
+// karşılık senaryoya açılır (index.html `data-shared-scenario`).
+document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
+  b.addEventListener('click', () => {
+    const sel = $('sharedScenarioSelect');
+    sel.value = b.dataset.sharedScenario;
+    $('sharedScenarioLoad').click();
+    $('sharedScenarioPanel').scrollIntoView({ block: 'start' });
+  }),
+);
 
 // AğLab interactive topology and IOS-like educational CLI
 (() => {
@@ -11352,338 +8754,185 @@ labLoadExperiment();
   }
 })();
 
-scenarios.forEach((s, i) => (state[i] = clone(s.start)));
-load(0);
-
-// v36: Scenario-based routing workshop. Simplified educational RIB selection followed by forwarding LPM.
+// L6: Rota atölyesi (v36) kendi RIB/FIB oyuncak modelini kullanıyordu. Şimdi her durum ya Labber'daki
+// karşılık senaryoya açılır (AD, LPM, varsayılan rota) ya da Labber router'larında gerçek
+// `show ip route` çıktısı ve LabQuery kararıyla gösterilir (metric, ECMP).
+const WORKSHOP_LAB = (() => {
+  const R = (id, n) => ({
+    id,
+    kind: 'switch',
+    router: true,
+    model: 'ISR4331',
+    mac: '5254.00' + n + '0.0000',
+    ports: ['GigabitEthernet0/0', 'GigabitEthernet0/1', 'GigabitEthernet0/2'],
+    x: 0,
+    y: 0,
+  });
+  const ifc = (n, ip) => [
+    'interface g0/' + n,
+    'ip address ' + ip + ' 255.255.255.252',
+    'no shutdown',
+  ];
+  const ospf = ['router ospf 1', 'network 10.0.0.0 0.0.255.255 area 0'];
+  /** R1 → (R2 | R3) → R4 → H (10.20.30.10): iki eşit OSPF yolu. */
+  return (extra = {}) => ({
+    id: 'workshop',
+    title: '',
+    summary: '',
+    level: 'Orta',
+    tags: [],
+    brief: [],
+    objectives: [],
+    solution: {},
+    view: { w: 1, h: 1 },
+    devices: [
+      R('R1', 1),
+      R('R2', 2),
+      R('R3', 3),
+      R('R4', 4),
+      { id: 'H', kind: 'pc', mac: '0050.0000.0010', x: 0, y: 0 },
+    ],
+    links: [
+      { a: ['R1', 'GigabitEthernet0/1'], b: ['R2', 'GigabitEthernet0/0'] },
+      { a: ['R1', 'GigabitEthernet0/2'], b: ['R3', 'GigabitEthernet0/0'] },
+      { a: ['R2', 'GigabitEthernet0/1'], b: ['R4', 'GigabitEthernet0/1'] },
+      { a: ['R3', 'GigabitEthernet0/1'], b: ['R4', 'GigabitEthernet0/2'] },
+      { a: ['R4', 'GigabitEthernet0/0'], b: ['H', 'eth0'] },
+    ],
+    initialConfig: {
+      R1: [...ifc(1, '10.0.12.1'), ...ifc(2, '10.0.13.1'), ...ospf, ...(extra.R1 || [])].join('\n'),
+      R2: [...ifc(0, '10.0.12.2'), ...ifc(1, '10.0.24.1'), ...ospf].join('\n'),
+      R3: [...ifc(0, '10.0.13.2'), ...ifc(1, '10.0.34.1'), ...ospf].join('\n'),
+      R4: [
+        'interface g0/0',
+        'ip address 10.20.30.1 255.255.255.0',
+        'no shutdown',
+        ...ifc(1, '10.0.24.2'),
+        ...ifc(2, '10.0.34.2'),
+        ...ospf,
+        'network 10.20.30.0 0.0.0.255 area 0',
+      ].join('\n'),
+    },
+    initialPcs: { H: { ip: '10.20.30.10', prefix: 24, gw: '10.20.30.1' } },
+  });
+})();
+/**
+ * Labber görünümü: lab kurulur, `show` çıktısı ve LabQuery kararı gösterilir; "Değişikliği
+ * uygula" gerçek IOS komutlarını çalıştırır ve aynı çıktıyı yeniden üretir.
+ */
+function workshopView(ids, cases) {
+  const el = (id) => document.getElementById(id);
+  let rt = null,
+    key = null;
+  function render(applied) {
+    const c = cases[key];
+    el(ids.output).textContent = c.show
+      .map((cmd) => AgLabSim.runScript(rt, 'R1', cmd).join('\n'))
+      .join('\n\n');
+    const v = c.verdict(rt.query());
+    el(ids.result).className = ids.resultClass + ' ' + (v.ok ? 'good' : 'bad');
+    el(ids.result).textContent =
+      (applied ? 'Değişiklikten sonra (' + c.fix.join(' · ') + '): ' : 'Başlangıç: ') + v.text;
+  }
+  return {
+    open(k) {
+      key = k;
+      rt = AgLabSim.createLab(cases[k].lab);
+      el(ids.apply).disabled = false;
+      el(ids.apply).textContent = 'Değişikliği uygula: ' + cases[k].fix.join(' · ');
+      render(false);
+    },
+    apply() {
+      AgLabSim.runScript(rt, 'R1', ['configure terminal', ...cases[key].fix, 'end'].join('\n'));
+      el(ids.apply).disabled = true;
+      render(true);
+    },
+  };
+}
 (function initRouteWorkshop() {
   const $ = (id) => document.getElementById(id);
+  const route = (q) => q.routeFor('R1', '10.20.30.10');
+  const via = (r) => (r ? (r.paths || [{ nh: r.nh }]).map((p) => p.nh).join(' ve ') : 'yok');
+  const cases = {
+    metric: {
+      lab: WORKSHOP_LAB({ R1: ['interface g0/1', 'ip ospf cost 100'] }),
+      show: ['show ip route ospf'],
+      fix: ['interface g0/2', 'ip ospf cost 200'],
+      verdict: (q) => {
+        const r = route(q);
+        return {
+          ok: !!r,
+          text:
+            'R1 → 10.20.30.10 için OSPF yolu ' +
+            via(r) +
+            ' (metric ' +
+            (r ? r.metric : '-') +
+            '). Aynı protokolde düşük metric (toplam cost) kazanır.',
+        };
+      },
+    },
+    ecmp: {
+      lab: WORKSHOP_LAB({ R1: ['interface g0/2', 'ip ospf cost 20'] }),
+      show: ['show ip route ospf'],
+      fix: ['interface g0/2', 'no ip ospf cost'],
+      verdict: (q) => {
+        const r = route(q),
+          n = r?.paths?.length || (r ? 1 : 0);
+        return {
+          ok: n > 1,
+          text:
+            'R1 → 10.20.30.10: ' +
+            n +
+            ' yol (' +
+            via(r) +
+            ', metric ' +
+            (r ? r.metric : '-') +
+            '). ' +
+            (n > 1
+              ? 'Metric eşit: iki next-hop birlikte kurulur (ECMP).'
+              : 'Metric eşit değil: yalnız en düşük metricli yol kurulur.'),
+        };
+      },
+    },
+  };
   const scenarios = {
-    'static-ospf': {
-      dest: '10.20.30.10',
-      removeKind: 'bad-static',
-      removeLabel: 'Hatalı statik 10.20.30.0/24 rotasını kaldır',
-      intro:
-        'Aynı /24 prefix için AD 1 olan hatalı statik rota, AD 110 olan OSPF rotasına tercih edilir. Statik rotayı kaldırıp sonuca bak.',
-      rows: [
-        {
-          network: '10.20.0.0',
-          prefix: 16,
-          source: 'Static',
-          ad: 1,
-          metric: 0,
-          nextHop: '192.168.1.2',
-          kind: 'broad',
-        },
-        {
-          network: '10.20.30.0',
-          prefix: 24,
-          source: 'OSPF',
-          ad: 110,
-          metric: 20,
-          nextHop: '192.168.1.3',
-          kind: 'ospf-best',
-        },
-        {
-          network: '10.20.30.0',
-          prefix: 24,
-          source: 'OSPF',
-          ad: 110,
-          metric: 30,
-          nextHop: '192.168.1.4',
-          kind: 'ospf-alt',
-        },
-        {
-          network: '10.20.30.0',
-          prefix: 24,
-          source: 'Static',
-          ad: 1,
-          metric: 0,
-          nextHop: '192.168.1.254',
-          kind: 'bad-static',
-        },
-      ],
-    },
-    'lpm': {
-      dest: '10.20.30.10',
-      removeKind: null,
-      removeLabel: 'Bu senaryoda rota kaldırma kullanılmıyor',
-      intro:
-        'İki rota da routing table’da bulunur. Hedef 10.20.30.10 için /24, /16’dan daha spesifik olduğu için seçilir; /24’ün AD değeri yüksek olsa da farklı prefix uzunluklarını AD ile kıyaslamayız.',
-      rows: [
-        {
-          network: '10.20.0.0',
-          prefix: 16,
-          source: 'Static',
-          ad: 1,
-          metric: 0,
-          nextHop: '192.168.1.2',
-          kind: 'broad',
-        },
-        {
-          network: '10.20.30.0',
-          prefix: 24,
-          source: 'OSPF',
-          ad: 110,
-          metric: 20,
-          nextHop: '192.168.1.3',
-          kind: 'specific',
-        },
-      ],
-    },
-    'metric': {
-      dest: '10.20.30.10',
-      removeKind: null,
-      removeLabel: 'Bu senaryoda rota kaldırma kullanılmıyor',
-      intro:
-        'Aynı OSPF kaynağından, aynı prefix için iki aday yol var. Bu basitleştirilmiş örnekte daha düşük OSPF metric/cost değerine sahip yol seçilir.',
-      rows: [
-        {
-          network: '10.20.30.0',
-          prefix: 24,
-          source: 'OSPF',
-          ad: 110,
-          metric: 20,
-          nextHop: '192.168.1.3',
-          kind: 'metric-best',
-        },
-        {
-          network: '10.20.30.0',
-          prefix: 24,
-          source: 'OSPF',
-          ad: 110,
-          metric: 45,
-          nextHop: '192.168.1.4',
-          kind: 'metric-worse',
-        },
-      ],
-    },
-    'ecmp': {
-      dest: '10.20.30.10',
-      removeKind: null,
-      removeLabel: 'Bu senaryoda rota kaldırma kullanılmıyor',
-      intro:
-        'Aynı prefix için iki OSPF yolunun tercih değerleri eşit. ECMP desteklendiğinde birden fazla next-hop kullanılabilir; bu eğitim modeli eşit adayları birlikte gösterir.',
-      rows: [
-        {
-          network: '10.20.30.0',
-          prefix: 24,
-          source: 'OSPF',
-          ad: 110,
-          metric: 20,
-          nextHop: '192.168.1.3',
-          kind: 'ecmp-a',
-        },
-        {
-          network: '10.20.30.0',
-          prefix: 24,
-          source: 'OSPF',
-          ad: 110,
-          metric: 20,
-          nextHop: '192.168.1.4',
-          kind: 'ecmp-b',
-        },
-      ],
-    },
-    'default': {
-      dest: '8.8.8.8',
-      removeKind: null,
-      removeLabel: 'Bu senaryoda rota kaldırma kullanılmıyor',
-      intro:
-        'Hedef için daha spesifik bir rota yoksa 0.0.0.0/0 varsayılan rotası eşleşir. 10.20.30.10 hedefini deneyerek daha spesifik /24 rotanın default route yerine seçildiğini gör.',
-      rows: [
-        {
-          network: '0.0.0.0',
-          prefix: 0,
-          source: 'Static',
-          ad: 1,
-          metric: 0,
-          nextHop: '192.168.1.1',
-          kind: 'default',
-        },
-        {
-          network: '10.20.30.0',
-          prefix: 24,
-          source: 'OSPF',
-          ad: 110,
-          metric: 20,
-          nextHop: '192.168.1.3',
-          kind: 'specific',
-        },
-      ],
-    },
+    'static-ospf': 'ospf-static-overrides',
+    lpm: 'lpm-next-hop',
+    default: 'default-route',
   };
-  let scenarioKey = 'static-ospf';
-  const ipNum = (ip) => {
-    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return null;
-    const a = ip.split('.').map(Number);
-    if (a.some((n) => n < 0 || n > 255)) return null;
-    return a.reduce((v, n) => (v * 256 + n) >>> 0, 0) >>> 0;
-  };
-  const maskFor = (p) => (p === 0 ? 0 : (0xffffffff << (32 - p)) >>> 0);
-  const contains = (ip, r) => {
-    const a = ipNum(ip),
-      n = ipNum(r.network);
-    return (
-      a !== null && n !== null && (a & maskFor(r.prefix)) >>> 0 === (n & maskFor(r.prefix)) >>> 0
-    );
-  };
-  const prefixLabel = (r) => r.network + '/' + r.prefix;
-  function renderScenario(resetDest = true) {
-    const sc = scenarios[scenarioKey];
-    $('routeCalcRemoveLabel').innerHTML = '';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.id = 'routeCalcRemoveStatic';
-    cb.disabled = !sc.removeKind;
-    const labelText = document.createTextNode(' ' + sc.removeLabel);
-    $('routeCalcRemoveLabel').append(cb, labelText);
-    $('routeCalcRemoveLabel').style.opacity = sc.removeKind ? '1' : '.6';
-    if (resetDest) $('routeCalcDest').value = sc.dest;
-    calculate();
+  const view = workshopView(
+    {
+      output: 'routeCalcOutput',
+      result: 'routeCalcResult',
+      apply: 'routeCalcApply',
+      resultClass: 'route-calc-result',
+    },
+    cases,
+  );
+  function select() {
+    const k = $('routeCalcScenario').value;
+    const shared = scenarios[k];
+    $('routeCalcLabber').hidden = !!shared;
+    $('routeCalcShared').hidden = !shared;
+    if (shared) {
+      $('routeCalcSharedOpen').dataset.sharedScenario = shared;
+      $('routeCalcSharedOpen').textContent = 'Labber senaryosunda aç: ' + shared;
+    } else view.open(k);
   }
-  function calculate() {
-    const sc = scenarios[scenarioKey],
-      rows = sc.rows,
-      dest = $('routeCalcDest').value.trim();
-    const num = ipNum(dest);
-    if (num === null) {
-      $('routeCalcResult').className = 'route-calc-result bad';
-      $('routeCalcResult').textContent = 'Geçersiz IPv4 adresi. Örnek: 10.20.30.10';
-      $('routeCalcRows').replaceChildren();
-      return;
-    }
-    const removed = !!sc.removeKind && $('routeCalcRemoveStatic').checked;
-    const available = rows.filter((r) => !(removed && r.kind === sc.removeKind));
-    const groups = new Map();
-    available.forEach((r) => {
-      const key = prefixLabel(r);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(r);
-    });
-    const installed = [];
-    const winnerByKind = new Map();
-    for (const group of groups.values()) {
-      const bestAD = Math.min(...group.map((r) => r.ad));
-      const adWinners = group.filter((r) => r.ad === bestAD);
-      const chosen = [];
-      const sourceGroups = new Map();
-      adWinners.forEach((r) => {
-        if (!sourceGroups.has(r.source)) sourceGroups.set(r.source, []);
-        sourceGroups.get(r.source).push(r);
-      });
-      for (const sg of sourceGroups.values()) {
-        const bestMetric = Math.min(...sg.map((r) => r.metric));
-        chosen.push(...sg.filter((r) => r.metric === bestMetric));
-      }
-      installed.push(...chosen);
-      chosen.forEach((r) => winnerByKind.set(r.kind, true));
-    }
-    const matching = installed.filter((r) => contains(dest, r));
-    const bestPrefix = matching.length ? Math.max(...matching.map((r) => r.prefix)) : -1;
-    const finalists = matching.filter((r) => r.prefix === bestPrefix);
-    const chosen = finalists[0] || null;
-    const tbody = $('routeCalcRows');
-    tbody.replaceChildren();
-    rows.forEach((r) => {
-      const tr = document.createElement('tr');
-      const isRemoved = removed && r.kind === sc.removeKind;
-      const isInstalled = winnerByKind.has(r.kind) && !isRemoved;
-      const isSelected = !!chosen && finalists.some((x) => x.kind === r.kind);
-      if (isRemoved) tr.className = 'route-removed';
-      else if (isSelected) tr.className = 'route-selected';
-      const state = isRemoved
-        ? 'Kaldırıldı'
-        : isSelected
-          ? finalists.length > 1
-            ? 'Eşit maliyetli seçilen yol'
-            : 'Seçilen rota'
-          : isInstalled
-            ? 'RIB’de kurulu'
-            : available.includes(r)
-              ? 'Aynı prefix için tercih edilmedi'
-              : 'Kullanılmıyor';
-      [prefixLabel(r), r.source, String(r.ad), String(r.metric), r.nextHop, state].forEach(
-        (v, i) => {
-          const td = document.createElement('td');
-          td.textContent = v;
-          if (i === 5) {
-            td.className = 'route-state ' + (isSelected ? 'selected' : isRemoved ? 'removed' : '');
-          }
-          tr.appendChild(td);
-        },
-      );
-      tbody.appendChild(tr);
-    });
-    const result = $('routeCalcResult');
-    result.className = 'route-calc-result ' + (chosen ? 'good' : 'bad');
-    if (!chosen) {
-      result.textContent =
-        dest +
-        ' hedefi için routing table’da eşleşen bir rota yok. Bu senaryoda daha genel veya varsayılan rota bulunup bulunmadığını kontrol et.';
-      return;
-    }
-    const details =
-      finalists.length > 1 ? ' Birden fazla eşit maliyetli next-hop adayı var (ECMP).' : ' ';
-    let explanation = '';
-    if (scenarioKey === 'static-ospf')
-      explanation =
-        chosen.prefix === 24
-          ? ' /24 rotası, /16 rotasından daha spesifik olduğu için forwarding aşamasında LPM ile seçilir.'
-          : ' /24 rotası kaldırılmış veya eşleşmemiş; /16 rotası kullanılıyor.';
-    else if (scenarioKey === 'lpm')
-      explanation =
-        ' LPM, farklı prefix uzunlukları arasında en spesifik eşleşmeyi seçer; AD karşılaştırması /16 ile /24 arasında seçim yapmaz.';
-    else if (scenarioKey === 'metric')
-      explanation =
-        ' Aynı prefix ve OSPF kaynağı içindeki adaylarda düşük metric/cost değerli yol tercih edilir.';
-    else if (scenarioKey === 'ecmp')
-      explanation =
-        ' Aynı prefix ve eşit tercih değerleri birden fazla next-hop’un birlikte kullanılmasına olanak sağlayabilir.';
-    else if (scenarioKey === 'default')
-      explanation =
-        chosen.prefix === 0
-          ? ' Daha spesifik eşleşme olmadığından varsayılan /0 rotası seçildi.'
-          : ' /24 rotası, varsayılan /0 rotasından daha spesifik olduğu için seçildi.';
-    const detailsText =
-      finalists.length > 1 ? ' Eşit maliyetli next-hop sayısı: ' + finalists.length + '.' : '';
-    result.innerHTML =
-      '<b>Senaryo:</b> ' +
-      sc.intro +
-      '<br><b>Hedef:</b> ' +
-      dest +
-      '<br><b>Forwarding seçimi:</b> ' +
-      (finalists.length > 1
-        ? finalists.map((r) => prefixLabel(r) + ' via ' + r.nextHop).join(' ve ')
-        : prefixLabel(chosen) + ' via ' + chosen.nextHop) +
-      ' (' +
-      chosen.source +
-      ', AD ' +
-      chosen.ad +
-      ', metric ' +
-      chosen.metric +
-      ').<br>' +
-      explanation +
-      detailsText;
-  }
-  $('routeCalcScenario').addEventListener('change', (e) => {
-    scenarioKey = e.target.value;
-    renderScenario(true);
+  $('routeCalcScenario').addEventListener('change', select);
+  $('routeCalcApply').addEventListener('click', () => view.apply());
+  $('routeCalcReset').addEventListener('click', select);
+  $('routeCalcSharedOpen').addEventListener('click', (e) => {
+    showArea('lab');
+    $('sharedScenarioSelect').value = e.currentTarget.dataset.sharedScenario;
+    $('sharedScenarioLoad').click();
+    $('sharedScenarioPanel').scrollIntoView({ block: 'start' });
   });
-  $('routeCalcRun').addEventListener('click', calculate);
-  $('routeCalcReset').addEventListener('click', () => {
-    scenarioKey = $('routeCalcScenario').value;
-    renderScenario(true);
-  });
-  $('routeCalcRemoveLabel').addEventListener('change', calculate);
-  $('routeCalcDest').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') calculate();
-  });
-  renderScenario(true);
+  select();
 })();
 
-// v37: Interactive end-to-end reachability checklist. This is an explicit teaching model,
-// separate from the topology packet engine; checkboxes represent observed conditions.
+// v37 / L6: uçtan uca erişim kontrol listesi kavramsal alıştırmadır (motor yok): işaretler
+// gözlenen durumları temsil eder, canlı ağdan okunmaz; arayüzde öyle etiketlidir.
 (function initRouteDiagnostic() {
   const $ = (id) => document.getElementById(id);
   const fields = {
@@ -11773,85 +9022,19 @@ load(0);
   applyPreset('healthy');
 })();
 
-// v40: shared main-lab and protocol workshop state; protocol -> RIB (RIB) -> forwarding information base (FIB) teaching model.
 (function initProtocolWorkshop() {
+  // L6: Protokol atölyesi (v40) kendi oyuncak RIB/FIB modelini kullanıyordu. OSPF area → Labber
+  // senaryosu; OSPF passive → Labber görünümü (gerçek komşuluk ve rota tablosu); BGP Labber'da
+  // modellenmez (kapsam dışı): kavramsal alıştırma, motor sonucu yok.
   const $ = (id) => document.getElementById(id);
-  const scenarios = {
-    'ospf-area': {
-      title: 'OSPF area uyuşmazlığı',
-      protocol: 'OSPF',
-      prefix: '10.40.0.0/16',
-      nextHop: '192.0.2.2',
-      cmd: 'show ip ospf neighbor · show ip ospf interface · show ip route ospf',
-      bad: [
-        [
-          'Komşuluk',
-          'FULL değil (INIT/EXSTART veya komşu oluşmuyor)',
-          'Area ID / hello-dead timer / network type uyumunu kontrol et.',
-        ],
-        [
-          'Prefix',
-          'Uzak prefix öğrenilmedi',
-          'Komşuluk kurulmadığı için beklenen LSA/rota bilgisi alınmıyor.',
-        ],
-        ['RIB', '10.40.0.0/16 yok', 'OSPF rotası routing table’a kurulamamış.'],
-        ['FIB', 'İleri iletim rotası yok', 'Hedef için başka uygun rota yoksa paket iletilemez.'],
-      ],
-      good: [
-        ['Komşuluk', 'FULL', 'Area ID ve komşuluk parametreleri eşleşiyor.'],
-        [
-          'Prefix',
-          '10.40.0.0/16 öğrenildi',
-          'LSA/LSDB bilgisi SPF hesaplamasıyla rota adayı oluşturdu.',
-        ],
-        [
-          'RIB',
-          'O 10.40.0.0/16 via 192.0.2.2',
-          'OSPF rotası routing table’a kuruldu (örnek çıktı).',
-        ],
-        [
-          'FIB',
-          '10.40.0.0/16 → 192.0.2.2',
-          'Next-hop çözümlenebilir varsayımıyla paket iletilebilir.',
-        ],
-      ],
-      fix: 'İki uçtaki OSPF area ID değerlerini aynı yap; gerçek cihazda arayüz ve komşuluk durumunu yeniden doğrula.',
-    },
-    'ospf-passive': {
-      title: 'OSPF arayüzü passive',
-      protocol: 'OSPF',
-      prefix: '10.41.0.0/16',
-      nextHop: '192.0.2.6',
-      cmd: 'show ip ospf interface · show ip ospf neighbor · show ip route ospf',
-      bad: [
-        [
-          'Komşuluk',
-          'İlgili linkte FULL komşuluk yok',
-          'Passive interface üzerinde hello gönderilmediği için komşuluk oluşmuyor.',
-        ],
-        ['Prefix', 'Uzak prefix öğrenilmedi', 'Bu komşudan rota bilgisi gelmiyor.'],
-        ['RIB', '10.41.0.0/16 yok', 'Uzak ağ için OSPF rotası kurulmamış.'],
-        [
-          'FIB',
-          'İletim yolu bulunamadı',
-          'Daha spesifik veya default rota yoksa hedef erişilemez.',
-        ],
-      ],
-      good: [
-        ['Komşuluk', 'FULL', 'Komşuluk kurulması gereken transit arayüzde passive kapatıldı.'],
-        ['Prefix', '10.41.0.0/16 öğrenildi', 'Komşudan rota bilgisi alınıyor.'],
-        ['RIB', 'O 10.41.0.0/16 via 192.0.2.6', 'Örnek OSPF rotası routing table’a kuruldu.'],
-        ['FIB', '10.41.0.0/16 → 192.0.2.6', 'Next-hop erişilebilir ise paket iletilebilir.'],
-      ],
-      fix: 'Komşuluk kurulması gereken transit arayüzde passive-interface ayarını düzelt; istemci LAN arayüzlerinde passive kullanımı çoğu tasarımda doğru olabilir.',
-    },
+  const BGP = {
     'bgp-advertise': {
-      title: 'BGP Established ama prefix ilan edilmiyor',
-      protocol: 'BGP',
-      prefix: '10.50.0.0/24',
-      nextHop: '198.51.100.2',
-      cmd: 'show ip bgp summary · show ip bgp · show ip bgp neighbors',
-      bad: [
+      'title': 'BGP Established ama prefix ilan edilmiyor',
+      'protocol': 'BGP',
+      'prefix': '10.50.0.0/24',
+      'nextHop': '198.51.100.2',
+      'cmd': 'show ip bgp summary · show ip bgp · show ip bgp neighbors',
+      'bad': [
         [
           'Oturum',
           'Established',
@@ -11865,7 +9048,7 @@ load(0);
         ['RIB', 'Uzak RIB’de 10.50.0.0/24 yok', 'Karşı router bu prefix için rota kuramaz.'],
         ['FIB', 'Hedefe giden BGP rotası yok', 'Başka rota yoksa paket iletimi başarısız olur.'],
       ],
-      good: [
+      'good': [
         ['Oturum', 'Established', 'BGP komşuluğu çalışıyor.'],
         [
           'Prefix',
@@ -11879,15 +9062,16 @@ load(0);
           'NEXT_HOP çözümlenmiş ve rota kurulmuş varsayımıyla iletim mümkün.',
         ],
       ],
-      fix: 'Önce prefix’in yerel routing table’da bulunup bulunmadığını, sonra BGP network statement/redistribution ve advertised-routes çıktısını kontrol et.',
+      'fix':
+        'Önce prefix’in yerel routing table’da bulunup bulunmadığını, sonra BGP network statement/redistribution ve advertised-routes çıktısını kontrol et.',
     },
     'bgp-filter': {
-      title: 'BGP outbound prefix-list filtresi',
-      protocol: 'BGP',
-      prefix: '10.60.0.0/24',
-      nextHop: '203.0.113.2',
-      cmd: 'show ip bgp · show ip prefix-list · show ip bgp neighbors',
-      bad: [
+      'title': 'BGP outbound prefix-list filtresi',
+      'protocol': 'BGP',
+      'prefix': '10.60.0.0/24',
+      'nextHop': '203.0.113.2',
+      'cmd': 'show ip bgp · show ip prefix-list · show ip bgp neighbors',
+      'bad': [
         ['Oturum', 'Established', 'Komşuluk var; politika yine de rota ilanını engelleyebilir.'],
         [
           'Prefix',
@@ -11897,7 +9081,7 @@ load(0);
         ['RIB', 'Uzak RIB’de 10.60.0.0/24 yok', 'Karşı taraf bu prefix’i öğrenmiyor.'],
         ['FIB', 'Uzak FIB’de eşleşen rota yok', 'Başka rota yoksa hedefe forwarding yapılamaz.'],
       ],
-      good: [
+      'good': [
         ['Oturum', 'Established', 'BGP oturumu açık.'],
         [
           'Prefix',
@@ -11911,15 +9095,16 @@ load(0);
           'Next-hop erişilebilirliği de doğrulanırsa paket iletilebilir.',
         ],
       ],
-      fix: 'Outbound prefix-list/route-map sırasını ve permit kapsamını incele; gereksiz yere tüm filtreleri kaldırmak yerine yalnızca gerekli prefix’e izin ver.',
+      'fix':
+        'Outbound prefix-list/route-map sırasını ve permit kapsamını incele; gereksiz yere tüm filtreleri kaldırmak yerine yalnızca gerekli prefix’e izin ver.',
     },
     'bgp-next-hop': {
-      title: 'BGP rotası alındı ama NEXT_HOP çözümlenemiyor',
-      protocol: 'BGP',
-      prefix: '10.70.0.0/24',
-      nextHop: '192.0.2.254',
-      cmd: 'show ip bgp · show ip route 192.0.2.254 · show ip route 10.70.0.0',
-      bad: [
+      'title': 'BGP rotası alındı ama NEXT_HOP çözümlenemiyor',
+      'protocol': 'BGP',
+      'prefix': '10.70.0.0/24',
+      'nextHop': '192.0.2.254',
+      'cmd': 'show ip bgp · show ip route 192.0.2.254 · show ip route 10.70.0.0',
+      'bad': [
         ['Oturum', 'Established', 'BGP komşuluğu aktif olabilir.'],
         [
           'Prefix',
@@ -11933,7 +9118,7 @@ load(0);
         ],
         ['FIB', 'Kullanılabilir next-hop yok', 'Paketi iletecek çözülmüş çıkış yolu bulunmuyor.'],
       ],
-      good: [
+      'good': [
         ['Oturum', 'Established', 'BGP oturumu aktif.'],
         ['Prefix', '10.70.0.0/24 alındı', 'Uzak prefix BGP tablosunda.'],
         [
@@ -11947,22 +9132,45 @@ load(0);
           'Recursive next-hop çözümlemesi başarılı varsayımıyla iletim mümkün.',
         ],
       ],
-      fix: 'BGP NEXT_HOP adresine erişimi kontrol et; gerekiyorsa IGP/connected rota veya tasarıma uygun next-hop-self yapılandırmasını değerlendir.',
+      'fix':
+        'BGP NEXT_HOP adresine erişimi kontrol et; gerekiyorsa IGP/connected rota veya tasarıma uygun next-hop-self yapılandırmasını değerlendir.',
     },
   };
-  let fixed = false;
-  function render() {
-    const key = $('protoScenario').value,
-      sc = scenarios[key],
-      rows = fixed ? sc.good : sc.bad;
-    rows.forEach((r, i) => {
-      const card = $('protoStage' + (i + 1));
-      card.className = 'proto-stage' + (fixed ? ' ok' : '');
-      card.querySelector('.stage-state').textContent = fixed
-        ? ['FULL', 'Öğrenildi / ilan edildi', 'RIB’de kurulu', 'İletim mümkün'][i]
-        : ['Sorun var', 'Eksik / filtreli', 'Kurulmadı', 'İletim başarısız'][i];
-      card.querySelector('p').textContent = r[1];
-    });
+  const cases = {
+    'ospf-passive': {
+      lab: WORKSHOP_LAB({
+        R1: ['router ospf 1', 'passive-interface g0/1', 'passive-interface g0/2'],
+      }),
+      show: ['show ip ospf neighbor', 'show ip route ospf'],
+      fix: ['router ospf 1', 'no passive-interface g0/1'],
+      verdict: (q) => {
+        const adj = q.ospfAdjacent('R1', 'R2'),
+          r = q.routeFor('R1', '10.20.30.10');
+        return {
+          ok: adj && !!r,
+          text:
+            'R1–R2 komşuluğu: ' +
+            (adj ? 'FULL' : 'yok') +
+            '; 10.20.30.0/24: ' +
+            (r ? 'O via ' + r.nh : 'rota tablosunda yok') +
+            '. Passive arayüz hello göndermez: komşuluk, LSA ve rota kurulmaz.',
+        };
+      },
+    },
+  };
+  const view = workshopView(
+    {
+      output: 'protoOutput',
+      result: 'protoResult',
+      apply: 'protoFixBtn',
+      resultClass: 'proto-result',
+    },
+    cases,
+  );
+  let bgpFixed = false;
+  function renderBgp(key) {
+    const sc = BGP[key],
+      rows = bgpFixed ? sc.good : sc.bad;
     const tbody = $('protoRows');
     tbody.replaceChildren();
     rows.forEach((r) => {
@@ -11974,62 +9182,45 @@ load(0);
       });
       tbody.appendChild(tr);
     });
-    const result = $('protoResult');
-    result.className = 'proto-result ' + (fixed ? 'good' : 'bad');
-    const coreGw =
-      typeof labGatewayReach === 'function'
-        ? labGatewayReach()
-        : 'Ana Lab durumu henüz hazır değil';
-    const coreServer =
-      typeof labReach === 'function'
-        ? labReach('192.168.1.50')
-        : { ok: false, why: 'Ana Lab durumu henüz hazır değil' };
-    const coreRoute = typeof labCfg !== 'undefined' && labCfg.defaultRoute;
-    const coreSummary =
-      '<hr><b>Ana Lab ile ortak durum</b><br><small>Bu bölüm, yukarıdaki OSPF/BGP arıza senaryosundan bağımsız olarak ana topolojinin canlı yapılandırmasını okur.</small><br><b>PC → gateway:</b> ' +
-      (coreGw ? 'SORUN — ' + coreGw : 'OK — gateway erişim koşulları sağlanıyor') +
-      '<br><b>PC → sunucu (192.168.1.50):</b> ' +
-      (coreServer.ok ? 'OK — ' + coreServer.why : 'BAŞARISIZ — ' + coreServer.why) +
-      '<br><b>Ana Lab varsayılan rota:</b> ' +
-      (coreRoute ? 'Tanımlı' : 'Tanımlı değil') +
-      '<br><small>Yorum: Ana Lab’daki VLAN/gateway/servis ayarlarını değiştirdiğinde bu özet otomatik yenilenir. OSPF/BGP atölyesindeki “Arızayı düzelt” düğmesi yalnızca protokol senaryosunu değiştirir; ana topolojiyi değiştirmez.</small>';
-    result.innerHTML =
-      '<b>' +
+    $('protoResult').className = 'proto-result ' + (bgpFixed ? 'good' : 'bad');
+    $('protoResult').textContent =
       sc.protocol +
       ' · ' +
       sc.title +
-      '</b><br><b>Hedef prefix:</b> ' +
-      sc.prefix +
-      '<br>' +
-      (fixed
-        ? 'Düzeltme sonrası örnek akış: protokol bilgisi uygun hale geldi, rota RIB’ye kuruldu ve FIB’de next-hop seçilebiliyor.'
-        : 'Mevcut arıza modelinde zincir ' +
-          (key.startsWith('ospf')
-            ? 'komşuluk/LSDB aşamasında'
-            : key === 'bgp-advertise' || key === 'bgp-filter'
-              ? 'prefix’in ilan/politika aşamasında'
-              : 'NEXT_HOP çözümleme aşamasında') +
-          ' kırılıyor; bu nedenle yalnızca komşuluğun/oturumun çalışması uçtan uca erişimi garanti etmez.') +
-      '<br><b>Teşhis komutları:</b> <code>' +
-      sc.cmd +
-      '</code><br><b>Önerilen düzeltme:</b> ' +
-      sc.fix +
-      '<br><small>Bu düğme gerçek cihazı yapılandırmaz; eğitim modelindeki arızalı/sağlıklı durumu değiştirir.</small>' +
-      coreSummary;
-    $('protoFixBtn').textContent = fixed ? 'Arızalı duruma dön' : 'Arızayı düzelt';
+      ' — ' +
+      (bgpFixed ? 'Düzeltme: ' + sc.fix : 'Kontrol: ' + sc.cmd) +
+      '. Örnek çıktılar kavramsaldır; canlı ağdan ölçülmez.';
+    $('protoFixBtn').disabled = false;
+    $('protoFixBtn').textContent = bgpFixed ? 'Arızalı hali göster' : 'Düzeltilmiş hali göster';
   }
-  $('protoScenario').addEventListener('change', () => {
-    fixed = false;
-    render();
-  });
+  function select() {
+    const k = $('protoScenario').value;
+    bgpFixed = false;
+    const concept = !!BGP[k],
+      shared = k === 'ospf-area';
+    $('protoBadge').textContent = concept ? 'KAVRAMSAL ALIŞTIRMA (MOTOR YOK)' : 'LABBER MOTORU';
+    $('protoConcept').hidden = !concept;
+    $('protoLabber').hidden = concept || shared;
+    $('protoShared').hidden = !shared;
+    $('protoFixBtn').hidden = shared;
+    if (concept) renderBgp(k);
+    else if (!shared) view.open(k);
+    else $('protoResult').textContent = 'Bu durum Labber senaryosunda çalışır.';
+  }
+  $('protoScenario').addEventListener('change', select);
+  $('protoResetBtn').addEventListener('click', select);
   $('protoFixBtn').addEventListener('click', () => {
-    fixed = !fixed;
-    render();
+    const k = $('protoScenario').value;
+    if (BGP[k]) {
+      bgpFixed = !bgpFixed;
+      renderBgp(k);
+    } else view.apply();
   });
-  $('protoResetBtn').addEventListener('click', () => {
-    fixed = false;
-    render();
+  $('protoSharedOpen').addEventListener('click', () => {
+    showArea('lab');
+    $('sharedScenarioSelect').value = 'ospf-area-mismatch';
+    $('sharedScenarioLoad').click();
+    $('sharedScenarioPanel').scrollIntoView({ block: 'start' });
   });
-  window.refreshProtocolWorkshop = render;
-  render();
+  select();
 })();

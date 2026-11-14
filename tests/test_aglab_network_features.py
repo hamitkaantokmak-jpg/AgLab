@@ -338,17 +338,23 @@ class CommonEngineTests(unittest.TestCase):
             self.assertEqual(issues, [])
         self.page.keyboard.press("Escape")
         self.page.click('[data-area="troubleshoot"]')
+        # L6: eski metin senaryoları `TROUBLESHOOT_TASKS` (kimlik ve sıra aynı) Labber karşılığına
+        # açılır. BGP Labber'da modellenmez (kapsam dışı): `bgp` artık eski motordaki `bgp-as`'e
+        # değil, motorsuz olduğu açıkça etiketli kavramsal alıştırmaya açılır.
         for legacy, shared in [
             ("ospf", "ospf-area"),
-            ("bgp", "bgp-as"),
             ("portsec", "port-security"),
             ("subif", "subif-missing"),
         ]:
             self.page.click('[data-area="troubleshoot"]')
-            index = self.run_js("(id)=>scenarios.findIndex(s=>s.id===id)", legacy)
+            index = self.run_js("(id)=>TROUBLESHOOT_TASKS.findIndex(s=>s.id===id)", legacy)
             self.page.locator(f'#scenarioList [data-s="{index}"]').click()
             expect(self.page.locator("#sharedScenarioSelect")).to_have_value(shared)
             expect(self.page.locator("#sharedScenarioPanel")).to_be_visible()
+        self.page.click('[data-area="troubleshoot"]')
+        index = self.run_js("(id)=>TROUBLESHOOT_TASKS.findIndex(s=>s.id===id)", "bgp")
+        self.page.locator(f'#scenarioList [data-s="{index}"]').click()
+        expect(self.page.locator("#conceptBadge")).to_contain_text("MOTOR YOK")
 
     def test_08_main_area_form_names_and_keyboard_focus(self):
         for theme in ["dark", "light"]:
