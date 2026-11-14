@@ -104,12 +104,12 @@
       <div class="proto-head"><div><h4 id="protoWorkshopTitle">Protokol → RIB → FIB · OSPF ve BGP teşhis atölyesi</h4><p>Komşuluk kurulması, prefix öğrenilmesi ve paketin iletilebilmesi farklı aşamalardır. OSPF durumları Labber motorunda (gerçek komşuluk ve rota tablosu); BGP Labber'da modellenmez ve kavramsal alıştırmadır.</p></div><span class="tag" id="protoBadge">LABBER MOTORU</span></div>
       <div class="proto-body">
         <div class="proto-controls">
-          <label for="protoScenario">Arıza senaryosu<select id="protoScenario"><option value="ospf-area">1 · OSPF area uyuşmazlığı</option><option value="ospf-passive">2 · OSPF arayüzü passive</option><option value="bgp-advertise">3 · BGP Established ama prefix ilan edilmiyor (kavramsal)</option><option value="bgp-filter">4 · BGP outbound prefix-list filtresi (kavramsal)</option><option value="bgp-next-hop">5 · BGP NEXT_HOP çözümlenemiyor (kavramsal)</option></select></label>
+          <label for="protoScenario">Arıza senaryosu<select id="protoScenario"><option value="ospf-area">1 · OSPF area uyuşmazlığı</option><option value="ospf-passive">2 · OSPF arayüzü passive</option><option value="bgp-advertise">3 · BGP: karşı AS prefix’i öğrenmiyor (kavramsal)</option><option value="bgp-filter">4 · BGP: bir prefix karşıya gitmiyor, diğerleri gidiyor (kavramsal)</option><option value="bgp-next-hop">5 · BGP: prefix ilan ediliyor ama hedefe ulaşılamıyor (kavramsal)</option></select></label>
           <button type="button" class="primary" id="protoFixBtn">Arızayı düzelt</button><button type="button" id="protoResetBtn">Sıfırla</button>
         </div>
         <div id="protoShared" hidden><button type="button" class="primary" id="protoSharedOpen">Labber senaryosunda aç: ospf-area-mismatch</button></div>
         <pre class="proto-table-wrap" id="protoLabber"><code id="protoOutput"></code></pre>
-        <div class="proto-table-wrap" id="protoConcept" hidden><table class="proto-table"><thead><tr><th>Kontrol</th><th>Örnek çıktı / durum</th><th>Yorum</th></tr></thead><tbody id="protoRows"></tbody></table></div>
+        <div class="proto-table-wrap" id="protoConcept" hidden><p id="protoSymptom"></p><table class="proto-table"><thead><tr><th>Komut</th><th>Örnek çıktı (kanıt)</th></tr></thead><tbody id="protoRows"></tbody></table><div class="options" id="protoOptions" role="group" aria-label="Kök neden seçenekleri"></div></div>
         <div id="protoResult" class="proto-result bad" role="status" aria-live="polite"></div>
       </div>
     </section>

@@ -96,11 +96,16 @@ with sync_playwright() as pw:
     assert "test http" not in page.locator("#area-troubleshoot").text_content()
     options = page.locator("#options [data-o]")
     texts = options.all_text_contents()
-    wrong = next(i for i, t in enumerate(texts) if "DNS" in t)
+    # Seçenekler kök neden düzeyinde: hiçbiri görev başlığını tekrar etmez; açıklama, hangi
+    # kanıtın seçeneği elediğini söyler.
+    title = tasks[concept[0]]["title"]
+    assert not any(t.split(". ", 1)[1] in title for t in texts), (texts, title)
+    wrong = next(i for i, t in enumerate(texts) if "outbound prefix-list" in t)
     options.nth(wrong).click()
     expect(page.locator("#diagnosis .feedback")).to_have_class("feedback bad")
+    expect(page.locator("#diagnosis")).to_contain_text("yerel BGP tablosunda")
     assert not done(page, concept[0])
-    right = next(i for i, t in enumerate(texts) if "ilan edilmiyor" in t)
+    right = next(i for i, t in enumerate(texts) if "network 203.0.113.0" in t)
     options.nth(right).click()
     expect(page.locator("#diagnosis .feedback")).to_have_class("feedback good")
     assert done(page, concept[0])
@@ -164,10 +169,32 @@ with sync_playwright() as pw:
     assert "komşuluğu: FULL" in page.locator("#protoResult").text_content()
     assert "FULL/" in page.locator("#protoOutput").text_content()
     expect(page.locator("#protoResult")).to_have_class("proto-result good")
+    # BGP: başlık yalnız belirti; üç durum aynı dört aday nedeni paylaşır, doğru neden kanıttan
+    # ayırt edilir. Her durumda doğru seçenek farklıdır; yanlışın açıklaması eleme kanıtını söyler.
+    answers = set()
     for bgp in ("bgp-advertise", "bgp-filter", "bgp-next-hop"):
         set_select(page, "#protoScenario", bgp)
         expect(page.locator("#protoBadge")).to_have_text("KAVRAMSAL ALIŞTIRMA (MOTOR YOK)")
         assert "canlı ağdan ölçülmez" in page.locator("#protoResult").text_content()
+        label = page.evaluate(
+            "() => document.querySelector('#protoScenario').selectedOptions[0].textContent"
+        )
+        buttons = page.locator("#protoOptions [data-cause]")
+        causes = buttons.evaluate_all("(bs) => bs.map((b) => b.dataset.cause)")
+        assert causes == ["network", "filter", "nexthop", "session"], causes
+        for cause in ("prefix-list", "NEXT_HOP", "network"):
+            assert cause not in label, (label, cause)
+        good = []
+        for n, cause in enumerate(causes):
+            buttons.nth(n).evaluate("(b) => b.click()")
+            result = page.locator("#protoResult")
+            if "good" in (result.get_attribute("class") or ""):
+                good.append(cause)
+            else:
+                assert result.text_content().startswith("Elenir:"), result.text_content()
+        assert len(good) == 1, (bgp, good)
+        answers.add(good[0])
+    assert answers == {"network", "filter", "nexthop"}, answers
     set_select(page, "#protoScenario", "ospf-area")
     click(page, "#protoSharedOpen")
     expect(page.locator("#sharedScenarioSelect")).to_have_value("ospf-area-mismatch")

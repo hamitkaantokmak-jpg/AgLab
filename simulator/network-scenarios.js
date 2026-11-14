@@ -21,6 +21,17 @@ function sharedEngineCommandBlock(name, commands) {
     if (errors.length) throw new Error(raw + ': ' + errors.map((e) => e.textContent).join(' '));
   }
 }
+/** Önceki senaryonun (çözülünce durum satırının yanına taşınmış) kök neden kutusunu kaldırır. */
+function sharedCauseClear() {
+  document.getElementById('sharedScenarioCause')?.remove();
+}
+/** Senaryo çözüldü: kök neden açılır ve "BAŞARILI" durumunun yanında görünür. */
+function sharedCauseReveal() {
+  const cause = document.getElementById('sharedScenarioCause');
+  if (!cause) return;
+  cause.open = true;
+  $p('sharedScenarioStatus').after(cause);
+}
 function loadNetworkScenario(key) {
   const row = sharedScenarioRecipe(key);
   if (!row?.topology) return false;
@@ -34,7 +45,6 @@ function loadNetworkScenario(key) {
   panel.replaceChildren();
   for (const text of [
     row.symptom,
-    'Kök neden: ' + row.cause,
     'Model: Cisco benzeri sınırlı eğitim komutları; gerçek IOS/OSPF/BGP paketleri veya zamanlayıcıları çalıştırılmaz.',
     ...(row.verify.survivesReload
       ? [
@@ -64,6 +74,16 @@ function loadNetworkScenario(key) {
     hints.append(pre);
   }
   panel.append(hints);
+  // Kök neden alıştırmanın cevabıdır: ipuçlarının yanında ayrı ve kapalı durur; senaryo
+  // çözülünce (hedefler sağlanınca) kendiliğinden açılır ve durum satırının yanına taşınır.
+  const cause = document.createElement('details'),
+    causeSummary = document.createElement('summary'),
+    causeText = document.createElement('p');
+  cause.id = 'sharedScenarioCause';
+  causeSummary.textContent = 'Kök nedeni göster';
+  causeText.textContent = 'Kök neden: ' + row.cause;
+  cause.append(causeSummary, causeText);
+  panel.append(cause);
   sharedStatus(
     row.title + ' yüklendi. İlk erişim başarısız olmalı; tanı komutlarıyla nedeni incele.',
   );
@@ -223,6 +243,10 @@ function validateSharedScenarios() {
   if (importReportData) snapshot.importReport = clone(importReportData);
   const savedScenario = clone(sharedScenario),
     instructions = $p('sharedScenarioInstructions').innerHTML,
+    // çözülmüş senaryonun kök neden kutusu durum satırının yanındadır; denetim onu korur
+    revealedCause = $p('sharedScenarioInstructions').querySelector('#sharedScenarioCause')
+      ? null
+      : document.getElementById('sharedScenarioCause'),
     status = $p('sharedScenarioStatus').textContent;
   const terminal = [...$p('ptTerminal').childNodes].map((n) => n.cloneNode(true)),
     oldMode = cliMode,
@@ -271,8 +295,10 @@ function validateSharedScenarios() {
     importTopology(snapshot);
     sharedScenario = savedScenario;
     aglabLabber.restore(labberSession);
+    sharedCauseClear();
     $p('sharedScenarioInstructions').innerHTML = instructions;
     $p('sharedScenarioStatus').textContent = status;
+    if (revealedCause) $p('sharedScenarioStatus').after(revealedCause);
     macTables.clear();
     oldMacs.forEach(([id, rows]) => macTables.set(id, rows));
     arpTables.clear();
