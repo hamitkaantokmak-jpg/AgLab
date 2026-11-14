@@ -64,6 +64,10 @@ Labber çalıştırıyor ama `toAglab` yazamıyor; komut yazılınca arayüz uya
 | P2 | VPCS'te adla ping yok; DNS kayıtları yalnız cihaz adları; büyük harfli adlar kimliğe çevriliyor | #10 |
 | P2 | Hazır DHCP kiraları sunucunun binding tablosunda yok | #9 |
 | P2 | DHCP snooping, DAI, storm control, Root Guard, `errdisable recovery` yok | #13, #21 |
+| P2 | Router'da `show arp` yok (yalnız `show ip arp`); IOS ikisini de kabul eder | L7 (#88) |
+| P2 | `copy startup-config running-config` yok (IOS'ta startup running'e **birleştirilir**, yerine konmaz) | L7 (#88), #11 |
+| P3 | Başarısız ARP isteğinin kaynak MAC'i switch'te öğrenilmiyor; gerçek switch her çerçevenin kaynağını öğrenir | L7 (#88), #3 |
+| P3 | Bayat MAC tablosu (yer değiştiren cihaz, eski port kaydı) modellenmiyor; iletim tablodan değil topolojiden hesaplanıyor | L7 (#88), #3 |
 | P3 | VPCS `trace`'in ilk atlamasında HSRP sanal IP'si görünüyor; router Time Exceeded'i arayüzünün gerçek adresinden göndermeli | #18 |
 | P3 | PortFast kapalıyken erişim portları `show spanning-tree`'de "P2p Edge" | #13 |
 | P3 | `show ip route`'ta tek /24 rotasının üstüne "is subnetted, 1 subnets" başlığı | #15 |
