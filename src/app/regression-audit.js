@@ -30,40 +30,34 @@
           ? 'Eksik: ' + required.filter((x) => !optionValues.includes(x)).join(', ')
           : '13 senaryo seçeneği bulundu',
       );
-      const ids = Array.isArray(scenarios) ? scenarios.map((x) => x.id) : [];
-      add('Senaryo kayıtları yüklü', ids.length > 0, ids.length + ' senaryo kaydı');
+      // L6: Sorun Çöz görevleri oyuncak model değil; her biri Labber karşılığına ya da açıkça
+      // etiketli kavramsal alıştırmaya açılır.
+      const tasks = typeof TROUBLESHOOT_TASKS !== 'undefined' ? TROUBLESHOOT_TASKS : [];
+      const ids = tasks.map((x) => x.id);
+      add('Sorun Çöz görevleri yüklü', ids.length > 0, ids.length + ' görev');
       add(
-        'Senaryo kimlikleri benzersiz',
+        'Görev kimlikleri benzersiz',
         new Set(ids).size === ids.length,
         new Set(ids).size === ids.length ? 'Tekrarlanan kimlik yok' : 'Tekrarlanan kimlik bulundu',
       );
-      const shape =
-        Array.isArray(scenarios) &&
-        scenarios.every(
-          (x) =>
-            x &&
-            typeof x.id === 'string' &&
-            typeof x.title === 'string' &&
-            x.start &&
-            typeof x.solved === 'function',
-        );
-      add('Senaryo şeması tutarlı', shape, 'id, title, start ve solved alanları kontrol edildi');
-      const relay = scenarios.find((x) => x.id === 'relay-trunk');
-      const relayAllowed =
-        relay &&
-        String(relay.start.trunkAllowed || '')
-          .split(',')
-          .map((v) => v.trim())
-          .includes('10');
+      const missing = tasks.filter((x) =>
+        x.target ? !optionValues.includes(x.target) : !x.concept,
+      );
       add(
-        'DHCP relay/trunk başlangıç arızası',
-        !!relay &&
-          relay.start.dhcpRelay === true &&
-          relay.start.dhcpRenewed === false &&
-          !relayAllowed,
-        relay
-          ? 'Relay açık, DHCP yenilenmemiş ve VLAN 10 allowed listesinde değil'
-          : 'relay-trunk senaryosu bulunamadı',
+        'Her görevin Labber karşılığı ya da kavramsal etiketi var',
+        tasks.length > 0 && !missing.length,
+        missing.length
+          ? 'Karşılıksız: ' + missing.map((x) => x.id).join(', ')
+          : 'Labber karşılığı: ' +
+              tasks.filter((x) => x.target).length +
+              ', kavramsal: ' +
+              tasks.filter((x) => !x.target).length,
+      );
+      const relay = tasks.find((x) => x.id === 'relay-trunk');
+      add(
+        'DHCP relay/trunk görevi Labber senaryosunda',
+        !!relay && relay.target === 'relay-trunk' && optionValues.includes('relay-trunk'),
+        relay ? 'relay-trunk → ' + relay.target : 'relay-trunk görevi bulunamadı',
       );
       const srcText = [...document.scripts].map((x) => x.textContent || '').join('\n');
       const natSetupStart = srcText.indexOf('function loadSharedNatScenario');

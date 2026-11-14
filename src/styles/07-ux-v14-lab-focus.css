@@ -1,38 +1,180 @@
-
 /* v14: presentation-only laboratory focus layer. Existing simulation engine and IDs are unchanged. */
-#ux14LabModes {margin:0 0 14px;padding:16px;border:1px solid #45677a;border-radius:14px;background:#12283b;color:#e7f5ff}
-#ux14LabModes h3 {font-size:19px;margin:0 0 10px}
-#ux14LabModes .ux14-row {display:flex;flex-wrap:wrap;gap:10px}
-#ux14LabModes .ux14-mode {font:inherit;font-weight:700;min-height:48px;border-radius:11px;border:1px solid #7693a8;background:#19364d;color:#effaff;padding:10px 18px;cursor:pointer}
-#ux14LabModes .ux14-mode[aria-pressed=true]{background:#236253;border-color:#85e9cf;box-shadow:inset 0 0 0 1px #85e9cf}
-#ux14ModeInfo {margin:12px 0 0;line-height:1.6;color:#d0e5ed;font-size:13px}
-#ux14ModeInfo strong{color:#97f2db}
-#ux14AcademySlot {margin:0 0 16px}
-#ux14AcademySlot[hidden] {display:none!important}
-#ux14AcademySlot #academyPanel {margin:0!important;padding:18px!important}
-#ux14AcademySlot #academyPanel h2 {margin:0 0 10px;font-size:19px}
-#ux14AcademySlot #academyPanel label{display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center}
-#ux14AcademySlot #academyPanel button {min-height:44px}
-#ux14LabMore {margin:12px 0 14px;border:1px solid #425d72;border-radius:11px;background:#12273b;padding:8px 12px}
-#ux14LabMore > summary {cursor:pointer;font-weight:700;padding:7px;min-height:32px;line-height:28px}
-#ux14LabMore[open] > summary {margin-bottom:8px;border-bottom:1px solid #486379}
-#ux14LabMore .pt-quickstart {margin:8px 0 14px}
-#ptWorkbench.ux14-lab #ux14LabMore .pt-import-note{display:block!important}
-#ux14CliMore {margin:12px 0 0;padding:8px 10px;border:1px solid #3b5e72;border-radius:10px;background:rgba(18,38,59,.8)}
-#ux14CliMore summary {cursor:pointer;min-height:34px;line-height:34px;font-size:13px;font-weight:700}
-#ux14CliMore .pt-shortcuts {margin-top:10px}
-#ux14LabNotes {border:1px solid #3b5e72;border-radius:10px;margin-top:10px;padding:10px 12px}
-#ux14LabNotes summary {cursor:pointer;font-weight:600}
-#area-lab .ux14-workflow {padding:9px 13px;border:1px solid #335f72;background:#10283c;border-radius:10px;margin:0 0 10px;color:#d0ebf2;font-size:13px;line-height:1.6}
-#area-lab .ux14-workflow b{color:#91f0d6}
-#ptWorkbench.ux14-lab .pt-head {gap:12px}
-#ptWorkbench.ux14-lab .pt-head .eyebrow {display:none}
-#ptWorkbench.ux14-lab .pt-head p:not(.pt-import-note) {display:none}
-#ptWorkbench.ux14-lab .pt-connectgroup {align-items:end}
-#ptWorkbench.ux14-lab .pt-head-actions button {min-height:44px}
-#area-lab .pt-canvas-wrap {min-width:0}
-#area-lab .pt-workgrid {min-width:0}
-#area-lab .pt-cli-card {min-width:0}
-#area-lab .pt-terminal {max-width:100%;overflow-x:auto}
-@media(max-width:740px){#ux14LabModes .ux14-mode{flex:1 1 155px}#ptWorkbench.ux14-lab .pt-connectgroup{flex-wrap:wrap}#ptWorkbench.ux14-lab .pt-head-actions{gap:8px}#ptWorkbench.ux14-lab .pt-head-actions button{flex:1 1 120px}#area-lab .pt-workgrid{grid-template-columns:minmax(0,1fr)!important}}
-@media(prefers-reduced-motion:reduce){#area-lab *{scroll-behavior:auto!important}}
+#ux14LabModes {
+  margin: 0 0 14px;
+  padding: 16px;
+  border: 1px solid #45677a;
+  border-radius: 14px;
+  background: #12283b;
+  color: #e7f5ff;
+}
+#ux14LabModes h3 {
+  font-size: 19px;
+  margin: 0 0 10px;
+}
+#ux14LabModes .ux14-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+#ux14LabModes .ux14-mode {
+  font: inherit;
+  font-weight: 700;
+  min-height: 48px;
+  border-radius: 11px;
+  border: 1px solid #7693a8;
+  background: #19364d;
+  color: #effaff;
+  padding: 10px 18px;
+  cursor: pointer;
+}
+#ux14LabModes .ux14-mode[aria-pressed='true'] {
+  background: #236253;
+  border-color: #85e9cf;
+  box-shadow: inset 0 0 0 1px #85e9cf;
+}
+#ux14ModeInfo {
+  margin: 12px 0 0;
+  line-height: 1.6;
+  color: #d0e5ed;
+  font-size: 13px;
+}
+#ux14ModeInfo strong {
+  color: #97f2db;
+}
+#ux14AcademySlot {
+  margin: 0 0 16px;
+}
+#ux14AcademySlot[hidden] {
+  display: none !important;
+}
+#ux14AcademySlot #academyPanel {
+  margin: 0 !important;
+  padding: 18px !important;
+}
+#ux14AcademySlot #academyPanel h2 {
+  margin: 0 0 10px;
+  font-size: 19px;
+}
+#ux14AcademySlot #academyPanel label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+#ux14AcademySlot #academyPanel button {
+  min-height: 44px;
+}
+#ux14LabMore {
+  margin: 12px 0 14px;
+  border: 1px solid #425d72;
+  border-radius: 11px;
+  background: #12273b;
+  padding: 8px 12px;
+}
+#ux14LabMore > summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 7px;
+  min-height: 32px;
+  line-height: 28px;
+}
+#ux14LabMore[open] > summary {
+  margin-bottom: 8px;
+  border-bottom: 1px solid #486379;
+}
+#ux14LabMore .pt-quickstart {
+  margin: 8px 0 14px;
+}
+#ptWorkbench.ux14-lab #ux14LabMore .pt-import-note {
+  display: block !important;
+}
+#ux14CliMore {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border: 1px solid #3b5e72;
+  border-radius: 10px;
+  background: rgba(18, 38, 59, 0.8);
+}
+#ux14CliMore summary {
+  cursor: pointer;
+  min-height: 34px;
+  line-height: 34px;
+  font-size: 13px;
+  font-weight: 700;
+}
+#ux14CliMore .pt-shortcuts {
+  margin-top: 10px;
+}
+#ux14LabNotes {
+  border: 1px solid #3b5e72;
+  border-radius: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+}
+#ux14LabNotes summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+#area-lab .ux14-workflow {
+  padding: 9px 13px;
+  border: 1px solid #335f72;
+  background: #10283c;
+  border-radius: 10px;
+  margin: 0 0 10px;
+  color: #d0ebf2;
+  font-size: 13px;
+  line-height: 1.6;
+}
+#area-lab .ux14-workflow b {
+  color: #91f0d6;
+}
+#ptWorkbench.ux14-lab .pt-head {
+  gap: 12px;
+}
+#ptWorkbench.ux14-lab .pt-head .eyebrow {
+  display: none;
+}
+#ptWorkbench.ux14-lab .pt-head p:not(.pt-import-note) {
+  display: none;
+}
+#ptWorkbench.ux14-lab .pt-connectgroup {
+  align-items: end;
+}
+#ptWorkbench.ux14-lab .pt-head-actions button {
+  min-height: 44px;
+}
+#area-lab .pt-canvas-wrap {
+  min-width: 0;
+}
+#area-lab .pt-workgrid {
+  min-width: 0;
+}
+#area-lab .pt-cli-card {
+  min-width: 0;
+}
+#area-lab .pt-terminal {
+  max-width: 100%;
+  overflow-x: auto;
+}
+@media (max-width: 740px) {
+  #ux14LabModes .ux14-mode {
+    flex: 1 1 155px;
+  }
+  #ptWorkbench.ux14-lab .pt-connectgroup {
+    flex-wrap: wrap;
+  }
+  #ptWorkbench.ux14-lab .pt-head-actions {
+    gap: 8px;
+  }
+  #ptWorkbench.ux14-lab .pt-head-actions button {
+    flex: 1 1 120px;
+  }
+  #area-lab .pt-workgrid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #area-lab * {
+    scroll-behavior: auto !important;
+  }
+}

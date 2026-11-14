@@ -162,10 +162,12 @@ class LessonScenarioTests(unittest.TestCase):
 
     def test_query_targets_use_derived_state(self):
         # macPort/macVlan hedefleri trafikle öğrenilen MAC'e bakar; çözümden önce sağlanmaz.
+        # Arızasız gözlem senaryoları (`verify.observation`) aşağıda ayrı sınanır.
         rows = [
             r
             for r in RECIPES
             if any(c["fn"] in ("macPort", "macVlan") for c in r["verify"]["checks"])
+            and not r["verify"].get("observation")
         ]
         self.assertTrue(rows)
         for r in rows:
@@ -174,6 +176,25 @@ class LessonScenarioTests(unittest.TestCase):
                 out = self.ping_target(r)
                 self.assertTrue(any("outerr" in k for _, k in out), "başarısız iletim")
                 self.assertIn("Henüz çözülmedi", self.status())
+
+    def test_observation_targets_need_traffic(self):
+        # L6: eski "MAC/ARP tabloları boş" ve "bilinmeyen unicast" metin senaryoları arızasız gözlem
+        # görevleridir: tablolar yalnız trafikle dolar. Başta (trafik yokken) hedef sağlanmaz;
+        # hedef ping'i başarılı iletimdir ve hedefi kendisi sağlar. Hiç trafik üretmeyen cihaz
+        # (beklenen null) tabloda görünmez.
+        rows = [r for r in RECIPES if r["verify"].get("observation")]
+        self.assertTrue(rows)
+        for r in rows:
+            with self.subTest(r["id"]):
+                self.assertTrue(
+                    all(c["fn"] in ("macPort", "macVlan") for c in r["verify"]["checks"]), r["id"]
+                )
+                self.load(r["id"])
+                self.assertFalse(self.goal(), "trafik olmadan tablo boş: hedef sağlanmamalı")
+                out = self.ping_target(r)
+                self.assertFalse(any("outerr" in k for _, k in out), "iletim başarılı olmalı")
+                self.assertTrue(self.goal(), "trafikten sonra MAC'ler öğrenilmiş olmalı")
+                self.assertIn("BAŞARILI", self.status())
 
 
 if __name__ == "__main__":

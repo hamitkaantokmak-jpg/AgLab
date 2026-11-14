@@ -153,6 +153,11 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `psec-printer-typo` | Port security · Yazıcı sessizce kayboldu | **Labber** |
 | `psec-swapped-desks` | Port security · Masalar değişti, iki bilgisayar da kopuk | **Labber** |
 | `psec-two-faults` | Port security · Yazıcı ve toplantı odası birlikte | **Labber** |
+| `dhcp-client-static` | DHCP · Bilgisayar 169.254 adresinde kalmış | **Labber** |
+| `dhcp-service-down` | DHCP · Sunucu ayakta ama 2. kat adres alamıyor | **Labber** |
+| `eth-mac-learning` | Ethernet/ARP · MAC tablosu boş, ağ bozuk mu? | **Labber** |
+| `eth-unknown-unicast` | Ethernet/ARP · Hedef MAC bilinmiyorsa çerçeve nereye gider? | **Labber** |
+| `acl-http-blocked` | ACL · Sunucuya ping gidiyor, web sayfası açılmıyor | **Labber** |
 
 ## Labber labları (E)
 
@@ -177,6 +182,62 @@ köprü kullanılmadan doğrudan Labber'da kurulur; terminal Labber oturumudur, 
 | `ospf-ariza` | OSPF arıza giderme: komşuluk şartları ve metrik ayarı | İleri | 5/5 | 6 | ENCOR, OSPF, Arıza giderme, Hello/Dead, MTU, Reference bandwidth | **Labber** — LabDef doğrudan |
 | `ospf-cok-alan` | Çok alanlı OSPF: ABR, ASBR, varsayılan rota, totally stubby area | İleri | 6/5 | 5 | ENCOR, OSPF, Multi-area, ABR/ASBR, Stub area, Default route | **Labber** — LabDef doğrudan |
 
+## Motor kullanmayan eski içerik (L6)
+
+Sorun Çöz'ün eski metin senaryoları, "Hazır deneyler" mini lab'ı ve iki atölye kendi oyuncak
+modelleriyle çalışıyordu. Her öğe ya Labber'daki karşılık senaryoya açılır (1. yol), ya
+gerçek topoloji senaryosuna / Labber görünümüne çevrildi (2. yol) ya da kavramsal
+alıştırmadır (3. yol, motor yok). Tablo ürünün kendisinden üretilir; ayrıntı
+UYUMLULUK_MATRISI "L6".
+
+| Bölüm | Öğe | Başlık | Yol |
+|---|---|---|---|
+| Sorun Çöz | `gateway` | Dış ağlara erişim sorunu | 1 · Labber karşılığı `gw-pc-wrong-gateway` |
+| Sorun Çöz | `dns` | Alan adlarına erişilemiyor | 1 · Labber karşılığı `dns-wrong-server-pc` |
+| Sorun Çöz | `duplicate` | Aralıklı bağlantı kesintileri | 1 · Labber karşılığı `eth-duplicate-ip` |
+| Sorun Çöz | `mask` | Yerel hedefe erişim sorunu | 1 · Labber karşılığı `eth-wrong-mask` |
+| Sorun Çöz | `dhcp` | Ağ yapılandırması alınamıyor | 2 · yeni Labber senaryosu `dhcp-client-static` |
+| Sorun Çöz | `link` | Ağ bağlantısı kurulamıyor | 1 · Labber karşılığı `phy-port-shutdown` |
+| Sorun Çöz | `wrongip` | Ağ kaynaklarına erişilemiyor | 1 · Labber karşılığı `ip-wrong-network` |
+| Sorun Çöz | `service` | İç uygulama yanıt vermiyor | 1 · Labber karşılığı `method-app-top-down` |
+| Sorun Çöz | `vlan` | PC doğru IP'de ama gateway'e erişemiyor | 1 · Labber karşılığı `access-vlan` |
+| Sorun Çöz | `trunk` | İki switch arasındaki bazı VLAN'lar çalışmıyor | 1 · Labber karşılığı `trunk-allowed` |
+| Sorun Çöz | `subif` | VLAN'lar arası yönlendirme çalışmıyor | 1 · Labber karşılığı `subif-missing` |
+| Sorun Çöz | `route` | Uzak ağa erişim yok | 1 · Labber karşılığı `forward-route` |
+| Sorun Çöz | `mac` | MAC ve ARP tabloları boş görünüyor | 2 · yeni Labber senaryosu `eth-mac-learning` |
+| Sorun Çöz | `native` | Trunk native VLAN uyuşmazlığı | 1 · Labber karşılığı `native-vlan` |
+| Sorun Çöz | `relay` | Uzak ağdaki DHCP sunucusundan adres alınamıyor | 1 · Labber karşılığı `dhcp-no-helper` |
+| Sorun Çöz | `relay-trunk` | DHCP relay var ama trunk VLAN'ı taşımıyor | 1 · Labber karşılığı `relay-trunk` |
+| Sorun Çöz | `unknown` | Switch bilinmeyen hedef MAC'i tüm portlara mı gönderiyor? | 2 · yeni Labber senaryosu `eth-unknown-unicast` |
+| Sorun Çöz | `acl` | Uygulamaya erişim ACL tarafından engelleniyor | 2 · yeni Labber senaryosu `acl-http-blocked` |
+| Sorun Çöz | `nat` | İç ağdan internete çıkış yok | 1 · Labber karşılığı `nat-missing-rule` |
+| Sorun Çöz | `portsec` | Switch portu güvenlik ihlali nedeniyle kapalı | 1 · Labber karşılığı `port-security` |
+| Sorun Çöz | `ospf` | OSPF komşuluğu kurulamıyor | 1 · Labber karşılığı `ospf-area` |
+| Sorun Çöz | `bgp` | BGP komşuluğu kurulu ama prefix ilan edilmiyor | 3 · Kavramsal alıştırma (motor yok) |
+| Sorun Çöz | `returnroute` | Gidiş rotası var, dönüş rotası eksik | 1 · Labber karşılığı `return-route` |
+| Sorun Çöz | `lpm` | Daha spesifik rota yanlış next-hop seçiyor | 1 · Labber karşılığı `lpm-next-hop` |
+| Sorun Çöz | `routechoice` | Administrative Distance: yedek statik rota | 1 · Labber karşılığı `floating-static` |
+| Hazır deneyler | `gateway` | 1 · Yanlış gateway | 1 · Labber karşılığı `gw-pc-wrong-gateway` |
+| Hazır deneyler | `mask` | 2 · Yanlış subnet maskesi | 1 · Labber karşılığı `eth-wrong-mask` |
+| Hazır deneyler | `vlan` | 3 · VLAN uyuşmazlığı | 1 · Labber karşılığı `vlan-wrong-access` |
+| Hazır deneyler | `dns` | 4 · Yanlış DNS | 1 · Labber karşılığı `dns-wrong-server-pc` |
+| Hazır deneyler | `dhcp` | 5 · DHCP servisi kapalı | 2 · yeni Labber senaryosu `dhcp-service-down` |
+| Hazır deneyler | `uplink` | 6 · Trunk VLAN eksik + yanlış access VLAN | 1 · Labber karşılığı `vlan-two-faults` |
+| Hazır deneyler | `routerdown` | 7 · Router arayüzü down | 1 · Labber karşılığı `roas-physical-shutdown` |
+| Hazır deneyler | `route` | 8 · Uzak ağ (varsayılan) rotası eksik | 1 · Labber karşılığı `default-route` |
+| Hazır deneyler | `http` | 9 · HTTP servisi kapalı | 1 · Labber karşılığı `method-app-top-down` |
+| Rota atölyesi | `static-ospf` | 1 · Hatalı statik rota / OSPF (AD) | 1 · Labber karşılığı `ospf-static-overrides` |
+| Rota atölyesi | `lpm` | 2 · LPM: daha uzun önek | 1 · Labber karşılığı `lpm-next-hop` |
+| Rota atölyesi | `metric` | 3 · OSPF metric karşılaştırması | 2 · Labber görünümü (gerçek `show` çıktısı + LabQuery) |
+| Rota atölyesi | `ecmp` | 4 · Eşit maliyetli yollar (ECMP) | 2 · Labber görünümü (gerçek `show` çıktısı + LabQuery) |
+| Rota atölyesi | `default` | 5 · Varsayılan rota | 1 · Labber karşılığı `default-route` |
+| Protokol atölyesi | `ospf-area` | 1 · OSPF area uyuşmazlığı | 1 · Labber karşılığı `ospf-area-mismatch` |
+| Protokol atölyesi | `ospf-passive` | 2 · OSPF arayüzü passive | 2 · Labber görünümü (gerçek `show` çıktısı + LabQuery) |
+| Protokol atölyesi | `bgp-advertise` | 3 · BGP Established ama prefix ilan edilmiyor (kavramsal) | 3 · Kavramsal alıştırma (motor yok) |
+| Protokol atölyesi | `bgp-filter` | 4 · BGP outbound prefix-list filtresi (kavramsal) | 3 · Kavramsal alıştırma (motor yok) |
+| Protokol atölyesi | `bgp-next-hop` | 5 · BGP NEXT_HOP çözümlenemiyor (kavramsal) | 3 · Kavramsal alıştırma (motor yok) |
+| Rota atölyesi | `diagnostic` | İleri uygulama · Uçtan uca erişim teşhisi | 3 · Kavramsal alıştırma (motor yok) |
+
 ## Labber köprüsü özeti (L1)
 
 Karar köprünün yapısal sonucudur: `labber`, içeriğin bütün alanlarının Labber'a
@@ -194,9 +255,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 101 | 1 | 102 |
+| Ortak senaryolar | 106 | 1 | 107 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 154 | 1 | 155 |
+| Toplam | 159 | 1 | 160 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|

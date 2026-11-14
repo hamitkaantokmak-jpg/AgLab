@@ -41,10 +41,46 @@ def bridge_decisions(browser):
         " devices: l.devices.length, links: l.links.length, objectives: l.objectives.length,"
         " tags: l.tags }))"
     )
+    # L6: motor kullanmayan eski içerik. Yol ürünün kendisinden okunur: Sorun Çöz görev listesi,
+    # "Hazır deneyler" bağlantıları ve atölyelerde her seçeneğin açtığı görünüm.
+    legacy = {
+        "tasks": page.evaluate(
+            "TROUBLESHOOT_TASKS.map((t) => ({ id: t.id, title: t.title, target: t.target || null }))"
+        ),
+        "experiments": page.evaluate(
+            "() => [...document.querySelectorAll('#labExperimentLinks [data-shared-scenario]')]"
+            ".map((b) => ({ id: b.dataset.experiment, title: b.textContent, target: b.dataset.sharedScenario }))"
+        ),
+        "workshops": page.evaluate("""() => {
+              const out = [], pick = (sel, v) => { const e = document.querySelector(sel); e.value = v; e.dispatchEvent(new Event('change')); };
+              for (const o of document.querySelectorAll('#routeCalcScenario option')) {
+                pick('#routeCalcScenario', o.value);
+                const shared = !document.getElementById('routeCalcShared').hidden;
+                out.push({ workshop: 'Rota', id: o.value, title: o.textContent,
+                  target: shared ? document.getElementById('routeCalcSharedOpen').dataset.sharedScenario : null,
+                  view: shared ? null : 'labber' });
+              }
+              for (const o of document.querySelectorAll('#protoScenario option')) {
+                pick('#protoScenario', o.value);
+                const shared = !document.getElementById('protoShared').hidden;
+                const concept = document.getElementById('protoBadge').textContent.includes('MOTOR YOK');
+                out.push({ workshop: 'Protokol', id: o.value, title: o.textContent,
+                  target: shared ? 'ospf-area-mismatch' : null, view: shared ? null : concept ? 'concept' : 'labber' });
+              }
+              out.push({ workshop: 'Rota', id: 'diagnostic', title: document.getElementById('routeDiagTitle').textContent,
+                target: null, view: document.getElementById('routeDiagBadge').textContent.includes('MOTOR YOK') ? 'concept' : 'labber' });
+              return out;
+            }"""),
+    }
     page.close()
     if errors:
         raise RuntimeError("Sayfa hatası: " + "; ".join(errors))
-    return {"academy": academy, "scenarios": scenarios, "labber_labs": labber_labs}
+    return {
+        "academy": academy,
+        "scenarios": scenarios,
+        "labber_labs": labber_labs,
+        "legacy": legacy,
+    }
 
 
 def _decision_cell(report, academy=False):
@@ -139,6 +175,58 @@ def render(browser):
             f"| `{l['id']}` | {l['title'].replace('|', '/')} | {l['level']} | "
             f"{l['devices']}/{l['links']} | {l['objectives']} | "
             f"{', '.join(l['tags']).replace('|', '/')} | **Labber** — LabDef doğrudan |"
+        )
+    legacy = decisions["legacy"]
+    known = {sid for sid, _, _ in scen}
+    labber = {sid for sid, _, r in scen if r["decision"] == "labber"}
+    # L6'da karşılığı olmadığı için gerçek topoloji senaryosuna çevrilenler (2. yol)
+    added = {
+        "dhcp-client-static",
+        "dhcp-service-down",
+        "eth-mac-learning",
+        "eth-unknown-unicast",
+        "acl-http-blocked",
+    }
+    path = lambda target, view=None: (
+        ("2 · yeni Labber senaryosu" if target in added else "1 · Labber karşılığı")
+        + f" `{target}`"
+        + ("" if target in labber else " (UYARI: Labber değil)")
+        if target
+        else (
+            "2 · Labber görünümü (gerçek `show` çıktısı + LabQuery)"
+            if view == "labber"
+            else "3 · Kavramsal alıştırma (motor yok)"
+        )
+    )
+    for row in legacy["tasks"] + legacy["experiments"] + legacy["workshops"]:
+        if row["target"] and row["target"] not in known:
+            raise RuntimeError("L6 karşılığı senaryolarda yok: " + row["target"])
+    lines.extend(
+        [
+            "",
+            "## Motor kullanmayan eski içerik (L6)",
+            "",
+            "Sorun Çöz'ün eski metin senaryoları, \"Hazır deneyler\" mini lab'ı ve iki atölye kendi oyuncak",
+            "modelleriyle çalışıyordu. Her öğe ya Labber'daki karşılık senaryoya açılır (1. yol), ya",
+            "gerçek topoloji senaryosuna / Labber görünümüne çevrildi (2. yol) ya da kavramsal",
+            "alıştırmadır (3. yol, motor yok). Tablo ürünün kendisinden üretilir; ayrıntı",
+            'UYUMLULUK_MATRISI "L6".',
+            "",
+            "| Bölüm | Öğe | Başlık | Yol |",
+            "|---|---|---|---|",
+        ]
+    )
+    for t in legacy["tasks"]:
+        lines.append(
+            f"| Sorun Çöz | `{t['id']}` | {t['title'].replace('|', '/')} | {path(t['target'])} |"
+        )
+    for t in legacy["experiments"]:
+        lines.append(
+            f"| Hazır deneyler | `{t['id']}` | {t['title'].replace('|', '/')} | {path(t['target'])} |"
+        )
+    for t in legacy["workshops"]:
+        lines.append(
+            f"| {t['workshop']} atölyesi | `{t['id']}` | {t['title'].replace('|', '/')} | {path(t['target'], t['view'])} |"
         )
     everything = list(decisions["academy"].values()) + [r for _, _, r in scen]
     reasons = {}

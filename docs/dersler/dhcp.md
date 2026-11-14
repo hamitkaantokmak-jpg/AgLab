@@ -168,6 +168,19 @@ Temel topoloji lab'ın bitmiş hâlidir: R1'de KAT1 havuzu (.1–.20 dışlanmı
 - **Çözüm:** S1'in ve S3'ün çözümü; PC-21 ve PC-11'de `ip dhcp`
 - **Hedefler:** `q.dhcpLease('PC-21').server === 'SRV'`; `q.ping('PC-21', '192.168.100.10').ok`; `q.ping('PC-11', '192.168.100.10').ok`
 
+### Ek · L6'dan gelen iki senaryo
+
+Eski Sorun Çöz metin senaryosu ve eski "Hazır deneyler" mini lab'ı motor kullanmıyordu; Labber
+karşılığı yoktu. Aynı öğretim gerçek topolojiye çevrildi (lab topolojisi S3 ile aynı; R1 havuzunun
+`default-router`'ı doğru):
+
+- `dhcp-client-static` · **Bilgisayar 169.254 adresinde kalmış (E1).** PC-11 DHCP istemcisi değil;
+  kartında elle yazılmış link-local adres var. Havuz sağlam. Çözüm: PC-11'de `ip dhcp`. Hedef:
+  kira R1'den, PC-11 → SRV ping.
+- `dhcp-service-down` · **Sunucu ayakta ama 2. kat adres alamıyor (E3).** Relay doğru; SRV'de DHCP
+  servisi kapalı. Çözüm: SRV'de `service dhcp on`, PC-21'de `ip dhcp`. Hedef: kira SRV'den
+  (relay ile), PC-21 → SRV ping.
+
 ## 7. Kısa sınav
 
 1. Bir bilgisayar 169.254.20.8/16 adresine sahip. Bu ne anlama gelir?
