@@ -75,4 +75,8 @@ Labber çalıştırıyor ama `toAglab` yazamıyor; komut yazılınca arayüz uya
 
 ### Senaryo sorgu listesi (`SHARED_QUERY_FNS`)
 
-Dersler için eklenenler: `dhcpLease`, `dnsLookup`, `http`, `ospfAdjacent`; #80 ve #82 ile `etherchannel`, `fhrpActive`. CDP/LLDP için LabQuery sorgusu yok; `routeFor` listede değil.
+Dersler için eklenenler: `dhcpLease`, `dnsLookup`, `http`, `ospfAdjacent`; #80 ve #82 ile `etherchannel`, `fhrpActive`. CDP/LLDP için LabQuery sorgusu yok. `routeFor` #94 ile eklendi (hedef için kullanılan rota: prefix, nextHop, ad, source).
+
+| Öncelik | Eksik | Görüldüğü yer |
+|---|---|---|
+| P3 | Yapılandırmadaki statik rotaları listeleyen sorgu yok (ör. `staticRoutes(dev)` → kullanılsın ya da kullanılmasın her `ip route` satırı). `routeFor` yalnız kullanılan rotayı döndürdüğü için floating-static senaryosunda asıl rotayı silip AD 5'li rota ekleyen çözüm yakalanamıyor. | floating-static (#95) |
