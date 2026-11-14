@@ -13,10 +13,11 @@ Her adım ayrı PR, bir öncekinin dalı üstüne; birleştirilmez.
 
 | Adım | Dal | Durum |
 |---|---|---|
-| PR 1 iskelet, adlandırma, tek paket | #91, `claude/arayuz-1-iskelet` (taban `claude/arayuz-taslak`) | açık |
-| PR 2 Simülatör çalışma alanı, çözüm kilidi | #92, `claude/arayuz-2-simulator` (taban `claude/arayuz-1-iskelet`) | açık |
-| PR 3 Arıza senaryosu ekranı | — | sırada |
-| PR 4 Müfredat haritası ve ders ekranı | — | sırada |
+| PR 1 iskelet, adlandırma, tek paket | #91 | birleşti |
+| PR 2 Simülatör çalışma alanı, çözüm kilidi | #92 | birleşti |
+| PR 2b Simülatör artıkları | #93, `claude/arayuz-2b-simulator` (taban `main`) | açık |
+| PR 3 Sorun Çöz | — | sırada (#93 dalından) |
+| PR 4 Müfredat haritası ve ders | — | sırada |
 
 PR 1:
 - `src/index.html`: üst bar (`#agTop`: logo, `#areaTabs` dört bölüm, `#agSearch`, `#agTopTools`
@@ -62,7 +63,21 @@ PR 2 (dal `claude/arayuz-2-simulator`):
 - PR 3'e not: Sorun Çöz "LABBER MOTORU" rozetinin açık tema kontrastı ortak `.tag` kuralıyla
   düzeldi; Sorun Çöz ekranının kendisi ve ortak senaryo ipuçlarının kademesi/çözüm kilidi PR 3'te.
 
-Kalan (PR 3–4), her biri ayrı PR, bir öncekinin dalı üstüne (PR 2 → `claude/arayuz-1-iskelet`):
+PR 2b (dal `claude/arayuz-2b-simulator`, main'den):
+- Görev kataloğu: üç kart = eski paneller (`#academyPanel`, `#labberLabsPanel`, `#sharedScenarioPanel`,
+  kimlikler korunur); satırlar `#agSimCatList-{academy|labber|shared} .ag-cat-row` (ad, seviye,
+  durum). Durum: `aglab-academy-progress-v1`, yeni `aglab-labber-progress-v1`
+  (labber-labs-ui.js, bütün hedefler sağlanınca), `aglab-shared-engine-progress-v1`. Uzun
+  metinler `#agSimCatalogOthers` ("Diğer araçlar") altında. `academy.catalog()`,
+  `academy.searchMatches()`.
+- İpucu yalnız sağlanmamış hedefleri dolaşır; bitince "İpuçları açık".
+- Kap ≤ 1100 px: Görev 220 px | tuval; İnceleme tuvalin altında. ≤ 760 px: yerleşim sıfırlanır.
+  Çakışan tuval etiketleri `ag-label-hidden` (üzerine gelince görünür). Terminal sekme okları.
+  ≤ 520 px: palet tek satır, tuval yüksekliği ≥ ekran genişliği.
+- Tema: kayıtlı seçim yoksa `prefers-color-scheme`, yoksa açık; düğme eylemi söyler + aria-label.
+- PC/sunucu hızlı show: `show ip`, `show arp` (+ sunucuda `show services`).
+
+Kalan (PR 3–4; PR 3 → `claude/arayuz-2b-simulator` dalından), bir öncekinin dalı üstüne (PR 2 → `claude/arayuz-1-iskelet`):
 
 - **PR 2 Simülatör çalışma alanı** (taslak `dolu-3.png`): üstte başlık + motor rozeti + Sıfırla /
   İpucu / Kontrol et; solda görev ve canlı hedef listesi (Akademi ölçütleri `academy.evaluate`,
@@ -674,3 +689,21 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
   motorun kaldırılması (L7).
 - `src/sim` içinde yapıcı parametre özelliği (`constructor(public x)`) ekleme: yerel esbuild
   sürümü ile sabit sürüm bu kalıbı farklı derler (bkz. yerel araç notu).
+
+### Arayüz PR 3–4 için kullanıcı talimatı (son tur)
+
+PR 3 — Sorun Çöz (dolu-4.png): belirti kartı; Belirti → Teşhis → Kanıt → Düzelt → Doğrula adım
+çubuğu; senaryo listesi solda taslağın kartlarıyla. Ortak senaryoların ipucu/çözüm kutusu
+Simülatör'deki aynı kilide bağlanır (3 başarısız doğrulama ya da sağlanmamış her basamağın komut
+ipucu); ipuçları kademeli (neye bak → kavram → komut). `network-scenarios.json` `hints` sırası
+buna uymuyorsa ne kadarının uymadığını **raporla, içeriği değiştirme** (kullanıcı düzeltecek).
+Kök neden seçimi ve "kök neden çözülene kadar gizli" (#86, `test_aglab_scenario_cause`) korunur.
+Açık temada bütün rozet ve ikincil metinlerin kontrastı (WCAG AA) test edilir.
+
+PR 4 — Müfredat haritası ve ders (dolu-1/2.png): seviye başına konu kartları (başlanmadı/sürüyor/
+tamam, puan), arama kutusu konulara bağlı; ders ekranında yedi parçalı adım çubuğu; "Simülatör'de
+aç" ve "Sorun Çöz'de aç" doğru görevi yükler; senaryosuz okuma derslerinde bu adımlar gizlenir
+ya da "bu konuda alıştırma yok" der.
+
+Her PR: testleri gevşetme; değişen seçiciler tablosu; 1280 ve 1024 px, iki temada önce/sonra
+görüntüleri; taslaktan sapmalar gerekçesiyle.

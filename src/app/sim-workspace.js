@@ -145,7 +145,32 @@
     role: 'group',
     'aria-label': 'Terminal cihazı',
   });
-  termBar.append(termTabs);
+  // PR 2b: sekmeler taşınca kaydırma okları (dar ekranda "SW-0" gibi kesilmez).
+  const tabScroll = (dir) => {
+    const b = make('button', {
+      type: 'button',
+      class: 'ag-sim-tabscroll',
+      'data-dir': String(dir),
+      'aria-label': dir < 0 ? 'Önceki cihaz sekmeleri' : 'Sonraki cihaz sekmeleri',
+      text: dir < 0 ? '‹' : '›',
+      hidden: true,
+    });
+    b.addEventListener('click', () =>
+      termTabs.scrollBy({ left: dir * Math.max(80, termTabs.clientWidth * 0.7), behavior: 'auto' }),
+    );
+    return b;
+  };
+  const tabPrev = tabScroll(-1),
+    tabNext = tabScroll(1);
+  const syncTabArrows = () => {
+    const over = termTabs.scrollWidth > termTabs.clientWidth + 1;
+    tabPrev.hidden = tabNext.hidden = !over;
+    tabPrev.disabled = termTabs.scrollLeft <= 0;
+    tabNext.disabled = termTabs.scrollLeft + termTabs.clientWidth >= termTabs.scrollWidth - 1;
+  };
+  termTabs.addEventListener('scroll', syncTabArrows, { passive: true });
+  if (typeof ResizeObserver === 'function') new ResizeObserver(syncTabArrows).observe(termTabs);
+  termBar.append(tabPrev, termTabs, tabNext);
   termPane.append(termBar);
   const simPane = make('section', {
     class: 'ag-sim-simpane',
@@ -258,40 +283,233 @@
   if (legacyHead && !legacyHead.querySelector('button, input, select')) legacyHead.remove();
 
   // ---------------------------------------------------------------- görev seç kartı
+  // PR 2b: taslağın kart dili. Üç kart (Akademi labları · Labber labları · Hazır senaryolar);
+  // her görev tek satır (ad, seviye, durum). Satıra basmak görevi seçer (asıl seçim kutusu da
+  // kartın altında görünür kalır), "Başlat" açar. Uzun açıklamalar, motor notları, eski deney
+  // ortamı ve hızlı başlangıç daraltılmış "Diğer araçlar"da.
   const catalog = make('section', {
     class: 'card ag-sim-catalog',
     id: 'agSimCatalog',
     'aria-labelledby': 'agSimCatalogTitle',
   });
-  catalog.append(
+  const catalogHead = make(
+    'div',
+    { class: 'ag-sim-catalog-head' },
     make(
       'div',
-      { class: 'ag-sim-catalog-head' },
+      {},
       make('h2', { id: 'agSimCatalogTitle', text: 'Görev seç' }),
       make('p', {
         class: 'muted small',
-        text: 'Akademi labı, Labber labı ya da hazır arıza senaryosu yukarıdaki çalışma alanında açılır. Seçmek çalışmanı değiştirmez; başlatmak topolojiyi değiştirir.',
+        text: 'Seçmek çalışmanı değiştirmez; başlatmak topolojiyi değiştirir.',
       }),
     ),
   );
   const catalogGrid = make('div', { class: 'ag-sim-catalog-grid' });
-  catalog.append(catalogGrid);
+  const others = make(
+    'details',
+    { class: 'ag-cat-others', id: 'agSimCatalogOthers' },
+    make('summary', { text: 'Diğer araçlar · açıklamalar, motor notları, eski deney ortamı' }),
+  );
+  catalog.append(catalogHead, catalogGrid, others);
   const modes = $('ux14LabModes'),
     academySlot = $('ux14AcademySlot');
-  if (modes) catalog.insertBefore(modes, catalogGrid);
-  if (academySlot) catalogGrid.append(academySlot);
-  for (const id of ['labberLabsPanel', 'sharedScenarioPanel', 'labExperiments']) {
-    const n = $(id);
-    if (n) catalogGrid.append(n);
+  if (modes) {
+    // Rehberli / Serbest: kısa segment (açıklama satırı Diğer araçlar'da).
+    modes.querySelector('h3')?.remove();
+    const info = $('ux14ModeInfo');
+    catalogHead.append(modes);
+    if (info) others.append(info);
   }
-  const more = $('ux14LabMore');
-  if (more) {
-    $('uxLabScenarios')?.remove();
-    catalog.append(more);
+  const PROGRESS = {
+    academy: 'aglab-academy-progress-v1',
+    labber: 'aglab-labber-progress-v1',
+    shared: 'aglab-shared-engine-progress-v1',
+  };
+  const readProgress = (key) => {
+    try {
+      const v = JSON.parse(localStorage.getItem(PROGRESS[key]) || '{}');
+      return v && typeof v === 'object' ? v : {};
+    } catch (e) {
+      return {};
+    }
+  };
+  const catCards = {};
+  // Kart, eski panelin kendisidir (kimlik korunur: #academyPanel, #labberLabsPanel,
+  // #sharedScenarioPanel); panelin kart dışında kalan uzun metinleri "Diğer araçlar"a taşınır.
+  function catCard(key, panel, title, select, start, keep = []) {
+    const card = panel || make('section', {});
+    const rest = make(
+      'div',
+      { class: 'ag-cat-rest', 'data-cat-rest': key },
+      make('h4', { text: title + ' · açıklamalar ve notlar' }),
+    );
+    const list = make('ul', {
+      class: 'ag-cat-list',
+      id: 'agSimCatList-' + key,
+      role: 'listbox',
+      'aria-label': title,
+    });
+    const head = make('div', { class: 'ag-cat-head' });
+    const foot = make('div', { class: 'ag-cat-foot' });
+    if (select) {
+      select.setAttribute('aria-label', title + ': seçili görev');
+      foot.append(make('span', { class: 'muted small', text: 'Seçili' }), select);
+    }
+    if (start) foot.append(start);
+    // Kalan çocuklar (seçim kutusunun boş etiketi dahil) açıklama bölümüne.
+    for (const n of [...card.childNodes]) {
+      if (keep.includes(n)) continue;
+      if (n.nodeType === 1 && n.matches('label') && !n.querySelector('input,select,button'))
+        n.textContent = '';
+      if (n.nodeType === 3 && !n.textContent.trim()) n.remove();
+      else if (n.nodeType === 1 && !n.id && !n.textContent.trim() && !n.querySelector('[id]'))
+        n.remove();
+      else rest.append(n);
+    }
+    card.removeAttribute('style');
+    card.classList.add('ag-cat-card');
+    card.dataset.cat = key;
+    card.replaceChildren(head, ...keep.filter(Boolean), list, foot);
+    if (rest.childNodes.length > 1) others.append(rest);
+    catCards[key] = { card, list, select, head };
+    if (select) select.addEventListener('change', () => renderCatalog(key));
+    return { card, head };
   }
+  // Akademi kartı (#academyPanel; ux14 yuvasında, Serbest modda gizlenir — eski davranış).
+  const academyPanel = $('academyPanel');
+  const academySearch = $('academyCatalogSearch');
+  const academySearchStatus = $('academySearchStatus');
+  if (academySearchStatus) others.append(academySearchStatus);
+  const ac1 = catCard(
+    'academy',
+    academyPanel,
+    'Akademi labları',
+    $('academySelect'),
+    $('academyStart'),
+    // "Canlı Lab tanıları" bağlantısı kartta (real-lab öğrenci akışı; davranış aynı).
+    [academySearch, $('academyRealLab')],
+  );
+  ac1.head.append(make('h3', { text: 'Akademi labları' }));
+  if ($('academyProgress')) ac1.head.append($('academyProgress'));
+  if (academySlot) {
+    if (academyPanel && academyPanel.parentElement !== academySlot)
+      academySlot.append(academyPanel);
+    catalogGrid.append(academySlot);
+  } else if (academyPanel) catalogGrid.append(academyPanel);
+  // Labber kartı: "Labber labları (13)" başlığı (#labberLabsTitle) korunur.
+  const labberTitle = $('labberLabsTitle');
+  const lb = catCard(
+    'labber',
+    $('labberLabsPanel'),
+    'Labber labları',
+    $('labberLabSelect'),
+    $('labberLabStart'),
+  );
+  if (labberTitle) lb.head.append(labberTitle);
+  catalogGrid.append(lb.card);
+  const sharedCount = $('sharedScenarioSelect')?.options.length || 0;
+  const sh = catCard(
+    'shared',
+    $('sharedScenarioPanel'),
+    'Hazır senaryolar',
+    $('sharedScenarioSelect'),
+    $('sharedScenarioLoad'),
+  );
+  sh.head.append(make('h3', { text: 'Hazır senaryolar (' + sharedCount + ')' }));
+  catalogGrid.append(sh.card);
+  // Eski araçlar.
+  for (const n of [$('labExperiments'), $('ux14LabMore')]) if (n) others.append(n);
+  $('uxLabScenarios')?.remove();
   work.after(catalog);
   const heading = area.querySelector(':scope > .lab-heading');
   heading?.remove();
+
+  function rowMeta(key, value, text) {
+    if (key === 'academy') {
+      const lab = window.academy?.catalog?.(value);
+      const best = readProgress('academy')[value]?.bestScore;
+      return {
+        name: lab ? value + ' ' + lab.title : text,
+        level: lab?.module || '',
+        status: best === 100 ? '✓ tamamlandı' : Number.isInteger(best) ? 'en iyi ' + best : '',
+        done: best === 100,
+      };
+    }
+    if (key === 'labber') {
+      const info = window.aglabLabberLabs?.list().find((l) => l.id === value);
+      const done = !!readProgress('labber')[value]?.completed;
+      return {
+        name: info?.title || text,
+        level: info?.level || '',
+        status: done ? '✓ tamamlandı' : '',
+        done,
+      };
+    }
+    const done = !!readProgress('shared')[value]?.completed;
+    return { name: text, level: '', status: done ? '✓ tamamlandı' : '', done };
+  }
+  function renderCatalog(only) {
+    const academyFiltered = typeof window.academy?.searchMatches === 'function';
+    const visibleAcademy = new Set(academyFiltered ? window.academy.searchMatches() : []);
+    for (const [key, c] of Object.entries(catCards)) {
+      if (only && only !== key) continue;
+      if (!c.select) continue;
+      const active = window.aglabSimWorkspace?.context?.();
+      c.list.replaceChildren(
+        ...[...c.select.options].map((o) => {
+          const m = rowMeta(key, o.value, o.textContent);
+          const selected = o.value === c.select.value;
+          const isActive = active && active.kind === key && active.id === o.value;
+          const row = make(
+            'li',
+            {
+              role: 'option',
+              class: 'ag-cat-row',
+              'data-value': o.value,
+              'aria-selected': String(selected),
+              'data-done': m.done ? 'true' : null,
+              hidden: key === 'academy' && academyFiltered && !visibleAcademy.has(o.value),
+              tabindex: selected ? '0' : '-1',
+            },
+            make('span', { class: 'ag-cat-name', text: m.name }),
+            make('span', { class: 'ag-cat-level', text: m.level || '' }),
+            make('span', {
+              class: 'ag-cat-status',
+              text: isActive ? 'açık' : m.status || '—',
+            }),
+          );
+          const pick = () => {
+            c.select.value = o.value;
+            c.select.dispatchEvent(new Event('change', { bubbles: true }));
+          };
+          row.addEventListener('click', pick);
+          row.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              pick();
+            }
+          });
+          return row;
+        }),
+      );
+      // Seçili satır listenin görünür kısmında (sayfa kaydırılmaz).
+      const sel = c.list.querySelector('[aria-selected="true"]');
+      if (sel) {
+        const top = sel.offsetTop - c.list.offsetTop;
+        if (
+          top < c.list.scrollTop ||
+          top + sel.offsetHeight > c.list.scrollTop + c.list.clientHeight
+        )
+          c.list.scrollTop = Math.max(0, top - c.list.clientHeight / 2);
+      }
+    }
+  }
+  for (const id of ['academySearch', 'academyProgressFilter'])
+    $(id)?.addEventListener(id === 'academySearch' ? 'input' : 'change', () =>
+      renderCatalog('academy'),
+    );
+  document.addEventListener('aglab:academy-checked', () => renderCatalog('academy'));
 
   // ---------------------------------------------------------------- bağlam
   // Görev kartının bölümleri: her bağlamın kendi öğeleri tek kapta; yalnız etkin olan görünür.
@@ -531,12 +749,12 @@
     }
     schedule();
   });
-  // Sıradaki ipucu: ilk sağlanmamış hedefin bir sonraki basamağı (neye bak → kavram → komut);
-  // sağlanmamış hedeflerin basamakları bitince kalan hedefler.
+  // Sıradaki ipucu: ilk sağlanmamış hedefin bir sonraki basamağı (neye bak → kavram → komut).
+  // PR 2b: yalnız sağlanmamış hedefler dolaşılır; hepsinin basamakları açıksa ipucu kalmaz.
   function nextLabberHint(e, rows) {
     const level = hintLevels(e);
     const more = (o) => (level[o.id] || 0) < o.hints.length;
-    const goal = rows.find((o) => !o.ok && more(o)) || rows.find(more);
+    const goal = rows.find((o) => !o.ok && more(o));
     return goal ? { goal, index: rows.indexOf(goal), level: level[goal.id] || 0 } : null;
   }
   labberHint.addEventListener('click', () => {
@@ -594,7 +812,10 @@
     }
   }
   function quickCommands(dev, port, iface) {
-    if (dev.type === 'PC') return ['show ip'];
+    // PC/sunucu (VPCS): Labber'ın desteklediği yan etkisiz show komutları. Ping trafik ürettiği
+    // için hızlı çıktıda yok; sonucu ARP tablosunda (show arp) görünür.
+    if (dev.type === 'PC') return ['show ip', 'show arp'];
+    if (dev.type === 'Server') return ['show ip', 'show arp', 'show services'];
     if (dev.type === 'Switch')
       return [
         iface?.mode === 'trunk'
@@ -786,6 +1007,47 @@
     );
   }
   cliSelect?.addEventListener('change', () => renderTermTabs());
+  // Sekme değişince etkin sekme görünür alana gelir ve oklar güncellenir.
+  new MutationObserver(() => {
+    const on = termTabs.querySelector('[aria-pressed="true"]');
+    if (on) {
+      const l = on.offsetLeft - termTabs.offsetLeft,
+        r = l + on.offsetWidth;
+      if (l < termTabs.scrollLeft) termTabs.scrollLeft = l;
+      else if (r > termTabs.scrollLeft + termTabs.clientWidth)
+        termTabs.scrollLeft = r - termTabs.clientWidth;
+    }
+    syncTabArrows();
+  }).observe(termTabs, { childList: true });
+
+  // ---------------------------------------------------------------- etiket çakışması
+  // PR 2b: port/bağlantı etiketleri birbirine ya da bir düğüm kartına binerse soluklaşır
+  // (gizlenir); üzerine gelince ya da bağlantının kablosuna gelince görünür.
+  let declutterFrame = 0;
+  function declutter() {
+    declutterFrame = 0;
+    const rects = [...canvas.querySelectorAll('g[data-id] rect')].map((r) =>
+      r.getBoundingClientRect(),
+    );
+    const kept = [];
+    const hit = (a, b) =>
+      a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+    for (const t of canvas.querySelectorAll('text.pt-edge-label, text.pt-port-label')) {
+      t.classList.remove('ag-label-hidden');
+      const b = t.getBoundingClientRect();
+      if (!b.width) continue;
+      if (kept.some((k) => hit(k, b)) || rects.some((r) => hit(r, b)))
+        t.classList.add('ag-label-hidden');
+      else kept.push(b);
+    }
+  }
+  new MutationObserver(() => {
+    if (!declutterFrame) declutterFrame = requestAnimationFrame(declutter);
+  }).observe(canvas, { childList: true });
+  if (typeof ResizeObserver === 'function')
+    new ResizeObserver(() => {
+      if (!declutterFrame) declutterFrame = requestAnimationFrame(declutter);
+    }).observe(canvas);
 
   // ---------------------------------------------------------------- zaman çizelgesi
   const simRows = $('simulationRows');
@@ -1046,8 +1308,13 @@
     }
     return c;
   }
+  let catalogKey; // ilk yenilemede katalog çizilir
   function refresh() {
     const c = syncContext();
+    if (catalogKey !== c.key) {
+      catalogKey = c.key;
+      renderCatalog();
+    }
     title.textContent =
       'Simülatör · ' +
       (c.kind === 'academy'
@@ -1072,9 +1339,11 @@
       const n = nextLabberHint(lockEntry(c.key), labberGoals());
       labberHint.textContent = n
         ? 'İpucu · hedef ' + (n.index + 1) + ': ' + n.level + '/' + n.goal.hints.length
-        : 'İpucu · hepsi açık';
+        : 'İpuçları açık';
       labberHint.disabled = !n;
-      labberHint.title = n ? 'Sıradaki: ' + n.goal.title : 'Bütün ipucu basamakları açıldı.';
+      labberHint.title = n
+        ? 'Sıradaki: ' + n.goal.title
+        : 'Sağlanmamış hedeflerin bütün ipucu basamakları açık.';
     }
     meta.textContent =
       c.kind === 'academy'

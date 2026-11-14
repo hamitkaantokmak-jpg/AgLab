@@ -5,6 +5,8 @@
    Düğmeler: network-scenarios.js'nin genel `button { … !important }` kuralını aşmak için
    kimlikli seçici + !important. */
 html[data-theme='light'] {
+  /* dolu birincil düğme zemini: beyaz yazıyla WCAG AA (≥ 4.5:1) */
+  --ag-btn-strong: #2d55d6;
   --ag-term-bg: #1d2128;
   --ag-term-line: #2c323c;
   --ag-term-text: #d6dbe3;
@@ -14,6 +16,7 @@ html[data-theme='light'] {
   --ag-canvas: #f8f9fb;
 }
 html:not([data-theme='light']) {
+  --ag-btn-strong: #3157cc;
   --ag-term-bg: #0f1318;
   --ag-term-line: #262c36;
   --ag-term-text: #d6dbe3;
@@ -815,7 +818,7 @@ html:not([data-theme='light']) {
 }
 .ag-sim-catalog-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   align-items: start;
 }
@@ -846,12 +849,64 @@ html:not([data-theme='light']) {
   margin-top: 14px;
 }
 /* ---- dar kaplar */
-@container agmain (max-width: 1180px) {
+/* PR 2b: kap 761–1100 px (ör. 1024 px ekran): üç dar sütunda tuval küçük kalıyordu. Görev solda dar,
+   tuval geniş; İnceleme tuvalin altında tam genişlikte (port özellikleri | show çıktısı yan
+   yana). Çalışma alanı bu genişlikte ekran boyuna sabitlenmez, sayfa kayar. */
+@container agmain (max-width: 1100px) {
+  #ptWorkbench.ag-sim {
+    height: auto;
+    min-height: 0;
+    grid-template-rows: auto auto 236px;
+  }
   .ag-sim-body {
-    grid-template-columns: 230px minmax(0, 1fr) 260px;
+    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-rows: 440px auto;
+  }
+  .ag-sim-task {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .ag-sim-stage {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .ag-sim-inspect {
+    grid-column: 1 / 3;
+    grid-row: 2;
+    max-height: 340px;
+  }
+  #agSimPane-port:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+    grid-template-rows: auto auto 1fr;
+    column-gap: 16px;
+  }
+  #agSimPane-port > .ag-sim-porthead,
+  #agSimPane-port > .ag-sim-props,
+  #agSimPane-port > .ag-sim-quick {
+    grid-column: 1;
+  }
+  #agSimPane-port > .ag-sim-showout {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    min-height: 0;
+    max-height: 270px;
   }
 }
 @container agmain (max-width: 760px) {
+  /* 1100 px kuralının sabit ızgara yerleşimi burada sıfırlanır (alt alta). */
+  .ag-sim-body {
+    grid-template-rows: none;
+  }
+  .ag-sim-task,
+  .ag-sim-stage,
+  .ag-sim-inspect {
+    grid-column: auto;
+    grid-row: auto;
+  }
+  #agSimPane-port:not([hidden]) {
+    display: flex;
+  }
   #ptWorkbench.ag-sim {
     height: auto;
     min-height: 0;
@@ -1179,4 +1234,255 @@ html:has(#area-lab.active) {
   .ag-sim-termbar {
     flex-wrap: wrap;
   }
+}
+/* ---- PR 2b: görev kataloğu (taslağın kartları) */
+.ag-sim-catalog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.ag-sim-catalog #ux14LabModes {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.ag-sim-catalog #ux14LabModes .ux14-row {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+}
+#area-lab .ag-sim-catalog .ux14-mode {
+  min-height: 0;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: none;
+}
+#area-lab .ag-sim-catalog .ux14-mode[aria-pressed='true'] {
+  background-color: var(--accent-soft) !important;
+  color: var(--accent-text) !important;
+}
+.ag-cat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+#ux14AcademySlot {
+  min-width: 0;
+}
+#ux14AcademySlot[hidden] {
+  display: none;
+}
+.ag-cat-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ag-cat-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.ag-cat-head #academyProgress {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.ag-cat-card #academyCatalogSearch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+.ag-cat-card #academyCatalogSearch label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  min-width: 0;
+}
+#area-lab .ag-cat-card input,
+#area-lab .ag-cat-card select {
+  min-height: 0;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 12px;
+}
+#area-lab .ag-cat-card button {
+  min-height: 0;
+  width: auto;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.ag-cat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 280px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+.ag-cat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ag-cat-row[hidden] {
+  display: none;
+}
+.ag-cat-row:hover {
+  background: var(--panel2);
+}
+.ag-cat-row[aria-selected='true'] {
+  background: var(--accent-soft);
+}
+.ag-cat-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ag-cat-level {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--accent-text);
+}
+.ag-cat-status {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ag-cat-row[data-done='true'] .ag-cat-status {
+  color: var(--ag-ok);
+  font-weight: 700;
+}
+.ag-cat-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ag-cat-foot select {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+#area-lab .ag-cat-foot #academyStart,
+#area-lab .ag-cat-foot #labberLabStart,
+#area-lab .ag-cat-foot #sharedScenarioLoad {
+  background-color: var(--ag-btn-strong) !important;
+  color: #fff !important;
+}
+.ag-cat-others {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  font-size: 12px;
+}
+.ag-cat-others > summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.ag-cat-others > * + * {
+  margin-top: 10px;
+}
+@container agmain (max-width: 1100px) {
+  .ag-sim-catalog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container agmain (max-width: 760px) {
+  .ag-sim-catalog-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* ---- PR 2b: çakışan etiketler, sekme okları, 390 px */
+#ptWorkbench.ag-sim .ag-label-hidden {
+  opacity: 0;
+}
+#ptWorkbench.ag-sim .ag-label-hidden:hover {
+  opacity: 1;
+}
+#ptWorkbench .ag-sim-tabscroll {
+  flex: 0 0 auto;
+  width: 24px;
+  min-height: 0;
+  padding: 2px 0;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+}
+#ptWorkbench .ag-sim-tabscroll[hidden] {
+  display: none;
+}
+@container agmain (max-width: 520px) {
+  #ptWorkbench .ag-sim-palette {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: auto;
+    gap: 2px;
+    padding: 4px;
+  }
+  #ptWorkbench.ag-sim .ag-sim-palette button {
+    width: 30px;
+    min-width: 0;
+    height: 30px;
+    flex: 0 0 auto;
+  }
+  .ag-sim-toolsep {
+    width: 1px;
+    height: auto;
+  }
+  /* Tuval en az ekran genişliği kadar yüksek. */
+  .ag-sim-canvaswrap {
+    height: max(340px, 100vw);
+  }
+}
+
+.ag-cat-rest h4 {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+}
+#ptWorkbench .ag-btn-primary,
+#ptWorkbench .ag-sim-head .ag-btn-primary {
+  background-color: var(--ag-btn-strong) !important;
+}
+.ag-cat-card #academyRealLab {
+  font-size: 12px;
+  color: var(--muted);
+}
+/* Akademi kartı: eski #academyPanel düğme/ızgara kuralları kartın diline uyar. */
+#area-lab #academyPanel.ag-cat-card {
+  display: flex;
+  padding: 14px !important;
+}
+#area-lab #academyPanel.ag-cat-card button {
+  min-height: 0;
+  width: auto;
+  padding: 5px 10px;
+  margin: 0;
+  font-size: 12px;
 }

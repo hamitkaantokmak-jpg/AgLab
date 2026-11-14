@@ -1197,6 +1197,12 @@ window.academy = {
           academyActive.probe_health,
         ).criteria.map((r) => ({ id: r.id, label: r.label, ok: r.status === 'passed' }))
       : null,
+  // Arayüz PR 2b: Simülatör görev kataloğu (satır: ad, modül; arama/ilerleme süzgeci).
+  catalog: (id) => {
+    const l = academyLabs.find((x) => x.id === id);
+    return l ? { id: l.id, title: l.title, module: l.module_id } : null;
+  },
+  searchMatches: () => academySearchMatches().map((l) => l.id),
   // Öğretmen çözümü (academy/solution-data.js); yalnız kilit açılınca gösterilir.
   solution: (id) => (Object.hasOwn(academySolutions, id) ? clone(academySolutions[id]) : null),
 };
