@@ -15,7 +15,9 @@ Her adım ayrı PR, bir öncekinin dalı üstüne; birleştirilmez.
 |---|---|---|
 | PR 1 iskelet, adlandırma, tek paket | #91 | birleşti |
 | PR 2 Simülatör çalışma alanı, çözüm kilidi | #92 | birleşti |
-| PR 2b Simülatör artıkları | `claude/arayuz-2b-simulator` (taban `main`) | açık |
+| PR 2b Simülatör artıkları | #93, `claude/arayuz-2b-simulator` (taban `main`) | açık |
+| PR 3 Sorun Çöz | — | sırada (#93 dalından) |
+| PR 4 Müfredat haritası ve ders | — | sırada |
 | PR 3 Arıza senaryosu ekranı | — | sırada |
 | PR 4 Müfredat haritası ve ders ekranı | — | sırada |
 
