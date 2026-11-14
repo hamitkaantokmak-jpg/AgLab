@@ -31696,13 +31696,13 @@
   },
   {
     "id": "dhcp-client-static",
-    "title": "DHCP · Bilgisayar 169.254 adresinde kalmış",
-    "symptom": "PC-11'in kullanıcısı hiçbir yere ulaşamıyor. Yan masadaki PC-12 sorunsuz. PC-11'in ayarlarında 169.254.12.44 görünüyor; teknisyen geçen hafta karta elle bir adres yazıp bırakmış.",
-    "cause": "PC-11 DHCP istemcisi değil: kartında elle yazılmış bir link-local (169.254) adres duruyor. R1'deki KAT1 havuzu çalışıyor; bilgisayar hiç DHCP isteği göndermiyor (E1).",
+    "title": "DHCP · Bilgisayarda eski ağın statik adresi kalmış",
+    "symptom": "PC-11'in kullanıcısı hiçbir yere ulaşamıyor. Yan masadaki PC-12 sorunsuz. PC-11 geçen ay başka bir şubeden geldi; ayarlarında 192.168.50.20 / 255.255.255.0, gateway 192.168.50.1 görünüyor.",
+    "cause": "PC-11 DHCP istemcisi değil: kartında eski şubenin adres planından kalma statik bir adres duruyor. Bu ağ 192.168.10.0/24; R1'deki KAT1 havuzu çalışıyor ama bilgisayar hiç DHCP isteği göndermiyor (E6).",
     "hints": [
-      "PC-11'de show ip ile adresin nereden geldiğine bak (DHCP mi, elle mi?).",
-      "169.254.x.x adresi ağın adres planında yok; bu adresle gateway'e de ulaşılamaz.",
-      "Havuz sağlamsa PC'yi DHCP istemcisi yap ve kiranın hangi sunucudan geldiğine bak."
+      "PC-11'de show ip: adres DHCP'den mi geliyor, elle mi yazılmış? Bu ağın adres planıyla uyuşuyor mu?",
+      "PC-12'nin ayarlarıyla karşılaştır: aynı ağdalar mı, gateway'leri aynı mı?",
+      "Havuz sağlamsa PC'yi DHCP istemcisi yap (ip dhcp) ve kiranın hangi sunucudan geldiğine bak."
     ],
     "topology": {
       "app": "AgLab",
@@ -31928,9 +31928,9 @@
           "name": "PC-11",
           "type": "PC",
           "enabled": true,
-          "ip": "169.254.12.44",
-          "mask": "255.255.0.0",
-          "gateway": "",
+          "ip": "192.168.50.20",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.50.1",
           "ports": [
             "eth0"
           ],
@@ -32115,7 +32115,7 @@
     "id": "dhcp-service-down",
     "title": "DHCP · Sunucu ayakta ama 2. kat adres alamıyor",
     "symptom": "2. kattaki bilgisayarlar 169.254.x.x alıyor. 1. kat (R1'in kendi havuzu) sorunsuz. R1 g0/1'de relay (ip helper-address 192.168.100.10) yazılı; SRV'ye ping gidiyor. Gece SRV yeniden kurulmuştu.",
-    "cause": "SRV ayakta ama DHCP servisi kapalı. Relay istekleri SRV'ye ulaştırıyor; yanıt veren servis yok (E3).",
+    "cause": "SRV ayakta ama DHCP servisi kapalı. Relay istekleri SRV'ye ulaştırıyor; yanıt veren servis yok (E7).",
     "hints": [
       "PC-21'de ip dhcp ile kira iste; yanıt gelmiyor mu?",
       "R1 g0/1'de relay adresini (show running-config) ve SRV'ye erişimi doğrula: ağ yolu sağlam mı?",
@@ -33196,7 +33196,7 @@
     "id": "acl-http-blocked",
     "title": "ACL · Sunucuya ping gidiyor, web sayfası açılmıyor",
     "symptom": "Misafir ağındaki PC-20 sunucuya (192.168.100.10) ping atabiliyor ama web sayfası açılmıyor. Muhasebedeki PC-10'da web çalışıyor; sunucunun web servisi açık. R1 g0/1'e dün \"WEB\" adlı bir liste uygulandı.",
-    "cause": "WEB listesinin 10. satırı misafir ağından sunucuya TCP 80'i (www) engelliyor; ICMP 20. satırdaki permit ip any any'ye uyduğu için ping geçiyor. ACL katman 4'e (protokol/port) göre süzer: ping'in geçmesi uygulamanın geçtiğini kanıtlamaz (E1).",
+    "cause": "WEB listesinin 10. satırı misafir ağından sunucuya TCP 80'i (www) engelliyor; ICMP 20. satırdaki permit ip any any'ye uyduğu için ping geçiyor. ACL katman 4'e (protokol/port) göre süzer: ping'in geçmesi uygulamanın geçtiğini kanıtlamaz (E6).",
     "hints": [
       "PC-20'den ping ve curl 192.168.100.10 sonuçlarını karşılaştır: hangisi geçiyor?",
       "R1'de show access-lists WEB: web isteğinden sonra hangi satırın sayacı artıyor?",
