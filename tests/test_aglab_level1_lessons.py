@@ -27,7 +27,14 @@ LESSONS = [
     ("routing", "routing", "gateway-statik-routing.md", "gw-", "floating static", "nasıl döner"),
     ("ip", "ipv4", "ip-adresleme.md", "ip-", "Hızlı hesap", "Kısa yol: blok büyüklüğü"),
     ("physical", "physical", "fiziksel-baglanti.md", "phy-", "İki uç kuralı", "port ne diyor"),
-    ("method", "method", "sorun-giderme-yontemi.md", "method-", "Üç yaklaşım", "tek değişiklik"),
+    (
+        "method",
+        "method",
+        "sorun-giderme-yontemi.md",
+        "method-",
+        "Üç yaklaşım",
+        "Tek değişiklik yap",
+    ),
     ("vlan", "vlan", "vlan-trunk.md", "vlan-", "Okuma sırası", "Sahada: DTP ve VTP"),
     (
         "intervlan",
