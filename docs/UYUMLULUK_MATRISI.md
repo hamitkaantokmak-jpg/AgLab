@@ -409,8 +409,17 @@ tamamlanmış sayılır. Görev kimlikleri ve sırası değişmedi.
 | Rota atölyesi: uçtan uca teşhis kontrol listesi | 3 · kavramsal alıştırma | Gözlenen koşulları işaretleyerek ilk başarısız aşamayı bulma çalışması; ağdan okumaz (rozet). |
 | Protokol atölyesi: OSPF area | 1 · `ospf-area-mismatch` | |
 | Protokol atölyesi: OSPF passive | 2 · Labber görünümü | `passive-interface` ile komşuluk ve rota yok; `no passive-interface` ile FULL ve O rotası (`show ip ospf neighbor`, `show ip route ospf`, `LabQuery.ospfAdjacent`). |
-| Protokol atölyesi: BGP (3) | 3 · kavramsal alıştırma | BGP kapsam dışı; örnek çıktılar açıkça kavramsal. Eski "Ana Lab ile ortak durum" özeti (mini lab durumunu okuyordu) kaldırıldı. |
+| Protokol atölyesi: BGP (3) | 3 · kavramsal alıştırma | BGP kapsam dışı; örnek çıktılar açıkça kavramsal. Başlık yalnız belirtiyi söyler; üç durum aynı dört aday kök nedeni (network komutu yok, outbound prefix-list, NEXT_HOP'a rota yok, oturum kapalı) paylaşır, doğrusu yalnız kanıt satırlarından ayırt edilir ve her yanlış seçeneğin açıklaması onu eleyen kanıtı söyler. Eski "Ana Lab ile ortak durum" özeti (mini lab durumunu okuyordu) kaldırıldı. |
 
 Ölü kalıntı: oyuncak terminal, mini lab ve atölye modellerinin JS'i, HTML'i ve yalnız onların
 kullandığı CSS kuralları silindi. L7'ye bırakılan motorlu yollar (eski topoloji motorunun CLI'si,
 ör. `test http`, `show ethernet events`) değişmedi.
+
+### Ortak senaryo panelinde kök neden
+
+Tarifli (`network-scenarios.json`) senaryolarda kök neden alıştırmanın cevabıdır: yüklemede
+belirtiyle birlikte basılmaz. İpuçları kutusunun yanında ayrı ve kapalı bir "Kök nedeni göster"
+kutusundadır; senaryo çözülünce (hedefler sağlanıp hedef ping'i başarılı) kendiliğinden açılır ve
+"BAŞARILI" durumunun yanına taşınır. Gözlem senaryolarında (`verify.observation`) de aynıdır.
+Kodla kurulan eski üç switching senaryosunun (`access-vlan`, `trunk-allowed`, `native-vlan`) yönerge
+metni arızayı ve çözüm komutlarını hâlâ doğrudan yazar (bu PR'ın kapsamı dışında).

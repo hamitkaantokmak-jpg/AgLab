@@ -125,25 +125,28 @@ const TROUBLESHOOT_TASKS = [
       story:
         "BGP oturumu Established durumda; buna rağmen karşı AS, beklenen 203.0.113.0/24 prefix'ini öğrenmiyor. Komşuluk durumunu rota tablosundan ayrı değerlendir.",
       evidence: [
-        'show ip bgp summary → komşu Established, alınan/gönderilen prefix sayısı',
-        'show ip bgp → 203.0.113.0/24 yerel BGP tablosunda yok',
-        'show ip bgp neighbors <komşu> advertised-routes → ilan listesi boş',
+        'show ip bgp summary → komşu 198.51.100.2, Up/Down 01:12:09, State/PfxRcd 4 (sayı: Established)',
+        'show ip route 203.0.113.0 → C 203.0.113.0/24 is directly connected, GigabitEthernet0/1',
+        'show ip bgp 203.0.113.0/24 → % Network not in table',
+        'show ip bgp neighbors 198.51.100.2 advertised-routes → Total number of prefixes 0',
       ],
+      // Seçenekler kök neden düzeyinde; doğru olan yalnız kanıtla ayırt edilir. Açıklama, hangi
+      // kanıtın hangi seçeneği elediğini söyler.
       options: [
+        [
+          'router bgp altında network 203.0.113.0 mask 255.255.255.0 yok',
+          true,
+          'Doğru: prefix rota tablosunda (C) ama yerel BGP tablosunda yok (% Network not in table). BGP’ye alınmamış bir prefix ilan edilemez; router bgp altına network 203.0.113.0 mask 255.255.255.0 eklenir.',
+        ],
+        [
+          "Komşuya giden outbound prefix-list 203.0.113.0/24'ü engelliyor",
+          false,
+          'Elenir: outbound filtre yalnız ilanı keser; prefix o zaman yerel BGP tablosunda (show ip bgp) görünürdü. Kanıtta yerel tabloda bile yok.',
+        ],
         [
           'BGP TCP oturumu kapalı',
           false,
-          'Oturum Established; sorun oturumdan sonraki rota ilanı aşamasında.',
-        ],
-        [
-          'Prefix ilan edilmiyor',
-          true,
-          'Komşuluk kurulmuş ama 203.0.113.0/24 ilan listesinde yok: router bgp altında network 203.0.113.0 mask 255.255.255.0 eksik (ve prefix rota tablosunda olmalı).',
-        ],
-        [
-          'İstemci DNS ayarı yanlış',
-          false,
-          'Sorun BGP kontrol düzlemi ve prefix duyurusu ile ilgili.',
+          'Elenir: show ip bgp summary’de State/PfxRcd sütunu sayı (4) gösteriyor; oturum Established.',
         ],
       ],
     },
@@ -8346,6 +8349,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     // Önceki içeriğin Labber oturumu yeni senaryo kurulurken (kodla kurulanlar importTopology
     // kullanmaz) uzlaştırılmaya çalışılmasın; motor kararı yüklemeden sonra verilir.
     aglabLabber.stop();
+    sharedCauseClear();
     if (loadNetworkScenario(key)) return;
     if (key === 'stp-loop') {
       loadSharedStpScenario();
@@ -8549,6 +8553,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
           ' ping’i gerçek ağ motorunda başarılı. Senaryo tamamlandı ve ilerleme bu tarayıcıya kaydedildi.',
         true,
       );
+      sharedCauseReveal();
     } else
       sharedStatus(
         'Henüz çözülmedi: ' +
@@ -9027,113 +9032,93 @@ function workshopView(ids, cases) {
   // senaryosu; OSPF passive → Labber görünümü (gerçek komşuluk ve rota tablosu); BGP Labber'da
   // modellenmez (kapsam dışı): kavramsal alıştırma, motor sonucu yok.
   const $ = (id) => document.getElementById(id);
+  // BGP kavramsal alıştırmaları: başlık yalnız belirtiyi söyler; üç durum aynı dört aday nedeni
+  // paylaşır, doğru neden yalnız örnek çıktılardan (kanıt) ayırt edilir. Açıklama, hangi kanıtın
+  // hangi adayı elediğini söyler.
+  const BGP_CAUSES = [
+    ['network', 'Router prefix’i BGP’ye almamış: router bgp altında network … mask … yok'],
+    ['filter', 'Komşuya giden (outbound) prefix-list prefix’i engelliyor'],
+    ['nexthop', 'Alınan rotanın NEXT_HOP adresine rota yok'],
+    ['session', 'BGP TCP oturumu kapalı'],
+  ];
   const BGP = {
     'bgp-advertise': {
-      'title': 'BGP Established ama prefix ilan edilmiyor',
-      'protocol': 'BGP',
-      'prefix': '10.50.0.0/24',
-      'nextHop': '198.51.100.2',
-      'cmd': 'show ip bgp summary · show ip bgp · show ip bgp neighbors',
-      'bad': [
+      symptom:
+        'R-A, 10.50.0.0/24’yi komşusu 198.51.100.2’ye ilan etmeli; karşı AS bu prefix’i öğrenmiyor. Çıktılar R-A’dan.',
+      evidence: [
         [
-          'Oturum',
-          'Established',
-          'TCP/BGP oturumu kurulmuş; bu tek başına prefix ilan edildiğini kanıtlamaz.',
+          'show ip bgp summary',
+          '198.51.100.2  4 65002  …  01:12:09  4   (State/PfxRcd: sayı → Established)',
         ],
-        [
-          'Prefix',
-          'Karşı komşuya ilan edilmedi',
-          'Prefix yerel BGP tablosunda olmayabilir veya network/redistribution koşulu sağlanmıyor olabilir.',
-        ],
-        ['RIB', 'Uzak RIB’de 10.50.0.0/24 yok', 'Karşı router bu prefix için rota kuramaz.'],
-        ['FIB', 'Hedefe giden BGP rotası yok', 'Başka rota yoksa paket iletimi başarısız olur.'],
+        ['show ip route 10.50.0.0', 'C  10.50.0.0/24 is directly connected, GigabitEthernet0/1'],
+        ['show ip bgp 10.50.0.0/24', '% Network not in table'],
+        ['show ip bgp neighbors 198.51.100.2 advertised-routes', 'Total number of prefixes 0'],
       ],
-      'good': [
-        ['Oturum', 'Established', 'BGP komşuluğu çalışıyor.'],
-        [
-          'Prefix',
-          '10.50.0.0/24 ilan edildi',
-          'Yerel rota uygun biçimde BGP’ye alındı ve komşuya duyuruldu (örnek).',
-        ],
-        ['RIB', 'B 10.50.0.0/24 via 198.51.100.2', 'Uzak router prefix’i BGP kaynağından öğrendi.'],
-        [
-          'FIB',
-          '10.50.0.0/24 → 198.51.100.2',
-          'NEXT_HOP çözümlenmiş ve rota kurulmuş varsayımıyla iletim mümkün.',
-        ],
-      ],
-      'fix':
-        'Önce prefix’in yerel routing table’da bulunup bulunmadığını, sonra BGP network statement/redistribution ve advertised-routes çıktısını kontrol et.',
+      answer: 'network',
+      why: {
+        network:
+          'Doğru. Prefix rota tablosunda (C) ama yerel BGP tablosunda yok (% Network not in table): BGP’ye hiç alınmamış. Düzeltme: router bgp 65001 → network 10.50.0.0 mask 255.255.255.0.',
+        filter:
+          'Elenir: outbound filtre yalnız ilanı keser; prefix yine de yerel BGP tablosunda (show ip bgp) görünürdü. Burada yerel tabloda bile yok.',
+        nexthop:
+          'Elenir: NEXT_HOP alıcı tarafın sorunudur; burada prefix gönderen router’ın kendi BGP tablosunda bile yok.',
+        session:
+          'Elenir: show ip bgp summary’de State/PfxRcd sütunu sayı (4) gösteriyor; oturum Established.',
+      },
     },
     'bgp-filter': {
-      'title': 'BGP outbound prefix-list filtresi',
-      'protocol': 'BGP',
-      'prefix': '10.60.0.0/24',
-      'nextHop': '203.0.113.2',
-      'cmd': 'show ip bgp · show ip prefix-list · show ip bgp neighbors',
-      'bad': [
-        ['Oturum', 'Established', 'Komşuluk var; politika yine de rota ilanını engelleyebilir.'],
+      symptom:
+        'R-B, 10.60.0.0/24’yi komşusu 203.0.113.2’ye ilan etmeli; karşı AS bu prefix’i öğrenmiyor, diğer prefix’leri öğreniyor. Çıktılar R-B’den.',
+      evidence: [
+        ['show ip bgp summary', '203.0.113.2  4 65003  …  00:45:31  6   (Established)'],
+        ['show ip bgp 10.60.0.0/24', '*> 10.60.0.0/24   0.0.0.0   0   32768 i'],
         [
-          'Prefix',
-          'Outbound policy tarafından filtrelendi',
-          'Prefix-list/route-map bu ağı deny ediyor veya izin kuralı kapsamıyor.',
+          'show ip bgp neighbors 203.0.113.2 advertised-routes',
+          '*> 10.61.0.0/24 … *> 10.62.0.0/24 … Total number of prefixes 2 (10.60.0.0/24 listede yok)',
         ],
-        ['RIB', 'Uzak RIB’de 10.60.0.0/24 yok', 'Karşı taraf bu prefix’i öğrenmiyor.'],
-        ['FIB', 'Uzak FIB’de eşleşen rota yok', 'Başka rota yoksa hedefe forwarding yapılamaz.'],
+        [
+          'show running-config | section router bgp',
+          'neighbor 203.0.113.2 prefix-list KOMSU-OUT out',
+        ],
+        ['show ip prefix-list KOMSU-OUT', 'seq 5 permit 10.61.0.0/24 · seq 10 permit 10.62.0.0/24'],
       ],
-      'good': [
-        ['Oturum', 'Established', 'BGP oturumu açık.'],
-        [
-          'Prefix',
-          'Outbound policy izin veriyor',
-          'İstenen prefix politika tarafından ilan ediliyor.',
-        ],
-        ['RIB', 'B 10.60.0.0/24 via 203.0.113.2', 'Uzak routing table’da BGP rotası kuruldu.'],
-        [
-          'FIB',
-          '10.60.0.0/24 → 203.0.113.2',
-          'Next-hop erişilebilirliği de doğrulanırsa paket iletilebilir.',
-        ],
-      ],
-      'fix':
-        'Outbound prefix-list/route-map sırasını ve permit kapsamını incele; gereksiz yere tüm filtreleri kaldırmak yerine yalnızca gerekli prefix’e izin ver.',
+      answer: 'filter',
+      why: {
+        network:
+          'Elenir: prefix yerel BGP tablosunda en iyi yol olarak duruyor (*> … 32768 i); BGP’ye alınmış.',
+        filter:
+          'Doğru. Prefix yerel tabloda ama advertised-routes’ta yok; komşuya out yönünde KOMSU-OUT uygulanmış ve listede 10.60.0.0/24 için permit yok (örtük deny). Düzeltme: ip prefix-list KOMSU-OUT seq 15 permit 10.60.0.0/24.',
+        nexthop:
+          'Elenir: NEXT_HOP alıcıda değerlendirilir; burada prefix hiç gönderilmiyor (advertised-routes’ta yok).',
+        session:
+          'Elenir: oturum Established (PfxRcd sütununda sayı) ve diğer prefix’ler ilan ediliyor.',
+      },
     },
     'bgp-next-hop': {
-      'title': 'BGP rotası alındı ama NEXT_HOP çözümlenemiyor',
-      'protocol': 'BGP',
-      'prefix': '10.70.0.0/24',
-      'nextHop': '192.0.2.254',
-      'cmd': 'show ip bgp · show ip route 192.0.2.254 · show ip route 10.70.0.0',
-      'bad': [
-        ['Oturum', 'Established', 'BGP komşuluğu aktif olabilir.'],
+      symptom:
+        'R-C, 10.70.0.0/24’ye ulaşamıyor; BGP komşusu bu prefix’i ilan ettiğini söylüyor. Çıktılar R-C’den.',
+      evidence: [
         [
-          'Prefix',
-          '10.70.0.0/24 alındı',
-          'Prefix BGP tablosunda görülüyor ancak bu, forwarding için yeterli değil.',
+          'show ip bgp summary',
+          '198.51.100.9  4 65009  …  02:03:44  1   (Established, 1 prefix alındı)',
         ],
         [
-          'RIB',
-          'BGP adayı kullanılamıyor',
-          'NEXT_HOP çözümlenemediği için rota aktif routing table’a kurulamıyor olabilir.',
+          'show ip bgp 10.70.0.0/24',
+          'Paths: (1 available, no best path) · 192.0.2.254 (inaccessible) from 198.51.100.9 (9.9.9.9)',
         ],
-        ['FIB', 'Kullanılabilir next-hop yok', 'Paketi iletecek çözülmüş çıkış yolu bulunmuyor.'],
+        ['show ip route 192.0.2.254', '% Network not in table'],
+        ['show ip route 10.70.0.0', '% Network not in table'],
       ],
-      'good': [
-        ['Oturum', 'Established', 'BGP oturumu aktif.'],
-        ['Prefix', '10.70.0.0/24 alındı', 'Uzak prefix BGP tablosunda.'],
-        [
-          'RIB',
-          'B 10.70.0.0/24 via 192.0.2.254',
-          'NEXT_HOP için erişilebilir IGP/connected/static rota mevcut.',
-        ],
-        [
-          'FIB',
-          '10.70.0.0/24 → 192.0.2.254',
-          'Recursive next-hop çözümlemesi başarılı varsayımıyla iletim mümkün.',
-        ],
-      ],
-      'fix':
-        'BGP NEXT_HOP adresine erişimi kontrol et; gerekiyorsa IGP/connected rota veya tasarıma uygun next-hop-self yapılandırmasını değerlendir.',
+      answer: 'nexthop',
+      why: {
+        network:
+          'Elenir: prefix R-C’nin BGP tablosuna gelmiş (1 available); komşu onu BGP’ye almış ve ilan etmiş.',
+        filter:
+          'Elenir: prefix alınmış (PfxRcd 1, Paths: 1 available); ilanı engelleyen bir filtre yok.',
+        nexthop:
+          'Doğru. Yol var ama NEXT_HOP 192.0.2.254 "inaccessible": rota tablosunda bu adrese rota yok, en iyi yol seçilemiyor, B rotası kurulmuyor. Düzeltme: NEXT_HOP’a IGP/statik rota ya da komşuda neighbor … next-hop-self.',
+        session: 'Elenir: oturum Established ve 1 prefix alınmış.',
+      },
     },
   };
   const cases = {
@@ -9167,42 +9152,51 @@ function workshopView(ids, cases) {
     },
     cases,
   );
-  let bgpFixed = false;
   function renderBgp(key) {
-    const sc = BGP[key],
-      rows = bgpFixed ? sc.good : sc.bad;
+    const sc = BGP[key];
+    $('protoSymptom').textContent = sc.symptom;
     const tbody = $('protoRows');
     tbody.replaceChildren();
-    rows.forEach((r) => {
+    sc.evidence.forEach(([cmd, out]) => {
       const tr = document.createElement('tr');
-      r.forEach((v) => {
+      for (const v of [cmd, out]) {
         const td = document.createElement('td');
         td.textContent = v;
         tr.appendChild(td);
-      });
+      }
       tbody.appendChild(tr);
     });
-    $('protoResult').className = 'proto-result ' + (bgpFixed ? 'good' : 'bad');
+    const opts = $('protoOptions');
+    opts.replaceChildren();
+    BGP_CAUSES.forEach(([id, label], i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'option';
+      b.dataset.cause = id;
+      b.textContent = String.fromCharCode(65 + i) + '. ' + label;
+      opts.appendChild(b);
+    });
+    $('protoResult').className = 'proto-result';
     $('protoResult').textContent =
-      sc.protocol +
-      ' · ' +
-      sc.title +
-      ' — ' +
-      (bgpFixed ? 'Düzeltme: ' + sc.fix : 'Kontrol: ' + sc.cmd) +
-      '. Örnek çıktılar kavramsaldır; canlı ağdan ölçülmez.';
-    $('protoFixBtn').disabled = false;
-    $('protoFixBtn').textContent = bgpFixed ? 'Arızalı hali göster' : 'Düzeltilmiş hali göster';
+      'Kanıtı oku ve kök nedeni seç. Örnek çıktılar kavramsaldır; canlı ağdan ölçülmez.';
   }
+  $('protoOptions').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cause]');
+    const sc = BGP[$('protoScenario').value];
+    if (!b || !sc) return;
+    const ok = b.dataset.cause === sc.answer;
+    $('protoResult').className = 'proto-result ' + (ok ? 'good' : 'bad');
+    $('protoResult').textContent = sc.why[b.dataset.cause];
+  });
   function select() {
     const k = $('protoScenario').value;
-    bgpFixed = false;
     const concept = !!BGP[k],
       shared = k === 'ospf-area';
     $('protoBadge').textContent = concept ? 'KAVRAMSAL ALIŞTIRMA (MOTOR YOK)' : 'LABBER MOTORU';
     $('protoConcept').hidden = !concept;
     $('protoLabber').hidden = concept || shared;
     $('protoShared').hidden = !shared;
-    $('protoFixBtn').hidden = shared;
+    $('protoFixBtn').hidden = shared || concept;
     if (concept) renderBgp(k);
     else if (!shared) view.open(k);
     else $('protoResult').textContent = 'Bu durum Labber senaryosunda çalışır.';
@@ -9210,11 +9204,7 @@ function workshopView(ids, cases) {
   $('protoScenario').addEventListener('change', select);
   $('protoResetBtn').addEventListener('click', select);
   $('protoFixBtn').addEventListener('click', () => {
-    const k = $('protoScenario').value;
-    if (BGP[k]) {
-      bgpFixed = !bgpFixed;
-      renderBgp(k);
-    } else view.apply();
+    view.apply();
   });
   $('protoSharedOpen').addEventListener('click', () => {
     showArea('lab');

@@ -243,9 +243,9 @@ UYUMLULUK_MATRISI "L6".
 | Rota atölyesi | `default` | 5 · Varsayılan rota | 1 · Labber karşılığı `default-route` |
 | Protokol atölyesi | `ospf-area` | 1 · OSPF area uyuşmazlığı | 1 · Labber karşılığı `ospf-area-mismatch` |
 | Protokol atölyesi | `ospf-passive` | 2 · OSPF arayüzü passive | 2 · Labber görünümü (gerçek `show` çıktısı + LabQuery) |
-| Protokol atölyesi | `bgp-advertise` | 3 · BGP Established ama prefix ilan edilmiyor (kavramsal) | 3 · Kavramsal alıştırma (motor yok) |
-| Protokol atölyesi | `bgp-filter` | 4 · BGP outbound prefix-list filtresi (kavramsal) | 3 · Kavramsal alıştırma (motor yok) |
-| Protokol atölyesi | `bgp-next-hop` | 5 · BGP NEXT_HOP çözümlenemiyor (kavramsal) | 3 · Kavramsal alıştırma (motor yok) |
+| Protokol atölyesi | `bgp-advertise` | 3 · BGP: karşı AS prefix’i öğrenmiyor (kavramsal) | 3 · Kavramsal alıştırma (motor yok) |
+| Protokol atölyesi | `bgp-filter` | 4 · BGP: bir prefix karşıya gitmiyor, diğerleri gidiyor (kavramsal) | 3 · Kavramsal alıştırma (motor yok) |
+| Protokol atölyesi | `bgp-next-hop` | 5 · BGP: prefix ilan ediliyor ama hedefe ulaşılamıyor (kavramsal) | 3 · Kavramsal alıştırma (motor yok) |
 | Rota atölyesi | `diagnostic` | İleri uygulama · Uçtan uca erişim teşhisi | 3 · Kavramsal alıştırma (motor yok) |
 
 ## Labber köprüsü özeti (L1)
