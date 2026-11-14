@@ -1181,7 +1181,8 @@
     const clash = (b) => kept.some((k) => hit(k, b)) || rects.some((r) => hit(r, b));
     // Önce ortadaki bağlantı etiketleri, sonra port etiketleri: port etiketi çakışırsa önce
     // kendi kablosu boyunca kartından uzağa kaydırılır, yer yoksa gizlenir (kabloya gelince
-    // title iki portu da söyler).
+    // title iki portu da söyler). Ölçüm bir kez yapılır (yazma → tek okuma turu); kaydırılmış
+    // kutu hesapla bulunur, böylece büyük topolojide düzen hesabı tekrarlanmaz.
     const labels = [
       ...canvas.querySelectorAll('text.pt-edge-label'),
       ...canvas.querySelectorAll('text.pt-port-label'),
@@ -1191,27 +1192,45 @@
       if (t.dataset.x0 === undefined) {
         t.dataset.x0 = t.getAttribute('x');
         t.dataset.y0 = t.getAttribute('y');
+      } else {
+        t.setAttribute('x', t.dataset.x0);
+        t.setAttribute('y', t.dataset.y0);
       }
-      const x0 = +t.dataset.x0,
-        y0 = +t.dataset.y0,
-        ux = +t.dataset.ux || 0,
-        uy = +t.dataset.uy || 0,
-        room = +t.dataset.room || 0;
-      t.setAttribute('x', x0);
-      t.setAttribute('y', y0);
-      let b = t.getBoundingClientRect();
-      if (!b.width) continue;
-      for (let step = 6; clash(b) && step <= room; step += 6) {
-        t.setAttribute('x', x0 + ux * step);
-        t.setAttribute('y', y0 + uy * step);
-        b = t.getBoundingClientRect();
-      }
-      if (clash(b)) {
-        t.setAttribute('x', x0);
-        t.setAttribute('y', y0);
-        t.classList.add('ag-label-hidden');
-      } else kept.push(b);
     }
+    const k = canvas.getScreenCTM?.()?.a || 1;
+    const measured = labels.map((t) => t.getBoundingClientRect());
+    const slide = labels.length <= 240;
+    labels.forEach((t, i) => {
+      const b0 = measured[i];
+      if (!b0.width) return;
+      const ux = +t.dataset.ux || 0,
+        uy = +t.dataset.uy || 0,
+        room = slide ? +t.dataset.room || 0 : 0;
+      const at = (s) => {
+        const dx = ux * s * k,
+          dy = uy * s * k;
+        return {
+          left: b0.left + dx,
+          right: b0.right + dx,
+          top: b0.top + dy,
+          bottom: b0.bottom + dy,
+        };
+      };
+      let s = 0,
+        b = b0;
+      while (clash(b) && s + 6 <= room) {
+        s += 6;
+        b = at(s);
+      }
+      if (clash(b)) t.classList.add('ag-label-hidden');
+      else {
+        if (s) {
+          t.setAttribute('x', +t.dataset.x0 + ux * s);
+          t.setAttribute('y', +t.dataset.y0 + uy * s);
+        }
+        kept.push(b);
+      }
+    });
   }
   new MutationObserver(() => {
     if (!declutterFrame) declutterFrame = requestAnimationFrame(declutter);
