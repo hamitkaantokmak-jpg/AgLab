@@ -1479,9 +1479,41 @@
       }
     ],
     "verify": {
-      "kind": "ping",
+      "kind": "query",
       "source": "PC-01",
-      "target": "10.20.0.10"
+      "target": "10.20.0.10",
+      "checks": [
+        {
+          "fn": "routeFor",
+          "args": [
+            "R1",
+            "10.20.0.10"
+          ],
+          "field": "source",
+          "expected": "default",
+          "label": "R1 sunucuya varsayılan rotayla gidiyor"
+        },
+        {
+          "fn": "routeFor",
+          "args": [
+            "R1",
+            "10.20.0.10"
+          ],
+          "field": "nextHop",
+          "expected": "10.0.0.2",
+          "label": "Varsayılan rotanın next-hop'u R2 (10.0.0.2)"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "10.20.0.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → SRV-01"
+        }
+      ]
     }
   },
   {
@@ -2448,12 +2480,12 @@
   {
     "id": "floating-static",
     "title": "Statik rota · Asıl hat yokken yedek yol kullanılmıyor",
-    "symptom": "PC-01 (192.168.1.10) SRV-01'e (10.20.0.10) ulaşamıyor. R1'de sunucu ağı için henüz kurulmamış asıl hat üzerinden (next-hop 10.0.1.2) bir statik rota var. Tasarım: asıl rota yapılandırmada kalsın; o kullanılamazken trafik R2 (10.0.0.2) üzerinden gitsin. Kanıtı R1'den (show ip route 10.20.0.10) topla.",
+    "symptom": "PC-01 (192.168.1.10) SRV-01'e (10.20.0.10) ulaşamıyor. R1'de sunucu ağı için henüz kurulmamış asıl hat üzerinden (next-hop 10.0.1.2) bir statik rota var. Tasarım: asıl rota yapılandırmada kalsın; o kullanılamazken trafik R2 (10.0.0.2) üzerinden AD 5'lik yedek rotayla gitsin. Kanıtı R1'den (show ip route 10.20.0.10) topla.",
     "cause": "Asıl rotanın next-hop'u (10.0.1.2) çözümlenemiyor ve R2 üzerinden daha yüksek AD'li yedek (floating) statik rota yok; R1'in sunucu ağına kullanılabilir yolu kalmıyor.",
     "hints": [
       "show ip route 10.20.0.10: R1'in bu hedef için kullanılabilir bir yolu var mı?",
       "Aynı ağa iki statik rota olunca router AD'si düşük olanı seçer; o kullanılamazsa sıradakine geçer.",
-      "R2 üzerinden, asıl rotadan (AD 1) yüksek AD'li ikinci bir rota gerekir; asıl rota silinmez."
+      "R2 üzerinden, AD'si 5 olan ikinci bir rota gerekir; asıl rota (AD 1) silinmez."
     ],
     "topology": {
       "app": "AgLab",
@@ -2758,9 +2790,41 @@
       }
     ],
     "verify": {
-      "kind": "ping",
+      "kind": "query",
       "source": "PC-01",
-      "target": "10.20.0.10"
+      "target": "10.20.0.10",
+      "checks": [
+        {
+          "fn": "routeFor",
+          "args": [
+            "R1",
+            "10.20.0.10"
+          ],
+          "field": "nextHop",
+          "expected": "10.0.0.2",
+          "label": "R1 sunucuya R2 üzerinden gidiyor"
+        },
+        {
+          "fn": "routeFor",
+          "args": [
+            "R1",
+            "10.20.0.10"
+          ],
+          "field": "ad",
+          "expected": 5,
+          "label": "Kullanılan rota AD 5'lik yedek (floating) rota"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "10.20.0.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → SRV-01"
+        }
+      ]
     }
   },
   {
