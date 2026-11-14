@@ -478,16 +478,8 @@ class LabberTerminalTests(unittest.TestCase):
         out = self.type("ping 203.0.113.8")
         self.assertTrue(any("bytes from 203.0.113.8" in line for line in out), out)
 
-    def test_legacy_content_keeps_legacy_terminal(self):
-        # L5-d'den beri NAT/PAT da Labber'da; eski motorda yalnız BGP senaryosu kaldı.
-        self.load("bgp-as")
-        self.assertFalse(self.page.evaluate("aglabLabberSession.active()"))
-        self.device("R1")
-        self.type("enable")
-        self.assertEqual(self.prompt(), "R1#")
-        # eski motorun AğLab komutu Labber'da yoktur, burada çalışır
-        out = self.type("show ip route")
-        self.assertFalse(any("Invalid input" in line for line in out), out)
+    # L7a: eski motorda içerik kalmadı (`bgp-as` kaldırıldı: BGP kapsam dışı, kavramsal
+    # alıştırmalar L6'da). Eski motor terminalini sınayan test silindi; L7b eski motoru kaldırır.
 
 
 if __name__ == "__main__":

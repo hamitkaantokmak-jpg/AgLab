@@ -211,12 +211,7 @@ class SimEmbeddedTests(unittest.TestCase):
             "Akademi Labber router labı",
         )
         self.assertEqual(self.accesses().count("createRuntime"), 1, "lab başına tek çalışma zamanı")
-        # Lab: eski motor kararındaki senaryo da karar için köprüye sorulur
-        # (L5-d: NAT/PAT da Labber'da; eski motorda yalnız BGP senaryosu kaldı)
-        self.reset_accesses()
-        page.evaluate("aglabSharedEngine.load('bgp-as')")
-        page.evaluate("aglabSharedEngine.reach('PC-01','SRV-01')")
-        self.assertEqual(set(self.accesses()), {"global", "toLabber"}, "eski motor senaryosu")
+        # (L7a: eski motor kararındaki son senaryo `bgp-as` kaldırıldı; BGP kavramsal alıştırma)
         # Labber kararındaki senaryo: karar + tek kalıcı çalışma zamanı + terminal oturumu
         self.reset_accesses()
         # (vlan-* sorgu doğrulamasında: hedefler LabQuery ile, createLab)

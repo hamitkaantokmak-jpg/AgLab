@@ -1,4 +1,4 @@
-# Devir notu — Labber entegrasyonu (I-1 → FHRP → L6)
+# Devir notu — Labber entegrasyonu (I-1 → FHRP → L6 → L7)
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
@@ -35,10 +35,32 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | I-1 içe aktarma ve düzenleyici Labber'a | #81 (main'den, dal `claude/i1-workspace-labber`) | birleşti |
 | FHRP (HSRP + VRRP) Labber'da | #82 (#81'in dalından) | birleşti |
 | Seviye 1/2 dersleri (paralel iş) | #78, #79 | birleşti |
-| L6 motor kullanmayan eski içerik | #84 (main'den, dal `claude/l6-legacy-content`) | açık (birleşmeyi bekliyor) |
+| L6 motor kullanmayan eski içerik | #84 (main'den, dal `claude/l6-legacy-content`) | birleşti |
+| Ortak senaryo kök nedeni gizli | #86 | birleşti |
+| L7a içerik (bgp-as, 3 switching senaryosu) + oracle kararı | dal `claude/l7a-icerik-oracle` (main'den) | açık |
+| L7b eski motorları üründen kaldırma | — | L7a'dan sonra |
+| L7c kalıcılık v24 | — | L7b'den sonra |
 
-**Durum:** #75–#82 birleşti. **L6 PR'ı #84** açık (taban `main`); birleştirilmedi. L7'ye
-başlanmadı; kullanıcı talimatı olmadan başlanmaz.
+**Durum:** #75–#86 birleşti. **L7a** açık (taban `main`); birleştirilmedi. L7 üç PR'a bölündü:
+L7a içerik + oracle, L7b eski motorların kaldırılması, L7c kalıcılık v24. Arayüz yenilemesine
+başlanmaz.
+
+### L7a özeti
+
+- `bgp-as` kaldırıldı (BGP kapsam dışı; kavramsal alıştırmalar L6'da). Ürün içeriğinin hepsi
+  Labber kararında (`LAB_MOTOR_HARITASI.md`).
+- `access-vlan`, `trunk-allowed`, `native-vlan` kodla kurulumdan tarife (`topology` + `query`);
+  `loadSharedSwitchScenario` silindi. Başlıklar belirti, kök neden gizli (#86).
+- `test_aglab_sim_parity` emekliye ayrıldı (oracle ürüne gömülü eski motordu); vitest
+  `parity.test.ts` `src/engine`'i ürün dışından oracle olarak kullanmaya devam eder.
+- Test değişiklikleri (gerekçe UYUMLULUK_MATRISI "L7a"): `test_aglab_network_features` test_04
+  (BGP) silindi, test_06'dan `bgp-as` çıktı; `test_aglab_labber_terminal`
+  `test_legacy_content_keeps_legacy_terminal` silindi; `test_aglab_engine_choice` eski motor
+  senaryosu testi "her ortak senaryo Labber" testiyle değişti; `test_aglab_sim_embedded` eski motor
+  bloğu çıktı.
+- L7b'ye kalan: eski motor, borck-netsim, engine-manager, `engineDecision`/legacy yolları, eski CLI
+  (`test ethernet`, `show ethernet events`, `test http`), bunlara dayanan testler
+  (`frame_forwarding`, `routed_frames`, `vlan_lesson`/`inter_vlan_lesson` `reach`'i vb.).
 
 ### L6 (#84) özeti
 
@@ -177,7 +199,7 @@ depo arayüzünden silinmeli.
   senaryo hedefi tamamlanmadı: …" (neden: eksik hedef ya da kaydedilmemiş çözüm).
 - Parite: `eth-wrong-mask` ve `eth-duplicate-ip` başlangıcında eski motor ile Labber
   ayrışır (eski motor dönüş yolunu kurmuyor). Karar Labber; `UYUMLULUK_MATRISI.md` ve
-  `tests/test_aglab_sim_parity.py` `KNOWN_DIFFS` (birebir eşleşme).
+  `tests/test_aglab_sim_parity.py` `KNOWN_DIFFS` (birebir eşleşme; L7a'da emekliye ayrıldı).
 
 ## L2-E — Labber'ın 13 labı
 
@@ -528,7 +550,7 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
 - `roas-*` senaryolarına ve `src/data/courses.json` / `course-details.json`'a dokunma (#56).
 - `simulator/network-scenarios.json` Prettier ile biçimlendirilmez (#56 ile çakışma riski);
   yalnız hedef satırı düzenle.
-- Kapsam dışı: BGP (`bgp-as` eski motorda kalır), PKT IOS metin yolu, içe aktarmanın Labber'a
+- Kapsam dışı: BGP (`bgp-as` L7a'da kaldırıldı; kavramsal alıştırma), PKT IOS metin yolu, içe aktarmanın Labber'a
   geçmesi, arayüz değişikliği, Canlı Lab; eski metin senaryoları (L6), kalıcılık ve eski
   motorun kaldırılması (L7).
 - `src/sim` içinde yapıcı parametre özelliği (`constructor(public x)`) ekleme: yerel esbuild

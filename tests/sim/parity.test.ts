@@ -52,7 +52,11 @@ const KNOWN_DIFFS = new Set([
 // Labber kararındadır ve arızanın kendisi bu farktır; içerik için "fark yok" kuralının tek istisnası.
 // cdp-native-mismatch (Konu #12): trunk'ın iki ucunda native VLAN farklı; Labber (Cisco gibi)
 // native VLAN trafiğini geçirmez, oracle'ın STP uygunluk kuralı native'i yok sayar.
-const CONTENT_INTENDED: ReadonlyMap<string, string> = new Map([['cdp-native-mismatch', 'vlan-carry-native-mismatch']])
+// native-vlan (L7a: kodla kurulumdan tarife taşındı): aynı arıza, SW-01 gi0/1 native 10 ⇄ SW-02 native 1.
+const CONTENT_INTENDED: ReadonlyMap<string, string> = new Map([
+  ['cdp-native-mismatch', 'vlan-carry-native-mismatch'],
+  ['native-vlan', 'vlan-carry-native-mismatch'],
+])
 
 type Diff = { kind: string; where: string; oracle: unknown; labber: unknown }
 const diffs: Diff[] = []

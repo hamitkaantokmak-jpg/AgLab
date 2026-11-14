@@ -271,7 +271,7 @@ Labber'ın AğLab'dan **güçlü** olduğu alanlar olduğu gibi alınır: DTP, E
 (LACP/PAgP), PVST+/Rapid-PVST, PortFast, BPDU Guard, err-disable kurtarma, OSPF
 (DR/BDR, çok alan, stub, ECMP, maliyet), syslog, IOS biçiminde `show` çıktıları.
 
-**Sıra 9 (BGP) için:** taşınana kadar `bgp-as` senaryosu açıkça "eski motorda"
+**Sıra 9 (BGP) için:** *(L7a: `bgp-as` kaldırıldı; BGP kapsam dışı, kavramsal alıştırma.)* Taşınana kadar `bgp-as` senaryosu açıkça "eski motorda"
 çalışır (L4). Taşınmazsa uyumluluk matrisinde "desteklenmiyor" diye geçer.
 
 ### L4. Geçiş sırası ve eski motorun devrede kalması
@@ -307,7 +307,7 @@ gösterilmez. Geçiş boyunca:
 | L4 *(PR açık)* | Sıra 2–3 (Router, AD, özyineleme). **Akademi M4 (AGL-031…040)** ve routing senaryoları (`return-route`, `forward-route`, `default-route`, `wrong-prefix`, `unresolved-next-hop`, `lpm-next-hop`, `floating-static`, `ospf-area`). | `test_aglab_v11…v17`, `test_aglab_next_hop`, `test_aglab_traceroute`, `test_aglab_icmp_*`, `test_aglab_routed_frames`; `tests/node/test_engine_routing.cjs` oracle paritesi. |
 | L5 *(L5-a ve L5-b birleşti: sıra 4–5, `subif-missing`, `roas-*`, `relay-trunk`. L5-f CDP/LLDP, L5-e port security, L5-c ACL ve L5-d NAT/PAT (`port-security`, `nat-pat`) ayrı PR'lar, açık. Kalan: PKT IOS metin yolu; `bgp-as` kapsam dışı)* | Sıra 4–8 (alt arayüz, DHCP/Server, ACL, NAT, port security) ve bunlara bağlı senaryolar (`subif-missing`, `relay-trunk`, `nat-pat`, `port-security`). PKT IOS metin yolu (hoşgörülü mod). | PKT testleri (`test_aglab_import`, `test_aglab_pkt_*`, `test_aglab_svi_import`), `test_aglab_network_features`; oracle birim testleri Labber'a karşı. |
 | L6 *(PR açık)* | **Sorun Çöz'ün 25 eski metin senaryosu** (`gateway`, `dns`, `duplicate`, `mask`, `dhcp`, `link`, …, `routechoice`) ve `labRun()` deneyleri. Bunlar topoloji motoru kullanmıyor, kendi oyuncak modelleri var. Her biri ya gerçek bir topoloji senaryosuna dönüştürülür, ya da açıkça "kavramsal alıştırma (motor yok)" olarak etiketlenir. | Her senaryo için başlangıçta başarısız / çözümle başarılı testi. Etiketlenenler UI'da motorlu gibi görünmez. |
-| L7 | Kalıcılık v24 (running + startup), eski kayıtların taşınması. Eski çekirdek motorun, borck-netsim'in ve engine-manager'ın kaldırılması. `src/engine` yalnız test oracle'ı olarak kalır veya kaldırılır. | Tüm içerik Labber'da (BGP hariç tutulduysa matriste belirtilir); `test_aglab_persistence`, `test_aglab_student_journey`, `test_aglab_unified_rc`; ZIP ve `verify_packages.py` yeşil. |
+| L7 *(L7a: içerik + oracle PR'ı açık; L7b eski motor kaldırma, L7c kalıcılık sırada)* | Kalıcılık v24 (running + startup), eski kayıtların taşınması. Eski çekirdek motorun, borck-netsim'in ve engine-manager'ın kaldırılması. `src/engine` yalnız test oracle'ı olarak kalır veya kaldırılır. | Tüm içerik Labber'da (BGP hariç tutulduysa matriste belirtilir); `test_aglab_persistence`, `test_aglab_student_journey`, `test_aglab_unified_rc`; ZIP ve `verify_packages.py` yeşil. |
 
 **Senaryo envanteri:**
 

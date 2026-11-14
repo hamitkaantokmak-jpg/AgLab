@@ -386,189 +386,6 @@
     }
   },
   {
-    "id": "bgp-as",
-    "title": "BGP remote-AS uyuşmazlığı",
-    "symptom": "BGP komşuluğu kurulamıyor; uzak LAN ilanı öğrenilmiyor.",
-    "cause": "R1 komşusu için yanlış remote-as tanımlı.",
-    "hints": [
-      "Önce arayüz ve komşuluk/port durumunu incele.",
-      "Hedefe gidiş ve dönüş ağlarını ayrı kontrol et."
-    ],
-    "topology": {
-      "app": "AgLab",
-      "version": 23,
-      "devices": [
-        {
-          "id": "d1",
-          "name": "PC-01",
-          "type": "PC",
-          "x": 80,
-          "y": 170,
-          "w": 104,
-          "h": 72,
-          "enabled": true,
-          "ip": "192.168.10.10",
-          "mask": "255.255.255.0",
-          "gateway": "192.168.10.1",
-          "vlan": 10,
-          "ports": [
-            "eth0"
-          ],
-          "interfaces": {
-            "eth0": {
-              "enabled": true
-            }
-          }
-        },
-        {
-          "id": "d2",
-          "name": "R1",
-          "type": "Router",
-          "x": 300,
-          "y": 170,
-          "w": 108,
-          "h": 72,
-          "enabled": true,
-          "ports": [
-            "g0/0",
-            "g0/1"
-          ],
-          "interfaces": {
-            "g0/0": {
-              "ip": "192.168.10.1",
-              "mask": "255.255.255.0",
-              "enabled": true
-            },
-            "g0/1": {
-              "ip": "10.0.12.1",
-              "mask": "255.255.255.252",
-              "enabled": true
-            }
-          },
-          "staticRoutes": [],
-          "bgp": {
-            "asn": 65001,
-            "neighbors": [
-              {
-                "ip": "10.0.12.2",
-                "remoteAs": 65003
-              }
-            ],
-            "networks": [
-              {
-                "network": "192.168.10.0",
-                "mask": "255.255.255.0"
-              }
-            ]
-          }
-        },
-        {
-          "id": "d3",
-          "name": "R2",
-          "type": "Router",
-          "x": 550,
-          "y": 170,
-          "w": 108,
-          "h": 72,
-          "enabled": true,
-          "ports": [
-            "g0/0",
-            "g0/1"
-          ],
-          "interfaces": {
-            "g0/0": {
-              "ip": "10.0.12.2",
-              "mask": "255.255.255.252",
-              "enabled": true
-            },
-            "g0/1": {
-              "ip": "192.168.20.1",
-              "mask": "255.255.255.0",
-              "enabled": true
-            }
-          },
-          "staticRoutes": [],
-          "bgp": {
-            "asn": 65002,
-            "neighbors": [
-              {
-                "ip": "10.0.12.1",
-                "remoteAs": 65001
-              }
-            ],
-            "networks": [
-              {
-                "network": "192.168.20.0",
-                "mask": "255.255.255.0"
-              }
-            ]
-          }
-        },
-        {
-          "id": "d4",
-          "name": "PC-02",
-          "type": "PC",
-          "x": 760,
-          "y": 170,
-          "w": 104,
-          "h": 72,
-          "enabled": true,
-          "ip": "192.168.20.20",
-          "mask": "255.255.255.0",
-          "gateway": "192.168.20.1",
-          "vlan": 10,
-          "ports": [
-            "eth0"
-          ],
-          "interfaces": {
-            "eth0": {
-              "enabled": true
-            }
-          }
-        }
-      ],
-      "links": [
-        {
-          "a": "d1",
-          "b": "d2",
-          "portA": "eth0",
-          "portB": "g0/0",
-          "up": true
-        },
-        {
-          "a": "d2",
-          "b": "d3",
-          "portA": "g0/1",
-          "portB": "g0/0",
-          "up": true
-        },
-        {
-          "a": "d3",
-          "b": "d4",
-          "portA": "g0/1",
-          "portB": "eth0",
-          "up": true
-        }
-      ],
-      "nextId": 20
-    },
-    "solution": [
-      {
-        "device": "R1",
-        "commands": [
-          "enable",
-          "configure terminal",
-          "router bgp 65001",
-          "neighbor 10.0.12.2 remote-as 65002",
-          "end"
-        ]
-      }
-    ],
-    "verify": {
-      "kind": "ping"
-    }
-  },
-  {
     "id": "port-security",
     "title": "Port-security ihlali",
     "symptom": "İlk trafik denemesinde switch portu err-disabled oluyor.",
@@ -863,7 +680,203 @@
   },
   {
     "id": "access-vlan",
-    "title": "access-vlan",
+    "title": "VLAN · Aynı ağdaki iki bilgisayar birbirini görmüyor",
+    "symptom": "PC-01 (192.168.10.10) aynı ağdaki PC-02'ye (192.168.10.20) ulaşamıyor. İki bilgisayar da VLAN 10'da olmalı; switch'ler arası bağlantı açık. Dün SW-01'de port düzenlemesi yapıldı.",
+    "cause": "SW-01 Fa0/1 (PC-01'in portu) access VLAN 20'de; PC-02 ve trunk VLAN 10'da. Bilgisayar başka bir yayın alanında kaldı.",
+    "hints": [
+      "PC-01'den PC-02'ye ping at; ARP yanıtı geliyor mu?",
+      "SW-01'de show vlan brief: Fa0/1 hangi VLAN'ın port listesinde?",
+      "Portu doğru VLAN'a al ve ping'i tekrarla."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 85,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.10.10",
+          "mask": "255.255.255.0",
+          "gateway": "0.0.0.0",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "interfaces": {}
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 285,
+          "y": 170,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 20,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "SW-02",
+          "type": "Switch",
+          "x": 520,
+          "y": 170,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d4",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 735,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.10.20",
+          "mask": "255.255.255.0",
+          "gateway": "0.0.0.0",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "gi0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "fa0/1",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "SW-01",
@@ -877,12 +890,229 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.10.20",
+      "checks": [
+        {
+          "fn": "pcVlan",
+          "args": [
+            "PC-01"
+          ],
+          "expected": 10,
+          "label": "PC-01'in portu VLAN 10'da"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.10.20"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        }
+      ]
     }
   },
   {
     "id": "trunk-allowed",
-    "title": "trunk-allowed",
+    "title": "Trunk · Switch'ler arası bağlantı açık, VLAN 10 karşıya geçmiyor",
+    "symptom": "PC-01 (SW-01) ile PC-02 (SW-02) aynı VLAN'da (10) ama birbirine ulaşamıyor. SW-01–SW-02 bağlantısı up ve trunk; VLAN 20'deki cihazlar karşıya ulaşıyor.",
+    "cause": "SW-01 Gi0/1 trunk'ının izinli VLAN listesinde yalnız 20 var; VLAN 10 trunk'tan geçmiyor.",
+    "hints": [
+      "PC-01'den PC-02'ye ping at.",
+      "SW-01'de show interfaces trunk: \"Vlans allowed on trunk\" ve \"allowed and active\" satırlarını iki uçta karşılaştır.",
+      "Eksik VLAN'ı izinli listeye ekle (mevcut listeyi silmeden) ve ping'i tekrarla."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 85,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.10.10",
+          "mask": "255.255.255.0",
+          "gateway": "0.0.0.0",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "interfaces": {}
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 285,
+          "y": 170,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "SW-02",
+          "type": "Switch",
+          "x": 520,
+          "y": 170,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d4",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 735,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.10.20",
+          "mask": "255.255.255.0",
+          "gateway": "0.0.0.0",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "gi0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "fa0/1",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "SW-01",
@@ -896,12 +1126,234 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.10.20",
+      "checks": [
+        {
+          "fn": "trunkCarries",
+          "args": [
+            "SW-01",
+            "gi0/1",
+            10
+          ],
+          "expected": true,
+          "label": "SW-01 Gi0/1 trunk'ı VLAN 10'u taşıyor"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.10.20"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        }
+      ]
     }
   },
   {
     "id": "native-vlan",
-    "title": "native-vlan",
+    "title": "Trunk · İki uç trunk ama VLAN 10 karşıya ulaşmıyor",
+    "symptom": "PC-01 (SW-01) ile PC-02 (SW-02) VLAN 10'da ve birbirine ulaşamıyor. İki switch arası bağlantı up ve iki uçta da trunk; izinli listelerde 10 ve 20 var. Switch konsollarında bir CDP uyarısı görülüyor.",
+    "cause": "SW-01 Gi0/1'in native VLAN'ı 10, SW-02 Gi0/1'inki 1. SW-01 VLAN 10'u etiketsiz gönderiyor; SW-02 etiketsiz çerçeveyi native VLAN 1'e koyuyor.",
+    "hints": [
+      "PC-01'den PC-02'ye ping at.",
+      "İki switch'te show interfaces trunk: Native vlan sütununu karşılaştır; konsoldaki %CDP-4-NATIVE_VLAN_MISMATCH iletisini oku.",
+      "Native VLAN'ları eşitle ve ping'i tekrarla."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 85,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.10.10",
+          "mask": "255.255.255.0",
+          "gateway": "0.0.0.0",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "interfaces": {}
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 285,
+          "y": 170,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true,
+              "nativeVlan": 10
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "SW-02",
+          "type": "Switch",
+          "x": 520,
+          "y": 170,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d4",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 735,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.10.20",
+          "mask": "255.255.255.0",
+          "gateway": "0.0.0.0",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "gi0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "fa0/1",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "SW-01",
@@ -915,7 +1367,31 @@
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "query",
+      "source": "PC-01",
+      "target": "192.168.10.20",
+      "checks": [
+        {
+          "fn": "ping",
+          "args": [
+            "PC-01",
+            "192.168.10.20"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-01 → PC-02"
+        },
+        {
+          "fn": "ping",
+          "args": [
+            "PC-02",
+            "192.168.10.10"
+          ],
+          "field": "ok",
+          "expected": true,
+          "label": "PC-02 → PC-01"
+        }
+      ]
     }
   },
   {
