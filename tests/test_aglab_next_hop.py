@@ -5,11 +5,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 from aglab_test_support import ROOT, launch_chromium
 
-module = (ROOT / "simulator/routing-path.js").read_text()
-assert (
-    "// BEGIN ROUTING PATH GENERATED\n" + module + "\n// END ROUTING PATH GENERATED\n"
-    in (ROOT / "AgLab_Final_PKT_Import.html").read_text()
-)
+# L7b: eski motorun modülü (ürüne gömülü olduğu denetlenirdi) kaldırıldı; davranış Labber'da sınanır.
 
 
 def iface(ip):

@@ -98,7 +98,7 @@ describe('HTTP oracle paritesi', () => {
             const v: Variant = { http, acl: a, place, nat: n }
             const t = lab(v)
             const br = toLabber(t)
-            expect(br.report.engineDecision, JSON.stringify(v)).toBe('labber')
+            expect(br.report.expressible, JSON.stringify(v)).toBe(true)
             const labber = createRuntime(br).query().http('pc', '203.0.113.8').ok
             const legacy = legacyHttp(t, v)
             compared++

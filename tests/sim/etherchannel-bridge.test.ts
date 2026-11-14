@@ -31,7 +31,7 @@ const summary = (rt: LabRuntime, dev: string) => runScript(rt, dev, 'show etherc
 function roundTrip(t: AglabTopology, rt: LabRuntime) {
   const json = toAglab(rt, t)
   const r = toLabber(json)
-  expect(r.report.engineDecision, JSON.stringify(r.report.reasons)).toBe('labber')
+  expect(r.report.expressible, JSON.stringify(r.report.reasons)).toBe(true)
   const again = createRuntime(r)
   for (const dev of ['s1', 's2']) expect(summary(again, dev)).toBe(summary(rt, dev))
   expect(again.query().etherchannel('s1', 1)).toEqual(rt.query().etherchannel('s1', 1))
@@ -86,7 +86,7 @@ describe('köprü: EtherChannel', () => {
     for (const id of ['s1', 's2'])
       for (const p of ['fa0/23', 'fa0/24']) (t.devices.find((d) => d.id === id)!.interfaces![p] as Record<string, unknown>)['channelGroup'] = { id: 2, mode: id === 's1' ? 'desirable' : 'auto' }
     const r = toLabber(t)
-    expect(r.report.engineDecision, JSON.stringify(r.report.reasons)).toBe('labber')
+    expect(r.report.expressible, JSON.stringify(r.report.reasons)).toBe(true)
     expect(r.running['s1']!.pos['2']).toMatchObject({ mode: 'trunk', allowed: [1, 10] })
     expect(createRuntime(r).query().etherchannel('s1', 2)).toEqual({ up: true, protocol: 'PAgP', bundled: 2 })
   })
@@ -105,7 +105,7 @@ describe('köprü: EtherChannel', () => {
       const t = topo()
       mutate(t)
       const r = toLabber(t)
-      expect(r.report.engineDecision, name).toBe('legacy')
+      expect(r.report.expressible, name).toBe(false)
       expect(r.report.reasons.join('\n'), name).toMatch(reason)
     }
     const unk = topo()

@@ -92,7 +92,7 @@ def import_topology(page, path) -> None:
 def cli_path(*topologies) -> list:
     """L5-h: AğLab JSON'larını Labber'ın IOS metin yolundan geçirir (tarayıcısız, Node).
 
-    Her topoloji için ``{decision, reasons, diffs, lines, report}`` döner (bkz.
+    Her topoloji için ``{expressible, reasons, diffs, extended, lines, report}`` döner (bkz.
     ``tests/sim_node_runner.cjs`` ve ``src/sim-bridge/cli-import.ts``).
     """
     import subprocess
@@ -131,20 +131,6 @@ def _compact(value):
     if isinstance(value, dict):
         return {k: _compact(v) for k, v in value.items()}
     return value
-
-
-def legacy_engine(obj):
-    """I-1: topolojiyi eski motor kararına geçirir (kopya döner).
-
-    Yalnız eski motora özgü araçları sınayan testler için: ``show ethernet events`` (gerçek IOS
-    komutu değil) ve "Paket adımı" ilerleticisi. Bunlar L7'de eski motorla birlikte silinir
-    (UYUMLULUK_MATRISI "L5-i", "I-1"). İlk switch'e köprünün eşlemediği gerçek bir AğLab alanı
-    (``staticRoutes``: switch'te statik rota) eklenir; karar köprüden gelir, zorlanmaz.
-    """
-    data = json.loads(json.dumps(obj))
-    switch = next(d for d in data["devices"] if d["type"] == "Switch")
-    switch["staticRoutes"] = []
-    return data
 
 
 def assert_vpcs_ping(output, target, ok):

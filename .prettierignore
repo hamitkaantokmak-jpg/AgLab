@@ -1,7 +1,5 @@
 # Derleme çıktıları ve üçüncü taraf kod: biçimlendirilmez.
 AgLab_Final_PKT_Import.html
-simulator/borck-engine.generated.js
-simulator/borck-adapter.ts
 third_party/
 node_modules/
 dist/

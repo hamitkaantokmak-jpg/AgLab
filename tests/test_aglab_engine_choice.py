@@ -36,12 +36,13 @@ def labber_ids(decisions):
 
 
 def map_decisions():
-    """Motor tablosundaki senaryo satırları: {id: 'labber' | 'legacy'}."""
+    """Motor tablosundaki senaryo satırları: {id: 'labber' | 'unsupported'} (L7b: tek motor)."""
     text = (ROOT / "docs/LAB_MOTOR_HARITASI.md").read_text(encoding="utf-8")
     section = text.split("## Ortak motor senaryoları")[1].split("\n## ")[0]
     rows = re.findall(r"^\| `([^`]+)` \| [^|]+ \| (.+) \|$", section, re.M)
     return {
-        sid: "labber" if cell.strip().startswith("**Labber**") else "legacy" for sid, cell in rows
+        sid: "labber" if cell.strip().startswith("**Labber**") else "unsupported"
+        for sid, cell in rows
     }
 
 
@@ -109,19 +110,17 @@ class EngineChoiceTests(unittest.TestCase):
         self.assertTrue(set(L4_SCENARIOS) <= labber_ids(expected), expected)
         for sid, engine in expected.items():
             decision = self.load(sid)
-            self.assertEqual(decision["engine"], engine, sid)
+            self.assertEqual(decision["expressible"], engine == "labber", sid)
             if engine == "labber":
                 self.assertEqual(decision["reasons"], [], sid)
                 self.assertTrue(self.badge().startswith("Motor: Labber"), sid)
             else:
                 self.assertTrue(decision["reasons"], sid)
-                self.assertEqual(
-                    self.badge(), "Eski motor — nedeni: " + "; ".join(decision["reasons"]), sid
-                )
+                self.assertTrue(self.badge().startswith("Simüle edilemiyor"), sid)
 
     def test_labber_scenarios_fail_first_and_pass_after_solution_on_labber(self):
         results = self.page.evaluate("aglabSharedEngine.validateScenarios()")
-        labber = [r for r in results if r["engine"] == "labber"]
+        labber = [r for r in results if r["expressible"]]
         self.assertEqual({r["id"] for r in labber}, labber_ids(map_decisions()))
         for r in labber:
             self.assertEqual((r["initial"], r["solved"], r["ok"]), (False, True, True), r)
@@ -160,10 +159,12 @@ class EngineChoiceTests(unittest.TestCase):
         error = self.page.evaluate(
             "() => { try { aglabSharedEngine.goal(); return null } catch (e) { return e.message } }"
         )
-        self.assertIn("Motor değiştirilmez", error)
+        # L7b: başka motor yok; hata gerekçeyi söyler ("simüle edilemiyor")
+        self.assertIn("Simüle edilemiyor", error)
+        self.assertIn("Başka motor yok", error)
         self.assertIn("BGP", error)
-        # karar değişmez, rozet Labber kalır
-        self.assertEqual(self.page.evaluate("aglabSharedEngine.engine()")["engine"], "labber")
+        # yükleme kararı değişmez, rozet Labber kalır
+        self.assertTrue(self.page.evaluate("aglabSharedEngine.engine()")["expressible"])
         target = self.page.evaluate("aglabSharedEngine.target()")
         self.ping_fails("PC-01", target)
         self.assertIn("Değerlendirme hatası", self.status())
@@ -210,7 +211,7 @@ class EngineChoiceTests(unittest.TestCase):
         self.assertNotIn("bgp-as", ids)
         for sid in ids:
             with self.subTest(sid):
-                self.assertEqual(self.load(sid)["engine"], "labber", sid)
+                self.assertTrue(self.load(sid)["expressible"], sid)
 
 
 if __name__ == "__main__":

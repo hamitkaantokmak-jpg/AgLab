@@ -10,8 +10,10 @@
 // düzenleyici işlemleri (cihaz/kablo ekleme-silme, ad değiştirme) AğLab topolojisini
 // değiştirir; bu fark kayıt sırasında görülür ve çalışma zamanı yeni topolojiden yeniden
 // kurulur, kaydedilmiş yapılandırma (startup-config), err-disable, öğrenilmiş MAC/ARP ve
-// syslog taşınır. Yeni topoloji Labber'da ifade edilemiyorsa motor değiştirilmez: oturum
-// "bozuk" olur ve her değerlendirme/komut açık hata verir.
+// syslog taşınır. Topoloji Labber'da ifade edilemiyorsa (yüklenirken ya da düzenlemeden sonra)
+// başka motora geçilmez (L7b: eski motor yok): oturum "simüle edilemiyor" durumundadır ve her
+// değerlendirme/komut gerekçeyi söyleyen açık hata verir; topoloji düzenlenip ifade edilebilir
+// hale gelince çalışma zamanı kurulur.
 //
 // Labber durumu AğLab modelinde ifade edilemiyorsa (ör. portfast, OSPF) toAglab
 // BridgeError atar; bu durumda AğLab görünümü güncellenmez ve terminalde açıkça yazılır
@@ -86,19 +88,30 @@ const aglabLabber = (() => {
   }
   function brokenMessage(reasons) {
     return (
-      'Bu içerik Labber motorunda açıldı ama topoloji artık Labber’ın desteklemediği öğeler içeriyor (' +
+      'Simüle edilemiyor: topoloji Labber’ın desteklemediği öğeler içeriyor (' +
       reasons.join('; ') +
-      '). Motor değiştirilmez; değerlendirme yapılamadı.'
+      '). Başka motor yok; bu öğeler kaldırılınca ya da düzeltilince terminal ve değerlendirme çalışır.'
     );
   }
   /**
-   * Labber kararındaki içerik yüklendi: güncel AğLab topolojisinden kalıcı çalışma zamanı.
+   * İçerik yüklendi: güncel AğLab topolojisinden kalıcı çalışma zamanı.
    * I-1: `prebuilt` verilirse (PKT içe aktarımı: runningConfig'ten IOS metin yoluyla kurulmuş
-   * çalışma zamanı, L5-h) o kullanılır; motor kararı yine köprüden.
+   * çalışma zamanı, L5-h) o kullanılır. Topoloji ifade edilemiyorsa oturum "simüle edilemiyor"
+   * durumunda açılır (çalışma zamanı yok, her komut gerekçeli hata).
    */
   function start(prebuilt) {
     const r = AgLabSim.toLabber(topology());
-    if (r.report.engineDecision !== 'labber') throw new Error(brokenMessage(r.report.reasons));
+    if (!r.report.expressible) {
+      state = {
+        rt: null,
+        sessions: {},
+        logSeq: {},
+        key: key(),
+        broken: brokenMessage(r.report.reasons),
+        writeError: null,
+      };
+      return;
+    }
     state = {
       rt: prebuilt || AgLabSim.createRuntime(r),
       sessions: {},
@@ -143,6 +156,7 @@ const aglabLabber = (() => {
   }
   /** Değerlendirme ve terminal için çalışma zamanı; oturum bozuksa açık hata. */
   function runtime() {
+    if (!state) throw new Error('Labber oturumu yok: içerik yüklenmedi.');
     reconcile();
     if (state.broken) throw new Error(state.broken);
     return state.rt;
@@ -159,7 +173,7 @@ const aglabLabber = (() => {
       return;
     }
     const r = AgLabSim.toLabber(topology());
-    if (r.report.engineDecision !== 'labber') {
+    if (!r.report.expressible) {
       state.broken = brokenMessage(r.report.reasons);
       return;
     }
@@ -172,6 +186,13 @@ const aglabLabber = (() => {
       );
     const old = state.rt,
       rt = AgLabSim.createRuntime(r);
+    if (!old) {
+      // Simüle edilemeyen topoloji düzenlemeyle ifade edilebilir hale geldi: ilk çalışma zamanı.
+      state.rt = rt;
+      state.sessions = {};
+      state.broken = null;
+      return;
+    }
     for (const id of Object.keys(rt.running)) {
       if (!old.running[id] || !(id in old.startup)) continue;
       const saved = old.startup[id];
@@ -444,6 +465,7 @@ const aglabLabber = (() => {
     cloneRuntime,
     applyPending,
     broken: () => state?.broken || null,
+    unsupportedMessage: brokenMessage,
   };
 })();
 window.aglabLabberSession = {
@@ -462,4 +484,6 @@ window.aglabLabberSession = {
   moveCable: (a, pa, b, pb) => aglabLabber.moveCable(a, pa, b, pb),
   // L3-b: son ping'in Simulation Mode izi (Labber içeriğinde köken 'labber').
   trace: () => readEthernetTrace(),
+  // Testler: çalışma zamanının tam durumu (running/startup, öğrenilmiş MAC/ARP, donanım…).
+  state: () => aglabLabber.runtime().save(),
 };

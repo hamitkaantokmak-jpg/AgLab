@@ -26,6 +26,41 @@
   const checks = document.createElement('div');
   checks.id = 'nativeLabChecks';
   details.append(checks);
+  // Gerçek Lab girdisi: operatörün dönüştürücüsü (real-lab/shared_topology.py,
+  // routed_topology.py) için topoloji JSON'u. L7b'de kaldırılan motor yöneticisi panelinden
+  // taşındı; davranış aynı (switch/router MAC'i yazılmaz, seçim boş).
+  const exportBlock = document.createElement('details'),
+    exportHeading = document.createElement('summary');
+  exportBlock.id = 'realLabExport';
+  exportHeading.textContent = 'Gerçek Lab için topolojiyi indir';
+  exportBlock.append(exportHeading);
+  const exportButton = document.createElement('button');
+  exportButton.id = 'realLabExportTopology';
+  exportButton.textContent = 'Topolojiyi operatör için JSON olarak indir';
+  const exportStatus = document.createElement('p');
+  exportStatus.id = 'realLabExportStatus';
+  exportStatus.setAttribute('role', 'status');
+  exportBlock.append(exportButton, exportStatus);
+  panel.append(exportBlock);
+  exportButton.onclick = () => {
+    const t = {
+      devices: devices.map((d) => ({ ...clone(d), mac: macOf(d) })),
+      links: clone(links),
+    };
+    for (const d of t.devices) if (d.type !== 'PC' && d.type !== 'Server') delete d.mac;
+    const blob = new Blob(
+        [JSON.stringify({ app: 'AgLab', version: 23, ...t, nextId, selected: '' }, null, 2)],
+        { type: 'application/json' },
+      ),
+      url = URL.createObjectURL(blob),
+      a = document.createElement('a');
+    a.href = url;
+    a.download = 'aglab-operator-topology.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    exportStatus.textContent =
+      'JSON indirildi. Gerçek Lab dönüşümü ve çalıştırması yetkili operatörde yapılır. Desteklenmeyen topolojiler dönüştürücüde reddedilir.';
+  };
   input.onchange = async () => {
     const file = input.files?.[0];
     if (!file) return;

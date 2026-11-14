@@ -110,35 +110,14 @@
   let allEvents = { events: [], overflow: 0, truncated: false },
     snapshot = allEvents,
     index = 0;
-  let eventOrigin = 'AğLab simülasyon motoru',
-    eventSource = 'aglab-js';
+  let eventOrigin = 'Labber motoru',
+    eventSource = 'labber';
   document.addEventListener('aglab:external-lab-evidence', (event) => {
     const r = event.detail;
     if (r?.scope !== 'separate-lab' || !Array.isArray(r.events)) return;
     eventSource = 'native-report';
     eventOrigin = r.engine + ' · ayrı Lab raporu, imzası doğrulanmadı';
     allEvents = { events: r.events, overflow: 0, truncated: false };
-    filter.value = 'all';
-    snapshot = filtered();
-    index = 0;
-    render();
-  });
-  document.addEventListener('aglab:external-packet-events', (event) => {
-    const data = event.detail;
-    if (data?.engine?.name !== 'Michael Borck NetSim' || !Array.isArray(data.events)) return;
-    eventSource = 'borck';
-    eventOrigin = 'Michael Borck NetSim · gerçek motor bildirimi, fiziksel paket yakalaması değil';
-    allEvents = {
-      events: data.events.map((e, index) => ({
-        index,
-        kind: 'wire',
-        device: e.fromDeviceId,
-        detail: e,
-        raw: e.kind + '-wire ' + JSON.stringify(e),
-      })),
-      overflow: data.overflow || 0,
-      truncated: !!data.overflow,
-    };
     filter.value = 'all';
     snapshot = filtered();
     index = 0;
@@ -261,8 +240,7 @@
           detail: {
             origin: eventSource,
             raw: step.raw,
-            // Labber izinde eski motor günlüğü boştur; iz olayların kendisidir.
-            trace: allEvents.legacy?.length ? allEvents.legacy : allEvents.events.map((e) => e.raw),
+            trace: allEvents.events.map((e) => e.raw),
           },
         }),
       );
@@ -283,14 +261,13 @@
       node.setAttribute('aria-label', 'Sorun kaydıyla ilişkili seçili cihaz');
     }
   };
-  // Simülatörün kendi izi: kaynağı izin kendisinden gelir. I-1: Labber çalışma alanında iz
-  // Labber olay adaptöründendir ve öyle etiketlenir (eski motor adı kullanılmaz).
+  // Simülatörün kendi izi Labber olay adaptöründendir (L7b: tek motor).
   function useEngineTrace(trace) {
     allEvents = trace;
-    eventSource = trace.origin === 'labber' ? 'labber' : 'aglab-js';
-    eventOrigin = eventSource === 'labber' ? 'Labber motoru' : 'AğLab simülasyon motoru';
+    eventSource = 'labber';
+    eventOrigin = 'Labber motoru';
   }
-  const engineSource = () => eventSource === 'aglab-js' || eventSource === 'labber';
+  const engineSource = () => eventSource === 'labber';
   refresh.onclick = () => {
     useEngineTrace(readEthernetTrace());
     snapshot = filtered();

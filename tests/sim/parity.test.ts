@@ -115,7 +115,7 @@ function loopTopology(seed: number): AglabTopology {
 
 function compareL2(name: string, t: AglabTopology) {
   const r = toLabber(t)
-  if (r.report.engineDecision !== 'labber') return
+  if (!r.report.expressible) return
   compared.topologies++
   const rt = createRuntime(r)
   const d = rt.derived
@@ -256,7 +256,7 @@ function compareRoutes(seed: number) {
   }
   const topo = { devices: routers, links }
   const bridged = toLabber(topo as AglabTopology)
-  if (bridged.report.engineDecision !== 'labber') {
+  if (!bridged.report.expressible) {
     adRejected++
     return
   }
@@ -346,20 +346,14 @@ const ORACLE_CASES: { name: string; routes: any[]; route?: string; linkDown?: nu
   { name: 'eski route alanı varsayılan rota', routes: [], route: '10.0.0.2', dst: ['4.1.1.1', '10.0.0.2'] },
 ]
 
-// ---- L5-e: port security (simulator/port-security.js portSecurityAllows) ----
+// ---- L5-e: port security (oracle: src/engine/portsec.js; L7b'de üründen taşındı) ----
 function legacyPortSecurity() {
-  const vm = require_('node:vm')
-  const events: string[] = []
-  const ctx: Record<string, unknown> = { WeakMap, WeakSet, Set, Object, Number, String, parseInt, macOf: (x: { mac: string }) => x.mac, saveTopology: () => {}, ethernetEvent: (e: string) => events.push(e) }
-  vm.createContext(ctx)
-  vm.runInContext(readFileSync(join(ROOT, 'simulator/port-security.js'), 'utf8'), ctx)
-  return (sw: unknown, port: string, mac: string) => {
-    Object.assign(ctx, { __sw: sw, __src: { mac } })
-    return vm.runInContext(`portSecurityAllows(__sw, ${JSON.stringify(port)}, __src)`, ctx) as boolean
-  }
+  const { createPortSecurity } = require_(join(ROOT, 'src/engine/portsec.js'))
+  const ps = createPortSecurity({ macOf: (x: { mac: string }) => x.mac })
+  return (sw: unknown, port: string, mac: string) => ps.allows(sw, port, { mac }) as boolean
 }
 
-describe('oracle paritesi: port security (L5-e, port-security.js)', () => {
+describe('oracle paritesi: port security (L5-e, src/engine/portsec.js)', () => {
   // Bilinen fark: protect modunda eski motor ihlal sayacını artırır; IOS (Labber) saymaz.
   it('ilk çerçeve kararı, err-disable ve sayaç rastgele yapılandırmalarda eski motorla aynı', () => {
     const allows = legacyPortSecurity()
@@ -386,7 +380,7 @@ describe('oracle paritesi: port security (L5-e, port-security.js)', () => {
         links: [{ a: 'pc', portA: 'eth0', b: 'sw', portB: 'fa0/1', up: true }],
       }
       const bridged = toLabber(t)
-      expect(bridged.report.engineDecision, `seed ${seed} ${JSON.stringify(bridged.report.reasons)}`).toBe('labber')
+      expect(bridged.report.expressible, `seed ${seed} ${JSON.stringify(bridged.report.reasons)}`).toBe(true)
       const rt = createRuntime(bridged)
       const labOk = pcNode(rt.derived, 'pc') !== null
       rt.hostSends('pc')
@@ -427,7 +421,7 @@ describe('oracle paritesi: ACL (L5-c, acl.js aclEvaluate)', () => {
       }
       const t: AglabTopology = { devices: [{ id: 'r', name: 'R', type: 'Router', enabled: true, ports: ['g0/0'], interfaces: {}, acls: rules }], links: [] }
       const bridged = toLabber(t)
-      expect(bridged.report.engineDecision, `seed ${seed} ${JSON.stringify(bridged.report.reasons)}`).toBe('labber')
+      expect(bridged.report.expressible, `seed ${seed} ${JSON.stringify(bridged.report.reasons)}`).toBe(true)
       const list = bridged.running['r']!.acls![String(id)]
       for (let p = 0; p < 6; p++) {
         const proto = (['icmp', 'tcp', 'udp'] as const)[r(3)]
@@ -458,7 +452,7 @@ describe('oracle paritesi: dot1q alt arayüzleri (L5-a, test_engine_routing.cjs)
   const both = (R1: any, topo: any, dst: string) => {
     const ora = routing.routeLookup(topo, R1, dst)
     const bridged = toLabber(topo as AglabTopology)
-    expect(bridged.report.engineDecision, JSON.stringify(bridged.report.reasons)).toBe('labber')
+    expect(bridged.report.expressible, JSON.stringify(bridged.report.reasons)).toBe(true)
     const lab = routeOut(createRuntime(bridged).derived, 'r1', dst)?.ifname ?? null
     return { oracle: ora.ok ? ora.route.iface : null, labber: lab }
   }
@@ -485,7 +479,7 @@ describe('oracle paritesi: dot1q alt arayüzleri (L5-a, test_engine_routing.cjs)
     const { R1, topo } = oracleLab()
     R1.interfaces['g0/0.20'] = { ip: '10.20.0.1', mask: '255.255.255.0', parent: 'g0/0' }
     expect(routing.routeLookup(topo, R1, '10.20.0.9').ok).toBe(false)
-    expect(toLabber(topo as AglabTopology).report.engineDecision).toBe('legacy')
+    expect(toLabber(topo as AglabTopology).report.expressible).toBe(false)
   })
 })
 
@@ -497,7 +491,7 @@ describe('oracle paritesi: test_engine_routing.cjs senaryoları (L4)', () => {
       if (c.route) R1.route = c.route
       if (c.linkDown !== undefined) topo.links[c.linkDown]!.up = false
       const bridged = toLabber(topo as AglabTopology)
-      expect(bridged.report.engineDecision, JSON.stringify(bridged.report.reasons)).toBe('labber')
+      expect(bridged.report.expressible, JSON.stringify(bridged.report.reasons)).toBe(true)
       const rt = createRuntime(bridged)
       for (const dst of c.dst) {
         const ora = routing.routeLookup(topo, R1, dst)

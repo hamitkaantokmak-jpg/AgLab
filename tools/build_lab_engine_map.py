@@ -3,9 +3,10 @@
 
 Eligibility is not an execution claim. No teacher solutions are consumed.
 
-Labber köprüsü sütunu ve senaryo tablosu (L1): her Akademi labının başlangıç
-topolojisi ve tüm ortak Sorun Çöz senaryolarının yüklenmiş başlangıç topolojisi, derlenmiş
-HTML'deki köprüye (`AgLabSim.toLabber`) verilir; motor kararı ve gerekçeleri yazılır.
+Labber sütunu ve senaryo tablosu: her Akademi labının başlangıç topolojisi ve tüm ortak Sorun
+Çöz senaryolarının yüklenmiş başlangıç topolojisi, derlenmiş HTML'deki köprüye
+(`AgLabSim.toLabber`) verilir; Labber'da ifade edilebilirlik ve gerekçeleri yazılır (L7b: tek
+motor; ifade edilemeyen içerik "simüle edilemiyor" olarak açılır, başka motora düşmez).
 Senaryoların bir kısmının topolojisi kodla kurulduğu için tarayıcı (Playwright) gerekir.
 CI, tests/test_lab_engine_map.py ile tablonun bu kararlarla güncel olduğunu doğrular.
 """
@@ -25,7 +26,7 @@ def bridge_decisions(browser):
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto((ROOT / "AgLab_Final_PKT_Import.html").as_uri())
     page.click('[data-area="lab"]')
-    decide = "(t) => { const r = AgLabSim.toLabber(t).report; return { decision: r.engineDecision, reasons: r.reasons }; }"
+    decide = "(t) => { const r = AgLabSim.toLabber(t).report; return { decision: r.expressible ? 'labber' : 'unsupported', reasons: r.reasons }; }"
     academy = {}
     for p in sorted((ROOT / "academy/student").glob("AGL-*.json")):
         lab = json.loads(p.read_text(encoding="utf-8"))
@@ -87,7 +88,7 @@ def _decision_cell(report, academy=False):
     if report["decision"] == "labber":
         # L2-D2: Labber kararındaki Akademi labının ölçütleri Labber'da değerlendirilir.
         return "**Labber** — ölçütler Labber'da" if academy else "**Labber**"
-    return "Eski motor: " + "; ".join(r.replace("|", "/") for r in report["reasons"])
+    return "Simüle edilemiyor: " + "; ".join(r.replace("|", "/") for r in report["reasons"])
 
 
 def render(browser):
@@ -95,10 +96,10 @@ def render(browser):
     lines = [
         "# Akademi laboratuvar–motor haritası",
         "",
-        "Bu tablo gerçek öğrenci JSON içeriklerinden üretilir. Yapısal adaylık, aktarım veya başarılı native test anlamına gelmez. AğLab JS mevcut görev/grading motorudur. MIT yalnız access LAN karşılaştırmasıdır. Linux bridge dönüştürücüsü sınırlı PC/switch ormanlarını kabul eder. FRR dönüştürücüsü sınırlı PC/router ve VLAN1 access-köprü şemasını ayrı doğrular; şema kabulü native test başarısı değildir.",
+        "Bu tablo gerçek öğrenci JSON içeriklerinden üretilir. Yapısal adaylık, aktarım veya başarılı native test anlamına gelmez. Ürünün tek simülasyon motoru Labber'dır (L7b: eski AğLab JS motoru ve MIT NetSim karşılaştırması kaldırıldı). Linux bridge ve FRR sütunları ayrı Gerçek Lab (native) dönüştürücüleridir: Linux bridge dönüştürücüsü sınırlı PC/switch ormanlarını kabul eder; FRR dönüştürücüsü sınırlı PC/router ve VLAN1 access-köprü şemasını ayrı doğrular; şema kabulü native test başarısı değildir.",
         "",
-        "| Lab | Gerçek konu | Cihaz/bağ | AğLab JS | Labber köprüsü (L1) | MIT NetSim | Linux bridge | FRR | Öğrenci JSON SHA256 |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| Lab | Gerçek konu | Cihaz/bağ | Labber | Linux bridge | FRR | Öğrenci JSON SHA256 |",
+        "|---|---|---|---|---|---|---|",
     ]
     for p in sorted((ROOT / "academy/student").glob("AGL-*.json")):
         raw = p.read_bytes()
@@ -106,17 +107,6 @@ def render(browser):
         t = lab["initial_topology"]
         ds = t["devices"]
         router = any(d["type"] == "Router" for d in ds)
-        trunk = any(c.get("mode") == "trunk" for d in ds for c in d.get("interfaces", {}).values())
-        vlan = any(c.get("vlan", 1) != 1 for d in ds for c in d.get("interfaces", {}).values())
-        mit = (
-            "Yok (routing)"
-            if router
-            else (
-                "Sınırlı aday; unused trunk portları da reddedilir"
-                if trunk
-                else "Access LAN adayı; görev/CLI aktarılmaz"
-            )
-        )
         if router:
             linux = "L2 dönüştürücü değil; FRR yoluna bakınız"
         else:
@@ -139,7 +129,7 @@ def render(browser):
             if lab["id"] in ("AGL-034", "AGL-035"):
                 frr = "Başlangıç/çözüm native CI geçti (a1d6382; kanıt aşağıda)"
         lines.append(
-            f"| {lab['id']} | {lab['title'].replace('|','/')} | {len(ds)}/{len(t['links'])} | Mevcut | {_decision_cell(decisions['academy'][lab['id']], academy=True)} | {mit} | {linux} | {frr} | `{hashlib.sha256(raw).hexdigest()}` |"
+            f"| {lab['id']} | {lab['title'].replace('|','/')} | {len(ds)}/{len(t['links'])} | {_decision_cell(decisions['academy'][lab['id']], academy=True)} | {linux} | {frr} | `{hashlib.sha256(raw).hexdigest()}` |"
         )
     scen = decisions["scenarios"]
     lines.extend(
@@ -149,7 +139,7 @@ def render(browser):
             "",
             "Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.",
             "",
-            "| Senaryo | Başlık | Labber köprüsü (L1) |",
+            "| Senaryo | Başlık | Labber |",
             "|---|---|---|",
         ]
     )
@@ -242,28 +232,24 @@ def render(browser):
     lines.extend(
         [
             "",
-            "## Labber köprüsü özeti (L1)",
+            "## Labber özeti",
             "",
-            "Karar köprünün yapısal sonucudur: `labber`, içeriğin bütün alanlarının Labber'a",
-            "eşlendiği anlamına gelir. Ürün kararı içerik yüklenirken aynı köprüden alır ve",
-            "ekranda gösterir. `labber` kararındaki ortak senaryonun başarı ölçütü (L2-D1) ve",
-            "Akademi labının ölçütleri (L2-D2: `probe.icmp` → LabQuery.ping, `state.equals` →",
-            "toAglab görünümü) Labber'da değerlendirilir.",
-            "L3-a'dan beri Labber kararındaki içerikte terminal de Labber'dadır (tek kalıcı",
-            "çalışma zamanı). L4'ten beri Router (routed portlar), statik rotada yönetimsel",
-            "uzaklık ve özyinelemeli next-hop, AğLab OSPF alanları (pid, routerId, networks) ve",
-            "servissiz sunucu (uç) da Labber'dadır; kaynak arayüzlü ICMP ölçütü Labber'da",
-            "değerlendirilir. L5-a'dan beri router alt arayüzü (802.1Q, router-on-a-stick)",
-            "da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine dayanır.",
+            "`Labber`, içeriğin bütün alanlarının Labber'a eşlendiği anlamına gelir (köprünün",
+            "yapısal sonucu, `report.expressible`). Ürün bunu içerik yüklenirken aynı köprüden",
+            "alır ve rozette gösterir. Terminal, ortak senaryonun başarı ölçütü, Akademi labının",
+            "ölçütleri (`probe.icmp` → LabQuery.ping, `state.equals` → toAglab görünümü) ve",
+            "Simulation Mode aynı kalıcı Labber çalışma zamanındadır. L7b'den beri eski motor",
+            'yoktur: ifade edilemeyen içerik başka motorda açılmaz, "simüle edilemiyor" olarak',
+            "gerekçesiyle gösterilir (terminal ve değerlendirme açık hata verir).",
             "",
-            "| Grup | Labber | Eski motor | Toplam |",
+            "| Grup | Labber | Simüle edilemiyor | Toplam |",
             "|---|---|---|---|",
             f"| Akademi labları | {a_lab} | {a_leg} | {a_lab + a_leg} |",
             f"| Ortak senaryolar | {s_lab} | {s_leg} | {s_lab + s_leg} |",
             f"| Labber labları | {len(labber_labs)} | 0 | {len(labber_labs)} |",
             f"| Toplam | {a_lab + s_lab + len(labber_labs)} | {a_leg + s_leg} | {a_lab + a_leg + s_lab + s_leg + len(labber_labs)} |",
             "",
-            "| Eski motor gerekçesi | İçerik sayısı |",
+            "| Simüle edilememe gerekçesi | İçerik sayısı |",
             "|---|---|",
         ]
     )

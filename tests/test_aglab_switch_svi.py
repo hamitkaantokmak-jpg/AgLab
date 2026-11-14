@@ -7,13 +7,7 @@ import tempfile
 import threading
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from aglab_test_support import ROOT, import_topology
-
-module = (ROOT / "simulator/switch-management.js").read_text()
-assert (
-    "// BEGIN SWITCH MANAGEMENT GENERATED\n" + module + "\n// END SWITCH MANAGEMENT GENERATED\n"
-    in (ROOT / "AgLab_Final_PKT_Import.html").read_text()
-), "Generated simulator source is stale"
+from aglab_test_support import ROOT, import_topology, ping_succeeded
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -47,11 +41,16 @@ try:
             if page.locator("#ptCliDevice").input_value() != device:
                 page.select_option("#ptCliDevice", device)
             before = page.locator("#ptTerminal").inner_text()
+            count = page.locator("#ptTerminal > div").count()
             page.fill("#ptCliInput", text)
             page.press("#ptCliInput", "Enter")
             output = page.locator("#ptTerminal").inner_text()[len(before) :]
-            error = "outerr" in (
-                page.locator("#ptTerminal > div").last.get_attribute("class") or ""
+            # L7b: terminal Labber IOS/VPCS'tir; IOS hata satırından sonra boş satır basar, bu
+            # yüzden komutun ürettiği satırların herhangi biri hata mı diye bakılır.
+            error = page.evaluate(
+                "(n) => [...document.querySelectorAll('#ptTerminal > div')].slice(n)"
+                ".some((d) => d.classList.contains('outerr'))",
+                count,
             )
             if ok:
                 assert not error, (text, output)
@@ -67,12 +66,9 @@ try:
             return page.evaluate("JSON.parse(localStorage.getItem('aglab-topology-v23'))")
 
         def ping(device, target, success):
+            # L7b: Labber IOS/VPCS çıktısı (IOS'ta ilk ping ARP yüzünden .!!!! olabilir).
             output = cmd(device, "ping " + target, ok=success)
-            assert (
-                "Success rate is 100 percent (5/5)"
-                if success
-                else "Success rate is 0 percent (0/5)"
-            ) in output, output
+            assert ping_succeeded(output, target) == success, output
             return output
 
         empty = Path(tmp) / "empty.json"
@@ -133,27 +129,35 @@ try:
                 "end",
             ],
         )
-        run("d3", ["ip address 192.168.10.3 255.255.255.0", "ip default-gateway 192.168.10.1"])
+        # L7b: PC terminali VPCS'tir (eski motorun `ip address` / `ip default-gateway` PC
+        # komutları kaldırıldı): `ip <adres> <maske> <ağ geçidi>`.
+        run("d3", ["ip 192.168.10.3 255.255.255.0 192.168.10.1"])
         cmd("d1", "ip default-gateway 192.168.10.254", False)
         run("d1", ["enable", "configure terminal"])
-        for invalid in ["vlan 0", "vlan 4095", "vlan 10.5", "interface vlan 10.5", "no vlan 1"]:
+        for invalid in ["vlan 0", "vlan 4095", "vlan 10.5", "interface vlan 10.5"]:
             cmd("d1", invalid, False)
+        # IOS bu reddi bilgi iletisi olarak basar (`% Invalid input` değil); VLAN 1 kalır.
+        assert "%Default VLAN 1 may not be deleted." in cmd("d1", "no vlan 1")
         run("d1", ["interface vlan 10"])
-        for invalid in [
-            "ip address 999.1.1.1 255.255.255.0",
-            "ip address 192.168.10.2 255.0.255.0",
-            "switchport mode trunk",
-        ]:
+        for invalid in ["ip address 999.1.1.1 255.255.255.0", "switchport mode trunk"]:
             cmd("d1", invalid, False)
+        # IOS ardışık olmayan maskeyi "Bad mask" iletisiyle reddeder (adres değişmez; aşağıdaki
+        # model denetimi 192.168.10.2/24'ü doğrular).
+        assert "Bad mask 0xFF00FF00 for address 192.168.10.2" in cmd(
+            "d1", "ip address 192.168.10.2 255.0.255.0"
+        )
         cmd("d1", "end")
         print("PASS A: modes, VLAN name and invalid input rejection", flush=True)
         sw = next(d for d in snapshot()["devices"] if d["id"] == "d1")
-        assert sw["interfaces"]["vlan10"] == {
+        # L7b: kayıt Labber görünümünden (toAglab) yazılır; açık SVI'de `enabled` alanı
+        # yazılmaz (yalnız `shutdown` → false), modelde eksik alan "açık" demektir.
+        svi = sw["interfaces"]["vlan10"]
+        assert {k: svi[k] for k in ("ip", "mask", "vlan")} == {
             "ip": "192.168.10.2",
             "mask": "255.255.255.0",
-            "enabled": True,
             "vlan": 10,
-        }
+        }, svi
+        assert svi.get("enabled", True) is True, svi
         assert sw["gateway"] == "192.168.10.1" and sw["vlanNames"]["10"] == "Yonetim"
         assert "vlan10" not in sw["ports"]
         config = cmd("d1", "show running-config")
@@ -172,7 +176,9 @@ try:
         print("PASS B: persisted model and real show output", flush=True)
         ping("d1", "192.168.10.1", True)
         ping("d3", "192.168.10.2", True)
-        assert "192.168.10.1" in cmd("d1", "show arp")
+        # L7b: Labber IOS `show ip arp`'ı tanır; `show arp` takma adı Labber'da yok (bilinen
+        # fark, UYUMLULUK_MATRISI "L7b").
+        assert "192.168.10.1" in cmd("d1", "show ip arp")
         run("d2", ["enable", "configure terminal", "interface g0/0", "shutdown", "end"])
         ping("d1", "192.168.10.1", False)
         assert "line protocol is up" in cmd(
@@ -274,7 +280,7 @@ try:
                 "end",
             ],
         )
-        run("d4", ["ip address 192.168.20.2 255.255.255.0", "ip default-gateway 192.168.20.1"])
+        run("d4", ["ip 192.168.20.2 255.255.255.0 192.168.20.1"])
         run("d1", ["enable", "configure terminal", "no ip default-gateway", "end"])
         ping("d1", "192.168.20.2", False)
         ping("d1", "192.168.20.1", False)
@@ -285,7 +291,7 @@ try:
         ping("d1", "192.168.20.2", True)
         ping("d1", "192.168.20.1", True)
         ping("d4", "192.168.10.2", True)
-        arp = cmd("d1", "show arp")
+        arp = cmd("d1", "show ip arp")
         assert "192.168.10.1" in arp and "192.168.20.2" not in arp, arp
         # SVI is a management endpoint, not a multilayer switch.
         page.locator('[data-pt-add="PC"]').click()
@@ -309,18 +315,20 @@ try:
                 "end",
             ],
         )
-        run("d5", ["ip address 192.168.30.2 255.255.255.0", "ip default-gateway 192.168.30.1"])
-        output = ping("d1", "192.168.30.2", True)
-        assert "Kaynak SVI: vlan20 192.168.30.1" in output, output
-        cmd("d3", "ip default-gateway 192.168.10.2")
+        run("d5", ["ip 192.168.30.2 255.255.255.0 192.168.30.1"])
+        # L7b: IOS kaynak SVI'yi kendisi seçer; eski motorun "Kaynak SVI: …" açıklama satırı
+        # gerçek IOS çıktısı değildi ve kaldırıldı.
+        ping("d1", "192.168.30.2", True)
+        cmd("d3", "ip 192.168.10.3 255.255.255.0 192.168.10.2")
         ping("d3", "192.168.30.2", False)
-        cmd("d3", "ip default-gateway 192.168.10.1")
+        cmd("d3", "ip 192.168.10.3 255.255.255.0 192.168.10.1")
         print(
             "PASS C: management ping, PC-to-SVI, gateway, router/SVI/VLAN/port/native/allowed failures and recovery",
             flush=True,
         )
         cmd("d1", "enable")
-        cmd("d1", "copy running-config startup-config")
+        print("DBG1", cmd("d1", "copy running-config startup-config"))
+        print("DBG2", cmd("d1", "show startup-config")[:1500])
         assert "interface Vlan10" in cmd("d1", "show startup-config")
         run("d1", ["enable", "configure terminal", "interface vlan 10", "shutdown", "end"])
         ping("d1", "192.168.10.1", False)

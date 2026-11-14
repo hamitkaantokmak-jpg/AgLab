@@ -8635,7 +8635,7 @@ write memory`
     natOverload: "NAT Labber'da yok (L5)",
     natTranslations: "NAT çeviri tablosu Labber'da yok (L5)",
     ospf: "Switch üzerinde OSPF AğLab modelinde yok",
-    bgp: "BGP Labber'da yok (L5)",
+    bgp: "BGP Labber'da modellenmez (kapsam dışı)",
     services: "Sunucu servisleri yalnız Server cihazında modellenir",
     startupConfig: "Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)",
     portSecurity: "Port security Labber'da yok (L5)",
@@ -8675,7 +8675,7 @@ write memory`
     return Number.isInteger(n) && n >= 1 && n <= 4094 ? n : null;
   }
   function toLabber(input) {
-    const report = { unsupported: [], rejected: [], engineDecision: "labber", reasons: [], portNames: {} };
+    const report = { unsupported: [], rejected: [], expressible: true, reasons: [], portNames: {} };
     const unsupported = (device, field, reason) => report.unsupported.push({ device, field, reason });
     const reject = (device, item, reason) => report.rejected.push({ device, item, reason });
     for (const key of Object.keys(input))
@@ -8686,7 +8686,7 @@ write memory`
     let resolveMac = null;
     try {
       const resolver = import_mac_address.default.createResolver();
-      resolver(devices[0] ?? {}, devices);
+      if (devices.length) resolver(devices[0], devices);
       resolveMac = (d) => resolver(d, devices);
     } catch (error) {
       reject("*", "mac", "MAC adresi doğrulaması başarısız: " + String(error.message ?? error));
@@ -9438,7 +9438,7 @@ write memory`
     for (const u of report.unsupported) reasons.add(u.reason);
     for (const r of report.rejected) reasons.add("Reddedildi: " + r.reason);
     report.reasons = [...reasons].sort();
-    report.engineDecision = report.unsupported.length || report.rejected.length ? "legacy" : "labber";
+    report.expressible = !report.unsupported.length && !report.rejected.length;
     return { def, running, pcs, report, ...errdis.length ? { errdis } : {}, ...nat.length ? { nat } : {} };
   }
   function createRuntime(result) {

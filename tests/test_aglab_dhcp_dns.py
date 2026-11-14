@@ -17,7 +17,7 @@ import unittest
 
 from playwright.sync_api import sync_playwright
 
-from aglab_test_support import HTML, launch_chromium, legacy_engine
+from aglab_test_support import HTML, launch_chromium
 
 FIX = ["enable", "configure terminal", "interface gi0/1", "switchport trunk allowed vlan 10,20"]
 
@@ -85,7 +85,7 @@ class DhcpDnsTests(unittest.TestCase):
 
     # --- testler ----------------------------------------------------------------
     def test_scenario_runs_on_labber_fail_then_lease(self):
-        self.assertEqual(self.page.evaluate("aglabSharedEngine.engine().engine"), "labber")
+        self.assertTrue(self.page.evaluate("aglabSharedEngine.engine().expressible"))
         self.assertTrue(self.page.evaluate("aglabLabberSession.active()"))
         start = self.view("PC-01")
         # başarısız: trunk VLAN 10'u taşımıyor
@@ -135,36 +135,8 @@ class DhcpDnsTests(unittest.TestCase):
         self.run_on("PC-01", ["ip dhcp"])
         self.assertTrue(self.goal())
 
-    def test_legacy_engine_gives_the_same_lease(self):
-        """Parite: aynı topoloji eski motorda aynı sonucu verir (fark 0)."""
-        topology = self.page.evaluate("academyEngine.snapshot()")
-        self.run_on("PC-01", ["ip dhcp"])
-        labber_initial = self.view("PC-01")
-        self.run_on("SW-01", FIX)
-        self.run_on("PC-01", ["ip dhcp"])
-        labber_solved = self.view("PC-01")
-        # I-1'den beri içe aktarılan topoloji de motor kararına tabi (bu topoloji Labber'a gider);
-        # parite için aynı topoloji eski motor kararıyla yüklenir (legacy_engine: köprünün eşlemediği
-        # bir alan). Eski CLI aynı sözdizimini (`ip dhcp`) kabul eder.
-        self.page.evaluate("(t) => academyEngine.load(t)", legacy_engine(topology))
-        self.assertFalse(self.page.evaluate("aglabLabberSession.active()"))
-        pc = lambda: self.page.evaluate(
-            "academyEngine.snapshot().devices.find((d) => d.name === 'PC-01')"
-        )
-        self.run_on("PC-01", ["ip dhcp"])
-        legacy_initial = pc()
-        self.run_on("SW-01", FIX)
-        self.run_on("PC-01", ["ip dhcp"])
-        legacy_solved = pc()
-        keys = ["ip", "mask", "gateway", "dhcpLease"]
-        self.assertEqual(
-            [labber_initial[k] for k in keys], [legacy_initial[k] for k in keys], "başlangıç"
-        )
-        self.assertEqual(
-            [labber_solved[k] for k in keys], [legacy_solved[k] for k in keys], "çözüm"
-        )
-        self.assertFalse(legacy_initial["dhcpLease"])
-        self.assertTrue(legacy_solved["dhcpLease"])
+    # L7b: test_legacy_engine_gives_the_same_lease (eski motorla kira paritesi) eski motorla
+    # birlikte silindi; Labber'daki başarısız/başarılı kira yukarıdaki testlerdedir.
 
     def test_router_pool_dns_and_persistence(self):
         self.run_on("SW-01", FIX)
@@ -220,9 +192,8 @@ class DhcpDnsTests(unittest.TestCase):
         find = lambda t, n: next(d for d in t["devices"] if d["name"] == n)
         for name in ("PC-01", "R1", "DHCP-SRV"):
             self.assertEqual(find(restored, name), find(saved, name), name)
-        self.assertEqual(
-            self.page.evaluate("(t) => AgLabSim.toLabber(t).report.engineDecision", restored),
-            "labber",
+        self.assertTrue(
+            self.page.evaluate("(t) => AgLabSim.toLabber(t).report.expressible", restored)
         )
 
 

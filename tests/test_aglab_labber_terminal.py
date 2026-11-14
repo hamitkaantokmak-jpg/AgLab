@@ -334,9 +334,7 @@ class LabberTerminalTests(unittest.TestCase):
             sw1["interfaces"][port[ids["SW1"]]]["channelGroup"], {"id": 1, "mode": "active"}
         )
         self.assertIn("po1", sw1["interfaces"])
-        self.assertEqual(
-            self.page.evaluate("t => aglabEngineChoice.decide(t).engine", view), "labber"
-        )
+        self.assertTrue(self.page.evaluate("t => aglabEngineChoice.decide(t).expressible", view))
         # izinli liste farkı: üye askıya alınır (s), kanal düşer
         self.type("configure terminal")
         self.type("interface " + port[ids["SW1"]])

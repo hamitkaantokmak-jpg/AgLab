@@ -100,12 +100,8 @@ ARTIFACTS = [
     # Simülatör modülleri (HTML'ye gömülür) ve Node test yardımcıları.
     "simulator/mac-address.js",
     "simulator/switch-management.js",
-    "simulator/mac-learning.js",
-    "simulator/ethernet-forwarding.js",
-    "simulator/routing-path.js",
-    "simulator/routed-ethernet.js",
-    "simulator/icmp.js",
-    "simulator/traceroute.js",
+    "simulator/aglab-model.js",
+    "simulator/packet-trace.js",
     "simulator/packet-events.js",
     "simulator/packet-detective-ui.js",
     "simulator/device-cli.js",
@@ -115,32 +111,18 @@ ARTIFACTS = [
     "simulator/network-scenarios.json",
     "simulator/simulation-playback.js",
     "simulator/simulation-ui.js",
-    "simulator/engine-adapter-prototype.cjs",
-    "simulator/engine-manager.js",
-    "simulator/engine-manager-ui.js",
     "simulator/lab-evidence.js",
     "simulator/lab-evidence-ui.js",
-    "simulator/borck-adapter.ts",
-    "simulator/borck-engine.generated.js",
-    "simulator/borck-ui.js",
-    "simulator/borck-fixtures.cjs",
-    "simulator/borck-production-reference.cjs",
     # Derleme araçları ve yapılandırması.
     "build_simulator.py",
     "build_academy.py",
     "tools/build_html.py",
     "tools/build_lab_engine_map.py",
-    "tools/build_borck_engine.cjs",
     "tools/build_sim.cjs",
     "tsconfig.sim.json",
     "package.json",
     "package-lock.json",
     "tests/aglab_test_support.py",
-]
-ARTIFACTS += [
-    p.relative_to(ROOT).as_posix()
-    for p in sorted((ROOT / "third_party/borck-netsim").rglob("*"))
-    if p.is_file()
 ]
 # HTML kaynak ağacı (HTML'nin kendisi derleme çıktısıdır).
 ARTIFACTS += [
@@ -149,7 +131,6 @@ ARTIFACTS += [
 
 # Başarılı testlerin ürettiği ve ZIP'e eklenen kanıt dosyaları.
 EVIDENCE = [
-    "browser-engine-benchmark.json",
     "advanced-student-journey.json",
     "unified-rc-performance.json",
     "simulation-mode-results.json",

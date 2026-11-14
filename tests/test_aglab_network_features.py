@@ -94,8 +94,14 @@ class CommonEngineTests(unittest.TestCase):
         self.assertFalse(self.probe()["ok"])
         self.solve("subif-missing")
         self.assertTrue(self.probe()["ok"])
-        path = self.run_js("aglabSharedEngine.strictPath('d1','d4',10,'192.168.20.20')")
-        self.assertTrue(any(e["a"] == "d3" or e["b"] == "d3" for e in path), path)
+        # L7b: eski yol bulucu (strictPath) yerine Labber'ın Simulation Mode izi: VLAN'lar arası
+        # paket router (d3) üzerinden geçer.
+        wires = self.run_js(
+            "() => { aglabWorkspace.pingTrace('d1', '192.168.20.20');"
+            " return aglabLabberSession.trace().events.filter((e) => e.kind === 'wire')"
+            ".map((e) => [e.edge.a, e.edge.b]) }"
+        )
+        self.assertTrue(any("d3" in w for w in wires), wires)
         self.command(
             "SW-01",
             [
@@ -117,7 +123,7 @@ class CommonEngineTests(unittest.TestCase):
         (UYUMLULUK_MATRISI: "OSPF teşhis metni").
         """
         self.load("ospf-area")
-        self.assertEqual(self.run_js("aglabSharedEngine.engine()")["engine"], "labber")
+        self.assertTrue(self.run_js("aglabSharedEngine.engine()")["expressible"])
         self.assertFalse(self.probe()["ok"])
         self.assertIn("area", self.ospf("R2", "mismatches.map(m=>m.kind)"))
         self.command("R1", ["show ip ospf neighbor"])

@@ -1,15 +1,11 @@
-// Motor seçimi (Labber entegrasyonu L2, docs/YENIDEN_YAPILANMA.md "L4. Geçiş sırası").
+// Labber değerlendirmesi (Labber entegrasyonu; L7b'den beri ürünün tek simülasyon motoru).
 //
-// Karar içerikten gelir: köprü (AgLabSim.toLabber) topolojinin bütün alanlarını Labber'a
-// eşleyebiliyorsa içerik Labber'da değerlendirilir; eşleyemiyorsa eski motorda açılır ve
-// ekranda gerekçesiyle "Eski motor" rozeti görünür. Karar içerik yüklenirken bir kez
-// verilir; çalışma sırasında motorlar arasında geçiş yapılmaz. Labber'da açılmış içerik
-// sonradan Labber'ın ifade edemediği bir duruma gelirse (ör. topolojiye router eklenirse)
-// sonuç eski motordan alınmaz: değerlendirme hata olarak gösterilir.
-//
-// L3-a: Labber kararındaki içerikte terminal ve değerlendirme aynı kalıcı LabRuntime'ı
-// kullanır (labber-session.js); iki motor karşılaştırması yoktur. L3-b: Simulation Mode'un
-// ping izi de Labber olay adaptöründen gelir (AgLabSim.pingTrace).
+// İçerik yüklenirken köprü (AgLabSim.toLabber) topolojinin bütün alanlarını Labber'a
+// eşleyebiliyor mu diye bakılır. Eşleyemiyorsa içerik başka bir motorda AÇILMAZ: topoloji
+// çizimde kalır (düzenlenebilir, kaydedilir, dışa aktarılır) ama terminal, ping ve
+// değerlendirme gerekçeyi söyleyen açık bir hata verir; rozet "Simüle edilemiyor" der.
+// Terminal ve değerlendirme aynı kalıcı LabRuntime'ı kullanır (labber-session.js); Simulation
+// Mode'un ping izi Labber olay adaptöründen gelir (AgLabSim.pingTrace).
 const aglabEngineChoice = (() => {
   const REASON_TR = {
     noip: 'Kaynak cihazda geçerli IPv4 adresi yok.',
@@ -22,36 +18,25 @@ const aglabEngineChoice = (() => {
   function snapshot() {
     return { app: 'AgLab', version: 23, devices: clone(devices), links: clone(links) };
   }
-  /** İçerik için motor kararı: { engine: 'labber' | 'legacy', reasons: [] }. */
+  /** İçerik Labber'da ifade edilebilir mi: { expressible, reasons }. */
   function decide(topology) {
     const report = AgLabSim.toLabber(topology).report;
-    const reasons = report.reasons.slice();
-    // FHRP eski motorda yoktur: içerik eski motorda açılırsa gruplar sessizce kaybolmaz,
-    // rozet bunu söyler (AGENTS.md: sessiz veri kaybı raporlanır).
-    const fhrp = (topology.devices || []).some(
-      (d) =>
-        (Array.isArray(d.tracks) && d.tracks.length) ||
-        Object.values(d.interfaces || {}).some(
-          (i) =>
-            (Array.isArray(i?.hsrp) && i.hsrp.length) || (Array.isArray(i?.vrrp) && i.vrrp.length),
-        ),
-    );
-    if (report.engineDecision !== 'labber' && fhrp)
-      reasons.push('HSRP/VRRP eski motorda modellenmez (gruplar ve track yok sayılır)');
-    return { engine: report.engineDecision, reasons };
+    return { expressible: report.expressible, reasons: report.reasons.slice() };
   }
   function badgeText(decision) {
-    return decision.engine === 'labber'
+    return decision.expressible
       ? 'Motor: Labber — terminal, değerlendirme ve Simulation Mode Labber motorunda.'
-      : 'Eski motor — nedeni: ' + decision.reasons.join('; ');
+      : 'Simüle edilemiyor — Labber bu topolojiyi ifade edemiyor: ' +
+          decision.reasons.join('; ') +
+          '. Topoloji düzenlenebilir ve kaydedilir; terminal ve değerlendirme çalışmaz.';
   }
   function renderBadge(el, decision) {
-    // I-1: çalışma alanı rozeti her zaman geçerli içeriğin motorunu gösterir
+    // I-1: çalışma alanı rozeti her zaman geçerli içeriğin durumunu gösterir
     const ws = typeof document !== 'undefined' ? document.getElementById('workspaceEngine') : null;
     for (const x of [el, ws]) {
       if (!x) continue;
       x.textContent = badgeText(decision);
-      x.dataset.engine = decision.engine;
+      x.dataset.engine = decision.expressible ? 'labber' : 'unsupported';
     }
   }
   /**
@@ -61,13 +46,12 @@ const aglabEngineChoice = (() => {
   function runtime() {
     if (aglabLabber.active()) return aglabLabber.runtime();
     const r = AgLabSim.toLabber(snapshot());
-    if (r.report.engineDecision !== 'labber')
-      throw new Error(
-        'Bu içerik Labber motorunda açıldı ama topoloji artık Labber’ın desteklemediği öğeler içeriyor (' +
-          r.report.reasons.join('; ') +
-          '). Motor değiştirilmez; değerlendirme yapılamadı.',
-      );
+    if (!r.report.expressible) throw new Error(aglabLabber.unsupportedMessage(r.report.reasons));
     return AgLabSim.createRuntime(r);
+  }
+  /** Güncel içeriğin LabQuery'si (rota tablosu vb.); ifade edilemiyorsa istisna atar. */
+  function runtimeQuery() {
+    return runtime().query();
   }
   /** Labber ping: { ok, why, replier? }. Hata durumunda istisna atar. */
   function labberPing(sourceId, ip) {
@@ -125,6 +109,7 @@ const aglabEngineChoice = (() => {
     labberSourceBinding,
     labberStpRoot,
     labberView,
+    runtimeQuery,
     snapshot,
     REASON_TR,
   };

@@ -164,9 +164,9 @@ class SimEmbeddedTests(unittest.TestCase):
         self.page.evaluate("window.__aglabSimAccess.length = 0")
 
     def test_product_uses_aglabsim_only_for_engine_choice(self):
-        """Ürün AgLabSim'i yalnız motor kararı ve Labber değerlendirmesi için çağırır
-        (engine-choice.js; L2-D1 ortak senaryolar, L2-D2 Akademi). Erişilen API kümesi
-        her akışta tam olarak denetlenir."""
+        """Ürün AgLabSim'i ifade edilebilirlik denetimi (toLabber) ve Labber çalışma zamanı için
+        çağırır (engine-choice.js; L2-D1 ortak senaryolar, L2-D2 Akademi; L7b: tek motor).
+        Erişilen API kümesi her akışta tam olarak denetlenir."""
         page = self.page
         # Sayfa yüklemesi: Akademi'de seçili labın motor rozeti için karar; Labber lab
         # grubunun listesi (E) için LABBER_LABS. I-1: kayıtlı/varsayılan çalışma alanı da karara
