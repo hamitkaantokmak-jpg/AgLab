@@ -174,12 +174,12 @@ SW2'de `ip default-gateway` yok ve R1'deki yönetim ACL'si UDP 123'e izin vermiy
 
 ### S3 · Orta · Kablo koptu, syslog sunucusunda iz yok (E3)
 
-- **Belirti:** Gece bir uplink kopup geri geldi; konsolda kayıt var, syslog sunucusunda yok.
+- **Belirti:** Gece bir uplink kopup geri geldi. Konsolda `%LINEPROTO-5-UPDOWN` satırları var; syslog sunucusunda yalnız `%LINK-3-UPDOWN` var, protokol satırları ve gece yapılan yapılandırma değişikliği (`%SYS-5-CONFIG_I`) yok.
 - **Hedef:** Arayüz olayları sunucuya gitsin.
 
 <details><summary>Neden ve çözüm</summary>
 
-`logging trap 4`: `%LINEPROTO-5-UPDOWN` seviye 5 olduğu için gönderilmiyor (`%LINK-3` gider ama sunucu filtresi kaçırmış olabilir). Çözüm: `logging trap 5` (ya da 6).
+`logging trap 4`: seviye 3 satırlar gidiyor, seviye 5 olanlar (`LINEPROTO-5`, `SYS-5-CONFIG_I`) gitmiyor. Çözüm: `logging trap 5` (ya da 6).
 
 </details>
 
