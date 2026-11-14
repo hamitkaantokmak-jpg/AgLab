@@ -5308,6 +5308,12 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       parent.appendChild(e);
       return e;
     };
+    const edgePortName = (p) =>
+      !p
+        ? '?'
+        : String(p)
+            .replace(/^(gigabitethernet|gi|g)(?=\d)/i, 'Gi')
+            .replace(/^(fastethernet|fa|f)(?=\d)/i, 'Fa');
     links.forEach((l) => {
       let a = get(l.a),
         b = get(l.b);
@@ -5334,15 +5340,34 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
         class: 'pt-edge' + (up ? '' : ' down') + (focus ? ' audit-focus' : ''),
       });
       line.setAttribute('stroke-linecap', 'round');
-      el(
-        'text',
-        { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 9, class: 'pt-edge-label' },
-        svg,
-      ).textContent = up ? 'LINK UP' : 'LINK DOWN';
-      el('text', { x: x1 + uy * 10, y: y1 - ux * 10, class: 'pt-port-label' }, svg).textContent =
-        l.portA || '?';
-      el('text', { x: x2 + uy * 10, y: y2 - ux * 10, class: 'pt-port-label' }, svg).textContent =
-        l.portB || '?';
+      // Arayüz PR 2: bağlantı etiketi port adlarıdır (docs/arayuz/dolu-3.png "trunk · Gi0/24");
+      // iki uç aynı adlıysa tek etiket ortada, farklıysa uçlarda. Kapalı bağlantı "kapalı" önekli.
+      const pa = edgePortName(l.portA),
+        pb = edgePortName(l.portB),
+        trunk = [
+          [a, l.portA],
+          [b, l.portB],
+        ].some(([d, p]) => d.interfaces?.[p]?.mode === 'trunk'),
+        same = pa === pb;
+      const mid = [up ? '' : 'kapalı', trunk ? 'trunk' : '', same ? pa : '']
+        .filter(Boolean)
+        .join(' · ');
+      if (mid)
+        el(
+          'text',
+          {
+            x: (x1 + x2) / 2,
+            y: (y1 + y2) / 2 - 9,
+            class: 'pt-edge-label' + (trunk ? ' trunk' : ''),
+          },
+          svg,
+        ).textContent = mid;
+      if (!same) {
+        el('text', { x: x1 + uy * 10, y: y1 - ux * 10, class: 'pt-port-label' }, svg).textContent =
+          pa;
+        el('text', { x: x2 + uy * 10, y: y2 - ux * 10, class: 'pt-port-label' }, svg).textContent =
+          pb;
+      }
     });
     devices.forEach((d) => {
       let g = el('g', {
@@ -5390,7 +5415,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
             connectFirst = '';
             connectMode = false;
             $p('ptConnectMode').classList.remove('active');
-            $p('ptConnectMode').textContent = 'Kablo bağla';
+            $p('ptConnectMode').textContent = 'Tuvalde iki cihaz seç';
             selected = d.id;
             render();
             updateInspector();
@@ -6441,7 +6466,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     $p('ptConnectMode').classList.toggle('active', connectMode);
     $p('ptConnectMode').textContent = connectMode
       ? 'Kablo modu açık · iki cihaz seç'
-      : 'Kablo bağla';
+      : 'Tuvalde iki cihaz seç';
     say(
       connectMode ? 'Kablo modu: topolojide ilk ve ikinci cihaza tıkla.' : 'Kablo modu kapatıldı.',
       'outinfo',

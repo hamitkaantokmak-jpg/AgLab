@@ -21,7 +21,10 @@ import unittest
 
 from playwright.sync_api import expect, sync_playwright
 
-from aglab_test_support import HTML, ROOT, launch_chromium
+import os
+from pathlib import Path
+
+from aglab_test_support import HTML, ROOT, launch_chromium, open_cable_tool
 
 TEXT_OUTSIDE_SCRIPTS = """(needle) => {
   const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -347,6 +350,192 @@ class SimWorkspaceTests(unittest.TestCase):
         # Başka topoloji içe aktarılınca senaryo bağlamı biter.
         p.evaluate("academyEngine.load({app:'AgLab',version:23,devices:[],links:[],nextId:1})")
         expect(p.locator("#agSimTitle")).to_have_text("Simülatör · Serbest çalışma")
+
+    # ------------------------------------------------------------ kullanıcı testi düzeltmeleri
+    def contrast(self, fg_sel, bg_sel):
+        return self.page.evaluate(
+            """([f, b]) => {
+              const rgb = (s) => (s.match(/[\\d.]+/g) || []).map(Number);
+              const lum = (c) => c.slice(0, 3).map((v) => v / 255)
+                .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+                .reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+              const x = lum(rgb(getComputedStyle(document.querySelector(f)).color));
+              const y = lum(rgb(getComputedStyle(document.querySelector(b)).backgroundColor));
+              return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+            }""",
+            [fg_sel, bg_sel],
+        )
+
+    def test_1024_layout_and_screenshot(self):
+        p = self.page
+        p.set_viewport_size({"width": 1024, "height": 768})
+        p.evaluate("localStorage.setItem('aglab-theme','light')")
+        p.reload()
+        p.click('[data-area="lab"]')
+        top = p.locator("#agTop").bounding_box()
+        head = p.locator("#agSimHead").bounding_box()
+        # Üst bar tek satır; tema düğmesi ve arama üst barın içinde, başlığı örtmez.
+        self.assertLessEqual(top["height"], 60)
+        for sel in ["#themeToggle", "#agSearch", "#areaTabs"]:
+            b = p.locator(sel).bounding_box()
+            self.assertLessEqual(b["y"] + b["height"], top["y"] + top["height"] + 0.5, sel)
+            self.assertLessEqual(b["y"] + b["height"], head["y"], sel)
+        # Üç sütun yan yana.
+        task, stage, inspect = (
+            p.locator(s).bounding_box() for s in ["#agSimTask", "#agSimStage", "#agSimInspect"]
+        )
+        self.assertLess(task["x"] + task["width"], stage["x"])
+        self.assertLess(stage["x"] + stage["width"], inspect["x"])
+        self.assertLessEqual(inspect["x"] + inspect["width"], 1024 + 0.5)
+        # Palet tuvalin dışında: hiçbir düğümün üstüne binmez.
+        pal = p.locator(".ag-sim-palette").bounding_box()
+        for i in range(p.locator("#ptCanvas g[data-id]").count()):
+            n = p.locator("#ptCanvas g[data-id]").nth(i).bounding_box()
+            overlap = not (
+                n["x"] >= pal["x"] + pal["width"]
+                or n["x"] + n["width"] <= pal["x"]
+                or n["y"] >= pal["y"] + pal["height"]
+                or n["y"] + n["height"] <= pal["y"]
+            )
+            self.assertFalse(overlap, i)
+        self.assertEqual(p.evaluate("document.documentElement.scrollWidth"), 1024)
+        out = Path(os.environ.get("AGLAB_TEST_ARTIFACT_DIR", ROOT / "dist"))
+        out.mkdir(parents=True, exist_ok=True)
+        shot = out / "simulator-1024.png"
+        p.screenshot(path=str(shot))
+        self.assertGreater(shot.stat().st_size, 10000)
+        # Sol şeridin zemini sayfa boyunca (kabuğun ilk sütunu boyalı ve kabuk sayfa boyu).
+        shell = p.evaluate(
+            "(() => { const s = document.querySelector('.ag-shell'); return [getComputedStyle(s).backgroundImage, s.offsetHeight, document.documentElement.scrollHeight]; })()"
+        )
+        self.assertIn("linear-gradient", shell[0])
+        self.assertGreaterEqual(shell[1] + 1, shell[2])
+
+    def test_canvas_toolbar_cable_tool_and_link_labels(self):
+        p = self.page
+        # Tuval üstünde araç çubuğu yok; "Kablo bağla" tekrarı yok.
+        self.assertEqual(p.locator("#ptWorkbench .ag-sim-stagebar").count(), 0)
+        text = p.locator("#agSimStage").inner_text()
+        self.assertNotIn("Kabloyu bağla", text)
+        self.assertNotIn("Kablo bağla", text)
+        expect(p.locator("#ptSave")).to_be_visible()
+        expect(p.locator("#ptAudit")).to_be_visible()
+        for sel in ["#ptMakeLink", "#ptSource", "#ptConnectMode"]:
+            expect(p.locator(sel)).to_be_hidden()
+        for sel in ["#ptExport", "#ptImport", "#ptReset", "#ptDeleteDevice"]:
+            expect(p.locator(sel)).to_be_hidden()
+        p.click("#uxMoreLabActions")
+        for sel in ["#ptExport", "#ptImport", "#ptReset", "#ptDeleteDevice"]:
+            expect(p.locator(sel)).to_be_visible()
+        # Kablo aracı palette; kablo işlemleri onun satırında.
+        tool = p.locator(".ag-sim-palette #agSimCableTool")
+        expect(tool).to_have_attribute("aria-pressed", "false")
+        tool.click()
+        expect(tool).to_have_attribute("aria-pressed", "true")
+        for sel in ["#ptConnectMode", "#ptSource", "#ptTarget", "#ptMakeLink", "#ptRemoveLink"]:
+            expect(p.locator("#agSimCablePanel " + sel)).to_be_visible()
+        expect(p.locator("#ptConnectMode")).to_have_text("Tuvalde iki cihaz seç")
+        expect(p.locator("#ptMakeLink")).to_have_text("Bağla")
+        # Bağlantı etiketleri port adları; trunk bağlantısı "trunk" ile.
+        labels = p.locator("#ptCanvas text.pt-edge-label, #ptCanvas text.pt-port-label")
+        all_text = " ".join(labels.all_text_contents())
+        self.assertNotIn("LINK", all_text)
+        snap = p.evaluate("academyEngine.snapshot()")
+        mode = (
+            lambda dev, port: next(d for d in snap["devices"] if d["id"] == dev)["interfaces"]
+            .get(port, {})
+            .get("mode")
+        )
+        trunk = next(l for l in snap["links"] if mode(l["a"], l["portA"]) == "trunk")
+        self.assertIn("trunk", all_text)
+        short = lambda port: re.sub(r"^(gi|g)(?=\d)", "Gi", re.sub(r"^fa(?=\d)", "Fa", port))
+        self.assertIn(short(trunk["portA"]), all_text)
+        self.assertIn(short(trunk["portB"]), all_text)
+
+    def test_timeline_labels_detail_and_events_tab(self):
+        p = self.page
+        snap = p.evaluate("academyEngine.snapshot()")
+        pc1, pc2 = [d for d in snap["devices"] if d["type"] == "PC"][:2]
+        # Olaylar sekmesi kapalıyken gelen iz: sekmede "yeni" işareti; açılınca güncel.
+        self.cli(pc1["id"], "ping " + pc2["ip"])
+        expect(p.locator("#agSimTab-events")).to_have_attribute("data-new", "true")
+        p.click("#agSimTab-events")
+        expect(p.locator("#agSimTab-events")).not_to_have_attribute("data-new", "true")
+        raw = p.locator("#packetDetectiveRaw").text_content()
+        self.assertIn("icmp", raw.lower())
+        # Sekme açıkken yeni ping "Son olayları göster"e basmadan görünür.
+        p.select_option("#packetDetectiveViewMode", "technical")
+        self.cli(pc2["id"], "ping " + pc1["ip"])
+        expect(p.locator("#packetDetectiveRaw")).not_to_have_text(raw)
+        self.assertIn("src " + pc2["id"], p.locator("#packetDetectiveRaw").text_content())
+        # Zaman çizelgesi: ARP/ICMP Req/Rep etiketleri ve seçili olayın ayrıntısı.
+        p.click("#simulationMode")
+        ticks = p.locator("#agSimTimeline li")
+        expect(ticks.first).to_be_attached()
+        labels = set(p.locator("#agSimTimeline li span").all_text_contents())
+        self.assertTrue({"ICMP Req", "ICMP Rep"} <= labels, labels)
+        allowed = {"ICMP Req", "ICMP Rep", "ARP Req", "ARP Rep", "Teslim", "Ulaşmadı", "Atıldı"}
+        self.assertTrue(labels <= allowed, labels)
+        p.click("#simulationForward")
+        detail = p.locator("#agSimEventDetail")
+        expect(detail).to_contain_text("ICMP Echo Request")
+        expect(detail).to_contain_text(pc2["ip"] + " → " + pc1["ip"])
+        expect(detail).to_contain_text("TTL")
+        # Çizelge ve ayrıntı alt şeridin içinde, kesilmeden.
+        dock = p.locator("#agSimDock").bounding_box()
+        for sel in ["#agSimTimeline", "#agSimEventDetail"]:
+            b = p.locator(sel).bounding_box()
+            self.assertLessEqual(b["y"] + b["height"], dock["y"] + dock["height"] + 0.5, sel)
+        tick = ticks.first.locator("button").bounding_box()
+        line = p.locator("#agSimTimeline").bounding_box()
+        self.assertLessEqual(tick["y"] + tick["height"], line["y"] + line["height"] + 0.5)
+
+    def test_show_output_wraps_and_task_goals_first(self):
+        p = self.page
+        p.set_viewport_size({"width": 1280, "height": 800})
+        sw = p.evaluate("academyEngine.snapshot().devices.find(d=>d.type==='Switch')")
+        p.locator('#ptCanvas g[data-id="' + sw["id"] + '"]').click()
+        p.click('#agSimQuick [data-show="show vlan brief"]')
+        out = p.locator("#agSimShowOut")
+        self.assertEqual(out.evaluate("(e)=>getComputedStyle(e).whiteSpace"), "pre-wrap")
+        self.assertLessEqual(
+            out.evaluate("(e)=>e.scrollWidth"), out.evaluate("(e)=>e.clientWidth") + 1
+        )
+        # Görev kartı: hedefler açıklamanın üstünde; açıklama daraltılabilir; 1280×800'de ilk
+        # ekranda bütün hedefler görünür (en uzun açıklamalı Labber labında).
+        lab = p.evaluate(
+            "aglabLabberLabs.list().map(l=>aglabLabberLabs.info(l.id)).sort((a,b)=>b.brief.join('').length-a.brief.join('').length)[0].id"
+        )
+        p.select_option("#labberLabSelect", lab)
+        p.click("#labberLabStart")
+        p.evaluate("scrollTo(0,0)")
+        goals = p.locator("#agSimGoals li")
+        expect(goals.first).to_be_visible()
+        self.assertTrue(
+            p.evaluate(
+                "document.getElementById('agSimGoals').compareDocumentPosition(document.getElementById('agSimTaskAbout')) & Node.DOCUMENT_POSITION_FOLLOWING"
+            )
+        )
+        last = goals.nth(goals.count() - 1)
+        last.evaluate("(e)=>e.closest('#agSimTask').scrollTop=0")
+        b = last.bounding_box()
+        task = p.locator("#agSimTask").bounding_box()
+        self.assertLessEqual(b["y"] + b["height"], min(800, task["y"] + task["height"]))
+        about = p.locator("#agSimTaskAbout")
+        expect(about).to_have_js_property("open", True)
+        about.locator("summary").click()
+        expect(about).to_have_js_property("open", False)
+        expect(p.locator("#labberLabBrief")).to_be_hidden()
+
+    def test_light_theme_contrast(self):
+        p = self.page
+        p.evaluate("localStorage.setItem('aglab-theme','light')")
+        p.reload()
+        p.click('[data-area="lab"]')
+        self.assertGreaterEqual(self.contrast("#ptPrompt", "#agSimDock"), 4.5)
+        p.click('[data-area="troubleshoot"]')
+        badge = "#area-troubleshoot .tag"
+        self.assertGreaterEqual(self.contrast(badge, badge), 4.5)
 
 
 if __name__ == "__main__":

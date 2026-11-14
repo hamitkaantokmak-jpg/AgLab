@@ -55,15 +55,22 @@
     'aria-labelledby': 'agSimTaskTitle',
   });
   const taskText = make('div', { class: 'muted small ag-sim-task-text', id: 'agSimTaskText' });
+  // Açıklama daraltılabilir; hedefler onun üstünde (1280×800'de ilk ekranda görünür).
+  const taskAbout = make(
+    'details',
+    { class: 'ag-sim-about', id: 'agSimTaskAbout', open: true },
+    make('summary', { text: 'Görev açıklaması' }),
+    taskText,
+  );
   const goals = make('ul', { class: 'ag-sim-goals', id: 'agSimGoals', 'aria-label': 'Hedefler' });
   const taskExtra = make('div', { class: 'ag-sim-task-extra', id: 'agSimTaskExtra' });
   const hintBox = make('div', { class: 'ag-sim-hint', id: 'agSimHintBox', 'aria-live': 'polite' });
   const solutionSlot = make('div', { id: 'agSimSolutionSlot' });
   task.append(
     make('h2', { id: 'agSimTaskTitle', text: 'Görev' }),
-    taskText,
     goals,
     taskExtra,
+    taskAbout,
     make('div', { class: 'ag-sim-fill' }),
     hintBox,
     solutionSlot,
@@ -74,9 +81,29 @@
     id: 'agSimStage',
     'aria-label': 'Topoloji tuvali',
   });
-  const stageBar = make('div', { class: 'ag-sim-stagebar' });
+  // Taslakta tuvalin üstünde araç çubuğu yok: solda palet (cihazlar + kablo aracı), altta
+  // durum satırı ile Kaydet / Ağı denetle / Diğer işlemler; kablo işlemleri kablo aracının
+  // açtığı satırda.
   const stageFoot = make('div', { class: 'ag-sim-stagefoot small' });
-  stage.append(stageBar);
+  const stageStatus = make('div', { class: 'ag-sim-stagestatus' });
+  const cablePanel = make('div', {
+    class: 'ag-sim-cable',
+    id: 'agSimCablePanel',
+    role: 'group',
+    'aria-label': 'Kablo işlemleri',
+    hidden: true,
+  });
+  const cableTool = make('button', {
+    type: 'button',
+    id: 'agSimCableTool',
+    class: 'ag-sim-tool',
+    title: 'Kablo aracı',
+    'aria-label': 'Kablo aracı',
+    'aria-pressed': 'false',
+    'aria-controls': 'agSimCablePanel',
+    text: '🔌',
+  });
+  stageFoot.append(stageStatus);
 
   const inspect = make('section', {
     class: 'card ag-sim-inspect',
@@ -144,11 +171,20 @@
   const deviceCard = work.querySelector('.pt-device-card:not(.pt-cli-card)');
   const cliCard = work.querySelector('.pt-cli-card');
 
-  // Tuval: üstte kablo ve dosya işlemleri, solda cihaz paleti, altta durum.
-  if (connectGroup) stageBar.append(connectGroup);
+  // Kablo aracı satırı: tuvalde iki cihaz seçme kipi ve kaynak/hedef ile bağlama.
+  const connectMode = $('ptConnectMode');
+  if (connectMode) cablePanel.append(connectMode);
+  if (connectGroup) cablePanel.append(connectGroup);
+  cableTool.addEventListener('click', () => {
+    const open = cablePanel.hidden;
+    cablePanel.hidden = !open;
+    cableTool.setAttribute('aria-pressed', String(open));
+    if (open) (connectMode || cablePanel.querySelector('select'))?.focus();
+  });
   if (headActions) {
-    // v12 kuralı (#ptWorkbench.ux-simple-lab .pt-head-actions) seyrek işlemleri gizler.
-    stageBar.append(headActions);
+    // Kaydet ve Ağı denetle görünür; v12 kuralı (#ptWorkbench.ux-simple-lab .pt-head-actions)
+    // dışa/içe aktarma, silme ve sıfırlamayı "Diğer işlemler" açılınca gösterir.
+    stageFoot.append(headActions);
   }
   if (addGroup) {
     addGroup.classList.add('ag-sim-palette');
@@ -162,13 +198,15 @@
       b.title = kind + ' ekle';
       b.setAttribute('aria-label', kind + ' ekle');
     }
+    addGroup.append(make('i', { class: 'ag-sim-toolsep', 'aria-hidden': 'true' }), cableTool);
     stage.append(addGroup);
   }
-  stage.append(canvas, stageFoot);
+  // Palet ayrı sütundur; düğümlerin üstüne binmez.
+  stage.append(make('div', { class: 'ag-sim-canvaswrap' }, canvas), cablePanel, stageFoot);
   const canvasStatus = $('ptCanvasStatus'),
     workspaceEngine = $('workspaceEngine');
-  if (canvasStatus) stageFoot.append(canvasStatus);
-  if (workspaceEngine) stageFoot.append(workspaceEngine);
+  if (canvasStatus) stageStatus.append(canvasStatus);
+  if (workspaceEngine) stageStatus.append(workspaceEngine);
 
   // Cihaz sekmesi: seçili cihaz kartı (bilgi, denetim odağı, adlandırma).
   if (deviceCard) panes.device.append(deviceCard);
@@ -192,11 +230,15 @@
     cliCard.remove();
   }
   // Simulation Mode: mod düğmeleri, oynatma, durum, zaman çizelgesi ve olay listesi.
-  for (const id of ['simulationModeBar', 'simulationPlaybackControls', 'simulationStatus']) {
-    const n = $(id);
-    if (n) (id === 'simulationModeBar' ? simHead : simPane).append(n);
-  }
+  // Sıra (taslak): başlık + mod düğmeleri, zaman çizelgesi, seçili olayın ayrıntısı; sonra
+  // oynatma denetimleri, durum ve olay listesi (kaydırılarak).
+  const modeBar = $('simulationModeBar');
+  if (modeBar) simHead.append(modeBar);
   simPane.append(timeline);
+  for (const id of ['simulationPlaybackControls', 'simulationStatus']) {
+    const n = $(id);
+    if (n) simPane.append(n);
+  }
   const simPanel = $('simulationPanel');
   if (simPanel) simPane.append(simPanel);
 
@@ -659,6 +701,27 @@
       selectTab(keys[(i + (e.key === 'ArrowRight' ? 1 : keys.length - 1)) % keys.length], true);
     }
   });
+  // Olaylar sekmesi yeni ping izinde güncellenir: sekme açıksa hemen, değilse sekme açılınca
+  // (öğrenci olayları bakınca görür; "Son olayları göster"e ayrıca basması gerekmez). Kapalı
+  // sekmede gelen iz sekme düğmesinde "yeni" işaretiyle belirtilir.
+  let traceUnseen = false;
+  const eventsTab = tabs.querySelector('[data-sim-tab="events"]');
+  const refreshDetective = () => {
+    traceUnseen = false;
+    eventsTab.removeAttribute('data-new');
+    const r = $('packetDetectiveRefresh');
+    if (r && !r.disabled) r.click();
+  };
+  document.addEventListener('aglab:trace-ready', () => {
+    if (activeTab === 'events') refreshDetective();
+    else {
+      traceUnseen = true;
+      eventsTab.setAttribute('data-new', 'true');
+    }
+  });
+  eventsTab.addEventListener('click', () => {
+    if (traceUnseen) refreshDetective();
+  });
   // Paket Dedektifi'ne gönderilen olaylar (Simulation Mode'dan) Olaylar sekmesini açar.
   document.addEventListener('aglab:detective-select', () => selectTab('events'));
 
@@ -695,33 +758,118 @@
   // ---------------------------------------------------------------- zaman çizelgesi
   const simRows = $('simulationRows');
   // Satırlar değişince çizelge yeniden kurulur; yalnız seçili olay değişince (oynatma) noktalar
-  // yerinde güncellenir (düğmeler yeniden oluşturulmaz).
+  // yerinde güncellenir (düğmeler yeniden oluşturulmaz). Etiketler taslaktaki gibi ARP/ICMP
+  // Req/Rep; altında seçili olayın ayrıntı satırları (motor kaydının alanları, tahmin yok).
+  const eventDetail = make('pre', {
+    class: 'ag-sim-eventdetail',
+    id: 'agSimEventDetail',
+    'aria-live': 'polite',
+  });
+  timeline.after(eventDetail);
+  const KIND_LABEL = {
+    'icmp-request': ['ICMP Req', 'ICMP Echo Request'],
+    'icmp-reply': ['ICMP Rep', 'ICMP Echo Reply'],
+    'arp-request': ['ARP Req', 'ARP Request'],
+    'arp-reply': ['ARP Rep', 'ARP Reply'],
+  };
+  const devName = (id) => snapshot().devices.find((d) => d.id === id)?.name || id || '—';
+  function traceEvents() {
+    try {
+      const bySeq = new Map();
+      for (const e of window.aglabSimulation.trace().events || []) bySeq.set(String(e.sequence), e);
+      return bySeq;
+    } catch (e) {
+      return new Map();
+    }
+  }
+  // Olay etiketi: çerçeve türü (ARP/ICMP Req/Rep); çerçevesiz sonuç olayları kendi adıyla.
+  const RESULT_LABEL = {
+    'icmp-delivered': 'Teslim',
+    'icmp-undelivered': 'Ulaşmadı',
+    discard: 'Atıldı',
+    diagnostic: 'Tanı',
+  };
+  function eventLabel(e, fallback) {
+    const f = e?.frame || {};
+    let k = f.kind || e?.detail?.protocol;
+    if (!KIND_LABEL[k] && f.icmp)
+      k = f.icmp.type === 8 ? 'icmp-request' : f.icmp.type === 0 ? 'icmp-reply' : k;
+    if (!KIND_LABEL[k] && f.arp) k = /req/i.test(f.arp.operation) ? 'arp-request' : 'arp-reply';
+    return (KIND_LABEL[k] || [])[0] || RESULT_LABEL[e?.kind] || f.protocol || fallback || '—';
+  }
+  function eventDetailText(e, seq) {
+    if (!e) return '';
+    const f = e.frame || {},
+      k = KIND_LABEL[f.kind];
+    const where = e.edge
+      ? devName(e.edge.a) +
+        ' ' +
+        shortPort(e.edge.portA || '') +
+        ' → ' +
+        devName(e.edge.b) +
+        ' ' +
+        shortPort(e.edge.portB || '')
+      : devName(e.device);
+    const pad = (t) => (t + '          ').slice(0, 10);
+    const lines = [seq + '  ' + ((k && k[1]) || f.protocol || e.kind) + '   ' + where];
+    if (f.sourceMac || f.destinationMac)
+      lines.push(
+        '   ' + pad('Ethernet') + (f.sourceMac || '?') + ' → ' + (f.destinationMac || '?'),
+      );
+    if (f.vlan !== undefined && f.vlan !== null) lines.push('   ' + pad('VLAN') + f.vlan);
+    if (f.arp)
+      lines.push(
+        '   ' +
+          pad('ARP') +
+          (f.arp.operation || '') +
+          ' ' +
+          (f.arp.senderIp || '?') +
+          ' → ' +
+          (f.arp.targetIp || '?'),
+      );
+    if (f.ipv4)
+      lines.push(
+        '   ' +
+          pad('IPv4') +
+          f.ipv4.sourceIp +
+          ' → ' +
+          f.ipv4.destinationIp +
+          (f.ipv4.ttl !== undefined ? '  TTL ' + f.ipv4.ttl : ''),
+      );
+    if (e.kind === 'discard' || e.kind === 'diagnostic')
+      lines.push('   ' + pad('Neden') + (e.detail?.reason || '—'));
+    return lines.join('\n');
+  }
   function renderTimeline() {
     const hidden = !simPanel || simPanel.hidden;
     timeline.hidden = hidden;
+    eventDetail.hidden = hidden;
     const rows = simRows ? [...simRows.children] : [];
     if (hidden || !rows.length) {
       timeline.replaceChildren();
       delete timeline.dataset.sig;
+      eventDetail.textContent = '';
       simTitle.textContent = 'Simulation Mode';
       return;
     }
+    const events = traceEvents();
     const sig = rows.map((r) => r.dataset.pos + ':' + r.textContent).join('|');
     if (timeline.dataset.sig !== sig) {
       timeline.dataset.sig = sig;
       timeline.replaceChildren(
         ...rows.map((r, i) => {
           const cells = r.querySelectorAll('td');
-          const proto = cells[3]?.textContent || '';
+          const seq = cells[0]?.textContent || String(i + 1);
+          const label = eventLabel(events.get(seq), cells[3]?.textContent);
           const b = make(
             'button',
             {
               type: 'button',
               class: 'ag-sim-tick',
-              'aria-label': 'Olay ' + (cells[0]?.textContent || i + 1) + ': ' + proto,
+              'aria-label': 'Olay ' + seq + ': ' + label,
             },
             make('i', { class: 'ag-sim-dot' }),
-            make('span', { text: proto }),
+            make('span', { text: label }),
           );
           b.addEventListener('click', () => r.click());
           return make('li', {}, b);
@@ -733,8 +881,27 @@
       if (i === cur) li.setAttribute('aria-current', 'step');
       else li.removeAttribute('aria-current');
     });
+    const curSeq = cur >= 0 ? rows[cur].querySelector('td')?.textContent : null;
+    eventDetail.textContent = curSeq
+      ? eventDetailText(events.get(curSeq), curSeq)
+      : 'Bir olay seç ya da İleri / Oynat ile kaydı izle.';
+    const first = events.get(rows[0].querySelector('td')?.textContent || '');
+    const ping =
+      first?.frame?.ipv4 && first.device
+        ? devName(first.device) + ' → ' + first.frame.ipv4.destinationIp + ' ping · '
+        : '';
     simTitle.textContent =
-      'Simulation Mode · olay ' + (cur >= 0 ? cur + 1 : 0) + ' / ' + rows.length;
+      'Simulation Mode · ' + ping + 'olay ' + (cur >= 0 ? cur + 1 : 0) + ' / ' + rows.length;
+    scrollTick(cur);
+  }
+  function scrollTick(cur) {
+    const li = timeline.children[cur];
+    if (!li) return;
+    const l = li.offsetLeft - timeline.offsetLeft,
+      r = l + li.offsetWidth;
+    if (l < timeline.scrollLeft) timeline.scrollLeft = l;
+    else if (r > timeline.scrollLeft + timeline.clientWidth)
+      timeline.scrollLeft = r - timeline.clientWidth;
   }
   if (simRows)
     new MutationObserver(renderTimeline).observe(simRows, {

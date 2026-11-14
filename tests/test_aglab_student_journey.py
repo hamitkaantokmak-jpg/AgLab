@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 
-from aglab_test_support import ROOT
+from aglab_test_support import ROOT, open_cable_tool
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -109,6 +109,7 @@ try:
         expect(page.locator("#academyAnswer-router_required")).to_have_value("false")
         expect(page.locator("#academyHints li")).to_have_count(1)
         for host in ("PC1", "PC2"):
+            open_cable_tool(page)
             page.select_option("#ptSource", host)
             page.select_option("#ptTarget", "SW1")
             page.click("#ptMakeLink")

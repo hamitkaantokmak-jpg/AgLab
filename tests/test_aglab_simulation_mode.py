@@ -3,7 +3,14 @@
 import ast, copy, datetime, json, math, os, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from aglab_test_support import ROOT, TESTS_DIR, launch_chromium, import_topology, ping_succeeded
+from aglab_test_support import (
+    ROOT,
+    TESTS_DIR,
+    launch_chromium,
+    import_topology,
+    ping_succeeded,
+    open_cable_tool,
+)
 
 OUT = Path(os.environ.get("AGLAB_TEST_ARTIFACT_DIR", ROOT / "dist"))
 OUT.mkdir(exist_ok=True, parents=True)
@@ -210,6 +217,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         return ping_succeeded(out, target)
 
     def connect(a, b):
+        open_cable_tool(page)
         page.select_option("#ptSource", a)
         page.select_option("#ptTarget", b)
         page.click("#ptMakeLink")

@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, open_cable_tool
 
 TOPOLOGY = {
     "app": "AgLab",
@@ -180,6 +180,7 @@ with sync_playwright() as pw:
         cli_closed(page)
         after = page.evaluate("academyEngine.snapshot()")
         assert after["devices"][0]["x"] != before["devices"][0]["x"]
+        open_cable_tool(page)
         page.click("#ptConnectMode")
         pc.tap() if mobile else pc.click()
         router.tap() if mobile else router.click()
@@ -194,6 +195,7 @@ with sync_playwright() as pw:
         assert {k: v for k, v in closed.items() if k != "selected"} == {
             k: v for k, v in final_state.items() if k != "selected"
         }
+        open_cable_tool(page)
         page.click("#ptConnectMode")
         page.keyboard.press("Escape")
         router.tap() if mobile else router.click()

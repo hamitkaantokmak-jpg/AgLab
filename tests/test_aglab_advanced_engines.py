@@ -3,7 +3,7 @@
 import json, os, tempfile, sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium, import_topology
+from aglab_test_support import ROOT, launch_chromium, import_topology, open_cable_tool
 
 with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     b = launch_chromium(pw)
@@ -26,6 +26,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     switches = [d for d in devices if d["type"] == "Switch"]
 
     def cable(a, b):
+        open_cable_tool(page)
         page.select_option("#ptSource", a)
         page.select_option("#ptTarget", b)
         page.click("#ptMakeLink")

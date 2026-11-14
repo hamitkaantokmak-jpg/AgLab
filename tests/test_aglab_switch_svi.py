@@ -7,7 +7,7 @@ import tempfile
 import threading
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from aglab_test_support import ROOT, import_topology, ping_succeeded
+from aglab_test_support import ROOT, import_topology, ping_succeeded, open_cable_tool
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -80,6 +80,7 @@ try:
         for kind in ("Switch", "Router", "PC"):
             page.locator(f'[data-pt-add="{kind}"]').click()
         for source, target in [("d1", "d2"), ("d3", "d1")]:
+            open_cable_tool(page)
             page.select_option("#ptSource", source)
             page.select_option("#ptTarget", target)
             page.click("#ptMakeLink")
@@ -266,6 +267,7 @@ try:
         )
         # A second remote PC proves management gateway and return reachability.
         page.locator('[data-pt-add="PC"]').click()
+        open_cable_tool(page)
         page.select_option("#ptSource", "d2")
         page.select_option("#ptTarget", "d4")
         page.click("#ptMakeLink")
@@ -295,6 +297,7 @@ try:
         assert "192.168.10.1" in arp and "192.168.20.2" not in arp, arp
         # SVI is a management endpoint, not a multilayer switch.
         page.locator('[data-pt-add="PC"]').click()
+        open_cable_tool(page)
         page.select_option("#ptSource", "d5")
         page.select_option("#ptTarget", "d1")
         page.click("#ptMakeLink")

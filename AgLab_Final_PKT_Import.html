@@ -3489,6 +3489,8 @@ html[data-theme='light'] body {
     sans-serif;
 }
 .ag-shell {
+  /* Sol şeridin zemini sayfa boyunca uzanır (şerit kendisi yapışkan, ekran boyu). */
+  background: linear-gradient(90deg, var(--panel) 0 63px, var(--line) 63px 64px, transparent 64px);
   max-width: none;
   margin: 0;
   padding: 0;
@@ -3525,12 +3527,11 @@ html[data-theme='light'] body {
   font-weight: 700;
   font-size: 16px;
   flex: 0 1 300px;
-  min-width: 60px;
+  min-width: max-content;
 }
 #areaTabs.ag-nav {
   display: flex;
   align-items: center;
-  height: 100%;
   gap: 8px;
   flex: 1 1 auto;
   min-width: 0;
@@ -3562,6 +3563,7 @@ html[data-theme='light'] body {
   flex: 0 1 240px;
   min-width: 120px;
   width: 240px;
+  min-height: 32px;
   border: 0;
   border-radius: 8px;
   padding: 6px 12px;
@@ -3673,6 +3675,7 @@ html[data-theme='light'] body {
 }
 @media (max-width: 760px) {
   .ag-shell {
+    background: none;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto auto;
   }
@@ -3718,6 +3721,37 @@ html[data-theme='light'] body {
 .ag-main > .workspace.active {
   background: none;
   border-color: transparent;
+}
+/* 761–1180 px: üst bar tek satırda kalır (sekmeler ve arama daralır). */
+@media (min-width: 761px) and (max-width: 1180px) {
+  .ag-top {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .ag-brand {
+    flex: 0 0 auto;
+  }
+  #areaTabs.ag-nav {
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+  #areaTabs .area-tab {
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+  .ag-search {
+    flex: 1 1 140px;
+    width: auto;
+    min-width: 90px;
+  }
+}
+/* Eski `.tag` rozeti (ör. Sorun Çöz "LABBER MOTORU") sabit koyu zeminliydi; açık temada
+   koyu yazı koyu zeminde okunmuyordu. Taslağın rozet tonlarına bağlandı. Sorun Çöz ekranının
+   kendisi PR 3'te yenilenir. */
+html[data-theme='light'] .tag {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent-text);
 }
 </style>
 <style id="agSimStyle">/* Arayüz yenilemesi PR 2: Simülatör çalışma alanı (docs/arayuz/dolu-3.png). Üst çubuk,
@@ -4013,69 +4047,21 @@ html:not([data-theme='light']) {
   margin: 6px 0;
 }
 /* ---- tuval */
+/* Tuval kartı: solda palet sütunu (düğümlerin üstüne binmez), sağda tuval; altında kablo
+   aracının satırı ve durum + Kaydet / Ağı denetle / Diğer işlemler. Taslakta üst çubuk yok. */
 .ag-sim-stage {
   position: relative;
   background: var(--ag-canvas);
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
   overflow: hidden;
 }
-.ag-sim-stagebar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px 8px 64px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
-  font-size: 12px;
-}
-#ptWorkbench .ag-sim-stagebar .pt-connectgroup,
-#ptWorkbench .ag-sim-stagebar .pt-head-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-#ptWorkbench .ag-sim-stagebar .pt-connectgroup label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--muted);
-}
-#ptWorkbench .ag-sim-stagebar select {
-  width: auto;
-  max-width: 120px;
-  min-height: 30px;
-  padding: 3px 6px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  font-size: 12px;
-}
-#ptWorkbench.ag-sim .ag-sim-stagebar button,
-#ptWorkbench.ag-sim.ux14-lab .ag-sim-stagebar .pt-head-actions button {
-  width: auto;
-  min-height: 30px;
-  padding: 4px 10px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 600;
-  box-shadow: none;
-}
-#ptWorkbench.ag-sim .ag-sim-stagebar button.primary {
-  background-color: var(--accent-soft) !important;
-  color: var(--accent-text) !important;
-  border-color: transparent;
-}
 #ptWorkbench .ag-sim-palette {
-  position: absolute;
-  left: 12px;
-  top: 12px;
-  z-index: 3;
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  margin: 12px 0 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -4095,28 +4081,110 @@ html:not([data-theme='light']) {
   line-height: 32px;
   background-color: transparent !important;
 }
-#ptWorkbench .ag-sim-palette button:hover {
-  background-color: var(--panel2) !important;
+#ptWorkbench .ag-sim-palette button:hover,
+#ptWorkbench .ag-sim-palette button[aria-pressed='true'] {
+  background-color: var(--accent-soft) !important;
 }
-/* Sürükleme 850×420 görünüm kutusunu genişliğe göre ölçekler (main.js): oran korunur, tuval
-   kartın ortasına yerleşir. */
+.ag-sim-toolsep {
+  display: block;
+  height: 1px;
+  margin: 2px 4px;
+  background: var(--line);
+}
+.ag-sim-canvaswrap {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  min-height: 0;
+  min-width: 0;
+  padding: 0 8px;
+}
+/* Sürükleme 850×420 görünüm kutusunu genişliğe göre ölçekler (main.js): oran korunur. */
 #ptWorkbench.ag-sim #ptCanvas {
-  flex: 0 0 auto;
-  margin: auto 0;
+  flex: 1 1 auto;
   min-height: 0;
   width: 100%;
   height: auto;
+  max-height: 100%;
   background: transparent;
   border: 0;
   border-radius: 0;
 }
-.ag-sim-stagefoot {
+.ag-sim-cable {
+  grid-column: 1 / 3;
+  grid-row: 2;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
   align-items: center;
-  padding: 6px 12px 8px 64px;
+  gap: 6px 10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12px;
+}
+.ag-sim-stagefoot {
+  grid-column: 1 / 3;
+  grid-row: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 6px 12px 8px;
   color: var(--muted);
+}
+.ag-sim-stagestatus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  min-width: 0;
+}
+#ptWorkbench .ag-sim-cable .pt-connectgroup,
+#ptWorkbench .ag-sim-stagefoot .pt-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+#ptWorkbench .ag-sim-cable label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+#ptWorkbench .ag-sim-cable select {
+  width: auto;
+  max-width: 140px;
+  min-height: 30px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 12px;
+}
+#ptWorkbench.ag-sim .ag-sim-cable button,
+#ptWorkbench.ag-sim.ux14-lab .ag-sim-stagefoot .pt-head-actions button {
+  width: auto;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: none;
+}
+#ptWorkbench.ag-sim .ag-sim-cable button.primary,
+#ptWorkbench.ag-sim .ag-sim-stagefoot button.primary {
+  background-color: var(--accent-soft) !important;
+  color: var(--accent-text) !important;
+  border-color: transparent;
+}
+#ptWorkbench.ag-sim #ptConnectMode.active {
+  background-color: var(--accent) !important;
+  color: #fff !important;
 }
 #ptWorkbench .ag-sim-stagefoot .engine-badge {
   margin: 0 !important;
@@ -4533,7 +4601,12 @@ html:not([data-theme='light']) {
   margin-top: 14px;
 }
 /* ---- dar kaplar */
-@container agmain (max-width: 1000px) {
+@container agmain (max-width: 1180px) {
+  .ag-sim-body {
+    grid-template-columns: 230px minmax(0, 1fr) 260px;
+  }
+}
+@container agmain (max-width: 760px) {
   #ptWorkbench.ag-sim {
     height: auto;
     min-height: 0;
@@ -4581,19 +4654,38 @@ html:not([data-theme='light']) {
   .ag-sim-catalog {
     padding: 12px;
   }
-  .ag-sim-stagebar,
-  .ag-sim-stagefoot {
-    padding-left: 12px;
+  .ag-sim-stage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto;
   }
   #ptWorkbench .ag-sim-palette {
-    position: static;
+    grid-column: 1;
     flex-direction: row;
     flex-wrap: wrap;
     margin: 8px 12px 0;
-    align-self: flex-start;
+    justify-self: start;
   }
-  #ptWorkbench .ag-sim-stagebar select {
+  .ag-sim-canvaswrap {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .ag-sim-cable,
+  .ag-sim-stagefoot {
+    grid-column: 1;
+  }
+  .ag-sim-cable {
+    grid-row: 3;
+  }
+  .ag-sim-stagefoot {
+    grid-row: 4;
+  }
+  #ptWorkbench .ag-sim-cable select {
     max-width: 100%;
+  }
+  .ag-sim-toolsep {
+    width: 1px;
+    height: auto;
+    margin: 4px 2px;
   }
 }
 /* ---- tuval çizimi (taslak: açık düğüm kartları, gri kablo) */
@@ -4720,6 +4812,77 @@ html:has(#area-lab.active) {
 #agSimTask #academyReplacePrompt[hidden] {
   display: none;
 }
+/* ---- kullanıcı testi düzeltmeleri (PR 2) */
+/* görev açıklaması daraltılabilir; hedefler üstte */
+.ag-sim-about {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.ag-sim-about > summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.ag-sim-task .ag-sim-goals {
+  margin-top: 8px;
+}
+/* hızlı show: uzun satırlar kaydırmalı satır kırmayla görünür */
+#ptWorkbench .ag-sim-showout {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* zaman çizelgesi ve olay ayrıntısı */
+.ag-sim-timeline {
+  flex: 0 0 auto;
+  padding: 2px 0 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.ag-sim-timeline li {
+  flex: 0 0 72px;
+}
+#ptWorkbench .ag-sim-tick span {
+  white-space: nowrap;
+  font-size: 10px;
+}
+.ag-sim-eventdetail {
+  margin: 0 0 6px;
+  font:
+    11.5px/1.55 ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
+  color: var(--ag-term-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ag-sim-eventdetail[hidden] {
+  display: none;
+}
+/* koyu terminal şeridinde istem ve yer tutucu okunur (açık temada da şerit koyu) */
+#ptWorkbench.ag-sim #ptPrompt {
+  color: #7ee2b8;
+}
+#ptWorkbench.ag-sim #ptCliInput::placeholder {
+  color: #9aa3b0;
+}
+/* Olaylar sekmesi: kapalıyken yeni iz geldi */
+#ptWorkbench .ag-sim-tabs button[data-new='true']::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+#ptWorkbench .ag-sim-dock .ag-sim-tick {
+  background-color: transparent !important;
+}
 </style>
 </head>
 <body>
@@ -4828,7 +4991,7 @@ html:has(#area-lab.active) {
 </section>
 <section class="workspace" id="area-lab">
   <section class="panel pt-workbench" id="ptWorkbench">
-    <div class="pt-head"><div><div class="eyebrow">INTERACTIVE NETWORK BUILDER</div><h3>Packet Tracer tarzı çalışma alanı</h3><p>Cihaz ekle, kablo bağla, cihazı seç ve CLI üzerinden yapılandır. Değişiklikler simülasyon ağına uygulanır; topolojiyi tarayıcıya kaydedebilir veya JSON olarak taşıyabilirsin.</p><p class="pt-import-note" style="margin-top:8px;padding:10px 12px;border:1px solid #52627b;border-radius:9px;background:#101c2e;color:#d3e2f6;font-size:12px;line-height:1.6"><b>Packet Tracer içe aktarma:</b> .pkt dosyasını önce <a href="convert_pkt_to_aglab.py" download style="color:#9dc8ff;text-decoration:underline">dönüştürücü betiği</a> ile AgLab JSON biçimine çevir, ardından <b>İçe aktar</b> ile oluşturulan .aglab.json dosyasını seç. Aktarımda desteklenmeyen cihazlar raporlanır; kaynak .pkt değiştirilmez.</p></div><div class="pt-head-actions"><button id="ptSave">Kaydet</button><button id="ptAudit" class="primary">Ağı denetle</button><button id="ptExport">Dışa aktar</button><button id="ptDeleteDevice">Seçili cihazı sil</button><button id="ptImport">İçe aktar (JSON)</button><input id="ptImportFile" type="file" accept="application/json,.json" hidden><button id="ptReset">Topolojiyi sıfırla</button><button class="primary" id="ptConnectMode">Kablo bağla</button></div></div>
+    <div class="pt-head"><div><div class="eyebrow">INTERACTIVE NETWORK BUILDER</div><h3>Packet Tracer tarzı çalışma alanı</h3><p>Cihaz ekle, kablo bağla, cihazı seç ve CLI üzerinden yapılandır. Değişiklikler simülasyon ağına uygulanır; topolojiyi tarayıcıya kaydedebilir veya JSON olarak taşıyabilirsin.</p><p class="pt-import-note" style="margin-top:8px;padding:10px 12px;border:1px solid #52627b;border-radius:9px;background:#101c2e;color:#d3e2f6;font-size:12px;line-height:1.6"><b>Packet Tracer içe aktarma:</b> .pkt dosyasını önce <a href="convert_pkt_to_aglab.py" download style="color:#9dc8ff;text-decoration:underline">dönüştürücü betiği</a> ile AgLab JSON biçimine çevir, ardından <b>İçe aktar</b> ile oluşturulan .aglab.json dosyasını seç. Aktarımda desteklenmeyen cihazlar raporlanır; kaynak .pkt değiştirilmez.</p></div><div class="pt-head-actions"><button id="ptSave">Kaydet</button><button id="ptAudit" class="primary">Ağı denetle</button><button id="ptExport">Dışa aktar</button><button id="ptDeleteDevice">Seçili cihazı sil</button><button id="ptImport">İçe aktar (JSON)</button><input id="ptImportFile" type="file" accept="application/json,.json" hidden><button id="ptReset">Topolojiyi sıfırla</button><button class="primary" id="ptConnectMode">Tuvalde iki cihaz seç</button></div></div>
     <section class="pt-quickstart" aria-labelledby="ptQuickTitle">
       <div class="pt-quick-copy"><div class="eyebrow">HIZLI BAŞLANGIÇ</div><h4 id="ptQuickTitle">İlk ağını 4 adımda kur</h4><p>Cihaz ekle → kablo bağla → CLI ile kontrol et → ağı denetle. Aşağıdaki kısayollar çalışma alanında ilgili işlemi açar.</p></div>
       <ol class="pt-quick-steps"><li><span>1</span><b>Cihaz ekle</b><small>PC, switch veya router</small></li><li><span>2</span><b>Bağlantı kur</b><small>Kaynak ve hedef seç</small></li><li><span>3</span><b>Komut çalıştır</b><small><code>help</code> veya <code>ping</code></small></li><li><span>4</span><b>Denetle</b><small>Hataları ve uyarıları gör</small></li></ol>
@@ -4836,7 +4999,7 @@ html:has(#area-lab.active) {
     </section>
     <div class="pt-toolbar">
       <div class="pt-addgroup"><span>Cihaz ekle</span><button data-pt-add="PC">＋ PC</button><button data-pt-add="Switch">＋ Switch</button><button data-pt-add="Router">＋ Router</button><button data-pt-add="Server">＋ Server</button></div>
-      <div class="pt-connectgroup"><label>Kaynak<select id="ptSource"></select></label><label>Hedef<select id="ptTarget"></select></label><button id="ptMakeLink">Kabloyu bağla</button><button type="button" id="ptRestoreLink" title="Seçilen iki cihaz arasındaki mevcut, pasif kabloyu yeniden etkinleştirir">Pasif kabloyu etkinleştir</button><button id="ptRemoveLink">Kabloyu sök</button></div>
+      <div class="pt-connectgroup"><label>Kaynak<select id="ptSource"></select></label><label>Hedef<select id="ptTarget"></select></label><button id="ptMakeLink">Bağla</button><button type="button" id="ptRestoreLink" title="Seçilen iki cihaz arasındaki mevcut, pasif kabloyu yeniden etkinleştirir">Pasif kabloyu etkinleştir</button><button id="ptRemoveLink">Kabloyu sök</button></div>
     </div>
     <details class="ux-extra-tools" id="uxLabScenarios"><summary><span><b>Hazır ağ arızası senaryoları</b><small>İleri düzey laboratuvar görevlerini aç</small></span></summary><div class="ux-extra-body">
 <section id="sharedScenarioPanel" aria-labelledby="sharedScenarioTitle" style="margin:12px 0;padding:14px;border:1px solid #3b5f79;border-radius:12px;background:linear-gradient(135deg,rgba(34,73,98,.35),rgba(20,30,44,.55));">
@@ -20532,6 +20695,12 @@ const AgLabModel = (() => {
       parent.appendChild(e);
       return e;
     };
+    const edgePortName = (p) =>
+      !p
+        ? '?'
+        : String(p)
+            .replace(/^(gigabitethernet|gi|g)(?=\d)/i, 'Gi')
+            .replace(/^(fastethernet|fa|f)(?=\d)/i, 'Fa');
     links.forEach((l) => {
       let a = get(l.a),
         b = get(l.b);
@@ -20558,15 +20727,34 @@ const AgLabModel = (() => {
         class: 'pt-edge' + (up ? '' : ' down') + (focus ? ' audit-focus' : ''),
       });
       line.setAttribute('stroke-linecap', 'round');
-      el(
-        'text',
-        { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 9, class: 'pt-edge-label' },
-        svg,
-      ).textContent = up ? 'LINK UP' : 'LINK DOWN';
-      el('text', { x: x1 + uy * 10, y: y1 - ux * 10, class: 'pt-port-label' }, svg).textContent =
-        l.portA || '?';
-      el('text', { x: x2 + uy * 10, y: y2 - ux * 10, class: 'pt-port-label' }, svg).textContent =
-        l.portB || '?';
+      // Arayüz PR 2: bağlantı etiketi port adlarıdır (docs/arayuz/dolu-3.png "trunk · Gi0/24");
+      // iki uç aynı adlıysa tek etiket ortada, farklıysa uçlarda. Kapalı bağlantı "kapalı" önekli.
+      const pa = edgePortName(l.portA),
+        pb = edgePortName(l.portB),
+        trunk = [
+          [a, l.portA],
+          [b, l.portB],
+        ].some(([d, p]) => d.interfaces?.[p]?.mode === 'trunk'),
+        same = pa === pb;
+      const mid = [up ? '' : 'kapalı', trunk ? 'trunk' : '', same ? pa : '']
+        .filter(Boolean)
+        .join(' · ');
+      if (mid)
+        el(
+          'text',
+          {
+            x: (x1 + x2) / 2,
+            y: (y1 + y2) / 2 - 9,
+            class: 'pt-edge-label' + (trunk ? ' trunk' : ''),
+          },
+          svg,
+        ).textContent = mid;
+      if (!same) {
+        el('text', { x: x1 + uy * 10, y: y1 - ux * 10, class: 'pt-port-label' }, svg).textContent =
+          pa;
+        el('text', { x: x2 + uy * 10, y: y2 - ux * 10, class: 'pt-port-label' }, svg).textContent =
+          pb;
+      }
     });
     devices.forEach((d) => {
       let g = el('g', {
@@ -20614,7 +20802,7 @@ const AgLabModel = (() => {
             connectFirst = '';
             connectMode = false;
             $p('ptConnectMode').classList.remove('active');
-            $p('ptConnectMode').textContent = 'Kablo bağla';
+            $p('ptConnectMode').textContent = 'Tuvalde iki cihaz seç';
             selected = d.id;
             render();
             updateInspector();
@@ -21735,7 +21923,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
     $p('ptConnectMode').classList.toggle('active', connectMode);
     $p('ptConnectMode').textContent = connectMode
       ? 'Kablo modu açık · iki cihaz seç'
-      : 'Kablo bağla';
+      : 'Tuvalde iki cihaz seç';
     say(
       connectMode ? 'Kablo modu: topolojide ilk ve ikinci cihaza tıkla.' : 'Kablo modu kapatıldı.',
       'outinfo',
@@ -66298,15 +66486,22 @@ function workshopView(ids, cases) {
     'aria-labelledby': 'agSimTaskTitle',
   });
   const taskText = make('div', { class: 'muted small ag-sim-task-text', id: 'agSimTaskText' });
+  // Açıklama daraltılabilir; hedefler onun üstünde (1280×800'de ilk ekranda görünür).
+  const taskAbout = make(
+    'details',
+    { class: 'ag-sim-about', id: 'agSimTaskAbout', open: true },
+    make('summary', { text: 'Görev açıklaması' }),
+    taskText,
+  );
   const goals = make('ul', { class: 'ag-sim-goals', id: 'agSimGoals', 'aria-label': 'Hedefler' });
   const taskExtra = make('div', { class: 'ag-sim-task-extra', id: 'agSimTaskExtra' });
   const hintBox = make('div', { class: 'ag-sim-hint', id: 'agSimHintBox', 'aria-live': 'polite' });
   const solutionSlot = make('div', { id: 'agSimSolutionSlot' });
   task.append(
     make('h2', { id: 'agSimTaskTitle', text: 'Görev' }),
-    taskText,
     goals,
     taskExtra,
+    taskAbout,
     make('div', { class: 'ag-sim-fill' }),
     hintBox,
     solutionSlot,
@@ -66317,9 +66512,29 @@ function workshopView(ids, cases) {
     id: 'agSimStage',
     'aria-label': 'Topoloji tuvali',
   });
-  const stageBar = make('div', { class: 'ag-sim-stagebar' });
+  // Taslakta tuvalin üstünde araç çubuğu yok: solda palet (cihazlar + kablo aracı), altta
+  // durum satırı ile Kaydet / Ağı denetle / Diğer işlemler; kablo işlemleri kablo aracının
+  // açtığı satırda.
   const stageFoot = make('div', { class: 'ag-sim-stagefoot small' });
-  stage.append(stageBar);
+  const stageStatus = make('div', { class: 'ag-sim-stagestatus' });
+  const cablePanel = make('div', {
+    class: 'ag-sim-cable',
+    id: 'agSimCablePanel',
+    role: 'group',
+    'aria-label': 'Kablo işlemleri',
+    hidden: true,
+  });
+  const cableTool = make('button', {
+    type: 'button',
+    id: 'agSimCableTool',
+    class: 'ag-sim-tool',
+    title: 'Kablo aracı',
+    'aria-label': 'Kablo aracı',
+    'aria-pressed': 'false',
+    'aria-controls': 'agSimCablePanel',
+    text: '🔌',
+  });
+  stageFoot.append(stageStatus);
 
   const inspect = make('section', {
     class: 'card ag-sim-inspect',
@@ -66387,11 +66602,20 @@ function workshopView(ids, cases) {
   const deviceCard = work.querySelector('.pt-device-card:not(.pt-cli-card)');
   const cliCard = work.querySelector('.pt-cli-card');
 
-  // Tuval: üstte kablo ve dosya işlemleri, solda cihaz paleti, altta durum.
-  if (connectGroup) stageBar.append(connectGroup);
+  // Kablo aracı satırı: tuvalde iki cihaz seçme kipi ve kaynak/hedef ile bağlama.
+  const connectMode = $('ptConnectMode');
+  if (connectMode) cablePanel.append(connectMode);
+  if (connectGroup) cablePanel.append(connectGroup);
+  cableTool.addEventListener('click', () => {
+    const open = cablePanel.hidden;
+    cablePanel.hidden = !open;
+    cableTool.setAttribute('aria-pressed', String(open));
+    if (open) (connectMode || cablePanel.querySelector('select'))?.focus();
+  });
   if (headActions) {
-    // v12 kuralı (#ptWorkbench.ux-simple-lab .pt-head-actions) seyrek işlemleri gizler.
-    stageBar.append(headActions);
+    // Kaydet ve Ağı denetle görünür; v12 kuralı (#ptWorkbench.ux-simple-lab .pt-head-actions)
+    // dışa/içe aktarma, silme ve sıfırlamayı "Diğer işlemler" açılınca gösterir.
+    stageFoot.append(headActions);
   }
   if (addGroup) {
     addGroup.classList.add('ag-sim-palette');
@@ -66405,13 +66629,15 @@ function workshopView(ids, cases) {
       b.title = kind + ' ekle';
       b.setAttribute('aria-label', kind + ' ekle');
     }
+    addGroup.append(make('i', { class: 'ag-sim-toolsep', 'aria-hidden': 'true' }), cableTool);
     stage.append(addGroup);
   }
-  stage.append(canvas, stageFoot);
+  // Palet ayrı sütundur; düğümlerin üstüne binmez.
+  stage.append(make('div', { class: 'ag-sim-canvaswrap' }, canvas), cablePanel, stageFoot);
   const canvasStatus = $('ptCanvasStatus'),
     workspaceEngine = $('workspaceEngine');
-  if (canvasStatus) stageFoot.append(canvasStatus);
-  if (workspaceEngine) stageFoot.append(workspaceEngine);
+  if (canvasStatus) stageStatus.append(canvasStatus);
+  if (workspaceEngine) stageStatus.append(workspaceEngine);
 
   // Cihaz sekmesi: seçili cihaz kartı (bilgi, denetim odağı, adlandırma).
   if (deviceCard) panes.device.append(deviceCard);
@@ -66435,11 +66661,15 @@ function workshopView(ids, cases) {
     cliCard.remove();
   }
   // Simulation Mode: mod düğmeleri, oynatma, durum, zaman çizelgesi ve olay listesi.
-  for (const id of ['simulationModeBar', 'simulationPlaybackControls', 'simulationStatus']) {
-    const n = $(id);
-    if (n) (id === 'simulationModeBar' ? simHead : simPane).append(n);
-  }
+  // Sıra (taslak): başlık + mod düğmeleri, zaman çizelgesi, seçili olayın ayrıntısı; sonra
+  // oynatma denetimleri, durum ve olay listesi (kaydırılarak).
+  const modeBar = $('simulationModeBar');
+  if (modeBar) simHead.append(modeBar);
   simPane.append(timeline);
+  for (const id of ['simulationPlaybackControls', 'simulationStatus']) {
+    const n = $(id);
+    if (n) simPane.append(n);
+  }
   const simPanel = $('simulationPanel');
   if (simPanel) simPane.append(simPanel);
 
@@ -66902,6 +67132,27 @@ function workshopView(ids, cases) {
       selectTab(keys[(i + (e.key === 'ArrowRight' ? 1 : keys.length - 1)) % keys.length], true);
     }
   });
+  // Olaylar sekmesi yeni ping izinde güncellenir: sekme açıksa hemen, değilse sekme açılınca
+  // (öğrenci olayları bakınca görür; "Son olayları göster"e ayrıca basması gerekmez). Kapalı
+  // sekmede gelen iz sekme düğmesinde "yeni" işaretiyle belirtilir.
+  let traceUnseen = false;
+  const eventsTab = tabs.querySelector('[data-sim-tab="events"]');
+  const refreshDetective = () => {
+    traceUnseen = false;
+    eventsTab.removeAttribute('data-new');
+    const r = $('packetDetectiveRefresh');
+    if (r && !r.disabled) r.click();
+  };
+  document.addEventListener('aglab:trace-ready', () => {
+    if (activeTab === 'events') refreshDetective();
+    else {
+      traceUnseen = true;
+      eventsTab.setAttribute('data-new', 'true');
+    }
+  });
+  eventsTab.addEventListener('click', () => {
+    if (traceUnseen) refreshDetective();
+  });
   // Paket Dedektifi'ne gönderilen olaylar (Simulation Mode'dan) Olaylar sekmesini açar.
   document.addEventListener('aglab:detective-select', () => selectTab('events'));
 
@@ -66938,33 +67189,118 @@ function workshopView(ids, cases) {
   // ---------------------------------------------------------------- zaman çizelgesi
   const simRows = $('simulationRows');
   // Satırlar değişince çizelge yeniden kurulur; yalnız seçili olay değişince (oynatma) noktalar
-  // yerinde güncellenir (düğmeler yeniden oluşturulmaz).
+  // yerinde güncellenir (düğmeler yeniden oluşturulmaz). Etiketler taslaktaki gibi ARP/ICMP
+  // Req/Rep; altında seçili olayın ayrıntı satırları (motor kaydının alanları, tahmin yok).
+  const eventDetail = make('pre', {
+    class: 'ag-sim-eventdetail',
+    id: 'agSimEventDetail',
+    'aria-live': 'polite',
+  });
+  timeline.after(eventDetail);
+  const KIND_LABEL = {
+    'icmp-request': ['ICMP Req', 'ICMP Echo Request'],
+    'icmp-reply': ['ICMP Rep', 'ICMP Echo Reply'],
+    'arp-request': ['ARP Req', 'ARP Request'],
+    'arp-reply': ['ARP Rep', 'ARP Reply'],
+  };
+  const devName = (id) => snapshot().devices.find((d) => d.id === id)?.name || id || '—';
+  function traceEvents() {
+    try {
+      const bySeq = new Map();
+      for (const e of window.aglabSimulation.trace().events || []) bySeq.set(String(e.sequence), e);
+      return bySeq;
+    } catch (e) {
+      return new Map();
+    }
+  }
+  // Olay etiketi: çerçeve türü (ARP/ICMP Req/Rep); çerçevesiz sonuç olayları kendi adıyla.
+  const RESULT_LABEL = {
+    'icmp-delivered': 'Teslim',
+    'icmp-undelivered': 'Ulaşmadı',
+    discard: 'Atıldı',
+    diagnostic: 'Tanı',
+  };
+  function eventLabel(e, fallback) {
+    const f = e?.frame || {};
+    let k = f.kind || e?.detail?.protocol;
+    if (!KIND_LABEL[k] && f.icmp)
+      k = f.icmp.type === 8 ? 'icmp-request' : f.icmp.type === 0 ? 'icmp-reply' : k;
+    if (!KIND_LABEL[k] && f.arp) k = /req/i.test(f.arp.operation) ? 'arp-request' : 'arp-reply';
+    return (KIND_LABEL[k] || [])[0] || RESULT_LABEL[e?.kind] || f.protocol || fallback || '—';
+  }
+  function eventDetailText(e, seq) {
+    if (!e) return '';
+    const f = e.frame || {},
+      k = KIND_LABEL[f.kind];
+    const where = e.edge
+      ? devName(e.edge.a) +
+        ' ' +
+        shortPort(e.edge.portA || '') +
+        ' → ' +
+        devName(e.edge.b) +
+        ' ' +
+        shortPort(e.edge.portB || '')
+      : devName(e.device);
+    const pad = (t) => (t + '          ').slice(0, 10);
+    const lines = [seq + '  ' + ((k && k[1]) || f.protocol || e.kind) + '   ' + where];
+    if (f.sourceMac || f.destinationMac)
+      lines.push(
+        '   ' + pad('Ethernet') + (f.sourceMac || '?') + ' → ' + (f.destinationMac || '?'),
+      );
+    if (f.vlan !== undefined && f.vlan !== null) lines.push('   ' + pad('VLAN') + f.vlan);
+    if (f.arp)
+      lines.push(
+        '   ' +
+          pad('ARP') +
+          (f.arp.operation || '') +
+          ' ' +
+          (f.arp.senderIp || '?') +
+          ' → ' +
+          (f.arp.targetIp || '?'),
+      );
+    if (f.ipv4)
+      lines.push(
+        '   ' +
+          pad('IPv4') +
+          f.ipv4.sourceIp +
+          ' → ' +
+          f.ipv4.destinationIp +
+          (f.ipv4.ttl !== undefined ? '  TTL ' + f.ipv4.ttl : ''),
+      );
+    if (e.kind === 'discard' || e.kind === 'diagnostic')
+      lines.push('   ' + pad('Neden') + (e.detail?.reason || '—'));
+    return lines.join('\n');
+  }
   function renderTimeline() {
     const hidden = !simPanel || simPanel.hidden;
     timeline.hidden = hidden;
+    eventDetail.hidden = hidden;
     const rows = simRows ? [...simRows.children] : [];
     if (hidden || !rows.length) {
       timeline.replaceChildren();
       delete timeline.dataset.sig;
+      eventDetail.textContent = '';
       simTitle.textContent = 'Simulation Mode';
       return;
     }
+    const events = traceEvents();
     const sig = rows.map((r) => r.dataset.pos + ':' + r.textContent).join('|');
     if (timeline.dataset.sig !== sig) {
       timeline.dataset.sig = sig;
       timeline.replaceChildren(
         ...rows.map((r, i) => {
           const cells = r.querySelectorAll('td');
-          const proto = cells[3]?.textContent || '';
+          const seq = cells[0]?.textContent || String(i + 1);
+          const label = eventLabel(events.get(seq), cells[3]?.textContent);
           const b = make(
             'button',
             {
               type: 'button',
               class: 'ag-sim-tick',
-              'aria-label': 'Olay ' + (cells[0]?.textContent || i + 1) + ': ' + proto,
+              'aria-label': 'Olay ' + seq + ': ' + label,
             },
             make('i', { class: 'ag-sim-dot' }),
-            make('span', { text: proto }),
+            make('span', { text: label }),
           );
           b.addEventListener('click', () => r.click());
           return make('li', {}, b);
@@ -66976,8 +67312,27 @@ function workshopView(ids, cases) {
       if (i === cur) li.setAttribute('aria-current', 'step');
       else li.removeAttribute('aria-current');
     });
+    const curSeq = cur >= 0 ? rows[cur].querySelector('td')?.textContent : null;
+    eventDetail.textContent = curSeq
+      ? eventDetailText(events.get(curSeq), curSeq)
+      : 'Bir olay seç ya da İleri / Oynat ile kaydı izle.';
+    const first = events.get(rows[0].querySelector('td')?.textContent || '');
+    const ping =
+      first?.frame?.ipv4 && first.device
+        ? devName(first.device) + ' → ' + first.frame.ipv4.destinationIp + ' ping · '
+        : '';
     simTitle.textContent =
-      'Simulation Mode · olay ' + (cur >= 0 ? cur + 1 : 0) + ' / ' + rows.length;
+      'Simulation Mode · ' + ping + 'olay ' + (cur >= 0 ? cur + 1 : 0) + ' / ' + rows.length;
+    scrollTick(cur);
+  }
+  function scrollTick(cur) {
+    const li = timeline.children[cur];
+    if (!li) return;
+    const l = li.offsetLeft - timeline.offsetLeft,
+      r = l + li.offsetWidth;
+    if (l < timeline.scrollLeft) timeline.scrollLeft = l;
+    else if (r > timeline.scrollLeft + timeline.clientWidth)
+      timeline.scrollLeft = r - timeline.clientWidth;
   }
   if (simRows)
     new MutationObserver(renderTimeline).observe(simRows, {

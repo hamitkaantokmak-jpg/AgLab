@@ -3,7 +3,7 @@
 import json, os, tempfile, time, math
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, open_cable_tool
 
 
 def topology(count):
@@ -127,9 +127,11 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             page.evaluate("academyEngine.snapshot().devices.find(d=>d.id==='p0').x") != previous
         )
         assert row["drag_changed"], row
+        open_cable_tool(page)
         page.select_option("#ptSource", added)
         page.select_option("#ptTarget", "s0")
         before = page.locator("#ptCanvas line.pt-edge").count()
+        open_cable_tool(page)
         measure("cable_add_ms", lambda: page.click("#ptMakeLink"))
         expect(page.locator("#ptCanvas line.pt-edge")).to_have_count(before + 1)
         measure(
