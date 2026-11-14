@@ -5,7 +5,17 @@ from playwright.sync_api import sync_playwright
 from aglab_test_support import ROOT, launch_chromium
 
 html = (ROOT / "AgLab_Final_PKT_Import.html").read_text(encoding="utf-8")
-assert "teacher_solution" not in html and "target_topology" not in html
+# Arayüz PR 2 (kullanıcı kararı): öğretmen çözümleri HTML'e gömülür ve öğretmen JSON'larıyla
+# birebir aynıdır; hedef topoloji gömülmez. Çözüm yalnız "Çözümü göster" kilidi açılınca DOM'a
+# eklenir (tests/test_aglab_sim_workspace.py).
+import re
+
+_embedded = json.loads(re.search(r"^const academySolutions = (.+);\r?$", html, re.M).group(1))
+assert _embedded == {
+    p.stem: json.loads(p.read_text(encoding="utf-8"))["teacher_solution"]
+    for p in (ROOT / "academy/teacher").glob("AGL-*.json")
+}
+assert not re.search(r'"target_topology"\s*:', html)
 
 
 def academy_action(page, selector):

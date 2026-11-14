@@ -6,6 +6,9 @@ dist/
 # Tek satırlık gömülü Akademi verisi; verify_packages.py `const academyLabs = …;`
 # satırını tek satır olarak okur.
 academy/student-data.js
+# Üretilen tek satırlık öğretmen çözümleri (tools/build_academy_solutions.py); verify_packages.py
+# `const academySolutions = …;` satırını tek satır olarak okur.
+academy/solution-data.js
 # Labber motoru (src/sim) ve Labber'dan taşınan testler: Labber'ın kendi biçimi korunur.
 # Böylece Labber deposundan gelecek güncellemeler satır satır karşılaştırılabilir kalır
 # (yalnızca zorunlu import yolu farkları görünür).

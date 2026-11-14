@@ -270,13 +270,11 @@ class CommonEngineTests(unittest.TestCase):
             if self.page.locator("html").get_attribute("data-theme") != theme:
                 self.page.locator("#themeToggle").focus()
                 self.page.keyboard.press("Enter")
-            if (
-                not self.page.locator("#ptDeviceCliDialog").count()
-                or not self.page.locator("#ptDeviceCliDialog").is_visible()
-            ):
-                self.page.locator("#ptCanvas g[data-id]").first.focus()
-                self.page.keyboard.press("Enter")
-                expect(self.page.locator("#ptDeviceCliDialog")).to_be_visible()
+            # Arayüz PR 2: terminal alt şeritte hep açık; cihazda Enter komut satırına odaklanır
+            # (yüzen #ptDeviceCliDialog yok).
+            self.page.locator("#ptCanvas g[data-id]").first.focus()
+            self.page.keyboard.press("Enter")
+            expect(self.page.locator("#ptCliInput")).to_be_focused()
             issues = self.run_js(
                 """()=>{const issues=[];for(const e of document.querySelectorAll('#area-lab input,#area-lab select')){if(!e.getClientRects().length||getComputedStyle(e).visibility==='hidden'||e.type==='file')continue;if(!e.labels?.length&&!e.getAttribute('aria-label')&&!e.getAttribute('aria-labelledby')&&!e.title)issues.push('Etiket yok: '+e.id)}return issues}"""
             )

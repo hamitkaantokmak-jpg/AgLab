@@ -117,6 +117,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         return rows
 
     page.click('[data-area="lab"]')
+    # Arayüz PR 2: Paket Dedektifi inceleme panelinin "Olaylar" sekmesinde.
+    page.click("#agSimTab-events")
     assert page.locator("#packetDetectiveRefresh").is_visible()
     page.click("#packetDetectiveRefresh")
     assert "Henüz görüntülenecek" in page.locator("#packetDetectiveStatus").inner_text()

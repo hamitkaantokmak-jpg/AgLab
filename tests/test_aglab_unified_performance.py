@@ -140,8 +140,10 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         cdp.send("Emulation.setPageScaleFactor", {"pageScaleFactor": 1})
 
         def open_cli():
+            # Arayüz PR 2: terminal alt şeritte; cihaza tıklamak komut satırına odaklanır.
             page.locator('#ptCanvas g[data-id="p0"]').click()
-            expect(page.locator("#ptDeviceCliDialog")).to_be_visible()
+            expect(page.locator("#ptCliInput")).to_be_focused()
+            expect(page.locator("#ptCliDevice")).to_have_value("p0")
 
         measure("cli_open_ms", open_cli)
         page.keyboard.press("Escape")
@@ -158,6 +160,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         # I-1: çalışma alanı Labber'da; PC terminali VPCS. VPCS özet satırı yazmaz, beşinci yanıt
         # satırı ping'in tamamlandığını gösterir.
         expect(page.locator("#ptTerminal")).to_contain_text("84 bytes from 10.0.0.2 icmp_seq=5")
+        # Arayüz PR 2: Paket Dedektifi inceleme panelinin "Olaylar" sekmesinde.
+        page.click("#agSimTab-events")
         measure("packet_detective_ms", lambda: page.click("#packetDetectiveRefresh"))
         assert page.locator("#packetDetectiveRaw").text_content()
         cdp.send("HeapProfiler.collectGarbage")

@@ -298,6 +298,19 @@ window.aglabSharedEngine = {
   // Yüklü senaryonun Labber'da ifade edilebilirliği ({expressible, reasons}).
   engine: () => clone(sharedScenario.engine || null),
   target: () => sharedScenario.target,
+  // Arayüz PR 2: Simülatör görev kartı için yüklü senaryo (yoksa null).
+  active: () => {
+    if (!sharedScenario.active) return null;
+    const row = sharedScenarioRecipe(sharedScenario.key);
+    const option = [...$p('sharedScenarioSelect').options].find(
+      (o) => o.value === sharedScenario.key,
+    );
+    return {
+      id: sharedScenario.key,
+      // Seçim listesindeki ad (tarifin `title` alanı bazı senaryolarda kimliğin kendisidir).
+      title: option?.textContent || row?.title || sharedScenario.key,
+    };
+  },
   goal: () => sharedRecipeGoal(sharedScenarioRecipe(sharedScenario.key)),
   // İçeriğin AğLab görünümü (toAglab; terminalle aynı çalışma zamanı).
   view: () => aglabEngineChoice.labberView(),

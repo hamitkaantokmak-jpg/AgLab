@@ -1,6 +1,26 @@
 // Reuse the existing CLI and command engine in a device-local, non-modal window.
 var ptDeviceCliState = null;
 var ptDeviceCliClickCandidate = null;
+/** Alt şeritteki terminale tıklamayla gelinen cihaz (Esc odağı ona geri verir). */
+var ptDeviceCliDocked = null;
+var ptDeviceCliLastDocked = null;
+document.addEventListener('keydown', (event) => {
+  if (
+    event.key !== 'Escape' ||
+    event.defaultPrevented ||
+    !ptDeviceCliDocked ||
+    document.activeElement !== $p('ptCliInput')
+  )
+    return;
+  const node = [...$p('ptCanvas').querySelectorAll('g[data-id]')].find(
+    (n) => n.dataset.id === ptDeviceCliDocked,
+  );
+  ptDeviceCliDocked = null;
+  if (node) {
+    event.preventDefault();
+    node.focus();
+  }
+});
 // I-1: cihaz kimliğiyle anahtarlanır. Labber oturumu her komuttan sonra görünümü yeniden yazar
 // (toAglab yeni cihaz nesneleri döndürür); nesne anahtarı geçmişi kaybediyordu. Yeni topoloji
 // (içe aktarma, sıfırlama) geçmişi resetDeviceCliHistories ile temizler.
@@ -33,6 +53,13 @@ document.head.append(deviceCliGestureStyle);
 function refreshDeviceCli() {
   const device = get($p('ptCliDevice').value);
   if (device) selectDeviceCliHistory(device.id);
+  // Alt şeritteki terminal (Arayüz PR 2): başka cihaza geçince bekleyen komut gönderilmesin.
+  if (document.getElementById('agSimDock')) {
+    if (device && ptDeviceCliLastDocked && ptDeviceCliLastDocked !== device.id)
+      $p('ptCliInput').value = '';
+    if (device) ptDeviceCliLastDocked = device.id;
+    return;
+  }
   if (!ptDeviceCliState?.dialog.open) return;
   if (!device) {
     ptDeviceCliState.dialog.close();
@@ -93,9 +120,25 @@ function openDeviceCli(id) {
   selected = id;
   $p('ptCliDevice').value = id;
   // A pending command for another device must not be submitted accidentally.
-  if (ptDeviceCliState?.deviceId !== id) $p('ptCliInput').value = '';
+  if ((ptDeviceCliState?.deviceId ?? ptDeviceCliLastDocked) !== id) $p('ptCliInput').value = '';
   updateInspector();
   render();
+  // Arayüz PR 2: Simülatör'de terminal alt şeritte hep açıktır (docs/arayuz/dolu-3.png); cihaza
+  // tıklamak yüzen pencere açmaz, o cihazın terminal sekmesini seçip komut satırına odaklanır.
+  // Esc odağı tuvaldeki cihaza geri verir.
+  if (document.getElementById('agSimDock')) {
+    ptDeviceCliDocked = ptDeviceCliLastDocked = id;
+    $p('ptCliDevice').dispatchEvent(new Event('change', { bubbles: true }));
+    refreshDeviceCli();
+    $p('ptCliInput').focus({ preventScroll: true });
+    // Dar ekranda terminal tuvalin altındadır: komut satırı görünür alana getirilir.
+    // Çalışma alanı yenilemesi (requestAnimationFrame) yerleşimi değiştirebilir: sonra da.
+    $p('ptCliForm').scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    requestAnimationFrame(() =>
+      $p('ptCliForm').scrollIntoView({ block: 'nearest', behavior: 'instant' }),
+    );
+    return;
+  }
   if (!ptDeviceCliState) {
     const card = document.querySelector('.pt-cli-card');
     const slot = document.createComment('Device CLI dock');

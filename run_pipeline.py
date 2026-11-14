@@ -117,6 +117,7 @@ ARTIFACTS = [
     "build_simulator.py",
     "build_academy.py",
     "tools/build_html.py",
+    "tools/build_academy_solutions.py",
     "tools/build_lab_engine_map.py",
     "tools/build_sim.cjs",
     "tsconfig.sim.json",
@@ -252,6 +253,12 @@ def run() -> int:
     args = parser.parse_args()
     out = (ROOT / args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
+    # Gömülü Akademi çözümleri öğretmen JSON'larından üretilir; güncel olmalı (PR 2).
+    subprocess.run(
+        [sys.executable, str(ROOT / "tools/build_academy_solutions.py"), "--check"],
+        cwd=ROOT,
+        check=True,
+    )
     # Offline HTML is a generated artifact. Refresh it from src/ + modules before testing.
     subprocess.run([sys.executable, str(ROOT / "tools/build_html.py")], cwd=ROOT, check=True)
 

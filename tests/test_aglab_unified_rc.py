@@ -86,6 +86,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     step(6, True)
     step(7, False)
     step(8, False)
+    # Arayüz PR 2: Paket Dedektifi inceleme panelinin "Olaylar" sekmesinde.
+    page.click("#agSimTab-events")
     page.click("#packetDetectiveRefresh")
     step(7, True)
     raw = page.locator("#packetDetectiveRaw").text_content()

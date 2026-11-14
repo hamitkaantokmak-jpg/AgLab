@@ -84,6 +84,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     # Dedektifi'nden doğrulanır.
     failed = cli(pcs[0]["id"], ["ping 10.0.0.2"])
     assert "bytes from" not in failed and failed.count("timeout") == 5, failed
+    # Arayüz PR 2: Paket Dedektifi inceleme panelinin "Olaylar" sekmesinde.
+    page.click("#agSimTab-events")
     page.click("#packetDetectiveRefresh")
     # Early preflight diagnostics are explicitly derived, not invented wire events.
     assert "VLAN" in page.locator("#packetDetectiveDiagnosis").inner_text()

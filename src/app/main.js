@@ -4916,7 +4916,10 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       box.id = 'aglabPersistenceNotice';
       box.setAttribute('role', 'alert');
       box.className = 'aglab-persistence-notice';
-      ($p('ptWorkbench') || document.body).prepend(box);
+      // Arayüz PR 2: çalışma alanı ızgarasının dışında, Simülatör'ün en üstünde.
+      const work = $p('ptWorkbench');
+      if (work) work.before(box);
+      else document.body.prepend(box);
     }
     box.replaceChildren();
     const title = document.createElement('b');
@@ -5037,6 +5040,9 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     const { obj, startups } = takeLegacyStartups(input);
     // Yeni içerik: önceki Labber oturumu biter ve bu içerik için yeniden kurulur.
     aglabLabber.stop();
+    // Arayüz PR 2: yüklü ortak senaryo bağlamı da biter (senaryo yükleyicisi içe aktarmadan
+    // sonra yeniden etkinleştirir); Simülatör'ün görev kartı serbest çalışmaya döner.
+    sharedScenario.active = false;
     if (typeof resetDeviceCliHistories === 'function') resetDeviceCliHistories();
     sourceArchiveData = obj.sourceArchive || null;
     importReportData = obj.importReport ? clone(obj.importReport) : null;

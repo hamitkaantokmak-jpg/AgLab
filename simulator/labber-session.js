@@ -413,6 +413,18 @@ const aglabLabber = (() => {
     return copy;
   }
   /**
+   * Arayüz PR 2 (Simülatör inceleme paneli, "hızlı show"): bir show komutunu öğrencinin
+   * çalışma zamanında, terminalden ayrı geçici bir kullanıcı modu oturumunda çalıştırır.
+   * Terminal geçmişi, istem ve terminal oturumunun modu değişmez; show komutları durumu
+   * değiştirmez (testler çalışma zamanının kaydını önce/sonra karşılaştırır). Yalnız `show`.
+   */
+  function peek(dev, line) {
+    if (!/^show\s/.test(line)) throw new Error('Hızlı çıktı yalnız show komutu çalıştırır.');
+    const rt = runtime();
+    if (!rt.topo.devices[dev] || !rt.powered(dev)) return null;
+    return AgLabSim.createSession(rt, dev).exec(line);
+  }
+  /**
    * Senaryo başlangıcının kaydedilmemiş değişiklikleri: komutlar kullanıcı modundan
    * çalışır, startup-config'e yazılmaz. IOS hatası senaryo hatasıdır.
    */
@@ -495,6 +507,7 @@ const aglabLabber = (() => {
     capture,
     restore,
     cloneRuntime,
+    peek,
     applyPending,
     broken: () => state?.broken || null,
     unsupportedMessage: brokenMessage,
@@ -519,6 +532,8 @@ window.aglabLabberSession = {
   moveCable: (a, pa, b, pb) => aglabLabber.moveCable(a, pa, b, pb),
   // L3-b: son ping'in Simulation Mode izi (Labber içeriğinde köken 'labber').
   trace: () => readEthernetTrace(),
+  // Arayüz PR 2: inceleme panelinin hızlı show çıktısı (geçici oturum; durum değişmez).
+  peek: (dev, line) => aglabLabber.peek(dev, line),
   // Testler: çalışma zamanının tam durumu (running/startup, öğrenilmiş MAC/ARP, donanım…).
   state: () => aglabLabber.runtime().save(),
 };

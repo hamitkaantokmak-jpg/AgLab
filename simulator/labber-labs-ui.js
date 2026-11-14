@@ -16,8 +16,10 @@ labberLabsPanel.innerHTML = `<h3 id="labberLabsTitle"></h3>
 <div id="labberLabBrief"></div>
 <ol id="labberLabObjectives" aria-label="Lab hedefleri"></ol>
 <button type="button" id="labberLabCheck" disabled>Hedefleri kontrol et</button>
-<p id="labberLabStatus" role="status" aria-live="polite"></p>
-<details id="labberLabSolution"><summary>Referans çözüm</summary><div></div></details>`;
+<p id="labberLabStatus" role="status" aria-live="polite"></p>`;
+// Arayüz PR 2: referans çözüm DOM'a hazır gömülmez; Simülatör'ün "Çözümü göster" kilidi
+// açılınca (src/app/sim-workspace.js) aglabLabberLabs.solution() ile oluşturulur.
+// Hedef ipuçları da satır içinde açık durmaz; üst çubuktaki "İpucu" sırayla gösterir.
 $p('sharedScenarioPanel').after(labberLabsPanel);
 function labberLabList() {
   return AgLabSim.LABBER_LABS;
@@ -78,13 +80,6 @@ function labberLabRestore(value) {
     p.textContent = line;
     panel.append(p);
   }
-  const sol = $p('labberLabSolution').querySelector('div');
-  sol.replaceChildren();
-  for (const [dev, script] of Object.entries(def.solution)) {
-    const pre = document.createElement('pre');
-    pre.textContent = dev + ' (ayrıcalıklı moddan)\n' + script;
-    sol.append(pre);
-  }
   $p('labberLabCheck').disabled = false;
   labberLabsRefresh();
 }
@@ -113,13 +108,6 @@ function labberLabsRefresh() {
     li.dataset.id = o.id;
     li.dataset.ok = String(o.ok);
     li.textContent = (o.ok ? '✓ ' : '✗ ') + o.title + (o.detail ? ' — ' + o.detail : '');
-    if (!o.ok) {
-      const hint = document.createElement('details'),
-        s = document.createElement('summary');
-      s.textContent = 'İpucu';
-      hint.append(s, document.createTextNode(o.hint));
-      li.append(hint);
-    }
     list.append(li);
   }
   const done = rows.filter((o) => o.ok).length;
@@ -145,4 +133,17 @@ window.aglabLabberLabs = {
   objectives: () =>
     labberLabObjectives()?.map((o) => ({ id: o.id, ok: o.ok, detail: o.detail ?? null })) ?? null,
   solution: (id) => ({ ...labberLabFind(id).solution }),
+  // Arayüz PR 2: görev kartı (başlık, özet) ve hedef ipuçları (üst çubuktaki "İpucu").
+  info: (id) => {
+    const l = labberLabFind(id);
+    return l ? { id: l.id, title: l.title, summary: l.summary, brief: [...l.brief] } : null;
+  },
+  goals: () =>
+    labberLabObjectives()?.map((o) => ({
+      id: o.id,
+      title: o.title,
+      ok: o.ok,
+      detail: o.detail ?? null,
+      hint: o.hint || '',
+    })) ?? null,
 };
