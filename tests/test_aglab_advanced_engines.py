@@ -123,8 +123,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         " links}))(academyEngine.snapshot()))"
     )
     baseline = page.evaluate(state)
-    # Arayüz yenilemesi: Canlı Lab (eski adı Gerçek Lab) kendi bölümünde
-    page.click('[data-area="live"]')
+    # Arayüz PR 3: Canlı Lab (operatör) araçları Gelişmiş bölümünde
+    page.click('#agRail [data-rail="advanced"]')
     page.locator("#realLabExport").evaluate("(d)=>d.open=true")
     with page.expect_download() as download:
         page.click("#realLabExportTopology")

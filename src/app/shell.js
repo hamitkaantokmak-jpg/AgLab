@@ -1,6 +1,8 @@
 // Arayüz yenilemesi PR 1: ortak iskelet (üst gezinme, sol ikon şeridi, sayfa düzeni).
-// Dört ana bölüm: Müfredat (learn), Simülatör (lab), Sorun Çöz (troubleshoot), Canlı Lab (live);
-// ikon şeridinde ayrıca Ders kısayolu ve Gelişmiş (advanced). Bölüm kimlikleri (`data-area`,
+// Üç ana bölüm: Müfredat (learn), Simülatör (lab), Sorun Çöz (troubleshoot); ikon şeridinde
+// ayrıca Ders kısayolu ve Gelişmiş (advanced). Arayüz PR 3: Canlı Lab ayrı bölüm değil; operatör
+// araçları (rapor inceleme, topoloji dışa aktarımı, öğrenci tanıları) Gelişmiş'te "Canlı Lab
+// (operatör)" başlığı altında. Eski Canlı Lab bağlantıları Gelişmiş'e yönlenir. Bölüm kimlikleri (`data-area`,
 // `#area-*`) ve kayıt anahtarları değişmez; adres çubuğu yeni adları gösterir, eski bağlantılar
 // (#lab, #gercek-lab, #area-lab …) yeni bölüme yönlenir.
 (() => {
@@ -9,7 +11,6 @@
     learn: 'mufredat',
     lab: 'simulator',
     troubleshoot: 'sorun-coz',
-    live: 'canli-lab',
     advanced: 'gelismis',
   };
   // Eski ve yeni adlar → bölüm (eski bağlantı uyumluluğu).
@@ -25,11 +26,11 @@
     'sorun-coz': 'troubleshoot',
     troubleshoot: 'troubleshoot',
     'area-troubleshoot': 'troubleshoot',
-    'canli-lab': 'live',
-    live: 'live',
-    'gercek-lab': 'live',
-    'real-lab': 'live',
-    'area-live': 'live',
+    'canli-lab': 'advanced',
+    live: 'advanced',
+    'gercek-lab': 'advanced',
+    'real-lab': 'advanced',
+    'area-live': 'advanced',
     gelismis: 'advanced',
     advanced: 'advanced',
   };

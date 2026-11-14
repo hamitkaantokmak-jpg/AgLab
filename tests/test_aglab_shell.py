@@ -1,7 +1,9 @@
 """Arayüz yenilemesi PR 1: ortak iskelet, adlandırma ve eski bağlantı uyumluluğu.
 
-Üst gezinme dört ana bölümdür (Müfredat, Simülatör, Sorun Çöz, Canlı Lab); sol ikon şeridi
-aynı bölümlere ve Gelişmiş'e götürür. Bölüm kimlikleri (`data-area`, `#area-*`) değişmez; adres
+Üst gezinme üç ana bölümdür (Müfredat, Simülatör, Sorun Çöz); sol ikon şeridi aynı bölümlere,
+Ders kısayoluna ve Gelişmiş'e götürür. Arayüz PR 3: Canlı Lab ayrı bölüm değil; operatör
+araçları Gelişmiş'te "Canlı Lab (operatör)" başlığı altında, eski Canlı Lab bağlantıları
+Gelişmiş'e yönlenir. Bölüm kimlikleri (`data-area`, `#area-*`) değişmez; adres
 çubuğu yeni adları gösterir ve eski bağlantılar (#lab, #gercek-lab, #area-troubleshoot …) yeni
 bölüme yönlenir. "Lab" (Labber) adı Simülatör, "Gerçek Lab" adı Canlı Lab oldu.
 """
@@ -34,17 +36,19 @@ class ShellTests(unittest.TestCase):
     def active(self, page):
         return page.evaluate("document.querySelector('.workspace.active').id")
 
-    def test_four_sections_rail_and_names(self):
+    def test_three_sections_rail_and_names(self):
         page = self.open()
         tabs = page.locator("#areaTabs [data-area]")
+        self.assertEqual(tabs.all_text_contents(), ["Müfredat", "Simülatör", "Sorun Çöz"])
         self.assertEqual(
-            tabs.all_text_contents(), ["Müfredat", "Simülatör", "Sorun Çöz", "Canlı Lab"]
+            page.locator("#agRail [data-rail]").evaluate_all("(b) => b.map((x) => x.dataset.rail)"),
+            ["learn", "lesson", "lab", "troubleshoot", "advanced"],
         )
+        self.assertEqual(page.locator("#area-live").count(), 0)
         self.assertEqual(page.title(), "AğLab")
         for area, hash_ in [
             ("lab", "#simulator"),
             ("troubleshoot", "#sorun-coz"),
-            ("live", "#canli-lab"),
             ("learn", "#mufredat"),
         ]:
             page.click(f'#areaTabs [data-area="{area}"]')
@@ -65,10 +69,15 @@ class ShellTests(unittest.TestCase):
         expect(page.locator('#agRail [data-rail="lesson"]')).to_have_attribute(
             "aria-current", "page"
         )
-        # Canlı Lab: rapor ve operatör dışa aktarımı kendi bölümünde, eski "Gerçek Lab" adı yok
-        page.click('#areaTabs [data-area="live"]')
-        expect(page.locator("#nativeLabReport")).to_be_attached()
-        expect(page.locator("#realLabExportTopology")).to_be_visible()
+        # Canlı Lab (operatör): rapor, operatör dışa aktarımı ve öğrenci tanıları Gelişmiş'te;
+        # Akademi kartında tanı bağlantısı yok. Eski "Gerçek Lab" adı yok.
+        page.click('#agRail [data-rail="advanced"]')
+        expect(page.locator("#liveTitle")).to_have_text("Canlı Lab (operatör)")
+        live = page.locator("#advancedLive")
+        expect(live.locator("#nativeLabReport")).to_be_attached()
+        expect(live.locator("#realLabExportTopology")).to_be_visible()
+        expect(live.locator("#academyRealLab")).to_be_visible()
+        self.assertEqual(page.locator("#academyPanel #academyRealLab").count(), 0)
         body = page.evaluate(
             "(() => { const c = document.body.cloneNode(true);"
             " c.querySelectorAll('script,style').forEach((e) => e.remove());"
@@ -87,8 +96,10 @@ class ShellTests(unittest.TestCase):
         for hash_, area in [
             ("#lab", "lab"),
             ("#area-lab", "lab"),
-            ("#gercek-lab", "live"),
-            ("#real-lab", "live"),
+            ("#gercek-lab", "advanced"),
+            ("#real-lab", "advanced"),
+            ("#canli-lab", "advanced"),
+            ("#area-live", "advanced"),
             ("#area-troubleshoot", "troubleshoot"),
             ("#ogren", "learn"),
             ("#gelismis", "advanced"),
@@ -99,8 +110,8 @@ class ShellTests(unittest.TestCase):
                 page.close()
         page = self.open()
         page.evaluate("location.hash = '#gercek-lab'")
-        page.wait_for_function("document.querySelector('.workspace.active').id === 'area-live'")
-        self.assertEqual(page.evaluate("location.hash"), "#canli-lab")
+        page.wait_for_function("document.querySelector('.workspace.active').id === 'area-advanced'")
+        self.assertEqual(page.evaluate("location.hash"), "#gelismis")
         self.assertEqual(self.errors, [])
         page.close()
 

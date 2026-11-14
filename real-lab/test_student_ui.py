@@ -96,6 +96,7 @@ class StudentBrowserTests(unittest.TestCase):
         before = self.page.evaluate('academyEngine.snapshot()')
         hints = self.page.locator('#academyHints').inner_text()
         self.assertEqual(self.page.locator('#academySelect option').count(), 40)
+        self.page.click('#agRail [data-rail="advanced"]')
         self.page.locator('#academyRealLab summary').click()
         link = self.page.locator('#academyRealLabLink')
         expect(link).to_have_attribute('href', 'http://127.0.0.1:8766/')

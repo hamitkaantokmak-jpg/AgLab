@@ -3663,7 +3663,7 @@ html[data-theme='light'] body {
 }
 .ag-live-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 14px;
   align-items: start;
 }
@@ -3677,6 +3677,15 @@ html[data-theme='light'] body {
 }
 .ag-advanced-body {
   padding: 16px;
+}
+/* Arayüz PR 3: Canlı Lab (operatör) Gelişmiş bölümünde. */
+.ag-advanced-live {
+  margin-top: 14px;
+  padding: 16px;
+}
+.ag-advanced-live h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
 }
 @media (max-width: 760px) {
   .ag-shell {
@@ -5286,7 +5295,6 @@ html:has(#area-lab.active) {
     <button type="button" class="area-tab active" data-area="learn">Müfredat</button>
     <button type="button" class="area-tab" data-area="lab">Simülatör</button>
     <button type="button" class="area-tab" data-area="troubleshoot">Sorun Çöz</button>
-    <button type="button" class="area-tab" data-area="live">Canlı Lab</button>
   </nav>
   <input class="ag-search" id="agSearch" type="search" placeholder="Konu, komut, senaryo ara…" aria-label="Konu, komut, senaryo ara">
   <div class="ag-top-tools" id="agTopTools"></div>
@@ -5296,7 +5304,6 @@ html:has(#area-lab.active) {
   <button type="button" data-rail="lesson" title="Ders" aria-label="Ders">📘</button>
   <button type="button" data-rail="lab" title="Simülatör" aria-label="Simülatör">🧪</button>
   <button type="button" data-rail="troubleshoot" title="Sorun Çöz" aria-label="Sorun Çöz">🛠</button>
-  <button type="button" data-rail="live" title="Canlı Lab" aria-label="Canlı Lab">📦</button>
   <button type="button" data-rail="advanced" title="Gelişmiş" aria-label="Gelişmiş">⚙</button>
 </nav>
 <main class="ag-main" id="agMain">
@@ -5442,11 +5449,6 @@ html:has(#area-lab.active) {
   </div>
 </div>
 </section>
-<section class="workspace" id="area-live" aria-labelledby="liveTitle">
-  <div class="ag-page-head card"><div class="muted small">Canlı Lab</div><h1 id="liveTitle">Canlı Lab · gerçek cihaz yazılımı</h1>
-  <p class="muted">Canlı Lab, FRRouting ve Linux bridge'i containerlab ile gerçek süreçler olarak çalıştırır. Tarayıcıdaki Simülatör'den ayrıdır: yetkili operatör (ya da CI) çalıştırır, sonuç raporu buradan açılır. Tarayıcı topolojisiyle birleştirilmez.</p></div>
-  <div class="ag-live-grid" id="liveLabPanel"></div>
-</section>
 <section class="workspace" id="area-advanced" aria-labelledby="advancedTitle">
   <div class="ag-page-head card"><div class="muted small">Gelişmiş</div><h1 id="advancedTitle">Gelişmiş</h1>
   <p class="muted">Geliştirici ve bakım araçları. Öğrenme yolunda gerekmez.</p></div>
@@ -5456,6 +5458,11 @@ html:has(#area-lab.active) {
         <div id="regressionAuditSummary" role="status" aria-live="polite" style="margin-top:9px;font-size:12px;color:var(--muted,#a9b7c8)">Denetim henüz çalıştırılmadı.</div><div id="regressionAuditResults" style="display:grid;gap:5px;margin-top:8px"></div>
       </div>
   </div>
+  <section class="card ag-advanced-live" id="advancedLive" aria-labelledby="liveTitle">
+    <h2 id="liveTitle">Canlı Lab (operatör)</h2>
+    <p class="muted">Canlı Lab, FRRouting ve Linux bridge'i containerlab ile gerçek süreçler olarak çalıştırır. Tarayıcıdaki Simülatör'den ayrıdır: yetkili operatör (ya da CI) çalıştırır, sonuç raporu buradan açılır. Tarayıcı topolojisiyle birleştirilmez.</p>
+    <div class="ag-live-grid" id="liveLabPanel"></div>
+  </section>
 </section>
 </main>
 </div><div class="toast" id="toast"></div>
@@ -69099,8 +69106,10 @@ function workshopView(ids, cases) {
 })();
 </script>
 <script>// Arayüz yenilemesi PR 1: ortak iskelet (üst gezinme, sol ikon şeridi, sayfa düzeni).
-// Dört ana bölüm: Müfredat (learn), Simülatör (lab), Sorun Çöz (troubleshoot), Canlı Lab (live);
-// ikon şeridinde ayrıca Ders kısayolu ve Gelişmiş (advanced). Bölüm kimlikleri (`data-area`,
+// Üç ana bölüm: Müfredat (learn), Simülatör (lab), Sorun Çöz (troubleshoot); ikon şeridinde
+// ayrıca Ders kısayolu ve Gelişmiş (advanced). Arayüz PR 3: Canlı Lab ayrı bölüm değil; operatör
+// araçları (rapor inceleme, topoloji dışa aktarımı, öğrenci tanıları) Gelişmiş'te "Canlı Lab
+// (operatör)" başlığı altında. Eski Canlı Lab bağlantıları Gelişmiş'e yönlenir. Bölüm kimlikleri (`data-area`,
 // `#area-*`) ve kayıt anahtarları değişmez; adres çubuğu yeni adları gösterir, eski bağlantılar
 // (#lab, #gercek-lab, #area-lab …) yeni bölüme yönlenir.
 (() => {
@@ -69109,7 +69118,6 @@ function workshopView(ids, cases) {
     learn: 'mufredat',
     lab: 'simulator',
     troubleshoot: 'sorun-coz',
-    live: 'canli-lab',
     advanced: 'gelismis',
   };
   // Eski ve yeni adlar → bölüm (eski bağlantı uyumluluğu).
@@ -69125,11 +69133,11 @@ function workshopView(ids, cases) {
     'sorun-coz': 'troubleshoot',
     troubleshoot: 'troubleshoot',
     'area-troubleshoot': 'troubleshoot',
-    'canli-lab': 'live',
-    live: 'live',
-    'gercek-lab': 'live',
-    'real-lab': 'live',
-    'area-live': 'live',
+    'canli-lab': 'advanced',
+    live: 'advanced',
+    'gercek-lab': 'advanced',
+    'real-lab': 'advanced',
+    'area-live': 'advanced',
     gelismis: 'advanced',
     advanced: 'advanced',
   };
@@ -70360,6 +70368,12 @@ function workshopView(ids, cases) {
     return { card, head };
   }
   // Akademi kartı (#academyPanel; ux14 yuvasında, Serbest modda gizlenir — eski davranış).
+  // Arayüz PR 3: "Canlı Lab tanıları" (öğrenci tanı servisi bağlantısı) Gelişmiş > Canlı Lab
+  // (operatör) bölümünde; davranış aynı.
+  if ($('academyRealLab') && $('liveLabPanel')) {
+    $('academyRealLab').classList.add('card');
+    $('liveLabPanel').append($('academyRealLab'));
+  }
   const academyPanel = $('academyPanel');
   const academySearch = $('academyCatalogSearch');
   const academySearchStatus = $('academySearchStatus');
@@ -70370,8 +70384,7 @@ function workshopView(ids, cases) {
     'Akademi labları',
     $('academySelect'),
     $('academyStart'),
-    // "Canlı Lab tanıları" bağlantısı kartta (real-lab öğrenci akışı; davranış aynı).
-    [academySearch, $('academyRealLab')],
+    [academySearch],
   );
   ac1.head.append(make('h3', { text: 'Akademi labları' }));
   if ($('academyProgress')) ac1.head.append($('academyProgress'));

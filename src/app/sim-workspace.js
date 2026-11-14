@@ -422,6 +422,12 @@
     return { card, head };
   }
   // Akademi kartı (#academyPanel; ux14 yuvasında, Serbest modda gizlenir — eski davranış).
+  // Arayüz PR 3: "Canlı Lab tanıları" (öğrenci tanı servisi bağlantısı) Gelişmiş > Canlı Lab
+  // (operatör) bölümünde; davranış aynı.
+  if ($('academyRealLab') && $('liveLabPanel')) {
+    $('academyRealLab').classList.add('card');
+    $('liveLabPanel').append($('academyRealLab'));
+  }
   const academyPanel = $('academyPanel');
   const academySearch = $('academyCatalogSearch');
   const academySearchStatus = $('academySearchStatus');
@@ -432,8 +438,7 @@
     'Akademi labları',
     $('academySelect'),
     $('academyStart'),
-    // "Canlı Lab tanıları" bağlantısı kartta (real-lab öğrenci akışı; davranış aynı).
-    [academySearch, $('academyRealLab')],
+    [academySearch],
   );
   ac1.head.append(make('h3', { text: 'Akademi labları' }));
   if ($('academyProgress')) ac1.head.append($('academyProgress'));
