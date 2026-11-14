@@ -60,8 +60,15 @@ LESSONS = [
         "err-disabled'dan çıkış",
     ),
     # Seviye 2 okuma dersleri (senaryolar motor/model hazır olunca)
-    ("etherchannel", "etherchannel", "etherchannel.md", None, "Mod çiftleri", "Bayraklarla teşhis"),
-    ("fhrp", "fhrp", "fhrp.md", None, "Sanal gateway", "Tek gateway sorunu"),
+    (
+        "etherchannel",
+        "etherchannel",
+        "etherchannel.md",
+        "ec-",
+        "Mod çiftleri",
+        "Bayraklarla teşhis",
+    ),
+    ("fhrp", "fhrp", "fhrp.md", "fhrp-", "Sanal gateway", "Tek gateway sorunu"),
     ("ipv6", "ipv6", "ipv6.md", None, "NDP ve SLAAC", "Router'da IPv6"),
 ]
 PARTS = [

@@ -4702,7 +4702,9 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
           throw new Error('Switch VLAN listesi geçersiz: ' + d.id);
         for (const [port, i] of Object.entries(d.interfaces)) {
           if (isSwitchSvi(d, port)) continue;
-          if (!d.ports.includes(port))
+          // Port-channel (`po<N>`) mantıksal arayüzdür: fiziksel port listesinde olmaz (köprü
+          // toAglab böyle yazar). Mod/VLAN denetimleri aşağıda ona da uygulanır.
+          if (!/^po\d+$/i.test(port) && !d.ports.includes(port))
             throw new Error('Bilinmeyen switch portu ' + d.id + '/' + port);
           if (!i || !['access', 'trunk'].includes(i.mode))
             throw new Error('Switch port modu geçersiz: ' + d.id + '/' + port);

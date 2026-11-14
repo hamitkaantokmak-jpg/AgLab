@@ -1,9 +1,7 @@
 # AğLab Konu #14: EtherChannel (LACP)
 
-> Uygulamadaki `etherchannel` dersi bu belgeden üretildi. **Okuma dersi:** Labber EtherChannel'ı
-> (`channel-group`, LACP/PAgP/on, `show etherchannel summary`) çalıştırıyor, ama AğLab topoloji modeli
-> Port-channel'ı kaydedemiyor; bu yüzden Sorun Çöz senaryoları model desteği gelince eklenecek.
-> Aşağıdaki vakalar kâğıt üstünde, beklenen çıktılarla çözülür. Ön koşul: VLAN ve trunk (Konu #5–6),
+> Uygulamadaki `etherchannel` dersi bu belgeden üretildi. Senaryolar Sorun Çöz'de `ec-*` kimlikleriyle
+> Labber'da çalışır (AğLab modeli `channelGroup` ve `po<N>`, #80). Ön koşul: VLAN ve trunk (Konu #5–6),
 > STP (Konu #13).
 
 Bu konu bittiğinde öğrenci birden çok fiziksel bağlantıyı neden tek mantıksal bağlantıda topladığımızı açıklar. LACP ile EtherChannel kurar ve hangi mod çiftlerinin kanal oluşturduğunu bilir. Üyelerin hangi ayarlarda aynı olması gerektiğini sayar. `show etherchannel summary` bayraklarından askıya alınmış, tek başına kalmış ve paketlenmiş portları ayırır. Seviye 2 (CCNA), süre yaklaşık 45 dakika.
@@ -58,16 +56,19 @@ Po1         on           802.1q         trunking      1
 | `(D)` | Port kapalı | Kablo, `shutdown` |
 | `Po1(SD)` | Kanal down: hiç üye yok | Mod çifti |
 
-## 4. Yönlendirmeli lab (Labber'da; kayda yazılmaz)
+## 4. Yönlendirmeli lab
 
-Topoloji: SW1 Gi0/1–Gi0/2 ↔ SW2 Gi0/1–Gi0/2; her iki switch'te VLAN 10 PC'si. Bu lab Labber terminalinde çalışır; arayüz değişikliğin AğLab kaydına yazılamadığı uyarısını verir.
+Topoloji: SW1 Gi0/1–Gi0/2 ↔ SW2 Gi0/1–Gi0/2 (trunk, VLAN 1, 10, 20); her switch'te VLAN 10 ve 20'de birer PC.
 
 1. **Kanalsız:** `show spanning-tree vlan 10`: iki bağlantıdan biri bloklu.
-2. **LACP:** iki switch'te `interface range gi0/1 - 2` → `channel-group 1 mode active`.
+2. **LACP:** iki switch'te Gi0/1 ve Gi0/2'de `channel-group 1 mode active` (sahada `interface range gi0/1 - 2` ile).
 3. **Port-channel:** `interface port-channel 1` → `switchport mode trunk`.
 4. **Oku:** `show etherchannel summary` (P bayrakları), `show spanning-tree vlan 10` (artık tek port: Po1).
 5. **Uyumsuz üye:** SW2'de Gi0/2'yi `shutdown`; kanal Gi0/1 ile devam eder. Geri aç.
 6. **Mod deneyi:** SW2'de modu `passive` yap (kurulur), iki uçta `passive` (kurulmaz).
+7. **Protokol değişimi:** SW1'de bir üyeyi `on` yapmayı dene: grupta LACP üye varken reddedilir ("protocol mismatch"). Önce bütün üyelerde `no channel-group`, sonra yeni mod.
+
+**Lab'ın otomatik değerlendirmesi:** `q.etherchannel('SW1', 1)`: `up` doğru, `bundled` 2; VLAN 10 ve 20'de katlar arası ping.
 
 ## 5. Sık hatalar
 
@@ -79,33 +80,46 @@ Topoloji: SW1 Gi0/1–Gi0/2 ↔ SW2 Gi0/1–Gi0/2; her iki switch'te VLAN 10 PC'
 | E4 | Hız/duplex farklı üye | Üye askıda | `(s)`; `show interfaces` hız farkı | Üyeleri aynı hız/duplex'e getir |
 | E5 | "Kanal var, hız iki katı" beklemek | Tek aktarım hızlanmıyor | Bütün üyeler `(P)` | Normal: dağıtım akış bazlı |
 
-## 6. Arıza senaryoları (kâğıt üstü; Sorun Çöz'e model desteği gelince eklenecek)
+## 6. Arıza senaryoları
 
-### S1 · Başlangıç · Kanal hiç kurulmadı (E1)
+> **Uygulamada:** S1–S5 Sorun Çöz'de `ec-passive-passive`, `ec-on-vs-lacp`, `ec-member-allowed`, `ec-po-allowed`,
+> `ec-two-faults` kimlikleriyle Labber'da çalışır. Hedefler `etherchannel` sorgusuyla kanalın up olmasını
+> ve iki üyenin de kanalda (P) olmasını, ayrıca iki VLAN'da katlar arası ping'i sınar.
 
-- **Belirti:** Katlar arası iki kablo var, `show spanning-tree`'de biri bloklu.
-- **Kanıt:** iki switch'te `show etherchannel summary`: `Po1(SD)`, üyeler `(I)`; `show run`: iki uçta `channel-group 1 mode passive`.
-- **Çözüm:** bir uçta `channel-group 1 mode active`.
+### S1 · Başlangıç · İkinci kablo boşta (E1)
 
-### S2 · Orta · Bir uç on, öbürü active (E2)
+- **Belirti:** İkinci kablo çekildi, LACP yazıldı; bir kablo STP'de bloklu, hız artmadı.
+- **Neden:** iki uçta `channel-group 1 mode passive`; üyeler `(I)`, `Po1(SD)`.
+- **Çözüm:** SW1 → Gi0/1 ve Gi0/2'de `channel-group 1 mode active`
+- **Hedefler:** iki switch'te Po1 up, iki üye P; VLAN 10 ve 20 katlar arası
 
-- **Kanıt:** SW1'de `mode on`, SW2'de `mode active`; SW2 üyeleri `(I)`.
-- **Çözüm:** SW1'de `no channel-group` → `channel-group 1 mode active`.
+### S2 · Orta · Bir uç on, öbürü LACP (E2)
+
+- **Belirti:** SW2 değiştirildi; kanal kurulmuyor, SW2'de üyeler `(I)`.
+- **Neden:** SW1 `mode on`, SW2 `mode active`.
+- **Çözüm:** SW1 → önce iki üyede `no channel-group`, sonra ikisinde `channel-group 1 mode active` (grupta tek protokol: biri `on` kalırken öbürü reddedilir)
+- **Hedefler:** S1 ile aynı
 
 ### S3 · Orta · Kanal up, bir üye askıda (E3)
 
-- **Kanıt:** `Gi0/1(P) Gi0/2(s)`; Gi0/2'de `switchport trunk allowed vlan 10`, Gi0/1'de `10,20`.
-- **Çözüm:** izinli listeyi `interface port-channel 1` altında yaz; üyeler eşitlenir.
+- **Belirti:** Bağlantı yarı hızda; SW1'de `Gi0/2(s)`.
+- **Neden:** SW1 Gi0/2'nin izinli listesi 1,10; Po1 ve Gi0/1'de 1,10,20.
+- **Çözüm:** SW1 → `interface gi0/2` → `switchport trunk allowed vlan 1,10,20`
+- **Hedefler:** S1 ile aynı
 
-### S4 · Orta · Yeni takılan kablo kanala girmiyor (E4)
+### S4 · Orta · Satış VLAN'ı katlar arası geçmiyor (E3, kanal düzeyi)
 
-- **Kanıt:** üçüncü üye `(s)`; `show interfaces gi0/3`: 100 Mb/s, diğerleri 1000 Mb/s (hız elle sabitlenmiş).
-- **Çözüm:** `no speed` / `speed auto` ile üyeleri eşitle.
+- **Belirti:** `Po1(SU)`, iki üye P; VLAN 10 çalışıyor, VLAN 20 çalışmıyor.
+- **Neden:** SW2 Po1'in izinli listesi 1,10.
+- **Çözüm:** SW2 → `interface port-channel 1` → `switchport trunk allowed vlan add 20`
+- **Hedefler:** SW2 Po1 up, iki üye P; VLAN 10 ve 20
 
-### S5 · İleri · İki hata
+### S5 · İleri · Kanal kuruldu, yine yarım (E1 + E3)
 
-- **Kanıt:** iki uç passive (E1); kurulunca bir üye askıda (E3).
-- **Çözüm:** modu active yap, ardından üye ayarını eşitle.
+- **Belirti:** iki uç passive'ti; SW1 active yapılınca kanal kuruldu ama SW2'de `Gi0/2(s)`.
+- **Neden:** passive–passive ve SW2 Gi0/2'de native VLAN 99.
+- **Çözüm:** SW1 → üyelerde `channel-group 1 mode active`; SW2 → `interface gi0/2` → `no switchport trunk native vlan`
+- **Hedefler:** S1 ile aynı
 
 ## 7. Kısa sınav
 
@@ -126,7 +140,9 @@ Kaynaklar: IEEE 802.1AX (LACP), Cisco Catalyst EtherChannel yapılandırma kıla
 | Üyelerde hız, duplex, mod, VLAN/izinli liste, native VLAN aynı olmalı | Doğru |
 | En çok 8 etkin üye | Doğru |
 
-**Motor gereksinimleri**
+**Motor gereksinimleri** (Labber'da denendi)
 
-- [x] Labber: `channel-group` (on, active, passive, desirable, auto), Port-channel, `show etherchannel summary`, LabQuery `etherchannel(dev, id)`
-- [ ] **AğLab modeli Port-channel ve `channel-group`'u kaydedemiyor**; senaryo başlangıcı ve çözümü kayda yazılamıyor (model işi). Model desteği gelince S1–S5 `ec-*` kimlikleriyle Sorun Çöz'e eklenir; sorgu listesine `etherchannel` eklenmeli
+- [x] `channel-group` (on, active, passive, desirable, auto), Port-channel, `show etherchannel summary`, `show interfaces trunk` (Po1), STP'de Po1 (2×1G maliyeti 3), grupta protokol uyuşmazlığının reddi
+- [x] AğLab modeli: üyede `channelGroup {id, mode}`, switch'te `po<N>` (#80); senaryo sorgusu `etherchannel`
+- [x] Beş senaryo başta başarısız, terminalden çözümle başarılı; iki hatalı senaryonun ara hali (`Gi0/2(s)`) doğrulandı
+- [ ] Hız/duplex AğLab modelinde yok; "hızı farklı üye" (E4) kâğıt üstünde kalır

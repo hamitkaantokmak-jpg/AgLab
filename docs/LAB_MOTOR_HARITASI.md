@@ -158,6 +158,16 @@ Senaryo yüklendikten sonraki başlangıç topolojisi köprüye verilir.
 | `eth-mac-learning` | Ethernet/ARP · MAC tablosu boş, ağ bozuk mu? | **Labber** |
 | `eth-unknown-unicast` | Ethernet/ARP · Hedef MAC bilinmiyorsa çerçeve nereye gider? | **Labber** |
 | `acl-http-blocked` | ACL · Sunucuya ping gidiyor, web sayfası açılmıyor | **Labber** |
+| `ec-passive-passive` | EtherChannel · İkinci kablo boşta | **Labber** |
+| `ec-on-vs-lacp` | EtherChannel · Bir uç on, öbürü LACP | **Labber** |
+| `ec-member-allowed` | EtherChannel · Kanal up, bir üye askıda | **Labber** |
+| `ec-po-allowed` | EtherChannel · Satış VLAN'ı katlar arası geçmiyor | **Labber** |
+| `ec-two-faults` | EtherChannel · Kanal kuruldu, yine yarım | **Labber** |
+| `fhrp-pc-real-gw` | FHRP · R1 bakımda, bir bilgisayar kopuk | **Labber** |
+| `fhrp-group-mismatch` | FHRP · İki router da aktif | **Labber** |
+| `fhrp-no-preempt` | FHRP · Bakımdan dönen R1 aktif olmuyor | **Labber** |
+| `fhrp-no-track` | FHRP · WAN koptu, şube merkeze gidemiyor | **Labber** |
+| `fhrp-two-faults` | FHRP · WAN koptu, yedek de devralmıyor | **Labber** |
 
 ## Labber labları (E)
 
@@ -255,9 +265,9 @@ da Labber'dadır. Eski motor kararı aşağıdaki gerekçelerden en az birine da
 | Grup | Labber | Eski motor | Toplam |
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
-| Ortak senaryolar | 106 | 1 | 107 |
+| Ortak senaryolar | 116 | 1 | 117 |
 | Labber labları | 13 | 0 | 13 |
-| Toplam | 159 | 1 | 160 |
+| Toplam | 169 | 1 | 170 |
 
 | Eski motor gerekçesi | İçerik sayısı |
 |---|---|
