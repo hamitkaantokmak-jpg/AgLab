@@ -14,7 +14,7 @@ Her adım ayrı PR, bir öncekinin dalı üstüne; birleştirilmez.
 | Adım | Dal | Durum |
 |---|---|---|
 | PR 1 iskelet, adlandırma, tek paket | #91, `claude/arayuz-1-iskelet` (taban `claude/arayuz-taslak`) | açık |
-| PR 2 Simülatör çalışma alanı, çözüm kilidi | `claude/arayuz-2-simulator` (taban `claude/arayuz-1-iskelet`) | açık |
+| PR 2 Simülatör çalışma alanı, çözüm kilidi | #92, `claude/arayuz-2-simulator` (taban `claude/arayuz-1-iskelet`) | açık |
 | PR 3 Arıza senaryosu ekranı | — | sırada |
 | PR 4 Müfredat haritası ve ders ekranı | — | sırada |
 
