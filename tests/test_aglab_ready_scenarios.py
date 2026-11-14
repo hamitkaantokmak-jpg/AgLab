@@ -243,6 +243,40 @@ class ReadyScenarioUiTests(unittest.TestCase):
         expect(p.locator("#agSimSolutionBtn")).to_be_disabled()
         expect(p.locator("#agSimSharedHints li")).to_have_count(0)
 
+    OUTSIDE_JS = """async (ids) => {
+        const out = [];
+        for (const id of ids) {
+          aglabSharedEngine.load(id);
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const svg = document.getElementById('ptCanvas'),
+            a = svg.getBoundingClientRect(),
+            c = svg.parentElement.getBoundingClientRect();
+          const v = { l: Math.max(a.left, c.left), r: Math.min(a.right, c.right),
+                      t: Math.max(a.top, c.top), b: Math.min(a.bottom, c.bottom) };
+          const bad = [...svg.querySelectorAll('g.pt-node')]
+            .map((g) => [g.querySelector('.pt-name')?.textContent, g.getBoundingClientRect()])
+            .filter(([, r]) => r.left < v.l - 1 || r.right > v.r + 1 || r.top < v.t - 1 || r.bottom > v.b + 1)
+            .map(([n]) => n);
+          if (bad.length) out.push([id, bad]);
+        }
+        return out;
+      }"""
+
+    def test_canvas_fits_every_scenario(self):
+        """Sığdırma bütün düğüm kutularını (yazılar dahil) kapsar: 116 senaryonun hepsinde her
+        düğüm tuvalin görünür alanında. Aynı cihaz kimlikli (d1…dN) topolojiler art arda
+        yüklenince eski görünüm kalmaz (sıra ve ters sıra); boş sayfadan statik rota senaryosu."""
+        ids = [r["id"] for r in RECIPES]
+        for width in (1024, 1280, 1920):
+            with self.subTest(width=width):
+                self.page.set_viewport_size({"width": width, "height": 900})
+                self.assertEqual(self.page.evaluate(self.OUTSIDE_JS, ids), [])
+                self.assertEqual(self.page.evaluate(self.OUTSIDE_JS, ids[::-1]), [])
+        for rid in ("lpm-next-hop", "floating-static"):
+            self.page.reload()
+            self.page.click('[data-area="lab"]')
+            self.assertEqual(self.page.evaluate(self.OUTSIDE_JS, [rid]), [], rid)
+
     def test_long_title_single_line(self):
         p = self.page
         p.set_viewport_size({"width": 1024, "height": 800})

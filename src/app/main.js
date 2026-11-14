@@ -5036,6 +5036,8 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   };
   function importTopology(input) {
     validateTopologyData(input);
+    // Yeni topoloji: görünüm yeniden sığdırılır (aynı cihaz kimlikleri eski görünümde kalmasın).
+    viewFit.key = '';
     // v23 ve öncesi: eski `startupConfig` alanları oturum kurulunca Labber startup'ına çevrilir.
     const { obj, startups } = takeLegacyStartups(input);
     // Yeni içerik: önceki Labber oturumu biter ve bu içerik için yeniden kurulur.
@@ -5305,18 +5307,31 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   // (bırakınca topoloji kaymaz). Küçük ölçekte düğüm yazıları okunur kalsın diye karşı-ölçeklenir.
   let viewFit = { key: '', box: [0, 0, 850, 420] },
     canvasDragging = false;
-  function fitView() {
+  /**
+   * Görünümü bütün düğümlere sığdırır. Kutular cihazın kart dikdörtgeninden (d.w × d.h) ve —
+   * çizimden sonra — kartın gerçek çizilmiş kutusundan (ad/IP yazısı kartı aşabilir) alınır.
+   * `extents` verilirse ([x0, y0, x1, y1], kullanıcı birimi) sığdırma ona göre yeniden yapılır.
+   * Anahtar: cihaz kimlikleri + tuval boyutu; yeni topoloji (importTopology) anahtarı sıfırlar,
+   * böylece aynı kimlikli (d1…dN) başka bir topoloji eski görünümde kalmaz.
+   */
+  function fitView(extents) {
     const cw = svg.clientWidth || 850,
       ch = svg.clientHeight || 420;
     const key = devices.map((d) => d.id).join(',') + '|' + Math.round(cw) + 'x' + Math.round(ch);
-    if (!canvasDragging && key !== viewFit.key) {
+    if (!canvasDragging && (key !== viewFit.key || extents)) {
       let box = [0, 0, 850, 420];
       if (devices.length) {
         const pad = 46;
-        let x0 = Math.min(...devices.map((d) => d.x - d.w / 2)) - pad,
-          y0 = Math.min(...devices.map((d) => d.y - d.h / 2)) - pad,
-          x1 = Math.max(...devices.map((d) => d.x + d.w / 2)) + pad,
-          y1 = Math.max(...devices.map((d) => d.y + d.h / 2)) + pad;
+        const e = extents || [
+          Math.min(...devices.map((d) => d.x - d.w / 2)),
+          Math.min(...devices.map((d) => d.y - d.h / 2)),
+          Math.max(...devices.map((d) => d.x + d.w / 2)),
+          Math.max(...devices.map((d) => d.y + d.h / 2)),
+        ];
+        let x0 = e[0] - pad,
+          y0 = e[1] - pad,
+          x1 = e[2] + pad,
+          y1 = e[3] + pad;
         // Tek cihaz dev görünmesin: en az 420×240 birimlik alan.
         let w = Math.max(x1 - x0, 420),
           h = Math.max(y1 - y0, 240);
@@ -5343,7 +5358,10 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   }
   if (typeof ResizeObserver === 'function')
     new ResizeObserver(() => {
-      if (!canvasDragging && svg.isConnected) fitView();
+      if (!canvasDragging && svg.isConnected) {
+        fitView();
+        fitDrawn();
+      }
     }).observe(svg);
   function render() {
     svg.innerHTML = '';
@@ -5545,8 +5563,40 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
         window.addEventListener('pointercancel', cancel);
       });
     });
+    fitDrawn();
     $p('ptCanvasStatus').textContent = `${devices.length} cihaz · ${links.length} bağlantı`;
     saveTopology(true);
+  }
+  /**
+   * Çizimden sonra: bir kartın çizilmiş kutusu (yazılar dahil) görünümün dışına taşıyorsa
+   * görünüm çizilmiş kutulara göre yeniden sığdırılır (taşma yoksa görünüm değişmez).
+   */
+  function fitDrawn() {
+    if (canvasDragging || !devices.length || !svg.isConnected || !svg.clientWidth) return;
+    let x0 = Infinity,
+      y0 = Infinity,
+      x1 = -Infinity,
+      y1 = -Infinity;
+    for (const g of svg.querySelectorAll('g.pt-node')) {
+      const d = get(g.dataset.id);
+      if (!d) continue;
+      let b;
+      try {
+        b = g.getBBox();
+      } catch (e) {
+        continue;
+      }
+      const ox = d.x - d.w / 2,
+        oy = d.y - d.h / 2;
+      x0 = Math.min(x0, ox + Math.min(0, b.x));
+      y0 = Math.min(y0, oy + Math.min(0, b.y));
+      x1 = Math.max(x1, ox + Math.max(d.w, b.x + b.width));
+      y1 = Math.max(y1, oy + Math.max(d.h, b.y + b.height));
+    }
+    if (!Number.isFinite(x0)) return;
+    const [bx, by, bw, bh] = viewFit.box;
+    if (x0 >= bx && y0 >= by && x1 <= bx + bw && y1 <= by + bh) return;
+    fitView([x0, y0, x1, y1]);
   }
   function deleteSelected() {
     const d = get(selected);

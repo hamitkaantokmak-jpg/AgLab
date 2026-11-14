@@ -3845,13 +3845,11 @@ html:not([data-theme='light']) {
   flex: none;
   white-space: nowrap;
 }
-/* Sayaç satırı da gerekirse kısalır (başlıkla orantılı). */
+/* Sayaç kısa biçimde (✗0 · 💡0/3) kesilmeden durur; başlık kalan yeri kullanır. */
 .ag-sim-title > #agSimMeta {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: none;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 .ag-tag {
   display: inline-block;
@@ -3866,8 +3864,9 @@ html:not([data-theme='light']) {
   background: #f1eadf;
   color: #8a5a14;
 }
+/* Başlık kabı (.ag-sim-title) büyüyerek boşluğu alır; ayraç yer kaplamaz. */
 .ag-sim-spacer {
-  flex: 1 1 auto;
+  flex: 0 0 0;
 }
 .ag-sim-actions,
 .ag-sim-ctxactions {
@@ -21164,6 +21163,8 @@ const AgLabModel = (() => {
   };
   function importTopology(input) {
     validateTopologyData(input);
+    // Yeni topoloji: görünüm yeniden sığdırılır (aynı cihaz kimlikleri eski görünümde kalmasın).
+    viewFit.key = '';
     // v23 ve öncesi: eski `startupConfig` alanları oturum kurulunca Labber startup'ına çevrilir.
     const { obj, startups } = takeLegacyStartups(input);
     // Yeni içerik: önceki Labber oturumu biter ve bu içerik için yeniden kurulur.
@@ -21433,18 +21434,31 @@ const AgLabModel = (() => {
   // (bırakınca topoloji kaymaz). Küçük ölçekte düğüm yazıları okunur kalsın diye karşı-ölçeklenir.
   let viewFit = { key: '', box: [0, 0, 850, 420] },
     canvasDragging = false;
-  function fitView() {
+  /**
+   * Görünümü bütün düğümlere sığdırır. Kutular cihazın kart dikdörtgeninden (d.w × d.h) ve —
+   * çizimden sonra — kartın gerçek çizilmiş kutusundan (ad/IP yazısı kartı aşabilir) alınır.
+   * `extents` verilirse ([x0, y0, x1, y1], kullanıcı birimi) sığdırma ona göre yeniden yapılır.
+   * Anahtar: cihaz kimlikleri + tuval boyutu; yeni topoloji (importTopology) anahtarı sıfırlar,
+   * böylece aynı kimlikli (d1…dN) başka bir topoloji eski görünümde kalmaz.
+   */
+  function fitView(extents) {
     const cw = svg.clientWidth || 850,
       ch = svg.clientHeight || 420;
     const key = devices.map((d) => d.id).join(',') + '|' + Math.round(cw) + 'x' + Math.round(ch);
-    if (!canvasDragging && key !== viewFit.key) {
+    if (!canvasDragging && (key !== viewFit.key || extents)) {
       let box = [0, 0, 850, 420];
       if (devices.length) {
         const pad = 46;
-        let x0 = Math.min(...devices.map((d) => d.x - d.w / 2)) - pad,
-          y0 = Math.min(...devices.map((d) => d.y - d.h / 2)) - pad,
-          x1 = Math.max(...devices.map((d) => d.x + d.w / 2)) + pad,
-          y1 = Math.max(...devices.map((d) => d.y + d.h / 2)) + pad;
+        const e = extents || [
+          Math.min(...devices.map((d) => d.x - d.w / 2)),
+          Math.min(...devices.map((d) => d.y - d.h / 2)),
+          Math.max(...devices.map((d) => d.x + d.w / 2)),
+          Math.max(...devices.map((d) => d.y + d.h / 2)),
+        ];
+        let x0 = e[0] - pad,
+          y0 = e[1] - pad,
+          x1 = e[2] + pad,
+          y1 = e[3] + pad;
         // Tek cihaz dev görünmesin: en az 420×240 birimlik alan.
         let w = Math.max(x1 - x0, 420),
           h = Math.max(y1 - y0, 240);
@@ -21471,7 +21485,10 @@ const AgLabModel = (() => {
   }
   if (typeof ResizeObserver === 'function')
     new ResizeObserver(() => {
-      if (!canvasDragging && svg.isConnected) fitView();
+      if (!canvasDragging && svg.isConnected) {
+        fitView();
+        fitDrawn();
+      }
     }).observe(svg);
   function render() {
     svg.innerHTML = '';
@@ -21673,8 +21690,40 @@ const AgLabModel = (() => {
         window.addEventListener('pointercancel', cancel);
       });
     });
+    fitDrawn();
     $p('ptCanvasStatus').textContent = `${devices.length} cihaz · ${links.length} bağlantı`;
     saveTopology(true);
+  }
+  /**
+   * Çizimden sonra: bir kartın çizilmiş kutusu (yazılar dahil) görünümün dışına taşıyorsa
+   * görünüm çizilmiş kutulara göre yeniden sığdırılır (taşma yoksa görünüm değişmez).
+   */
+  function fitDrawn() {
+    if (canvasDragging || !devices.length || !svg.isConnected || !svg.clientWidth) return;
+    let x0 = Infinity,
+      y0 = Infinity,
+      x1 = -Infinity,
+      y1 = -Infinity;
+    for (const g of svg.querySelectorAll('g.pt-node')) {
+      const d = get(g.dataset.id);
+      if (!d) continue;
+      let b;
+      try {
+        b = g.getBBox();
+      } catch (e) {
+        continue;
+      }
+      const ox = d.x - d.w / 2,
+        oy = d.y - d.h / 2;
+      x0 = Math.min(x0, ox + Math.min(0, b.x));
+      y0 = Math.min(y0, oy + Math.min(0, b.y));
+      x1 = Math.max(x1, ox + Math.max(d.w, b.x + b.width));
+      y1 = Math.max(y1, oy + Math.max(d.h, b.y + b.height));
+    }
+    if (!Number.isFinite(x0)) return;
+    const [bx, by, bw, bh] = viewFit.box;
+    if (x0 >= bx && y0 >= by && x1 <= bx + bw && y1 <= by + bh) return;
+    fitView([x0, y0, x1, y1]);
   }
   function deleteSelected() {
     const d = get(selected);
@@ -65272,9 +65321,33 @@ function sharedEngineCommandBlock(name, commands) {
 function sharedCauseClear() {
   document.getElementById('sharedScenarioCause')?.remove();
 }
+/**
+ * Kök neden kutusu (#86): yüklemede DOM'da yoktur. Çözüm kilidi açılınca kapalı olarak görev
+ * metninin altına eklenir (sharedCauseUnlock); senaryo çözülünce açık olarak "BAŞARILI" durumunun
+ * yanına konur (sharedCauseReveal). Başka senaryo yüklenince kaldırılır (sharedCauseClear).
+ */
+function sharedCauseBox() {
+  let cause = document.getElementById('sharedScenarioCause');
+  if (cause) return cause;
+  const row = sharedScenario.active && sharedScenarioRecipe(sharedScenario.key);
+  if (!row?.cause) return null;
+  cause = document.createElement('details');
+  const causeSummary = document.createElement('summary'),
+    causeText = document.createElement('p');
+  cause.id = 'sharedScenarioCause';
+  causeSummary.textContent = 'Kök nedeni göster';
+  causeText.textContent = 'Kök neden: ' + row.cause;
+  cause.append(causeSummary, causeText);
+  $p('sharedScenarioInstructions').append(cause);
+  return cause;
+}
+/** Çözüm kilidi açıldı: kök neden kutusu (kapalı) görev metninin altında görünür. */
+function sharedCauseUnlock() {
+  sharedCauseBox();
+}
 /** Senaryo çözüldü: kök neden açılır ve "BAŞARILI" durumunun yanında görünür. */
 function sharedCauseReveal() {
-  const cause = document.getElementById('sharedScenarioCause');
+  const cause = sharedCauseBox();
   if (!cause) return;
   cause.open = true;
   $p('sharedScenarioStatus').after(cause);
@@ -65306,16 +65379,7 @@ function loadNetworkScenario(key) {
   // Arayüz PR 3: ipuçları ve çözüm komutları panelde değil. İpuçları Simülatör üst çubuğundaki
   // "İpucu" ile kademeli açılır; çözüm komutları "Çözümü göster" kilidinin arkasındadır ve kilit
   // açılmadan DOM'a eklenmez (sim-workspace.js).
-  // Kök neden alıştırmanın cevabıdır: görev metninin altında ayrı ve kapalı durur; senaryo
-  // çözülünce (hedefler sağlanınca) kendiliğinden açılır ve durum satırının yanına taşınır.
-  const cause = document.createElement('details'),
-    causeSummary = document.createElement('summary'),
-    causeText = document.createElement('p');
-  cause.id = 'sharedScenarioCause';
-  causeSummary.textContent = 'Kök nedeni göster';
-  causeText.textContent = 'Kök neden: ' + row.cause;
-  cause.append(causeSummary, causeText);
-  panel.append(cause);
+  // Kök neden alıştırmanın cevabıdır: yüklemede DOM'da yoktur (sharedCauseBox).
   sharedStatus(
     row.title + ' yüklendi. İlk erişim başarısız olmalı; tanı komutlarıyla nedeni incele.',
   );
@@ -65594,6 +65658,8 @@ window.aglabSharedEngine = {
   goal: () => sharedRecipeGoal(sharedScenarioRecipe(sharedScenario.key)),
   // Arayüz PR 3: üst çubuk Kontrol et / İpucu / Çözümü göster (yüklü senaryo yoksa null).
   check: sharedCheck,
+  // Çözüm kilidi açılınca (sim-workspace.js) kök neden kutusu eklenir.
+  unlockCause: () => sharedScenario.active && sharedCauseUnlock(),
   hints: () =>
     sharedScenario.active ? [...(sharedScenarioRecipe(sharedScenario.key)?.hints || [])] : null,
   solution: () => {
@@ -71374,19 +71440,36 @@ function workshopView(ids, cases) {
         ? 'Sıradaki ipucu: ' + (st.hintsUsed + 1) + '/' + st.hintsTotal
         : 'Bütün ipuçları açık.';
     }
-    meta.textContent =
-      c.kind === 'academy' || c.kind === 'shared'
-        ? 'Başarısız kontrol: ' + st.fails + ' · ipucu ' + st.hintsUsed + '/' + st.hintsTotal
-        : c.kind === 'labber'
-          ? 'Başarısız kontrol: ' +
-            st.fails +
-            ' · komut ipucu ' +
-            st.commandsOpen +
-            '/' +
-            st.commandsNeeded +
-            ' hedef'
-          : '';
-    meta.title = meta.textContent;
+    // Sayaç: görünür kısa biçim (✗ başarısız kontrol · 💡 ipucu), uzun metin ekran okuyucu
+    // ve araç ipucu için (1280 px'te kesilmez; başlık kalan yeri kullanır).
+    const counted = c.kind === 'academy' || c.kind === 'shared';
+    const long = counted
+      ? 'Başarısız kontrol: ' + st.fails + ' · ipucu ' + st.hintsUsed + '/' + st.hintsTotal
+      : c.kind === 'labber'
+        ? 'Başarısız kontrol: ' +
+          st.fails +
+          ' · komut ipucu ' +
+          st.commandsOpen +
+          '/' +
+          st.commandsNeeded +
+          ' hedef'
+        : '';
+    const short = counted
+      ? '✗' + st.fails + ' · 💡' + st.hintsUsed + '/' + st.hintsTotal
+      : c.kind === 'labber'
+        ? '✗' + st.fails + ' · 💡' + st.commandsOpen + '/' + st.commandsNeeded + ' hedef'
+        : '';
+    meta.replaceChildren(
+      ...(long
+        ? [
+            make('span', { class: 'ag-sim-meta-short', 'aria-hidden': 'true', text: short }),
+            make('span', { class: 'ag-sim-sr', text: long }),
+          ]
+        : []),
+    );
+    meta.title = long;
+    // #86: hazır senaryonun kök nedeni kilit açılınca (kapalı kutu) DOM'a girer.
+    if (c.kind === 'shared' && st.unlocked) window.aglabSharedEngine.unlockCause();
     solutionBtn.hidden = !st.hasSolution;
     const shown = !!$('agSimSolution');
     solutionBtn.disabled = !st.unlocked || shown;

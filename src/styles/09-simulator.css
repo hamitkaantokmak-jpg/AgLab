@@ -84,13 +84,11 @@ html:not([data-theme='light']) {
   flex: none;
   white-space: nowrap;
 }
-/* Sayaç satırı da gerekirse kısalır (başlıkla orantılı). */
+/* Sayaç kısa biçimde (✗0 · 💡0/3) kesilmeden durur; başlık kalan yeri kullanır. */
 .ag-sim-title > #agSimMeta {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: none;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 .ag-tag {
   display: inline-block;
@@ -105,8 +103,9 @@ html:not([data-theme='light']) {
   background: #f1eadf;
   color: #8a5a14;
 }
+/* Başlık kabı (.ag-sim-title) büyüyerek boşluğu alır; ayraç yer kaplamaz. */
 .ag-sim-spacer {
-  flex: 1 1 auto;
+  flex: 0 0 0;
 }
 .ag-sim-actions,
 .ag-sim-ctxactions {

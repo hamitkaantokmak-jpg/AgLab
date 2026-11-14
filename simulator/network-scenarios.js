@@ -23,9 +23,33 @@ function sharedEngineCommandBlock(name, commands) {
 function sharedCauseClear() {
   document.getElementById('sharedScenarioCause')?.remove();
 }
+/**
+ * Kök neden kutusu (#86): yüklemede DOM'da yoktur. Çözüm kilidi açılınca kapalı olarak görev
+ * metninin altına eklenir (sharedCauseUnlock); senaryo çözülünce açık olarak "BAŞARILI" durumunun
+ * yanına konur (sharedCauseReveal). Başka senaryo yüklenince kaldırılır (sharedCauseClear).
+ */
+function sharedCauseBox() {
+  let cause = document.getElementById('sharedScenarioCause');
+  if (cause) return cause;
+  const row = sharedScenario.active && sharedScenarioRecipe(sharedScenario.key);
+  if (!row?.cause) return null;
+  cause = document.createElement('details');
+  const causeSummary = document.createElement('summary'),
+    causeText = document.createElement('p');
+  cause.id = 'sharedScenarioCause';
+  causeSummary.textContent = 'Kök nedeni göster';
+  causeText.textContent = 'Kök neden: ' + row.cause;
+  cause.append(causeSummary, causeText);
+  $p('sharedScenarioInstructions').append(cause);
+  return cause;
+}
+/** Çözüm kilidi açıldı: kök neden kutusu (kapalı) görev metninin altında görünür. */
+function sharedCauseUnlock() {
+  sharedCauseBox();
+}
 /** Senaryo çözüldü: kök neden açılır ve "BAŞARILI" durumunun yanında görünür. */
 function sharedCauseReveal() {
-  const cause = document.getElementById('sharedScenarioCause');
+  const cause = sharedCauseBox();
   if (!cause) return;
   cause.open = true;
   $p('sharedScenarioStatus').after(cause);
@@ -57,16 +81,7 @@ function loadNetworkScenario(key) {
   // Arayüz PR 3: ipuçları ve çözüm komutları panelde değil. İpuçları Simülatör üst çubuğundaki
   // "İpucu" ile kademeli açılır; çözüm komutları "Çözümü göster" kilidinin arkasındadır ve kilit
   // açılmadan DOM'a eklenmez (sim-workspace.js).
-  // Kök neden alıştırmanın cevabıdır: görev metninin altında ayrı ve kapalı durur; senaryo
-  // çözülünce (hedefler sağlanınca) kendiliğinden açılır ve durum satırının yanına taşınır.
-  const cause = document.createElement('details'),
-    causeSummary = document.createElement('summary'),
-    causeText = document.createElement('p');
-  cause.id = 'sharedScenarioCause';
-  causeSummary.textContent = 'Kök nedeni göster';
-  causeText.textContent = 'Kök neden: ' + row.cause;
-  cause.append(causeSummary, causeText);
-  panel.append(cause);
+  // Kök neden alıştırmanın cevabıdır: yüklemede DOM'da yoktur (sharedCauseBox).
   sharedStatus(
     row.title + ' yüklendi. İlk erişim başarısız olmalı; tanı komutlarıyla nedeni incele.',
   );
@@ -345,6 +360,8 @@ window.aglabSharedEngine = {
   goal: () => sharedRecipeGoal(sharedScenarioRecipe(sharedScenario.key)),
   // Arayüz PR 3: üst çubuk Kontrol et / İpucu / Çözümü göster (yüklü senaryo yoksa null).
   check: sharedCheck,
+  // Çözüm kilidi açılınca (sim-workspace.js) kök neden kutusu eklenir.
+  unlockCause: () => sharedScenario.active && sharedCauseUnlock(),
   hints: () =>
     sharedScenario.active ? [...(sharedScenarioRecipe(sharedScenario.key)?.hints || [])] : null,
   solution: () => {

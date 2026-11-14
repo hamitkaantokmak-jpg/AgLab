@@ -1,11 +1,11 @@
-"""Ortak senaryo panelinde kök neden cevaptır: yüklemede görünmez, çözümden sonra görünür.
+"""Ortak senaryo panelinde kök neden cevaptır: yüklemede DOM'da yoktur (#86).
 
-Kök neden görev metninin altında ayrı ve kapalı bir <details> ("Kök nedeni göster") içindedir;
-ipuçları ve çözüm komutları panelde yoktur (arayüz PR 3: Simülatör üst çubuğunda kademeli
-İpucu ve kilitli "Çözümü göster"). Senaryo çözülünce (hedefler
-sağlanıp hedef ping'i başarılı olunca) kutu kendiliğinden açılır ve "BAŞARILI" durumunun yanına
-taşınır. Arızalı senaryo ve arızasız gözlem senaryosu (`verify.observation`) ayrı ayrı denenir;
-başka senaryo yüklenince kutu yeniden kapalıdır.
+Kök neden kutusu (<details> "Kök nedeni göster") çözüm kilidi açılınca kapalı olarak görev
+metninin altına eklenir; senaryo çözülünce (hedefler sağlanıp hedef ping'i başarılı olunca) açık
+olarak "BAŞARILI" durumunun yanına konur. İpuçları ve çözüm komutları panelde yoktur (arayüz
+PR 3: Simülatör üst çubuğunda kademeli İpucu ve kilitli "Çözümü göster"). Arızalı senaryo ve
+arızasız gözlem senaryosu (`verify.observation`) ayrı ayrı denenir; başka senaryo yüklenince kutu
+yeniden yoktur.
 """
 
 import json
@@ -72,27 +72,28 @@ class ScenarioCauseTests(unittest.TestCase):
     def cause(self):
         return self.page.locator("#sharedScenarioCause")
 
+    def page_text(self):
+        """Sayfadaki öğelerin metni (gömülü betik verisi hariç)."""
+        return self.page.evaluate(
+            "() => { const b = document.body.cloneNode(true);"
+            " b.querySelectorAll('script, style').forEach((n) => n.remove());"
+            " return b.textContent; }"
+        )
+
     def assert_hidden_on_load(self, recipe):
-        cause = self.cause()
-        self.assertEqual(cause.count(), 1)
-        self.assertFalse(cause.evaluate("(d) => d.open"), "kök neden kapalı olmalı")
-        self.assertEqual(cause.locator("summary").text_content(), "Kök nedeni göster")
-        # cevap metni görünmüyor; belirti görünüyor
-        self.assertFalse(self.page.get_by_text(recipe["cause"], exact=False).first.is_visible())
+        # #86: kök neden kutusu ve metni yüklemede DOM'da yok; belirti görünüyor.
+        self.page.wait_for_timeout(300)  # çalışma alanı yenilemesi (120 ms) bitsin
+        self.assertEqual(self.cause().count(), 0)
+        self.assertNotIn(recipe["cause"], self.page_text())
+        self.assertNotIn("Kök nedeni göster", self.page_text())
         panel = self.page.locator("#sharedScenarioInstructions")
         self.assertTrue(panel.get_by_text(recipe["symptom"]).first.is_visible())
-        visible = panel.evaluate(
-            "(p) => [...p.children].filter((c) => c.tagName === 'P').map((c) => c.textContent).join(' ')"
-        )
-        self.assertNotIn("Kök neden", visible)
         # Arayüz PR 3: ipuçları ve çözüm komutları panelde değil (üst çubuk İpucu / kilitli
-        # "Çözümü göster"); kök neden kutusu görev metninin hemen altında.
+        # "Çözümü göster").
         self.assertEqual(
             panel.locator("details").filter(has_text="İpuçları ve çözüm komutları").count(), 0
         )
         self.assertEqual(panel.locator("pre").count(), 0)
-        self.assertEqual(cause.evaluate("(d) => d.parentElement.id"), "sharedScenarioInstructions")
-        self.assertEqual(cause.evaluate("(d) => d.nextElementSibling"), None)
         self.assertEqual(self.page.locator("#agSimSolution").count(), 0)
 
     def assert_revealed(self, recipe):
@@ -119,12 +120,26 @@ class ScenarioCauseTests(unittest.TestCase):
         self.device(FAULT["verify"]["source"])
         self.type("ping " + FAULT["verify"]["target"])
         self.assertNotIn("BAŞARILI", self.page.text_content("#sharedScenarioStatus"))
-        self.assertFalse(self.cause().evaluate("(d) => d.open"))
+        self.assertEqual(self.cause().count(), 0)
         self.solve_and_ping(FAULT)
         self.assert_revealed(FAULT)
-        # başka senaryo yüklenince yeniden kapalı ve görev metninin altında
+        # başka senaryo yüklenince kutu yeniden yok
         self.load(OBSERVATION)
         self.assert_hidden_on_load(OBSERVATION)
+
+    def test_cause_appears_closed_when_lock_opens(self):
+        """Kilit (3 başarısız Kontrol et) açılınca kutu kapalı olarak görev metninin altında."""
+        self.load(FAULT)
+        self.assert_hidden_on_load(FAULT)
+        for _ in range(3):
+            self.page.click("#agSimSharedCheck")
+        cause = self.cause()
+        cause.wait_for(state="attached")
+        self.assertFalse(cause.evaluate("(d) => d.open"))
+        self.assertEqual(cause.locator("summary").text_content(), "Kök nedeni göster")
+        self.assertEqual(cause.evaluate("(d) => d.parentElement.id"), "sharedScenarioInstructions")
+        self.assertIn(FAULT["cause"], cause.text_content())
+        self.assertFalse(self.page.get_by_text(FAULT["cause"]).first.is_visible())
 
     def test_observation_cause_hidden_until_solved(self):
         self.load(OBSERVATION)

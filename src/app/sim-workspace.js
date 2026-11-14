@@ -1515,19 +1515,36 @@
         ? 'Sıradaki ipucu: ' + (st.hintsUsed + 1) + '/' + st.hintsTotal
         : 'Bütün ipuçları açık.';
     }
-    meta.textContent =
-      c.kind === 'academy' || c.kind === 'shared'
-        ? 'Başarısız kontrol: ' + st.fails + ' · ipucu ' + st.hintsUsed + '/' + st.hintsTotal
-        : c.kind === 'labber'
-          ? 'Başarısız kontrol: ' +
-            st.fails +
-            ' · komut ipucu ' +
-            st.commandsOpen +
-            '/' +
-            st.commandsNeeded +
-            ' hedef'
-          : '';
-    meta.title = meta.textContent;
+    // Sayaç: görünür kısa biçim (✗ başarısız kontrol · 💡 ipucu), uzun metin ekran okuyucu
+    // ve araç ipucu için (1280 px'te kesilmez; başlık kalan yeri kullanır).
+    const counted = c.kind === 'academy' || c.kind === 'shared';
+    const long = counted
+      ? 'Başarısız kontrol: ' + st.fails + ' · ipucu ' + st.hintsUsed + '/' + st.hintsTotal
+      : c.kind === 'labber'
+        ? 'Başarısız kontrol: ' +
+          st.fails +
+          ' · komut ipucu ' +
+          st.commandsOpen +
+          '/' +
+          st.commandsNeeded +
+          ' hedef'
+        : '';
+    const short = counted
+      ? '✗' + st.fails + ' · 💡' + st.hintsUsed + '/' + st.hintsTotal
+      : c.kind === 'labber'
+        ? '✗' + st.fails + ' · 💡' + st.commandsOpen + '/' + st.commandsNeeded + ' hedef'
+        : '';
+    meta.replaceChildren(
+      ...(long
+        ? [
+            make('span', { class: 'ag-sim-meta-short', 'aria-hidden': 'true', text: short }),
+            make('span', { class: 'ag-sim-sr', text: long }),
+          ]
+        : []),
+    );
+    meta.title = long;
+    // #86: hazır senaryonun kök nedeni kilit açılınca (kapalı kutu) DOM'a girer.
+    if (c.kind === 'shared' && st.unlocked) window.aglabSharedEngine.unlockCause();
     solutionBtn.hidden = !st.hasSolution;
     const shown = !!$('agSimSolution');
     solutionBtn.disabled = !st.unlocked || shown;
