@@ -38,7 +38,7 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | L6 motor kullanmayan eski içerik | #84 (main'den, dal `claude/l6-legacy-content`) | birleşti |
 | Ortak senaryo kök nedeni gizli | #86 | birleşti |
 | L7a içerik (bgp-as, 3 switching senaryosu) + oracle kararı | #87 (main'den, dal `claude/l7a-icerik-oracle`) | açık |
-| L7b+c eski motorların kaldırılması + kalıcılık v24 | dal `claude/l7b-eski-motor-kaldirma` (L7a dalından; PR tabanı L7a dalı) | açık |
+| L7b+c eski motorların kaldırılması + kalıcılık v24 | #88, dal `claude/l7b-eski-motor-kaldirma` (L7a dalından; PR tabanı L7a dalı) | açık |
 
 **Durum:** #75–#86 birleşti. **L7a (#87)** ve **L7b+c** açık; birleştirilmedi. L7b ve L7c tek PR:
 eski `startupConfig` kaydını yalnız eski motor işliyordu; v24 olmadan eski motoru kaldırmak kayıtlı
