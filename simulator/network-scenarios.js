@@ -54,25 +54,10 @@ function loadNetworkScenario(key) {
     p.textContent = text;
     panel.append(p);
   }
-  const hints = document.createElement('details'),
-    summary = document.createElement('summary');
-  summary.textContent = 'İpuçları ve çözüm komutları';
-  hints.append(summary);
-  for (const hint of row.hints || []) {
-    const p = document.createElement('p');
-    p.textContent = hint;
-    hints.append(p);
-  }
-  for (const block of row.solution) {
-    const pre = document.createElement('pre');
-    pre.textContent =
-      block.device +
-      '\n' +
-      block.commands.map((c) => c.replaceAll('$SOURCE_MAC', macFmt(macOf(source)))).join('\n');
-    hints.append(pre);
-  }
-  panel.append(hints);
-  // Kök neden alıştırmanın cevabıdır: ipuçlarının yanında ayrı ve kapalı durur; senaryo
+  // Arayüz PR 3: ipuçları ve çözüm komutları panelde değil. İpuçları Simülatör üst çubuğundaki
+  // "İpucu" ile kademeli açılır; çözüm komutları "Çözümü göster" kilidinin arkasındadır ve kilit
+  // açılmadan DOM'a eklenmez (sim-workspace.js).
+  // Kök neden alıştırmanın cevabıdır: görev metninin altında ayrı ve kapalı durur; senaryo
   // çözülünce (hedefler sağlanınca) kendiliğinden açılır ve durum satırının yanına taşınır.
   const cause = document.createElement('details'),
     causeSummary = document.createElement('summary'),
@@ -213,6 +198,52 @@ function sharedRecipeGoal(row) {
       ?.dhcpLease;
   throw new Error('Labber bu doğrulama türünü desteklemiyor: ' + row.verify.kind);
 }
+/** Kaynak MAC yer tutucusu çözülmüş çözüm blokları ([{device, commands}]). */
+function sharedSolutionBlocks(row) {
+  const source = get(sharedScenario.sourceId);
+  return row.solution.map((block) => ({
+    device: block.device,
+    commands: block.commands.map((c) =>
+      source ? c.replaceAll('$SOURCE_MAC', macFmt(macOf(source))) : c,
+    ),
+  }));
+}
+/**
+ * Arayüz PR 3: Simülatör üst çubuğundaki "Kontrol et". Senaryo hedefi (sharedRecipeGoal) şu an
+ * sağlanıyor mu: sağlanıyorsa ilerleme kaydedilir ve kök neden açılır (hedef ping'iyle aynı
+ * sonuç); değilse durum satırı nedenini söyler. { ok, why } ya da yüklü senaryo yoksa null.
+ */
+function sharedCheck() {
+  if (!sharedScenario.active) return null;
+  const row = sharedScenarioRecipe(sharedScenario.key);
+  if (!row) return null;
+  let ok = false,
+    why = '';
+  try {
+    ok = sharedRecipeGoal(row);
+    if (row.verify.kind === 'query') why = sharedQueryGoal(row).why;
+    else if (!ok)
+      why =
+        row.verify.kind === 'dhcp'
+          ? 'Kaynak bilgisayar DHCP sunucusundan adres almadı.'
+          : row.verify.kind === 'stp-root' &&
+              aglabEngineChoice.labberStpRoot(row.verify.vlan) !== row.verify.root
+            ? 'VLAN ' + row.verify.vlan + ' kök köprüsü henüz ' + row.verify.root + ' değil.'
+            : aglabEngineChoice.labberPing(sharedScenario.sourceId, sharedScenario.target).why;
+  } catch (error) {
+    sharedStatus('Değerlendirme hatası: ' + error.message, false);
+    return { ok: false, why: error.message };
+  }
+  if (ok) {
+    sharedSaveProgress(sharedScenario.key);
+    sharedStatus(
+      'BAŞARILI: senaryo hedefi sağlandı. Senaryo tamamlandı ve ilerleme bu tarayıcıya kaydedildi.',
+      true,
+    );
+    sharedCauseReveal();
+  } else sharedStatus('Henüz çözülmedi: ' + why, false);
+  return { ok, why };
+}
 function validateSharedScenarios() {
   const snapshot = {
     app: 'AgLab',
@@ -312,6 +343,14 @@ window.aglabSharedEngine = {
     };
   },
   goal: () => sharedRecipeGoal(sharedScenarioRecipe(sharedScenario.key)),
+  // Arayüz PR 3: üst çubuk Kontrol et / İpucu / Çözümü göster (yüklü senaryo yoksa null).
+  check: sharedCheck,
+  hints: () =>
+    sharedScenario.active ? [...(sharedScenarioRecipe(sharedScenario.key)?.hints || [])] : null,
+  solution: () => {
+    const row = sharedScenario.active && sharedScenarioRecipe(sharedScenario.key);
+    return row ? { cause: row.cause || '', blocks: sharedSolutionBlocks(row) } : null;
+  },
   // İçeriğin AğLab görünümü (toAglab; terminalle aynı çalışma zamanı).
   view: () => aglabEngineChoice.labberView(),
   // Ad ile iki cihaz arası erişim (Labber ping'i; L7b: eski motor ping'i kaldırıldı); başarılı

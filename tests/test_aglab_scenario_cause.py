@@ -1,7 +1,8 @@
 """Ortak senaryo panelinde kök neden cevaptır: yüklemede görünmez, çözümden sonra görünür.
 
-Kök neden ipuçlarının yanında ayrı ve kapalı bir <details> ("Kök nedeni göster") içindedir;
-ipucu adımları ve çözüm komutları ayrı kutudadır ve değişmez. Senaryo çözülünce (hedefler
+Kök neden görev metninin altında ayrı ve kapalı bir <details> ("Kök nedeni göster") içindedir;
+ipuçları ve çözüm komutları panelde yoktur (arayüz PR 3: Simülatör üst çubuğunda kademeli
+İpucu ve kilitli "Çözümü göster"). Senaryo çözülünce (hedefler
 sağlanıp hedef ping'i başarılı olunca) kutu kendiliğinden açılır ve "BAŞARILI" durumunun yanına
 taşınır. Arızalı senaryo ve arızasız gözlem senaryosu (`verify.observation`) ayrı ayrı denenir;
 başka senaryo yüklenince kutu yeniden kapalıdır.
@@ -84,16 +85,15 @@ class ScenarioCauseTests(unittest.TestCase):
             "(p) => [...p.children].filter((c) => c.tagName === 'P').map((c) => c.textContent).join(' ')"
         )
         self.assertNotIn("Kök neden", visible)
-        # kutu ipuçlarının yanında; ipucu kutusu ayrı ve ipuçlarını, çözümü olduğu gibi taşır
-        hints = panel.locator("details").filter(has_text="İpuçları ve çözüm komutları")
-        self.assertEqual(hints.count(), 1)
-        for hint in recipe["hints"]:
-            self.assertIn(hint, hints.text_content())
-        self.assertNotIn(recipe["cause"], hints.text_content())
+        # Arayüz PR 3: ipuçları ve çözüm komutları panelde değil (üst çubuk İpucu / kilitli
+        # "Çözümü göster"); kök neden kutusu görev metninin hemen altında.
         self.assertEqual(
-            cause.evaluate("(d) => d.previousElementSibling.querySelector('summary').textContent"),
-            "İpuçları ve çözüm komutları",
+            panel.locator("details").filter(has_text="İpuçları ve çözüm komutları").count(), 0
         )
+        self.assertEqual(panel.locator("pre").count(), 0)
+        self.assertEqual(cause.evaluate("(d) => d.parentElement.id"), "sharedScenarioInstructions")
+        self.assertEqual(cause.evaluate("(d) => d.nextElementSibling"), None)
+        self.assertEqual(self.page.locator("#agSimSolution").count(), 0)
 
     def assert_revealed(self, recipe):
         self.assertIn("BAŞARILI", self.page.text_content("#sharedScenarioStatus"))
@@ -122,7 +122,7 @@ class ScenarioCauseTests(unittest.TestCase):
         self.assertFalse(self.cause().evaluate("(d) => d.open"))
         self.solve_and_ping(FAULT)
         self.assert_revealed(FAULT)
-        # başka senaryo yüklenince yeniden kapalı ve ipuçlarının yanında
+        # başka senaryo yüklenince yeniden kapalı ve görev metninin altında
         self.load(OBSERVATION)
         self.assert_hidden_on_load(OBSERVATION)
 
