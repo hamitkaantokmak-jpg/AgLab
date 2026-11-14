@@ -160,7 +160,13 @@
     'aria-label': 'Olay zaman çizelgesi',
   });
   simHead.append(simTitle);
-  simPane.append(simHead, timeline);
+  // Realtime modunda Simulation alanı boş kalmaz: kısa yönlendirme.
+  const simIdle = make('p', {
+    class: 'ag-sim-simidle',
+    id: 'agSimSimIdle',
+    text: 'Paketin yolunu adım adım görmek için: terminalden bir ping at, sonra “Simulation · İncele”ye bas. Olaylar burada zaman çizelgesi olarak dizilir.',
+  });
+  simPane.append(simHead, simIdle, timeline);
   dock.append(termPane, simPane);
 
   // ---------------------------------------------------------------- yerleştirme
@@ -517,16 +523,21 @@
     }
     schedule();
   });
+  // Sıradaki ipucu: ilk sağlanmamış hedefin bir sonraki basamağı (neye bak → kavram → komut);
+  // sağlanmamış hedeflerin basamakları bitince kalan hedefler.
+  function nextLabberHint(e, rows) {
+    const level = hintLevels(e);
+    const more = (o) => (level[o.id] || 0) < o.hints.length;
+    const goal = rows.find((o) => !o.ok && more(o)) || rows.find(more);
+    return goal ? { goal, index: rows.indexOf(goal), level: level[goal.id] || 0 } : null;
+  }
   labberHint.addEventListener('click', () => {
     const c = current();
     if (c.kind !== 'labber') return;
     const e = lockEntry(c.key),
       rows = labberGoals(),
       level = hintLevels(e);
-    // Sıradaki ipucu: ilk sağlanmamış hedefin bir sonraki basamağı (neye bak → kavram → komut);
-    // sağlanmamış hedeflerin basamakları bitince kalan hedefler.
-    const more = (o) => (level[o.id] || 0) < o.hints.length;
-    const next = rows.find((o) => !o.ok && more(o)) || rows.find(more);
+    const next = nextLabberHint(e, rows)?.goal;
     if (!next) return;
     e.hints.push(next.id + '#' + ((level[next.id] || 0) + 1));
     lockSave();
@@ -855,6 +866,7 @@
   }
   function renderTimeline() {
     const hidden = !simPanel || simPanel.hidden;
+    simIdle.hidden = !hidden;
     timeline.hidden = hidden;
     eventDetail.hidden = hidden;
     const rows = simRows ? [...simRows.children] : [];
@@ -1047,9 +1059,14 @@
       academyHint.textContent = 'İpucu (' + left + ')';
     }
     if (c.kind === 'labber') {
-      const left = Math.max(0, st.hintsTotal - st.hintsUsed);
-      labberHint.textContent = 'İpucu (' + left + ')';
-      labberHint.disabled = left === 0;
+      // Sayaç hedef başınadır: düğme bir sonraki basamağın hedefini ve o hedefte kaçıncı
+      // basamakta olunduğunu gösterir ("İpucu · hedef 3: 1/3").
+      const n = nextLabberHint(lockEntry(c.key), labberGoals());
+      labberHint.textContent = n
+        ? 'İpucu · hedef ' + (n.index + 1) + ': ' + n.level + '/' + n.goal.hints.length
+        : 'İpucu · hepsi açık';
+      labberHint.disabled = !n;
+      labberHint.title = n ? 'Sıradaki: ' + n.goal.title : 'Bütün ipucu basamakları açıldı.';
     }
     meta.textContent =
       c.kind === 'academy' || c.kind === 'labber'

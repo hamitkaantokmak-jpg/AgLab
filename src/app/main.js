@@ -5299,8 +5299,55 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   function freePort(d) {
     return AgLabModel.freePort(modelTopo, d);
   }
+  // Arayüz PR 2 (ikinci tur): görünüm kutusu topolojiye sığdırılır ve tuval kutusunun en-boy
+  // oranında ortalanır (svg preserveAspectRatio "meet": iki eksende aynı ölçek). Sürükleme
+  // sürerken kutu sabit kalır; yalnız cihaz kümesi ya da tuval boyutu değişince yeniden sığdırılır
+  // (bırakınca topoloji kaymaz). Küçük ölçekte düğüm yazıları okunur kalsın diye karşı-ölçeklenir.
+  let viewFit = { key: '', box: [0, 0, 850, 420] },
+    canvasDragging = false;
+  function fitView() {
+    const cw = svg.clientWidth || 850,
+      ch = svg.clientHeight || 420;
+    const key = devices.map((d) => d.id).join(',') + '|' + Math.round(cw) + 'x' + Math.round(ch);
+    if (!canvasDragging && key !== viewFit.key) {
+      let box = [0, 0, 850, 420];
+      if (devices.length) {
+        const pad = 46;
+        let x0 = Math.min(...devices.map((d) => d.x - d.w / 2)) - pad,
+          y0 = Math.min(...devices.map((d) => d.y - d.h / 2)) - pad,
+          x1 = Math.max(...devices.map((d) => d.x + d.w / 2)) + pad,
+          y1 = Math.max(...devices.map((d) => d.y + d.h / 2)) + pad;
+        // Tek cihaz dev görünmesin: en az 420×240 birimlik alan.
+        let w = Math.max(x1 - x0, 420),
+          h = Math.max(y1 - y0, 240);
+        const aspect = cw / Math.max(1, ch);
+        if (w / h < aspect) w = h * aspect;
+        else h = w / aspect;
+        // Alt ölçek sınırı: çok büyük topolojide düğümler okunmaz ve tıklanamaz olur. Sınırın
+        // altında görünüm sol üstten başlar (eski sabit görünümdeki gibi), kalan kısım dışarıda.
+        const KMIN = 0.45;
+        if (cw / w < KMIN) box = [x0, y0, cw / KMIN, ch / KMIN];
+        else {
+          const cx = (x0 + x1) / 2,
+            cy = (y0 + y1) / 2;
+          box = [cx - w / 2, cy - h / 2, w, h];
+        }
+      }
+      viewFit = { key, box };
+    }
+    svg.setAttribute('viewBox', viewFit.box.map((v) => Math.round(v * 10) / 10).join(' '));
+    const k = cw / viewFit.box[2];
+    svg.style.setProperty('--ag-name-fs', Math.max(12.5, 11 / k).toFixed(1) + 'px');
+    svg.style.setProperty('--ag-ip-fs', Math.max(10, 9 / k).toFixed(1) + 'px');
+    svg.style.setProperty('--ag-label-fs', Math.max(9.5, 9 / k).toFixed(1) + 'px');
+  }
+  if (typeof ResizeObserver === 'function')
+    new ResizeObserver(() => {
+      if (!canvasDragging && svg.isConnected) fitView();
+    }).observe(svg);
   function render() {
     svg.innerHTML = '';
+    fitView();
     const ns = 'http://www.w3.org/2000/svg';
     const el = (tag, attrs, parent = svg) => {
       let e = document.createElementNS(ns, tag);
@@ -5363,10 +5410,35 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
           svg,
         ).textContent = mid;
       if (!same) {
-        el('text', { x: x1 + uy * 10, y: y1 - ux * 10, class: 'pt-port-label' }, svg).textContent =
-          pa;
-        el('text', { x: x2 + uy * 10, y: y2 - ux * 10, class: 'pt-port-label' }, svg).textContent =
-          pb;
+        // Etiket düğüm kartının kenarının dışında, kablo boyunca (kartın altında kalmaz).
+        const exit = (d) =>
+          Math.min(
+            Math.abs(ux) > 1e-6 ? d.w / 2 / Math.abs(ux) : Infinity,
+            Math.abs(uy) > 1e-6 ? d.h / 2 / Math.abs(uy) : Infinity,
+          );
+        const ta = exit(a) + 16,
+          tb = exit(b) + 16,
+          side = uy >= 0 ? 1 : -1;
+        if (ta + tb < len) {
+          el(
+            'text',
+            {
+              x: a.x + ux * ta + uy * 9 * side,
+              y: a.y + uy * ta - ux * 9 * side + 3,
+              class: 'pt-port-label',
+            },
+            svg,
+          ).textContent = pa;
+          el(
+            'text',
+            {
+              x: b.x - ux * tb + uy * 9 * side,
+              y: b.y - uy * tb - ux * 9 * side + 3,
+              class: 'pt-port-label',
+            },
+            svg,
+          ).textContent = pb;
+        }
       }
     });
     devices.forEach((d) => {
@@ -5437,12 +5509,24 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
         const move = (e) => {
           if (deviceCliDragExceeded(ev, e, startX, startY)) moved = true;
           if (!moved) return;
-          const rect = svg.getBoundingClientRect();
-          d.x = Math.max(55, Math.min(795, ox + ((e.clientX - startX) * 850) / rect.width));
-          d.y = Math.max(45, Math.min(385, oy + ((e.clientY - startY) * 420) / rect.height));
+          canvasDragging = true;
+          // Ekran pikselinden kullanıcı birimine: görünüm kutusu "meet" ile ölçeklenir, iki
+          // eksende aynı oran (getScreenCTM). Cihaz görünür alanın içinde kalır.
+          const m = svg.getScreenCTM(),
+            [bx, by, bw, bh] = viewFit.box;
+          const scale = m && m.a ? 1 / m.a : bw / svg.getBoundingClientRect().width;
+          d.x = Math.max(
+            bx + d.w / 2,
+            Math.min(bx + bw - d.w / 2, ox + (e.clientX - startX) * scale),
+          );
+          d.y = Math.max(
+            by + d.h / 2,
+            Math.min(by + bh - d.h / 2, oy + (e.clientY - startY) * scale),
+          );
           render();
         };
         const clean = () => {
+          canvasDragging = false;
           window.removeEventListener('pointermove', move);
           window.removeEventListener('pointerup', up);
           window.removeEventListener('pointercancel', cancel);

@@ -283,11 +283,15 @@ class SimWorkspaceTests(unittest.TestCase):
         goals = p.evaluate("aglabLabberLabs.goals()")
         total = sum(len(g["hints"]) for g in goals)
         self.assertEqual(total, 3 * len(goals))
-        expect(p.locator("#agSimLabberHint")).to_have_text("İpucu (%d)" % total)
-        # İpuçları kademeli: ilk sağlanmamış hedefin önce "neye bak", sonra "kavram", sonra komut.
+        # İpuçları kademeli ve sayaç hedef başına: ilk sağlanmamış hedefin önce "neye bak", sonra
+        # "kavram", sonra komut ("İpucu · hedef N: k/3").
         first = next(g for g in goals if not g["ok"])
+        idx = goals.index(first) + 1
         item = p.locator('#agSimLabberHints > li[data-goal="%s"]' % first["id"])
         for step in (1, 2, 3):
+            expect(p.locator("#agSimLabberHint")).to_have_text(
+                "İpucu · hedef %d: %d/3" % (idx, step - 1)
+            )
             p.click("#agSimLabberHint")
             expect(item.locator("[data-step]")).to_have_count(step)
             expect(item.locator('[data-step="%d"]' % step)).to_contain_text(
@@ -308,10 +312,13 @@ class SimWorkspaceTests(unittest.TestCase):
         p.reload()
         p.click('[data-area="lab"]')
         expect(btn).to_be_disabled()
-        for left in range(total, 0, -1):
-            expect(p.locator("#agSimLabberHint")).to_have_text("İpucu (%d)" % left)
+        # Kilidin ipucu yolu: bütün hedeflerin komut basamağı açılınca (basamaklar sırayla açıldığı
+        # için toplam basamak sayısı kadar "İpucu").
+        for used in range(total):
             expect(btn).to_be_disabled()
+            self.assertEqual(self.lock()["hintsUsed"], used)
             p.click("#agSimLabberHint")
+        expect(p.locator("#agSimLabberHint")).to_have_text("İpucu · hepsi açık")
         expect(p.locator("#agSimLabberHint")).to_be_disabled()
         expect(btn).to_be_enabled()
         self.assertEqual(self.lock()["fails"], 0)
@@ -569,6 +576,95 @@ class SimWorkspaceTests(unittest.TestCase):
         p.click('[data-area="troubleshoot"]')
         badge = "#area-troubleshoot .tag"
         self.assertGreaterEqual(self.contrast(badge, badge), 4.5)
+
+    # ------------------------------------------------------------ ikinci tur
+    def node_boxes(self):
+        p = self.page
+        return [
+            p.locator("#ptCanvas g[data-id]").nth(i).bounding_box()
+            for i in range(p.locator("#ptCanvas g[data-id]").count())
+        ]
+
+    def test_canvas_fits_box_and_drag_follows_pointer(self):
+        p = self.page
+        for width, height in ((1280, 800), (1024, 768)):
+            p.set_viewport_size({"width": width, "height": height})
+            lab = p.evaluate("aglabLabberLabs.list()[1].id")
+            p.select_option("#labberLabSelect", lab)
+            p.click("#labberLabStart")
+            p.evaluate("scrollTo(0,0)")
+            p.wait_for_timeout(200)
+            canvas = p.locator("#ptCanvas").bounding_box()
+            wrap = p.locator(".ag-sim-canvaswrap").bounding_box()
+            # Tuval kutuyu doldurur (sol üste sıkışmış sabit 850×420 değil).
+            self.assertGreater(canvas["height"], wrap["height"] - 2)
+            boxes = self.node_boxes()
+            x0 = min(b["x"] for b in boxes)
+            x1 = max(b["x"] + b["width"] for b in boxes)
+            y0 = min(b["y"] for b in boxes)
+            y1 = max(b["y"] + b["height"] for b in boxes)
+            # Topoloji ortada ve kutunun bir boyutunu büyük ölçüde doldurur.
+            self.assertLess(abs((x0 + x1) / 2 - (canvas["x"] + canvas["width"] / 2)), 12)
+            self.assertLess(abs((y0 + y1) / 2 - (canvas["y"] + canvas["height"] / 2)), 12)
+            self.assertTrue(
+                (x1 - x0) > 0.7 * canvas["width"] or (y1 - y0) > 0.6 * canvas["height"],
+                (x0, x1, y0, y1, canvas),
+            )
+            # 1024'te de düğüm adları okunur boyda (ekranda en az 11 px).
+            size = p.evaluate(
+                "parseFloat(getComputedStyle(document.querySelector('#ptCanvas .pt-name')).fontSize) * document.getElementById('ptCanvas').getScreenCTM().a"
+            )
+            self.assertGreaterEqual(size, 10.9, width)
+            # Sürükleme: düğüm imleci birebir izler; bırakınca yerinde kalır (görünüm kaymaz).
+            node = p.locator("#ptCanvas g[data-id]").first
+            nid = node.get_attribute("data-id")
+            b = node.bounding_box()
+            x, y = b["x"] + b["width"] / 2, b["y"] + b["height"] / 2
+            p.mouse.move(x, y)
+            p.mouse.down()
+            p.mouse.move(x + 40, y + 25, steps=6)
+            p.mouse.up()
+            after = p.locator('#ptCanvas g[data-id="%s"]' % nid).bounding_box()
+            self.assertAlmostEqual(after["x"] - b["x"], 40, delta=1.5)
+            self.assertAlmostEqual(after["y"] - b["y"], 25, delta=1.5)
+            p.wait_for_timeout(200)
+            again = p.locator('#ptCanvas g[data-id="%s"]' % nid).bounding_box()
+            self.assertAlmostEqual(again["x"], after["x"], delta=0.5)
+            self.assertAlmostEqual(again["y"], after["y"], delta=0.5)
+
+    def test_port_labels_outside_node_cards(self):
+        p = self.page
+        cards = [
+            p.locator("#ptCanvas g[data-id] rect").nth(i).bounding_box()
+            for i in range(p.locator("#ptCanvas g[data-id] rect").count())
+        ]
+        labels = p.locator("#ptCanvas text.pt-port-label")
+        self.assertGreater(labels.count(), 0)
+        for i in range(labels.count()):
+            t = labels.nth(i).bounding_box()
+            cx, cy = t["x"] + t["width"] / 2, t["y"] + t["height"] / 2
+            for c in cards:
+                inside = c["x"] < cx < c["x"] + c["width"] and c["y"] < cy < c["y"] + c["height"]
+                self.assertFalse(inside, (labels.nth(i).text_content(), t, c))
+
+    def test_realtime_idle_hint_and_single_line_terminal_bar(self):
+        p = self.page
+        idle = p.locator("#agSimSimIdle")
+        expect(idle).to_be_visible()
+        expect(idle).to_contain_text("Simulation · İncele")
+        p.click("#simulationMode")
+        expect(idle).to_be_hidden()
+        p.click("#simulationRealtime")
+        expect(idle).to_be_visible()
+        # 1280 px'te terminal araç satırı (cihaz sekmeleri, seçim, temizle) tek satır.
+        p.set_viewport_size({"width": 1280, "height": 800})
+        bar = p.locator(".ag-sim-termbar")
+        centers = []
+        for sel in ["#agSimTermTabs button >> nth=0", "#ptCliDevice", "#ptClearTerminal"]:
+            b = p.locator(sel).bounding_box()
+            centers.append(b["y"] + b["height"] / 2)
+        self.assertLess(max(centers) - min(centers), 3, centers)
+        self.assertLess(bar.bounding_box()["height"], 40)
 
 
 if __name__ == "__main__":
