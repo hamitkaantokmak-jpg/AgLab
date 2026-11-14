@@ -5854,8 +5854,6 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
                 ' via ' +
                 r.nextHop +
                 '; çözümleme rotası ' +
-                route.net +
-                '/' +
                 route.prefix +
                 '.',
             );

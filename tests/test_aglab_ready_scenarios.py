@@ -277,6 +277,46 @@ class ReadyScenarioUiTests(unittest.TestCase):
             self.page.click('[data-area="lab"]')
             self.assertEqual(self.page.evaluate(self.OUTSIDE_JS, [rid]), [], rid)
 
+    def test_route_for_query(self):
+        """Senaryo hedefinde `routeFor` (LabQuery): {prefix, nextHop, ad, source}."""
+        p = self.page
+
+        def check(field, expected):
+            return p.evaluate(
+                "(c) => aglabSharedEngine.queryCheck(c)",
+                {
+                    "fn": "routeFor",
+                    "args": ["R1", "10.20.0.10"],
+                    "field": field,
+                    "expected": expected,
+                },
+            )
+
+        self.load("floating-static")
+        # Başta: asıl rotanın next-hop'u çözümlenemiyor, R1'de kullanılabilir rota yok.
+        self.assertFalse(check("source", "S")["ok"])
+        self.assertIn("şu an null", check("source", "S")["why"])
+        recipe = next(r for r in RECIPES if r["id"] == "floating-static")
+        for block in recipe["solution"]:
+            self.cli(block["device"], *block["commands"])
+        for field, expected in (
+            ("source", "S"),
+            ("ad", 5),
+            ("nextHop", "10.0.0.2"),
+            ("prefix", "10.20.0.0/24"),
+        ):
+            self.assertTrue(check(field, expected)["ok"], field)
+        self.load("default-route")
+        recipe = next(r for r in RECIPES if r["id"] == "default-route")
+        self.assertFalse(check("source", "default")["ok"])
+        for block in recipe["solution"]:
+            self.cli(block["device"], *block["commands"])
+        self.assertTrue(check("source", "default")["ok"])
+        self.assertTrue(check("prefix", "0.0.0.0/0")["ok"])
+        # İzinli olmayan sorgu hâlâ reddedilir.
+        with self.assertRaises(Exception):
+            p.evaluate("aglabSharedEngine.queryCheck({fn: 'routes', args: ['R1'], expected: 1})")
+
     def test_long_title_single_line(self):
         p = self.page
         p.set_viewport_size({"width": 1024, "height": 800})

@@ -132,6 +132,8 @@ const SHARED_QUERY_FNS = new Set([
   'etherchannel',
   // FHRP: router arayüzü grupta HSRP Active / VRRP Master mı
   'fhrpActive',
+  // Arayüz PR 3: hedef için kullanılan rota {prefix, nextHop, ad, source(C/S/O/default)}
+  'routeFor',
 ]);
 /**
  * Bir hedef satırı: { fn, args, field?, expected, label? }. Bağımsız değişkenlerde cihaz
@@ -360,6 +362,8 @@ window.aglabSharedEngine = {
   goal: () => sharedRecipeGoal(sharedScenarioRecipe(sharedScenario.key)),
   // Arayüz PR 3: üst çubuk Kontrol et / İpucu / Çözümü göster (yüklü senaryo yoksa null).
   check: sharedCheck,
+  // Tek bir `query` hedef satırını yüklü senaryonun şu anki durumunda dener ({ ok, why }).
+  queryCheck: (check) => sharedQueryCheck(aglabLabber.cloneRuntime(), check),
   // Çözüm kilidi açılınca (sim-workspace.js) kök neden kutusu eklenir.
   unlockCause: () => sharedScenario.active && sharedCauseUnlock(),
   hints: () =>

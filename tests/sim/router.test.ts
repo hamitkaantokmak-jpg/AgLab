@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { createLab, createSession, runScript, type VpcsSession } from '../../src/sim'
 import { deliver, routeTable } from '../../src/sim/net'
 import type { LabRuntime } from '../../src/sim/runtime'
+import type { RouteLookup } from '../../src/sim/query'
 import type { LabDef } from '../../src/sim/types'
 import { ports } from '../../src/sim/util'
 
@@ -226,5 +227,31 @@ describe('OSPF ile AD karşılaştırması', () => {
     expect(pcPing(rt, 'H1', '192.168.2.20')).not.toMatch(/bytes from/)
     cfg(rt, 'R2', 'router ospf 1\nno network 10.0.12.0 0.0.0.3 area 1\nnetwork 10.0.12.0 0.0.0.3 area 0')
     expect(pcPing(rt, 'H1', '192.168.2.20')).toMatch(/bytes from 192\.168\.2\.20/)
+  })
+})
+
+// Arayüz PR 3: LabQuery.routeFor özeti (senaryo hedefleri için `routeFor` sorgusu).
+describe('LabQuery.routeFor', () => {
+  const pick = (r: RouteLookup | null) =>
+    r && { prefix: r.prefix, nextHop: r.nextHop, ad: r.ad, source: r.source }
+
+  it('bağlı, statik (AD), varsayılan; eşleşme yoksa null', () => {
+    const rt = createLab(lab({ R1: 'ip route 192.168.2.0 255.255.255.0 10.0.12.2 5' }))
+    const q = () => rt.query()
+    expect(pick(q().routeFor('R1', '192.168.1.10'))).toEqual({ prefix: '192.168.1.0/24', nextHop: null, ad: 0, source: 'C' })
+    expect(pick(q().routeFor('R1', '192.168.2.20'))).toEqual({ prefix: '192.168.2.0/24', nextHop: '10.0.12.2', ad: 5, source: 'S' })
+    expect(q().routeFor('R1', '8.8.8.8')).toBeNull()
+    cfg(rt, 'R1', 'ip route 0.0.0.0 0.0.0.0 10.0.13.2')
+    expect(pick(q().routeFor('R1', '8.8.8.8'))).toEqual({ prefix: '0.0.0.0/0', nextHop: '10.0.13.2', ad: 1, source: 'default' })
+    // daha uzun önek varsayılandan önce gelir; rota tablosu alanları korunur
+    const r = q().routeFor('R1', '192.168.2.20')!
+    expect([r.code, r.ifname, r.nh]).toEqual(['S', 'GigabitEthernet0/1', '10.0.12.2'])
+  })
+
+  it('çözümlenemeyen AD 1 rotası seçilmez; yedek (AD 5) seçilir', () => {
+    const rt = createLab(lab({ R1: 'ip route 192.168.2.0 255.255.255.0 10.0.1.2' }))
+    expect(rt.query().routeFor('R1', '192.168.2.20')).toBeNull()
+    cfg(rt, 'R1', 'ip route 192.168.2.0 255.255.255.0 10.0.12.2 5')
+    expect(pick(rt.query().routeFor('R1', '192.168.2.20'))).toEqual({ prefix: '192.168.2.0/24', nextHop: '10.0.12.2', ad: 5, source: 'S' })
   })
 })

@@ -8,6 +8,17 @@ import type { DhcpBinding, SwitchConfig } from './types'
 import { pk } from './topology'
 import { canonIf, ipToInt, normalizeMac, prefixMaskInt } from './util'
 
+const OSPF_AD = 110
+
+/** `LabQuery.routeFor` sonucu: rota tablosu girdisi + senaryo hedefleri için özet alanlar. */
+export type RouteLookup = Omit<RouteEntry, 'prefix' | 'ad'> & {
+  prefix: string
+  prefixLength: number
+  nextHop: string | null
+  ad: number
+  source: 'C' | 'S' | 'O' | 'default'
+}
+
 export class LabQuery {
   constructor(
     public d: Derived,
@@ -99,8 +110,15 @@ export class LabQuery {
   /**
    * Route the device would use for dst (longest match over the installed table), or null.
    * L4: Akademi kaynak arayüzlü ICMP ölçütü bunu eski motorun routeLookup'ı gibi kullanır.
+   *
+   * Arayüz PR 3: senaryo hedefleri için özet alanlar da döner (rota tablosu girdisinin alanları
+   * — code, net, nh, ifname, paths, via — korunur):
+   * - `prefix`: "ağ/uzunluk" (ör. "10.20.0.0/24"); `prefixLength` sayı olarak
+   * - `nextHop`: yapılandırılmış next-hop (bağlı ağda null)
+   * - `ad`: yönetimsel uzaklık (bağlı 0, statik yapılandırılan ya da 1, OSPF 110)
+   * - `source`: 'C' | 'S' | 'O' | 'default' (0.0.0.0/0 ne kaynaktan gelirse gelsin 'default')
    */
-  routeFor(dev: string, dst: string): RouteEntry | null {
+  routeFor(dev: string, dst: string): RouteLookup | null {
     const n = ipToInt(dst)
     if (n === null) return null
     let best: RouteEntry | null = null
@@ -110,7 +128,10 @@ export class LabQuery {
       if (((n & m) >>> 0) !== ((ipToInt(e.net)! & m) >>> 0)) continue
       if (!best || e.prefix > best.prefix) best = e
     }
-    return best
+    if (!best) return null
+    const source: RouteLookup['source'] = best.prefix === 0 ? 'default' : best.code === 'C' ? 'C' : best.code === 'S' ? 'S' : 'O'
+    const ad = best.code === 'C' ? 0 : best.code === 'S' ? (best.ad ?? 1) : OSPF_AD
+    return { ...best, prefix: `${best.net}/${best.prefix}`, prefixLength: best.prefix, nextHop: best.code === 'C' ? null : best.nh, ad, source }
   }
 
   errDisabled(dev: string, port: string): boolean {
