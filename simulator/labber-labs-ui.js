@@ -145,5 +145,10 @@ window.aglabLabberLabs = {
       ok: o.ok,
       detail: o.detail ?? null,
       hint: o.hint || '',
+      // Kademeli ipucu: neye bak → kavram → komut (src/labs/hint-tiers.ts + labın hint'i).
+      hints: [
+        ...(AgLabSim.LABBER_HINT_TIERS?.[aglabLabber.lab()?.id]?.[o.id] || []),
+        ...(o.hint ? [o.hint] : []),
+      ],
     })) ?? null,
 };

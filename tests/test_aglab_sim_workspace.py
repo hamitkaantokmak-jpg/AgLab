@@ -281,11 +281,20 @@ class SimWorkspaceTests(unittest.TestCase):
         btn = p.locator("#agSimSolutionBtn")
         expect(btn).to_be_disabled()
         goals = p.evaluate("aglabLabberLabs.goals()")
-        expect(p.locator("#agSimLabberHint")).to_have_text("İpucu (%d)" % len(goals))
-        # İpuçları sırayla: ilk sağlanmamış hedeften.
-        p.click("#agSimLabberHint")
+        total = sum(len(g["hints"]) for g in goals)
+        self.assertEqual(total, 3 * len(goals))
+        expect(p.locator("#agSimLabberHint")).to_have_text("İpucu (%d)" % total)
+        # İpuçları kademeli: ilk sağlanmamış hedefin önce "neye bak", sonra "kavram", sonra komut.
         first = next(g for g in goals if not g["ok"])
-        expect(p.locator("#agSimLabberHints li").first).to_contain_text(first["hint"])
+        item = p.locator('#agSimLabberHints > li[data-goal="%s"]' % first["id"])
+        for step in (1, 2, 3):
+            p.click("#agSimLabberHint")
+            expect(item.locator("[data-step]")).to_have_count(step)
+            expect(item.locator('[data-step="%d"]' % step)).to_contain_text(
+                first["hints"][step - 1]
+            )
+        self.assertEqual(first["hints"][2], first["hint"])
+        expect(item.locator('[data-step="1"]')).to_contain_text("Neye bak")
         for _ in range(3):
             p.click("#labberLabCheck")
         self.assertEqual(self.lock()["fails"], 3)
@@ -299,13 +308,37 @@ class SimWorkspaceTests(unittest.TestCase):
         p.reload()
         p.click('[data-area="lab"]')
         expect(btn).to_be_disabled()
-        for left in range(len(goals), 0, -1):
+        for left in range(total, 0, -1):
             expect(p.locator("#agSimLabberHint")).to_have_text("İpucu (%d)" % left)
             expect(btn).to_be_disabled()
             p.click("#agSimLabberHint")
         expect(p.locator("#agSimLabberHint")).to_be_disabled()
         expect(btn).to_be_enabled()
         self.assertEqual(self.lock()["fails"], 0)
+
+    def test_labber_hint_tiers_are_graded(self):
+        """Her Labber lab hedefinin üç basamağı var; ilk iki basamak komut vermez."""
+        command = re.compile(
+            r"\b(show |interface |switchport|spanning-tree |channel-group|ip route|router ospf|"
+            r"no shutdown|configure terminal|hostname |network \d|ip address|copy running|"
+            r"write memory|passive-interface|default-information|errdisable)",
+            re.I,
+        )
+        labs = self.page.evaluate("aglabLabberLabs.list().map(l=>l.id)")
+        tiers = self.page.evaluate("AgLabSim.LABBER_HINT_TIERS")
+        self.assertEqual(sorted(tiers), sorted(labs))
+        for lab in labs:
+            self.page.select_option("#labberLabSelect", lab)
+            self.page.click("#labberLabStart")
+            self.page.wait_for_function("(id)=>aglabLabberLabs.active()===id", arg=lab)
+            goals = self.page.evaluate("aglabLabberLabs.goals()")
+            self.assertEqual(sorted(tiers[lab]), sorted(g["id"] for g in goals), lab)
+            for g in goals:
+                self.assertEqual(len(g["hints"]), 3, (lab, g["id"]))
+                for i, text in enumerate(g["hints"][:2]):
+                    self.assertTrue(text.strip(), (lab, g["id"], i))
+                    self.assertIsNone(command.search(text), (lab, g["id"], i, text))
+                self.assertEqual(g["hints"][2], g["hint"])
 
     def test_embedded_solutions_match_teacher_json(self):
         html = HTML.read_text("utf-8")

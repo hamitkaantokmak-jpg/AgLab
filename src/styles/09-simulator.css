@@ -1127,3 +1127,12 @@ html:has(#area-lab.active) {
 #ptWorkbench .ag-sim-dock .ag-sim-tick {
   background-color: transparent !important;
 }
+.ag-sim-hintsteps {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+}
+.ag-sim-hintstep {
+  font-weight: 700;
+  color: var(--accent-text);
+}

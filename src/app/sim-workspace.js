@@ -417,6 +417,15 @@
       return [];
     }
   };
+  // Labber labı ipuçları kademelidir: kayıtta "hedef#basamak" (1 neye bak, 2 kavram, 3 komut).
+  const hintLevels = (e) => {
+    const level = {};
+    for (const h of e.hints) {
+      const [id, n] = String(h).split('#');
+      if (n) level[id] = Math.max(level[id] || 0, Number(n));
+    }
+    return level;
+  };
   const lockEntry = (key) => (lockState[key] ||= { fails: 0, hints: [] });
   function current() {
     const a = window.academy?.active?.();
@@ -443,14 +452,17 @@
       };
     }
     if (c.kind === 'labber') {
-      const e = lockEntry(c.key);
-      const total = labberGoals().length;
+      const e = lockEntry(c.key),
+        rows = labberGoals(),
+        level = hintLevels(e);
+      const total = rows.reduce((n, o) => n + o.hints.length, 0),
+        used = rows.reduce((n, o) => n + Math.min(level[o.id] || 0, o.hints.length), 0);
       return {
         hasSolution: true,
         fails: e.fails,
-        hintsUsed: e.hints.length,
+        hintsUsed: used,
         hintsTotal: total,
-        unlocked: e.fails >= SOLUTION_FAILS || (total > 0 && e.hints.length >= total),
+        unlocked: e.fails >= SOLUTION_FAILS || (total > 0 && used >= total),
       };
     }
     // Ortak senaryoların ipucu/çözüm/kök neden düzeni Sorun Çöz ekranında (PR 3).
@@ -509,13 +521,14 @@
     const c = current();
     if (c.kind !== 'labber') return;
     const e = lockEntry(c.key),
-      rows = labberGoals();
-    // Sıradaki ipucu: henüz gösterilmemiş ilk sağlanmamış hedef; yoksa gösterilmemiş ilk hedef.
-    const next =
-      rows.find((o) => !o.ok && !e.hints.includes(o.id)) ||
-      rows.find((o) => !e.hints.includes(o.id));
+      rows = labberGoals(),
+      level = hintLevels(e);
+    // Sıradaki ipucu: ilk sağlanmamış hedefin bir sonraki basamağı (neye bak → kavram → komut);
+    // sağlanmamış hedeflerin basamakları bitince kalan hedefler.
+    const more = (o) => (level[o.id] || 0) < o.hints.length;
+    const next = rows.find((o) => !o.ok && more(o)) || rows.find(more);
     if (!next) return;
-    e.hints.push(next.id);
+    e.hints.push(next.id + '#' + ((level[next.id] || 0) + 1));
     lockSave();
     schedule();
   });
@@ -954,12 +967,35 @@
       return;
     }
     const e = lockEntry(c.key),
-      rows = labberGoals();
+      rows = labberGoals(),
+      level = hintLevels(e);
+    const order = [...new Set(e.hints.map((h) => String(h).split('#')[0]))];
+    const STEP = ['Neye bak', 'Kavram', 'Komut'];
     labberHints.replaceChildren(
-      ...e.hints
+      ...order
         .map((id) => rows.find((o) => o.id === id))
-        .filter(Boolean)
-        .map((o) => make('li', {}, make('b', { text: o.title + ': ' }), o.hint)),
+        .filter((o) => o && level[o.id])
+        .map((o) =>
+          make(
+            'li',
+            { 'data-goal': o.id },
+            make('b', { text: o.title }),
+            make(
+              'ol',
+              { class: 'ag-sim-hintsteps' },
+              ...o.hints
+                .slice(0, level[o.id])
+                .map((t, i) =>
+                  make(
+                    'li',
+                    { 'data-step': String(i + 1) },
+                    make('span', { class: 'ag-sim-hintstep', text: (STEP[i] || '') + ': ' }),
+                    t,
+                  ),
+                ),
+            ),
+          ),
+        ),
     );
   }
   function engineText(c) {

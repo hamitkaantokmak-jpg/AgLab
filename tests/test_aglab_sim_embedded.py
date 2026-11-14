@@ -127,12 +127,14 @@ class SimEmbeddedTests(unittest.TestCase):
         # L0 motor API'si + L1 köprüsü (toLabber/toAglab/createRuntime ve yardımcıları) +
         # L3-a terminal oturum sınıfları (IosSession/VpcsSession) + L3-b olay adaptörü
         # (pingTrace) + L5-h PKT IOS metin yolu (cliImport, importReportWithCli, modeledDiffs,
-        # modeledProjection).
+        # modeledProjection). Arayüz PR 2: LABBER_HINT_TIERS (Labber lab hedeflerinin kademeli
+        # ipuçlarının ilk iki basamağı; veri, motor davranışı değil).
         self.assertEqual(
             result["api"],
             [
                 "BridgeError",
                 "IosSession",
+                "LABBER_HINT_TIERS",
                 "LABBER_LABS",
                 "LabQuery",
                 "MODEL_L2",
