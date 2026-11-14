@@ -7,7 +7,7 @@ Labber sütunu ve senaryo tablosu: her Akademi labının başlangıç topolojisi
 Çöz senaryolarının yüklenmiş başlangıç topolojisi, derlenmiş HTML'deki köprüye
 (`AgLabSim.toLabber`) verilir; Labber'da ifade edilebilirlik ve gerekçeleri yazılır (L7b: tek
 motor; ifade edilemeyen içerik "simüle edilemiyor" olarak açılır, başka motora düşmez).
-Senaryoların bir kısmının topolojisi kodla kurulduğu için tarayıcı (Playwright) gerekir.
+Senaryolar ürünün yükleyicisiyle (tarayıcıda, Playwright) açılıp köprüye verilir.
 CI, tests/test_lab_engine_map.py ile tablonun bu kararlarla güncel olduğunu doğrular.
 """
 

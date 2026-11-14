@@ -419,8 +419,11 @@ class SimWorkspaceTests(unittest.TestCase):
         self.assertEqual(p.evaluate("aglabSimWorkspace.context().kind"), "shared")
         expect(p.locator("#sharedScenarioStatus")).to_be_visible()
         expect(p.locator("#agSimSharedReset")).to_be_visible()
-        # Ortak senaryonun çözüm düzeni Sorun Çöz ekranında (PR 3); burada çözüm düğmesi yok.
-        expect(p.locator("#agSimSolutionBtn")).to_be_hidden()
+        # PR 3: hazır senaryoda da İpucu / Kontrol et ve kilitli çözüm düğmesi
+        # (ayrıntı test_aglab_ready_scenarios).
+        expect(p.locator("#agSimSharedHint")).to_be_visible()
+        expect(p.locator("#agSimSharedCheck")).to_be_visible()
+        expect(p.locator("#agSimSolutionBtn")).to_be_disabled()
         # Ping → Simulation Mode: zaman çizelgesi olay satırlarıyla aynı.
         src = p.evaluate("aglabSharedEngine.active() && academyEngine.snapshot().devices[0].id")
         self.cli(src, "ping " + p.evaluate("aglabSharedEngine.target()"))

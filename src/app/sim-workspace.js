@@ -321,6 +321,51 @@
     catalogHead.append(modes);
     if (info) others.append(info);
   }
+  // Hazır senaryo konusu kimliğin önekindedir (vlan-…, acl-…, ec-…); öneksiz eski kimlikler
+  // ayrıca eşlenir. Bilinmeyen önek "Diğer" konusuna düşer.
+  const TOPICS = {
+    phy: 'Fiziksel katman',
+    eth: 'Ethernet ve ARP',
+    vlan: 'VLAN ve trunk',
+    roas: 'VLAN arası yönlendirme',
+    stp: 'STP',
+    ec: 'EtherChannel',
+    psec: 'Port security',
+    cdp: 'CDP',
+    mgmt: 'Cihaz yönetimi',
+    ip: 'IP adresleme',
+    gw: 'Ağ geçidi ve statik rota',
+    diag: 'Teşhis araçları',
+    ospf: 'OSPF',
+    fhrp: 'FHRP',
+    dhcp: 'DHCP',
+    dns: 'DNS',
+    acl: 'ACL',
+    nat: 'NAT',
+    method: 'Sorun giderme yöntemi',
+    other: 'Diğer',
+  };
+  const LEGACY_TOPIC = {
+    'subif-missing': 'roas',
+    'port-security': 'psec',
+    'access-vlan': 'vlan',
+    'trunk-allowed': 'vlan',
+    'native-vlan': 'vlan',
+    'return-route': 'gw',
+    'forward-route': 'gw',
+    'default-route': 'gw',
+    'wrong-prefix': 'gw',
+    'unresolved-next-hop': 'gw',
+    'lpm-next-hop': 'gw',
+    'floating-static': 'gw',
+    'relay-trunk': 'dhcp',
+  };
+  function topicOf(id) {
+    if (LEGACY_TOPIC[id]) return LEGACY_TOPIC[id];
+    const prefix = String(id).split('-')[0];
+    return prefix in TOPICS ? prefix : 'other';
+  }
+  const fold = (t) => String(t).toLocaleLowerCase('tr');
   const PROGRESS = {
     academy: 'aglab-academy-progress-v1',
     labber: 'aglab-labber-progress-v1',
@@ -409,14 +454,47 @@
   if (labberTitle) lb.head.append(labberTitle);
   catalogGrid.append(lb.card);
   const sharedCount = $('sharedScenarioSelect')?.options.length || 0;
+  // Arayüz PR 3: hazır senaryolarda konu süzgeci (kimlik önekinden) ve arama.
+  const sharedTopic = make('select', {
+    id: 'agSimSharedTopic',
+    'aria-label': 'Hazır senaryolar: konu',
+  });
+  const sharedSearch = make('input', {
+    type: 'search',
+    id: 'agSimSharedSearch',
+    placeholder: 'Senaryo ara',
+    'aria-label': 'Hazır senaryolarda ara',
+  });
+  const sharedFilter = make(
+    'div',
+    { class: 'ag-cat-filter', id: 'agSimSharedFilter' },
+    sharedTopic,
+    sharedSearch,
+  );
   const sh = catCard(
     'shared',
     $('sharedScenarioPanel'),
     'Hazır senaryolar',
     $('sharedScenarioSelect'),
     $('sharedScenarioLoad'),
+    [sharedFilter],
   );
   sh.head.append(make('h3', { text: 'Hazır senaryolar (' + sharedCount + ')' }));
+  {
+    const counts = new Map();
+    for (const o of $('sharedScenarioSelect')?.options || []) {
+      const t = topicOf(o.value);
+      counts.set(t, (counts.get(t) || 0) + 1);
+    }
+    sharedTopic.append(make('option', { value: '', text: 'Bütün konular (' + sharedCount + ')' }));
+    for (const [key, label] of Object.entries(TOPICS))
+      if (counts.has(key))
+        sharedTopic.append(
+          make('option', { value: key, text: label + ' (' + counts.get(key) + ')' }),
+        );
+  }
+  sharedTopic.addEventListener('change', () => renderCatalog('shared'));
+  sharedSearch.addEventListener('input', () => renderCatalog('shared'));
   catalogGrid.append(sh.card);
   // Eski araçlar.
   for (const n of [$('labExperiments'), $('ux14LabMore')]) if (n) others.append(n);
@@ -432,7 +510,8 @@
       return {
         name: lab ? value + ' ' + lab.title : text,
         level: lab?.module || '',
-        status: best === 100 ? '✓ tamamlandı' : Number.isInteger(best) ? 'en iyi ' + best : '',
+        status:
+          best === 100 ? '✓ tamamlandı' : Number.isInteger(best) ? 'en iyi ' + best : 'başlanmadı',
         done: best === 100,
       };
     }
@@ -442,16 +521,30 @@
       return {
         name: info?.title || text,
         level: info?.level || '',
-        status: done ? '✓ tamamlandı' : '',
+        status: done ? '✓ tamamlandı' : 'başlanmadı',
         done,
       };
     }
     const done = !!readProgress('shared')[value]?.completed;
-    return { name: text, level: '', status: done ? '✓ tamamlandı' : '', done };
+    const topic = topicOf(value);
+    return {
+      name: text,
+      level: '',
+      topicLabel: TOPICS[topic],
+      status: done ? '✓ tamamlandı' : 'başlanmadı',
+      done,
+      topic,
+    };
   }
   function renderCatalog(only) {
     const academyFiltered = typeof window.academy?.searchMatches === 'function';
     const visibleAcademy = new Set(academyFiltered ? window.academy.searchMatches() : []);
+    const topicPick = sharedTopic.value,
+      query = fold(sharedSearch.value.trim());
+    // Hazır senaryo satırı konu ve aramaya uyuyor mu (ad, kimlik ya da konu adı).
+    const sharedVisible = (value, m) =>
+      (!topicPick || m.topic === topicPick) &&
+      (!query || [m.name, value, m.topicLabel].some((t) => fold(t).includes(query)));
     for (const [key, c] of Object.entries(catCards)) {
       if (only && only !== key) continue;
       if (!c.select) continue;
@@ -469,14 +562,16 @@
               'data-value': o.value,
               'aria-selected': String(selected),
               'data-done': m.done ? 'true' : null,
-              hidden: key === 'academy' && academyFiltered && !visibleAcademy.has(o.value),
+              hidden:
+                (key === 'academy' && academyFiltered && !visibleAcademy.has(o.value)) ||
+                (key === 'shared' && !sharedVisible(o.value, m)),
               tabindex: selected ? '0' : '-1',
             },
-            make('span', { class: 'ag-cat-name', text: m.name }),
+            make('span', { class: 'ag-cat-name', text: m.name, title: m.name }),
             make('span', { class: 'ag-cat-level', text: m.level || '' }),
             make('span', {
               class: 'ag-cat-status',
-              text: isActive ? 'açık' : m.status || '—',
+              text: isActive ? 'açık' : m.status || 'başlanmadı',
             }),
           );
           const pick = () => {
@@ -543,13 +638,16 @@
   put('free', 'extra', 'aglabFirstNetworkGuide');
   const academyHints = $('academyHints');
   const labberHints = make('ol', { id: 'agSimLabberHints', class: 'ag-sim-hintlist' });
+  const sharedHints = make('ol', { id: 'agSimSharedHints', class: 'ag-sim-hintlist' });
   const hintCtx = {
     academy: make('div', { 'data-ctx': 'academy' }),
     labber: make('div', { 'data-ctx': 'labber' }),
+    shared: make('div', { 'data-ctx': 'shared' }),
   };
   if (academyHints) hintCtx.academy.append(academyHints);
   hintCtx.labber.append(labberHints);
-  hintBox.append(hintCtx.academy, hintCtx.labber);
+  hintCtx.shared.append(sharedHints);
+  hintBox.append(hintCtx.academy, hintCtx.labber, hintCtx.shared);
 
   // Üst çubuk düğmeleri: etkin bağlamın gerçek denetimleri (kimlikleri aynı).
   const choose = button('agSimChoose', 'Görev seç');
@@ -564,7 +662,9 @@
     labberCheck = $('labberLabCheck');
   const labberReset = button('agSimLabberReset', 'Sıfırla'),
     labberHint = button('agSimLabberHint', 'İpucu');
-  const sharedReset = button('agSimSharedReset', 'Sıfırla');
+  const sharedReset = button('agSimSharedReset', 'Sıfırla'),
+    sharedHint = button('agSimSharedHint', 'İpucu'),
+    sharedCheck = button('agSimSharedCheck', 'Kontrol et', 'ag-btn ag-btn-primary');
   for (const [b, text] of [
     [academyReset, 'Sıfırla'],
     [academyHint, 'İpucu'],
@@ -579,7 +679,7 @@
   labberCheck?.classList.add('ag-btn-primary');
   actx.academy.append(...[academyReset, academyHint, academyCheck].filter(Boolean));
   actx.labber.append(labberReset, labberHint, ...(labberCheck ? [labberCheck] : []));
-  actx.shared.append(sharedReset);
+  actx.shared.append(sharedReset, sharedHint, sharedCheck);
   const solutionBtn = button('agSimSolutionBtn', 'Çözümü göster');
   solutionBtn.setAttribute('aria-describedby', 'agSimSolutionLock');
   const lockNote = make('span', { id: 'agSimSolutionLock', class: 'ag-sim-sr' });
@@ -651,6 +751,7 @@
     return level;
   };
   const lockEntry = (key) => (lockState[key] ||= { fails: 0, hints: [] });
+  const sharedHintList = () => window.aglabSharedEngine?.hints?.() || [];
   function current() {
     const a = window.academy?.active?.();
     if (a) return { kind: 'academy', id: a.id, key: 'academy:' + a.id, info: a };
@@ -697,7 +798,19 @@
           (rows.length > 0 && unmet.length > 0 && commandsOpen === unmet.length),
       };
     }
-    // Ortak senaryoların ipucu/çözüm/kök neden düzeni Sorun Çöz ekranında (PR 3).
+    if (c.kind === 'shared') {
+      // Hazır senaryo: Akademi ile aynı kural (3 başarısız kontrol ya da bütün ipuçları).
+      const e = lockEntry(c.key),
+        total = sharedHintList().length,
+        used = Math.min(e.hints.length, total);
+      return {
+        hasSolution: !!window.aglabSharedEngine.solution()?.blocks.length,
+        fails: e.fails,
+        hintsUsed: used,
+        hintsTotal: total,
+        unlocked: e.fails >= SOLUTION_FAILS || (total > 0 && used >= total),
+      };
+    }
     return { hasSolution: false, unlocked: false, fails: 0, hintsUsed: 0, hintsTotal: 0 };
   }
   function renderSolution(c) {
@@ -718,6 +831,13 @@
       for (const [dev, script] of Object.entries(window.aglabLabberLabs.solution(c.id)))
         box.append(
           make('pre', { class: 'ag-term', text: dev + ' (ayrıcalıklı moddan)\n' + script }),
+        );
+    } else if (c.kind === 'shared') {
+      const sol = window.aglabSharedEngine.solution();
+      if (sol.cause) box.append(make('p', { text: 'Kök neden: ' + sol.cause }));
+      for (const block of sol.blocks)
+        box.append(
+          make('pre', { class: 'ag-term', text: block.device + '\n' + block.commands.join('\n') }),
         );
     }
     solutionSlot.append(box);
@@ -766,6 +886,27 @@
     const next = nextLabberHint(e, rows)?.goal;
     if (!next) return;
     e.hints.push(next.id + '#' + ((level[next.id] || 0) + 1));
+    lockSave();
+    schedule();
+  });
+
+  sharedCheck.addEventListener('click', () => {
+    const c = current();
+    if (c.kind !== 'shared') return;
+    const r = window.aglabSharedEngine.check();
+    if (r && !r.ok) {
+      lockEntry(c.key).fails++;
+      lockSave();
+    }
+    if (r?.ok) renderCatalog('shared');
+    schedule();
+  });
+  sharedHint.addEventListener('click', () => {
+    const c = current();
+    if (c.kind !== 'shared') return;
+    const e = lockEntry(c.key);
+    if (e.hints.length >= sharedHintList().length) return;
+    e.hints.push(e.hints.length + 1);
     lockSave();
     schedule();
   });
@@ -1280,6 +1421,27 @@
         ),
     );
   }
+  function renderSharedHints(c) {
+    if (c.kind !== 'shared') {
+      sharedHints.replaceChildren();
+      return;
+    }
+    const list = sharedHintList(),
+      used = Math.min(lockEntry(c.key).hints.length, list.length);
+    sharedHints.replaceChildren(
+      ...list.slice(0, used).map((t, i) =>
+        make(
+          'li',
+          { 'data-step': String(i + 1) },
+          make('span', {
+            class: 'ag-sim-hintstep',
+            text: 'İpucu ' + (i + 1) + '/' + list.length + ': ',
+          }),
+          t,
+        ),
+      ),
+    );
+  }
   function engineText(c) {
     const src =
       c.kind === 'academy'
@@ -1315,7 +1477,7 @@
       catalogKey = c.key;
       renderCatalog();
     }
-    title.textContent =
+    title.textContent = title.title =
       'Simülatör · ' +
       (c.kind === 'academy'
         ? c.id + ' ' + c.info.title
@@ -1345,18 +1507,44 @@
         ? 'Sıradaki: ' + n.goal.title
         : 'Sağlanmamış hedeflerin bütün ipucu basamakları açık.';
     }
-    meta.textContent =
-      c.kind === 'academy'
-        ? 'Başarısız kontrol: ' + st.fails + ' · ipucu ' + st.hintsUsed + '/' + st.hintsTotal
-        : c.kind === 'labber'
-          ? 'Başarısız kontrol: ' +
-            st.fails +
-            ' · komut ipucu ' +
-            st.commandsOpen +
-            '/' +
-            st.commandsNeeded +
-            ' hedef'
-          : '';
+    if (c.kind === 'shared') {
+      const left = Math.max(0, st.hintsTotal - st.hintsUsed);
+      sharedHint.textContent = left ? 'İpucu (' + left + ')' : 'İpuçları açık';
+      sharedHint.disabled = !left;
+      sharedHint.title = left
+        ? 'Sıradaki ipucu: ' + (st.hintsUsed + 1) + '/' + st.hintsTotal
+        : 'Bütün ipuçları açık.';
+    }
+    // Sayaç: görünür kısa biçim (✗ başarısız kontrol · 💡 ipucu), uzun metin ekran okuyucu
+    // ve araç ipucu için (1280 px'te kesilmez; başlık kalan yeri kullanır).
+    const counted = c.kind === 'academy' || c.kind === 'shared';
+    const long = counted
+      ? 'Başarısız kontrol: ' + st.fails + ' · ipucu ' + st.hintsUsed + '/' + st.hintsTotal
+      : c.kind === 'labber'
+        ? 'Başarısız kontrol: ' +
+          st.fails +
+          ' · komut ipucu ' +
+          st.commandsOpen +
+          '/' +
+          st.commandsNeeded +
+          ' hedef'
+        : '';
+    const short = counted
+      ? '✗' + st.fails + ' · 💡' + st.hintsUsed + '/' + st.hintsTotal
+      : c.kind === 'labber'
+        ? '✗' + st.fails + ' · 💡' + st.commandsOpen + '/' + st.commandsNeeded + ' hedef'
+        : '';
+    meta.replaceChildren(
+      ...(long
+        ? [
+            make('span', { class: 'ag-sim-meta-short', 'aria-hidden': 'true', text: short }),
+            make('span', { class: 'ag-sim-sr', text: long }),
+          ]
+        : []),
+    );
+    meta.title = long;
+    // #86: hazır senaryonun kök nedeni kilit açılınca (kapalı kutu) DOM'a girer.
+    if (c.kind === 'shared' && st.unlocked) window.aglabSharedEngine.unlockCause();
     solutionBtn.hidden = !st.hasSolution;
     const shown = !!$('agSimSolution');
     solutionBtn.disabled = !st.unlocked || shown;
@@ -1372,10 +1560,12 @@
     solutionBtn.title = lockNote.textContent;
     hintBox.hidden = !(
       (c.kind === 'academy' && st.hintsUsed > 0) ||
-      (c.kind === 'labber' && st.hintsUsed > 0)
+      (c.kind === 'labber' && st.hintsUsed > 0) ||
+      (c.kind === 'shared' && st.hintsUsed > 0)
     );
     renderGoals(c);
     renderLabberHints(c);
+    renderSharedHints(c);
     renderTermTabs();
     if (activeTab === 'port') renderPort();
     renderTimeline();

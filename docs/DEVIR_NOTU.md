@@ -16,7 +16,7 @@ Her adım ayrı PR, bir öncekinin dalı üstüne; birleştirilmez.
 | PR 1 iskelet, adlandırma, tek paket | #91 | birleşti |
 | PR 2 Simülatör çalışma alanı, çözüm kilidi | #92 | birleşti |
 | PR 2b Simülatör artıkları | #93, `claude/arayuz-2b-simulator` (taban `main`) | açık |
-| PR 3 Sorun Çöz | — | sırada (#93 dalından) |
+| PR 3 Sorun Çöz | `claude/dreamy-wright-f5x0dz` (taban #93 dalı) | ön adım yapıldı (aşağıda); ekranın kendisi sırada |
 | PR 4 Müfredat haritası ve ders | — | sırada |
 
 PR 1:
@@ -76,6 +76,26 @@ PR 2b (dal `claude/arayuz-2b-simulator`, main'den):
   ≤ 520 px: palet tek satır, tuval yüksekliği ≥ ekran genişliği.
 - Tema: kayıtlı seçim yoksa `prefers-color-scheme`, yoksa açık; düğme eylemi söyler + aria-label.
 - PC/sunucu hızlı show: `show ip`, `show arp` (+ sunucuda `show services`).
+
+PR 3 ön adımı (kullanıcı isteği "PR 3'e ek, önce bunlar"; dal `claude/dreamy-wright-f5x0dz`):
+- Kodla kurulan son on hazır senaryo (yedi statik rota, `nat-pat`, `relay-trunk`, `stp-loop`)
+  `network-scenarios.json`'a taşındı; `main.js` kurucuları ve `index.html`'deki sabit seçenekler
+  silindi (seçim listesi tamamen tariften). Görev metni belirti + kanıtın toplanacağı cihaz; kök
+  neden `cause`, komut kilitli çözümde (#86). Regresyon denetiminin NAT maddesi kaynak metni
+  yerine tarifin topolojisine bakar. Ayrıntı: UYUMLULUK_MATRISI "Ortak senaryo panelinde kök neden".
+- Ortak senaryo paneli artık ipucu/çözüm kutusu basmaz. Simülatör üst çubuğunda hazır senaryo
+  için Sıfırla / İpucu (kademeli, `hints` sırasıyla) / Kontrol et (`aglabSharedEngine.check()`:
+  `sharedRecipeGoal`; başarıda ilerleme + kök neden açılır) ve aynı kilit (`aglab-solution-lock-v1`,
+  anahtar `shared:<id>`; 3 başarısız kontrol ya da bütün ipuçları). Çözüm (kök neden + komutlar)
+  yalnız "Çözümü göster" ile DOM'a eklenir.
+- Katalog "Hazır senaryolar": konu süzgeci `#agSimSharedTopic` (kimlik önekinden; öneksiz eski
+  kimlikler `LEGACY_TOPIC` ile) ve arama `#agSimSharedSearch` (ad, kimlik, konu); seviye sütununda
+  konu adı. Durum boşsa "başlanmadı" (üç kart).
+- `#agSimTitle` tek satır, taşan kısım üç nokta; tam ad `title` özniteliğinde.
+- Test: yeni `test_aglab_ready_scenarios.py`; `test_aglab_scenario_cause` uyarlandı (ipucu kutusu
+  yok, kök neden kutusu panelin son öğesi).
+- Kalan PR 3: belirti kartı, Belirti → Teşhis → Kanıt → Düzeltme, katman seçici, kanıt defteri,
+  gereksiz değişiklik uyarısı (aşağıdaki PR 3 maddesi).
 
 Kalan (PR 3–4; PR 3 → `claude/arayuz-2b-simulator` dalından), bir öncekinin dalı üstüne (PR 2 → `claude/arayuz-1-iskelet`):
 

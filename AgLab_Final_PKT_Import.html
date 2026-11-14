@@ -3826,14 +3826,30 @@ html:not([data-theme='light']) {
 .ag-sim-title {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 10px;
+  flex: 1 1 240px;
   min-width: 0;
+  /* Tek satırlık başlığın doğal genişliği sayfayı genişletmesin (dar ekranda yatay kaydırma). */
+  contain: inline-size;
 }
+/* PR 3: uzun görev adı tek satırda kısalır; tam ad title özniteliğinde. */
 #agSimTitle {
   font-size: 15px;
   color: var(--text);
-  overflow-wrap: anywhere;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ag-sim-title > .ag-tag {
+  flex: none;
+  white-space: nowrap;
+}
+/* Sayaç kısa biçimde (✗0 · 💡0/3) kesilmeden durur; başlık kalan yeri kullanır. */
+.ag-sim-title > #agSimMeta {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .ag-tag {
   display: inline-block;
@@ -3848,8 +3864,9 @@ html:not([data-theme='light']) {
   background: #f1eadf;
   color: #8a5a14;
 }
+/* Başlık kabı (.ag-sim-title) büyüyerek boşluğu alır; ayraç yer kaplamaz. */
 .ag-sim-spacer {
-  flex: 1 1 auto;
+  flex: 0 0 0;
 }
 .ag-sim-actions,
 .ag-sim-ctxactions {
@@ -5095,6 +5112,18 @@ html:has(#area-lab.active) {
   font-weight: 600;
   box-shadow: none;
 }
+.ag-cat-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+#area-lab .ag-cat-filter select {
+  flex: 1 1 140px;
+}
+#area-lab .ag-cat-filter input {
+  flex: 2 1 160px;
+  min-width: 0;
+}
 .ag-cat-list {
   list-style: none;
   margin: 0;
@@ -5369,7 +5398,7 @@ html:has(#area-lab.active) {
 <section id="sharedScenarioPanel" aria-labelledby="sharedScenarioTitle" style="margin:12px 0;padding:14px;border:1px solid #3b5f79;border-radius:12px;background:linear-gradient(135deg,rgba(34,73,98,.35),rgba(20,30,44,.55));">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <div style="min-width:220px;flex:1"><h3 id="sharedScenarioTitle" style="margin:0 0 5px">Gerçek motorlu senaryolar · Ortak motor</h3><p style="margin:0;color:var(--muted,#a9b7c8);font-size:13px">Routing ve switching görevleri bu ortak motorda çalışır. Çözüm bayrağı yok: cihaz CLI’sinde IOS-benzeri komutla yapılandırmayı düzelt; başarı, topolojinin VLAN/L2, routing ve ping motoruyla doğrulanır. İçe aktarmada STP, ACL ve NAT alanları da şema doğrulamasından geçer. Desteklenen görevler Sorun Çöz listesinden de buraya yönlendirilir.</p></div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label for="sharedScenarioSelect" style="font-size:12px">Senaryo</label><select id="sharedScenarioSelect" style="max-width:260px"><option value="return-route">Dönüş rotası eksik</option><option value="forward-route">İleri rota eksik</option><option value="default-route">Varsayılan rota eksik</option><option value="wrong-prefix">Statik rota yanlış prefix</option><option value="unresolved-next-hop">Çözümlenemeyen recursive next-hop</option><option value="lpm-next-hop">LPM: daha spesifik rota yanlış next-hop</option><option value="floating-static">Administrative Distance: yedek statik rota</option><option value="nat-pat">NAT/PAT: overload yapılandırması eksik</option><option value="relay-trunk">DHCP relay: trunk VLAN eksik</option><option value="stp-loop">STP: yedek bağlantı döngüsü</option></select><button type="button" id="sharedScenarioLoad" class="primary">Senaryoyu yükle</button></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label for="sharedScenarioSelect" style="font-size:12px">Senaryo</label><select id="sharedScenarioSelect" style="max-width:260px"></select><button type="button" id="sharedScenarioLoad" class="primary">Senaryoyu yükle</button></div>
       </div>
       <div id="sharedScenarioInstructions" style="margin-top:10px;font-size:13px;line-height:1.55">Senaryo seçip yükle. Topoloji, arızalı yapılandırmayla oluşturulacak.</div>
       <div id="sharedScenarioEngine" class="engine-badge" style="margin-top:8px;font-size:12px;font-weight:600">Motor: senaryo yüklenince belirlenir.</div>
@@ -11212,6 +11241,7 @@ var AgLabSim = (() => {
   }
 
   // src/sim/query.ts
+  var OSPF_AD2 = 110;
   var LabQuery = class {
     constructor(d, startup = {}, learned = /* @__PURE__ */ new Set(), leases = []) {
       this.d = d;
@@ -11285,6 +11315,13 @@ var AgLabSim = (() => {
     /**
      * Route the device would use for dst (longest match over the installed table), or null.
      * L4: Akademi kaynak arayüzlü ICMP ölçütü bunu eski motorun routeLookup'ı gibi kullanır.
+     *
+     * Arayüz PR 3: senaryo hedefleri için özet alanlar da döner (rota tablosu girdisinin alanları
+     * — code, net, nh, ifname, paths, via — korunur):
+     * - `prefix`: "ağ/uzunluk" (ör. "10.20.0.0/24"); `prefixLength` sayı olarak
+     * - `nextHop`: yapılandırılmış next-hop (bağlı ağda null)
+     * - `ad`: yönetimsel uzaklık (bağlı 0, statik yapılandırılan ya da 1, OSPF 110)
+     * - `source`: 'C' | 'S' | 'O' | 'default' (0.0.0.0/0 ne kaynaktan gelirse gelsin 'default')
      */
     routeFor(dev, dst) {
       const n = ipToInt(dst);
@@ -11296,7 +11333,10 @@ var AgLabSim = (() => {
         if ((n & m) >>> 0 !== (ipToInt(e.net) & m) >>> 0) continue;
         if (!best || e.prefix > best.prefix) best = e;
       }
-      return best;
+      if (!best) return null;
+      const source = best.prefix === 0 ? "default" : best.code === "C" ? "C" : best.code === "S" ? "S" : "O";
+      const ad = best.code === "C" ? 0 : best.code === "S" ? best.ad ?? 1 : OSPF_AD2;
+      return { ...best, prefix: `${best.net}/${best.prefix}`, prefixLength: best.prefix, nextHop: best.code === "C" ? null : best.nh, ad, source };
     }
     errDisabled(dev, port) {
       return !!this.d.phys[pk(dev, this.canon(port))]?.errDisabled;
@@ -21134,6 +21174,8 @@ const AgLabModel = (() => {
   };
   function importTopology(input) {
     validateTopologyData(input);
+    // Yeni topoloji: görünüm yeniden sığdırılır (aynı cihaz kimlikleri eski görünümde kalmasın).
+    viewFit.key = '';
     // v23 ve öncesi: eski `startupConfig` alanları oturum kurulunca Labber startup'ına çevrilir.
     const { obj, startups } = takeLegacyStartups(input);
     // Yeni içerik: önceki Labber oturumu biter ve bu içerik için yeniden kurulur.
@@ -21403,18 +21445,31 @@ const AgLabModel = (() => {
   // (bırakınca topoloji kaymaz). Küçük ölçekte düğüm yazıları okunur kalsın diye karşı-ölçeklenir.
   let viewFit = { key: '', box: [0, 0, 850, 420] },
     canvasDragging = false;
-  function fitView() {
+  /**
+   * Görünümü bütün düğümlere sığdırır. Kutular cihazın kart dikdörtgeninden (d.w × d.h) ve —
+   * çizimden sonra — kartın gerçek çizilmiş kutusundan (ad/IP yazısı kartı aşabilir) alınır.
+   * `extents` verilirse ([x0, y0, x1, y1], kullanıcı birimi) sığdırma ona göre yeniden yapılır.
+   * Anahtar: cihaz kimlikleri + tuval boyutu; yeni topoloji (importTopology) anahtarı sıfırlar,
+   * böylece aynı kimlikli (d1…dN) başka bir topoloji eski görünümde kalmaz.
+   */
+  function fitView(extents) {
     const cw = svg.clientWidth || 850,
       ch = svg.clientHeight || 420;
     const key = devices.map((d) => d.id).join(',') + '|' + Math.round(cw) + 'x' + Math.round(ch);
-    if (!canvasDragging && key !== viewFit.key) {
+    if (!canvasDragging && (key !== viewFit.key || extents)) {
       let box = [0, 0, 850, 420];
       if (devices.length) {
         const pad = 46;
-        let x0 = Math.min(...devices.map((d) => d.x - d.w / 2)) - pad,
-          y0 = Math.min(...devices.map((d) => d.y - d.h / 2)) - pad,
-          x1 = Math.max(...devices.map((d) => d.x + d.w / 2)) + pad,
-          y1 = Math.max(...devices.map((d) => d.y + d.h / 2)) + pad;
+        const e = extents || [
+          Math.min(...devices.map((d) => d.x - d.w / 2)),
+          Math.min(...devices.map((d) => d.y - d.h / 2)),
+          Math.max(...devices.map((d) => d.x + d.w / 2)),
+          Math.max(...devices.map((d) => d.y + d.h / 2)),
+        ];
+        let x0 = e[0] - pad,
+          y0 = e[1] - pad,
+          x1 = e[2] + pad,
+          y1 = e[3] + pad;
         // Tek cihaz dev görünmesin: en az 420×240 birimlik alan.
         let w = Math.max(x1 - x0, 420),
           h = Math.max(y1 - y0, 240);
@@ -21441,7 +21496,10 @@ const AgLabModel = (() => {
   }
   if (typeof ResizeObserver === 'function')
     new ResizeObserver(() => {
-      if (!canvasDragging && svg.isConnected) fitView();
+      if (!canvasDragging && svg.isConnected) {
+        fitView();
+        fitDrawn();
+      }
     }).observe(svg);
   function render() {
     svg.innerHTML = '';
@@ -21643,8 +21701,40 @@ const AgLabModel = (() => {
         window.addEventListener('pointercancel', cancel);
       });
     });
+    fitDrawn();
     $p('ptCanvasStatus').textContent = `${devices.length} cihaz · ${links.length} bağlantı`;
     saveTopology(true);
+  }
+  /**
+   * Çizimden sonra: bir kartın çizilmiş kutusu (yazılar dahil) görünümün dışına taşıyorsa
+   * görünüm çizilmiş kutulara göre yeniden sığdırılır (taşma yoksa görünüm değişmez).
+   */
+  function fitDrawn() {
+    if (canvasDragging || !devices.length || !svg.isConnected || !svg.clientWidth) return;
+    let x0 = Infinity,
+      y0 = Infinity,
+      x1 = -Infinity,
+      y1 = -Infinity;
+    for (const g of svg.querySelectorAll('g.pt-node')) {
+      const d = get(g.dataset.id);
+      if (!d) continue;
+      let b;
+      try {
+        b = g.getBBox();
+      } catch (e) {
+        continue;
+      }
+      const ox = d.x - d.w / 2,
+        oy = d.y - d.h / 2;
+      x0 = Math.min(x0, ox + Math.min(0, b.x));
+      y0 = Math.min(y0, oy + Math.min(0, b.y));
+      x1 = Math.max(x1, ox + Math.max(d.w, b.x + b.width));
+      y1 = Math.max(y1, oy + Math.max(d.h, b.y + b.height));
+    }
+    if (!Number.isFinite(x0)) return;
+    const [bx, by, bw, bh] = viewFit.box;
+    if (x0 >= bx && y0 >= by && x1 <= bx + bw && y1 <= by + bh) return;
+    fitView([x0, y0, x1, y1]);
   }
   function deleteSelected() {
     const d = get(selected);
@@ -21902,8 +21992,6 @@ const AgLabModel = (() => {
                 ' via ' +
                 r.nextHop +
                 '; çözümleme rotası ' +
-                route.net +
-                '/' +
                 route.prefix +
                 '.',
             );
@@ -22253,235 +22341,19 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
       return {};
     }
   }
+  function sharedSaveProgress(key) {
+    const prog = sharedProgress();
+    prog[key] = { completed: true, at: new Date().toISOString() };
+    try {
+      localStorage.setItem(sharedProgressKey, JSON.stringify(prog));
+    } catch (e) {}
+  }
   function sharedStatus(message, ok = false) {
     const el = $p('sharedScenarioStatus');
     if (!el) return;
     el.textContent = message;
     el.style.border = '1px solid ' + (ok ? '#27856a' : '#536579');
     el.style.background = ok ? 'rgba(22,130,93,.18)' : 'rgba(100,116,139,.15)';
-  }
-  function loadSharedStpScenario() {
-    academyClearSession();
-    devices = [];
-    links = [];
-    sourceArchiveData = null;
-    importReportData = null;
-    nextId = 1;
-    beginEthernetEvents();
-    const pc1 = addDevice('PC', 55, 180),
-      sw1 = addDevice('Switch', 245, 90),
-      sw2 = addDevice('Switch', 495, 90),
-      sw3 = addDevice('Switch', 370, 300),
-      pc2 = addDevice('PC', 685, 300);
-    pc1.name = 'PC-01';
-    pc1.ip = '192.168.10.10';
-    pc1.mask = '255.255.255.0';
-    pc1.gateway = '0.0.0.0';
-    pc1.vlan = 10;
-    pc2.name = 'PC-02';
-    pc2.ip = '192.168.10.20';
-    pc2.mask = '255.255.255.0';
-    pc2.gateway = '0.0.0.0';
-    pc2.vlan = 10;
-    [sw1, sw2, sw3].forEach((sw, i) => {
-      sw.name = 'SW-0' + (i + 1);
-      sw.vlans = [1, 10];
-      sw.stpPriority = i === 1 ? 4096 : 32768;
-      Object.entries(sw.interfaces).forEach(([n, it]) => {
-        it.enabled = true;
-        it.mode = 'trunk';
-        it.allowed = [1, 10];
-        it.nativeVlan = 1;
-      });
-    });
-    // Access-facing ports on the endpoint switches.
-    sw1.interfaces['fa0/1'].mode = 'access';
-    sw1.interfaces['fa0/1'].vlan = 10;
-    sw3.interfaces['fa0/1'].mode = 'access';
-    sw3.interfaces['fa0/1'].vlan = 10;
-    links = [
-      { a: pc1.id, b: sw1.id, portA: 'eth0', portB: 'fa0/1', up: true },
-      { a: sw1.id, b: sw2.id, portA: 'gi0/1', portB: 'gi0/1', up: true },
-      { a: sw2.id, b: sw3.id, portA: 'gi0/2', portB: 'gi0/1', up: true },
-      { a: sw3.id, b: sw1.id, portA: 'gi0/2', portB: 'gi0/2', up: true },
-      { a: sw3.id, b: pc2.id, portA: 'fa0/1', portB: 'eth0', up: true },
-    ];
-    selected = pc1.id;
-    sharedScenario = { active: true, key: 'stp-loop', sourceId: pc1.id, target: pc2.ip };
-    render();
-    syncSelects();
-    $p('ptCliDevice').value = pc1.id;
-    updateInspector();
-    updatePrompt();
-    saveTopology(true);
-    $p('ptTerminal').replaceChildren();
-    $p('sharedScenarioInstructions').innerHTML =
-      '<b>Görev:</b> Üç switch arasında yedekli halka bağlantısı var. STP, döngüyü önlemek için yedek switch-switch bağlantısını forwarding ağacının dışında bırakır. <code>show spanning-tree</code> ile root bridge ve port durumlarını incele; ardından PC-01’den <code>ping 192.168.10.20</code> çalıştır. Root bridge seçimini değiştirmek için switch üzerinde <code>enable</code> → <code>configure terminal</code> → <code>spanning-tree vlan 10 priority 4096</code> benzeri bir komut kullanabilirsin. Bu eğitim modeli port maliyeti, BPDU zamanlayıcıları ve gerçek IOS STP yakınsamasını simüle etmez.';
-    sharedStatus(
-      'STP halka topolojisi yüklendi. Ping, STP forwarding ağacında kalan bağlantılar üzerinden ilerler.',
-    );
-    say(
-      'STP halka topolojisi yüklendi; yedek switch bağlantısı döngüsüz forwarding ağacına alınmaz.',
-      'outinfo',
-    );
-  }
-  function loadSharedNatScenario() {
-    academyClearSession();
-    devices = [];
-    links = [];
-    sourceArchiveData = null;
-    importReportData = null;
-    nextId = 1;
-    beginEthernetEvents();
-    const pc = addDevice('PC', 55, 170),
-      swIn = addDevice('Switch', 220, 170),
-      r = addDevice('Router', 390, 170),
-      swOut = addDevice('Switch', 560, 170),
-      srv = addDevice('Server', 735, 170);
-    pc.name = 'PC-01';
-    pc.ip = '192.168.1.10';
-    pc.mask = '255.255.255.0';
-    pc.gateway = '192.168.1.1';
-    pc.vlan = 10;
-    swIn.name = 'SW-LAN';
-    swOut.name = 'SW-WAN';
-    r.name = 'R1';
-    srv.name = 'WEB-PUBLIC';
-    srv.ip = '203.0.113.8';
-    srv.mask = '255.255.255.0';
-    // L5-d: genel adres alanındaki sunucunun özel ağa rotası yoktur (ağ geçidi yok): NAT'sız
-    // 192.168.1.10 kaynaklı paket sunucuya ulaşır ama yanıt dönemez (gerçek IOS davranışı).
-    // L5-g: sunucunun HTTP servisi (TCP 80) Labber'da; PC'den `curl 203.0.113.8` ile denenir.
-    srv.gateway = '';
-    srv.services = { http: true };
-    [swIn, swOut].forEach((sw) => {
-      sw.vlans = [1, 10];
-      Object.entries(sw.interfaces).forEach(([n, i]) => {
-        i.enabled = true;
-        i.mode = 'access';
-        i.vlan = 10;
-        i.allowed = [10, 20];
-      });
-    });
-    r.interfaces = {
-      'g0/0': { ip: '192.168.1.1', mask: '255.255.255.0', enabled: true, natRole: 'inside' },
-      'g0/1': { ip: '203.0.113.1', mask: '255.255.255.0', enabled: true, natRole: 'outside' },
-    };
-    r.staticRoutes = [];
-    r.acls = [
-      {
-        id: '1',
-        action: 'permit',
-        protocol: 'ip',
-        srcType: 'network',
-        src: '192.168.1.0',
-        wildcard: '0.0.0.255',
-        dstType: 'any',
-        dst: '',
-      },
-    ];
-    r.natTranslations = [];
-    links = [
-      { a: pc.id, b: swIn.id, portA: 'eth0', portB: 'fa0/1', up: true },
-      { a: swIn.id, b: r.id, portA: 'fa0/2', portB: 'g0/0', up: true },
-      { a: r.id, b: swOut.id, portA: 'g0/1', portB: 'fa0/1', up: true },
-      { a: swOut.id, b: srv.id, portA: 'fa0/2', portB: 'eth0', up: true },
-    ];
-    selected = pc.id;
-    sharedScenario = { active: true, key: 'nat-pat', sourceId: pc.id, target: srv.ip };
-    render();
-    syncSelects();
-    $p('ptCliDevice').value = pc.id;
-    updateInspector();
-    updatePrompt();
-    saveTopology(true);
-    $p('ptTerminal').replaceChildren();
-    $p('sharedScenarioInstructions').innerHTML =
-      '<b>Arıza:</b> R1 üzerinde LAN arayüzü NAT inside, WAN arayüzü NAT outside; kaynak ACL 1 izin veriyor. Ancak NAT overload kuralı eksik.<br><b>Görev:</b> PC-01’den <code>ping 203.0.113.8</code> ile başarısızlığı gözle. R1’i seç, <code>enable</code> → <code>configure terminal</code> → <code>ip nat inside source list 1 interface g0/1 overload</code> komutlarını uygula. Ardından PC-01’den ping’i tekrar çalıştır ve R1 üzerinde <code>show ip nat translations</code> ile çeviriyi doğrula.';
-    sharedStatus(
-      'NAT/PAT senaryosu yüklendi. İlk ping NAT overload eksikliği nedeniyle başarısız olmalı.',
-    );
-    say(
-      'Gerçek motorlu NAT/PAT senaryosu yüklendi; çeviri tablosu yalnızca başarılı dış trafik testinde oluşur.',
-      'outinfo',
-    );
-  }
-  function loadSharedRelayTrunkScenario() {
-    academyClearSession();
-    devices = [];
-    links = [];
-    sourceArchiveData = null;
-    importReportData = null;
-    nextId = 1;
-    beginEthernetEvents();
-    const pc = addDevice('PC', 55, 170),
-      sw1 = addDevice('Switch', 230, 170),
-      sw2 = addDevice('Switch', 410, 170),
-      r = addDevice('Router', 590, 170),
-      srv = addDevice('Server', 770, 170);
-    pc.name = 'PC-01';
-    pc.ip = '169.254.30.8';
-    pc.mask = '255.255.0.0';
-    pc.gateway = '0.0.0.0';
-    pc.vlan = 10;
-    pc.dhcpLease = false;
-    sw1.name = 'SW-01';
-    sw2.name = 'SW-02';
-    r.name = 'R1';
-    srv.name = 'DHCP-SRV';
-    for (const sw of [sw1, sw2]) {
-      sw.vlans = [1, 10, 20];
-      Object.entries(sw.interfaces).forEach(([n, i]) => {
-        i.enabled = true;
-        if (n.startsWith('gi')) {
-          i.mode = 'trunk';
-          i.allowed = [10, 20];
-          i.nativeVlan = 1;
-        } else {
-          i.mode = 'access';
-          i.vlan = 10;
-        }
-      });
-    }
-    sw1.interfaces['gi0/1'].allowed = [20];
-    r.interfaces = {
-      'g0/0': {
-        ip: '192.168.1.1',
-        mask: '255.255.255.0',
-        enabled: true,
-        helperAddress: '10.10.20.2',
-      },
-      'g0/1': { ip: '10.10.20.1', mask: '255.255.255.0', enabled: true },
-    };
-    srv.ip = '10.10.20.2';
-    srv.mask = '255.255.255.0';
-    srv.gateway = '10.10.20.1';
-    // L5-b: senaryo yalnız DHCP servisini kullanır; şablonun DNS/HTTP servisleri kapalıdır.
-    srv.services = { dhcp: true, dns: false, http: false };
-    links = [
-      { a: pc.id, b: sw1.id, portA: 'eth0', portB: 'fa0/1', up: true },
-      { a: sw1.id, b: sw2.id, portA: 'gi0/1', portB: 'gi0/1', up: true },
-      { a: sw2.id, b: r.id, portA: 'fa0/1', portB: 'g0/0', up: true },
-      { a: r.id, b: srv.id, portA: 'g0/1', portB: 'eth0', up: true },
-    ];
-    selected = pc.id;
-    sharedScenario = { active: true, key: 'relay-trunk', sourceId: pc.id, target: srv.ip };
-    render();
-    syncSelects();
-    $p('ptCliDevice').value = pc.id;
-    updateInspector();
-    updatePrompt();
-    saveTopology(true);
-    $p('ptTerminal').replaceChildren();
-    $p('sharedScenarioInstructions').innerHTML =
-      '<b>Arıza:</b> R1 üzerinde DHCP relay etkin ve DHCP sunucusu açık; ancak SW-01 ile SW-02 arasındaki trunk yalnızca VLAN 20’yi taşıyor. PC-01 APIPA adresinde kalıyor.<br><b>Görev:</b> PC-01’de <code>ip dhcp</code> ile başarısızlığı gözle. SW-01 CLI’sinde <code>enable</code> → <code>configure terminal</code> → <code>interface gi0/1</code> → <code>switchport trunk allowed vlan 10,20</code> uygula. PC-01’e dönüp <code>ip dhcp</code> ile DHCP adresini al; <code>show ip</code> ile doğrula.';
-    sharedStatus(
-      'DHCP relay/trunk senaryosu yüklendi. VLAN 10 trunk üzerinde olmadığı için ilk DHCP yenilemesi başarısız olmalı.',
-    );
-    say(
-      'DHCP relay/trunk senaryosu yüklendi; DHCP sunucusu ve relay hazır, trunk VLAN 10’u engelliyor.',
-      'outinfo',
-    );
   }
   // Senaryo yüklenince Labber oturumu kurulur ve rozet gösterilir (engine-choice.js).
   function loadSharedScenario(key) {
@@ -22494,158 +22366,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
     sharedScenarioStartSession();
   }
   function loadSharedScenarioContent(key) {
-    // Önceki içeriğin Labber oturumu yeni senaryo kurulurken (kodla kurulanlar importTopology
-    // kullanmaz) uzlaştırılmaya çalışılmasın; motor kararı yüklemeden sonra verilir.
+    // Önceki içeriğin Labber oturumu yeni senaryo kurulurken uzlaştırılmaya çalışılmasın; motor
+    // kararı yüklemeden sonra verilir.
     aglabLabber.stop();
     sharedCauseClear();
-    if (loadNetworkScenario(key)) return;
-    if (key === 'stp-loop') {
-      loadSharedStpScenario();
-      return;
-    }
-    if (key === 'relay-trunk') {
-      loadSharedRelayTrunkScenario();
-      return;
-    }
-    if (key === 'nat-pat') {
-      loadSharedNatScenario();
-      return;
-    }
-    academyClearSession();
-    devices = [];
-    links = [];
-    sourceArchiveData = null;
-    importReportData = null;
-    nextId = 1;
-    beginEthernetEvents();
-    const pc = addDevice('PC', 70, 120),
-      sw1 = addDevice('Switch', 220, 120),
-      r1 = addDevice('Router', 360, 120),
-      r2 = addDevice('Router', 500, 270),
-      sw2 = addDevice('Switch', 650, 270),
-      srv = addDevice('Server', 760, 270);
-    pc.name = 'PC-01';
-    pc.ip = '192.168.1.10';
-    pc.mask = '255.255.255.0';
-    pc.gateway = '192.168.1.1';
-    pc.vlan = 10;
-    sw1.name = 'SW-01';
-    sw2.name = 'SW-02';
-    r1.name = 'R1';
-    r2.name = 'R2';
-    srv.name = 'SRV-01';
-    r1.interfaces = {
-      'g0/0': { ip: '192.168.1.1', mask: '255.255.255.0', enabled: true },
-      'g0/1': { ip: '10.0.0.1', mask: '255.255.255.252', enabled: true },
-    };
-    r2.interfaces = {
-      'g0/0': { ip: '10.0.0.2', mask: '255.255.255.252', enabled: true },
-      'g0/1': { ip: '10.20.0.1', mask: '255.255.255.0', enabled: true },
-    };
-    r1.staticRoutes = [];
-    r2.staticRoutes = [];
-    srv.ip = '10.20.0.10';
-    srv.mask = '255.255.255.0';
-    srv.gateway = '10.20.0.1';
-    // L4: routing senaryolarında sunucu yalnız ICMP hedefidir; DHCP/DNS/HTTP servisleri
-    // senaryoda kullanılmaz ve Labber'da modellenmez (L5). Servissiz sunucu Labber'da bir uçtur.
-    srv.services = {};
-    for (const sw of [sw1, sw2]) {
-      sw.vlans = [1, 10, 20];
-      Object.entries(sw.interfaces).forEach(([n, i]) => {
-        i.mode = 'access';
-        i.vlan = 10;
-        i.allowed = [10, 20];
-        i.enabled = true;
-      });
-    }
-    links = [
-      { a: pc.id, b: sw1.id, portA: 'eth0', portB: 'fa0/1', up: true },
-      { a: sw1.id, b: r1.id, portA: 'fa0/2', portB: 'g0/0', up: true },
-      { a: r1.id, b: r2.id, portA: 'g0/1', portB: 'g0/0', up: true },
-      { a: r2.id, b: sw2.id, portA: 'g0/1', portB: 'fa0/1', up: true },
-      { a: sw2.id, b: srv.id, portA: 'fa0/2', portB: 'eth0', up: true },
-    ];
-    if (key === 'return-route') {
-      r1.staticRoutes = [
-        { network: '10.20.0.0', mask: '255.255.255.0', nextHop: '10.0.0.2', distance: 1 },
-      ];
-    } else {
-      r2.staticRoutes = [
-        { network: '192.168.1.0', mask: '255.255.255.0', nextHop: '10.0.0.1', distance: 1 },
-      ];
-      if (key === 'wrong-prefix')
-        r1.staticRoutes = [
-          { network: '10.20.1.0', mask: '255.255.255.0', nextHop: '10.0.0.2', distance: 1 },
-        ];
-      if (key === 'unresolved-next-hop')
-        r1.staticRoutes = [
-          { network: '10.20.0.0', mask: '255.255.255.0', nextHop: '10.0.1.2', distance: 1 },
-        ];
-      if (key === 'lpm-next-hop')
-        r1.staticRoutes = [
-          { network: '10.20.0.0', mask: '255.255.0.0', nextHop: '10.0.0.2', distance: 1 },
-          { network: '10.20.0.0', mask: '255.255.255.0', nextHop: '192.168.1.254', distance: 1 },
-        ];
-      if (key === 'floating-static')
-        r1.staticRoutes = [
-          { network: '10.20.0.0', mask: '255.255.255.0', nextHop: '10.0.1.2', distance: 1 },
-        ];
-    }
-    selected = pc.id;
-    sharedScenario = { active: true, key, sourceId: pc.id, target: '10.20.0.10' };
-    render();
-    syncSelects();
-    $p('ptCliDevice').value = pc.id;
-    updateInspector();
-    updatePrompt();
-    saveTopology(true);
-    $p('ptTerminal').replaceChildren();
-    const instructions = {
-      'floating-static':
-        '<b>Arıza:</b> R1 üzerinde 10.20.0.0/24 için AD 1 olan statik rota var ancak next-hop 10.0.1.2 çözümlenemiyor. Yedek rota henüz yok.<br><b>Görev:</b> R1 CLI’sinde <code>show ip route 10.20.0.10</code> ile arızayı kanıtla. <code>enable</code> → <code>configure terminal</code> ardından <code>ip route 10.20.0.0 255.255.255.0 10.0.0.2 5</code> ile AD 5 yedek statik rotayı ekle. Motor çözümlenemeyen AD 1 rotasını kullanamayınca AD 5 rotasına geçmeli. PC-01’den <code>ping 10.20.0.10</code> ile doğrula.<br><b>Not:</b> Bu senaryo, çözümlenemeyen rotanın devre dışı kalmasıyla yedek rotanın seçilmesini öğretir; gerçek IOS cihazlarında rota kurulumu/AD davranışı platformun RIB ve recursive resolution kurallarına bağlıdır.',
-      'return-route':
-        '<b>Arıza:</b> R1 üzerinde 10.20.0.0/24 rotası var; R2 dönüş ağını bilmiyor.<br><b>Görev:</b> R2 CLI’sinde <code>show ip route</code> ile kanıt topla. Sonra <code>enable</code> → <code>configure terminal</code> → <code>ip route 192.168.1.0 255.255.255.0 10.0.0.1</code> komutlarını uygula. PC-01’e dönüp <code>ping 10.20.0.10</code> çalıştır.',
-      'forward-route':
-        '<b>Arıza:</b> R2 dönüş rotasını biliyor; R1 hedef LAN’a giden rotayı bilmiyor.<br><b>Görev:</b> R1 CLI’sinde <code>show ip route</code> ile kanıt topla. Sonra <code>enable</code> → <code>configure terminal</code> → <code>ip route 10.20.0.0 255.255.255.0 10.0.0.2</code> komutlarını uygula. PC-01’e dönüp <code>ping 10.20.0.10</code> çalıştır.',
-      'default-route':
-        '<b>Arıza:</b> R2 dönüş rotasını biliyor; R1 üzerinde uzak ağlar için uygun rota yok.<br><b>Görev:</b> R1 CLI’sinde <code>show ip route</code> ile kanıt topla. <code>enable</code> → <code>configure terminal</code> ardından <code>ip route 0.0.0.0 0.0.0.0 10.0.0.2</code> komutuyla varsayılan rota ekle. PC-01’e dönüp <code>ping 10.20.0.10</code> çalıştır. Bu senaryo, daha özel bir rota yerine varsayılan rotanın kullanılabildiğini gösterir.',
-      'wrong-prefix':
-        '<b>Arıza:</b> R1’de 10.20.1.0/24 ağına rota var; hedef sunucu ise 10.20.0.0/24 ağında. Komut sözdizimi doğru olsa bile yanlış hedef prefix sorunu çözmez.<br><b>Görev:</b> R1’de <code>show ip route</code> ile mevcut rotayı incele. <code>enable</code> → <code>configure terminal</code> ardından <code>ip route 10.20.0.0 255.255.255.0 10.0.0.2</code> komutunu ekle. Sonra PC-01’den <code>ping 10.20.0.10</code> ile doğrula.',
-      'unresolved-next-hop':
-        '<b>Arıza:</b> R1’de 10.20.0.0/24 rotası var ama next-hop 10.0.1.2, R1’in doğrudan bağlı ağlarında değil ve başka bir rotayla da çözümlenemiyor.<br><b>Görev:</b> R1’de <code>show ip route</code> ile kullanılabilir olmayan rotayı gör. <code>enable</code> → <code>configure terminal</code> ardından önce <code>no ip route 10.20.0.0 255.255.255.0 10.0.1.2</code> ile hatalı rotayı kaldır; sonra <code>ip route 10.20.0.0 255.255.255.0 10.0.0.2</code> ekle. PC-01’den <code>ping 10.20.0.10</code> ile doğrula.',
-      'lpm-next-hop':
-        '<b>Arıza:</b> R1’de hedefi kapsayan iki rota var: 10.20.0.0/16 via 10.0.0.2 ve daha spesifik 10.20.0.0/24 via 192.168.1.254. LPM kuralı /24 rotasını seçer; ancak 192.168.1.254 adresinde komşu cihaz olmadığı için ARP/next-hop çözümlemesi başarısız olur.<br><b>Görev:</b> <code>show ip route 10.20.0.10</code> ile seçilen rotayı incele. R1’de <code>enable</code> → <code>configure terminal</code> ardından <code>no ip route 10.20.0.0 255.255.255.0 192.168.1.254</code> komutuyla hatalı /24 rotasını kaldır. /16 rotasının kullanılmasını ve PC-01’den <code>ping 10.20.0.10</code> sonucunun başarılı olmasını doğrula.',
-    }[key];
-    $p('sharedScenarioInstructions').innerHTML = instructions;
-    const prog = sharedProgress();
-    if (prog[key])
-      sharedStatus(
-        'Bu gerçek motorlu senaryoyu daha önce başarıyla tamamlamışsın. Yeni topoloji yine arızalı olarak yüklendi; tekrar çözebilirsin.',
-        true,
-      );
-    else
-      sharedStatus(
-        'Arızalı topoloji yüklendi. İlk ping başarısız olmalı; doğru rotayı ekledikten sonra ping ile doğrula.',
-      );
-    say(
-      'Gerçek motorlu senaryo yüklendi: ' +
-        ({
-          'return-route': 'dönüş rotası eksik',
-          'forward-route': 'ileri rota eksik',
-          'default-route': 'varsayılan rota eksik',
-          'wrong-prefix': 'yanlış hedef prefix',
-          'unresolved-next-hop': 'çözümlenemeyen recursive next-hop',
-          'lpm-next-hop': 'LPM ile seçilen daha spesifik rotanın next-hop arızası',
-          'floating-static': 'Administrative Distance ve yedek statik rota',
-          'access-vlan': 'yanlış access VLAN',
-          'trunk-allowed': 'trunk allowed VLAN eksik',
-          'native-vlan': 'trunk native VLAN uyuşmazlığı',
-          'nat-pat': 'NAT/PAT overload eksikliği',
-        }[key] || key) +
-        '. CLI komutları topolojiyi gerçekten değiştirir.',
-      'outinfo',
-    );
+    // Bütün hazır senaryolar veri tariflidir (simulator/network-scenarios.json); eski kodla
+    // kurulan statik rota, NAT/PAT, DHCP relay ve STP senaryoları da oraya taşındı.
+    if (!loadNetworkScenario(key)) throw new Error('Senaryo tarifi bulunamadı: ' + key);
   }
   function recordSharedPing(src, target, result) {
     if (
@@ -22678,11 +22405,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = AgLabMacAd
       ),
       flow = (sourceDevice?.name || src) + ' → ' + (targetDevice?.name || target);
     if (result.ok) {
-      const prog = sharedProgress();
-      prog[sharedScenario.key] = { completed: true, at: new Date().toISOString() };
-      try {
-        localStorage.setItem(sharedProgressKey, JSON.stringify(prog));
-      } catch (e) {}
+      sharedSaveProgress(sharedScenario.key);
       sharedStatus(
         'BAŞARILI: ' +
           flow +
@@ -25145,7 +24868,298 @@ const sharedNetworkScenarios=[
   },
   {
     "id": "return-route",
-    "title": "return-route",
+    "title": "Statik rota · İstek gidiyor, yanıt dönmüyor",
+    "symptom": "PC-01 (192.168.1.10) SRV-01'e (10.20.0.10) ping atınca yanıt gelmiyor. R1'in yönlendirme tablosunda sunucu ağı görünüyor. Kanıtı PC-01'den (ping, trace) ve yol üzerindeki router'ların yönlendirme tablolarından topla.",
+    "cause": "R2'de 192.168.1.0/24 ağına dönüş rotası yok: istek sunucuya ulaşıyor, yanıt R2'de düşüyor.",
+    "hints": [
+      "PC-01'den trace at: paket nereye kadar gidiyor? Sorun gidişte mi dönüşte mi?",
+      "Yanıtın dönmesi için sunucu tarafındaki router'ın neyi bilmesi gerekir? R2'de show ip route ile 192.168.1.0/24'ü ara.",
+      "R2'ye şube ağı için next-hop'u R1 (10.0.0.1) olan bir statik rota gerekir."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 70,
+          "y": 120,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.1.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.1.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 220,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "R1",
+          "type": "Router",
+          "x": 360,
+          "y": 120,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.1.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.0.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": [
+            {
+              "network": "10.20.0.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.0.2",
+              "distance": 1
+            }
+          ]
+        },
+        {
+          "id": "d4",
+          "name": "R2",
+          "type": "Router",
+          "x": 500,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "10.0.0.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.20.0.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": []
+        },
+        {
+          "id": "d5",
+          "name": "SW-02",
+          "type": "Switch",
+          "x": 650,
+          "y": 270,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d6",
+          "name": "SRV-01",
+          "type": "Server",
+          "x": 760,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "10.20.0.10",
+          "mask": "255.255.255.0",
+          "gateway": "10.20.0.1",
+          "services": {},
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "fa0/2",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d5",
+          "portA": "g0/1",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d6",
+          "portA": "fa0/2",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "R2",
@@ -25158,12 +25172,305 @@ const sharedNetworkScenarios=[
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "ping",
+      "source": "PC-01",
+      "target": "10.20.0.10"
     }
   },
   {
     "id": "forward-route",
-    "title": "forward-route",
+    "title": "Statik rota · Paket ilk router'da kalıyor",
+    "symptom": "PC-01 (192.168.1.10) SRV-01'e (10.20.0.10) ulaşamıyor; ağ geçidine (192.168.1.1) ping başarılı. R2 şube ağını biliyor. Kanıtı PC-01'den (ping, trace) ve yol üzerindeki router'ların yönlendirme tablolarından topla.",
+    "cause": "R1'de 10.20.0.0/24 için rota (ya da varsayılan rota) yok: paket R1'de hedefe yol bulamadan düşüyor.",
+    "hints": [
+      "PC-01'den trace at: hangi router'dan sonra ilerlemiyor?",
+      "O router hedef ağı nereden öğrenir? R1'de show ip route ile 10.20.0.0/24'ü ara.",
+      "R1'e sunucu ağı için next-hop'u R2 (10.0.0.2) olan bir statik rota gerekir."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 70,
+          "y": 120,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.1.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.1.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 220,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "R1",
+          "type": "Router",
+          "x": 360,
+          "y": 120,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.1.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.0.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": []
+        },
+        {
+          "id": "d4",
+          "name": "R2",
+          "type": "Router",
+          "x": 500,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "10.0.0.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.20.0.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": [
+            {
+              "network": "192.168.1.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.0.1",
+              "distance": 1
+            }
+          ]
+        },
+        {
+          "id": "d5",
+          "name": "SW-02",
+          "type": "Switch",
+          "x": 650,
+          "y": 270,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d6",
+          "name": "SRV-01",
+          "type": "Server",
+          "x": 760,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "10.20.0.10",
+          "mask": "255.255.255.0",
+          "gateway": "10.20.0.1",
+          "services": {},
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "fa0/2",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d5",
+          "portA": "g0/1",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d6",
+          "portA": "fa0/2",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "R1",
@@ -25176,12 +25483,305 @@ const sharedNetworkScenarios=[
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "ping",
+      "source": "PC-01",
+      "target": "10.20.0.10"
     }
   },
   {
     "id": "default-route",
-    "title": "default-route",
+    "title": "Statik rota · Tek çıkışlı şube dışarı çıkamıyor",
+    "symptom": "Şube router'ı R1'in dışarıya tek çıkışı R2 (10.0.0.2); tasarımda R1 bilmediği her hedefi R2'ye göndermeli. Şu an PC-01 SRV-01'e (10.20.0.10) bile ulaşamıyor. Kanıtı R1'in yönlendirme tablosundan ve PC-01'den (ping, trace) topla.",
+    "cause": "R1'de varsayılan rota (Gateway of last resort) yok; tasarım tek tek ağ rotaları değil tek bir 0.0.0.0/0 rotası istiyor.",
+    "hints": [
+      "R1'de show ip route: 'Gateway of last resort' satırı ne diyor?",
+      "Tek çıkışlı bir router her uzak ağı tek tek mi öğrenmeli, yoksa bilinmeyen her şeyi tek yöne mi göndermeli?",
+      "R1'e next-hop'u R2 (10.0.0.2) olan varsayılan rota (0.0.0.0/0) gerekir."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 70,
+          "y": 120,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.1.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.1.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 220,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "R1",
+          "type": "Router",
+          "x": 360,
+          "y": 120,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.1.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.0.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": []
+        },
+        {
+          "id": "d4",
+          "name": "R2",
+          "type": "Router",
+          "x": 500,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "10.0.0.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.20.0.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": [
+            {
+              "network": "192.168.1.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.0.1",
+              "distance": 1
+            }
+          ]
+        },
+        {
+          "id": "d5",
+          "name": "SW-02",
+          "type": "Switch",
+          "x": 650,
+          "y": 270,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d6",
+          "name": "SRV-01",
+          "type": "Server",
+          "x": 760,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "10.20.0.10",
+          "mask": "255.255.255.0",
+          "gateway": "10.20.0.1",
+          "services": {},
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "fa0/2",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d5",
+          "portA": "g0/1",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d6",
+          "portA": "fa0/2",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "R1",
@@ -25194,12 +25794,312 @@ const sharedNetworkScenarios=[
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "ping",
+      "source": "PC-01",
+      "target": "10.20.0.10"
     }
   },
   {
     "id": "wrong-prefix",
-    "title": "wrong-prefix",
+    "title": "Statik rota · Rota eklendi ama sunucuya ulaşılmıyor",
+    "symptom": "PC-01 (192.168.1.10) SRV-01'e (10.20.0.10) ulaşamıyor. Dün R1'e sunucu ağı için statik rota eklendi ve R1'in yönlendirme tablosunda bir S satırı görünüyor. Kanıtı R1'den (show ip route) ve PC-01'den (trace) topla.",
+    "cause": "R1'deki statik rota 10.20.1.0/24 için yazılmış; sunucu 10.20.0.0/24 ağında. Hedef önek yanlış olduğu için rota eşleşmiyor.",
+    "hints": [
+      "R1'deki S satırının ağ adresini sunucunun adresiyle karşılaştır.",
+      "Bir rota yalnız hedef adres o önekin içindeyse kullanılır. 10.20.0.10, 10.20.1.0/24'ün içinde mi?",
+      "R1'e sunucunun gerçek ağı (10.20.0.0/24) için R2 üzerinden rota gerekir."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 70,
+          "y": 120,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.1.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.1.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 220,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "R1",
+          "type": "Router",
+          "x": 360,
+          "y": 120,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.1.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.0.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": [
+            {
+              "network": "10.20.1.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.0.2",
+              "distance": 1
+            }
+          ]
+        },
+        {
+          "id": "d4",
+          "name": "R2",
+          "type": "Router",
+          "x": 500,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "10.0.0.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.20.0.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": [
+            {
+              "network": "192.168.1.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.0.1",
+              "distance": 1
+            }
+          ]
+        },
+        {
+          "id": "d5",
+          "name": "SW-02",
+          "type": "Switch",
+          "x": 650,
+          "y": 270,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d6",
+          "name": "SRV-01",
+          "type": "Server",
+          "x": 760,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "10.20.0.10",
+          "mask": "255.255.255.0",
+          "gateway": "10.20.0.1",
+          "services": {},
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "fa0/2",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d5",
+          "portA": "g0/1",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d6",
+          "portA": "fa0/2",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "R1",
@@ -25212,12 +26112,312 @@ const sharedNetworkScenarios=[
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "ping",
+      "source": "PC-01",
+      "target": "10.20.0.10"
     }
   },
   {
     "id": "unresolved-next-hop",
-    "title": "unresolved-next-hop",
+    "title": "Statik rota · Yapılandırmadaki rota işe yaramıyor",
+    "symptom": "PC-01 (192.168.1.10) SRV-01'e (10.20.0.10) ulaşamıyor. R1'in running-config'inde sunucu ağı için bir statik rota yazılı. Kanıtı R1'den (show running-config, show ip route) topla.",
+    "cause": "R1'deki rotanın next-hop'u 10.0.1.2: bu adres R1'in bağlı ağlarında değil ve başka bir rotayla da çözümlenemiyor, rota kullanılamaz. Doğru next-hop R2'nin 10.0.0.2 adresi.",
+    "hints": [
+      "R1'de rotanın next-hop adresini bul. R1 bu adrese nasıl ulaşır?",
+      "Next-hop ya bağlı bir ağda olmalı ya da başka bir rotayla çözümlenmeli. 10.0.1.2 için R1'de hangisi var?",
+      "Hatalı rotayı kaldırıp aynı ağı R2'nin gerçek adresi (10.0.0.2) üzerinden yaz."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 70,
+          "y": 120,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.1.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.1.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 220,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "R1",
+          "type": "Router",
+          "x": 360,
+          "y": 120,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.1.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.0.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": [
+            {
+              "network": "10.20.0.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.1.2",
+              "distance": 1
+            }
+          ]
+        },
+        {
+          "id": "d4",
+          "name": "R2",
+          "type": "Router",
+          "x": 500,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "10.0.0.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.20.0.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": [
+            {
+              "network": "192.168.1.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.0.1",
+              "distance": 1
+            }
+          ]
+        },
+        {
+          "id": "d5",
+          "name": "SW-02",
+          "type": "Switch",
+          "x": 650,
+          "y": 270,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d6",
+          "name": "SRV-01",
+          "type": "Server",
+          "x": 760,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "10.20.0.10",
+          "mask": "255.255.255.0",
+          "gateway": "10.20.0.1",
+          "services": {},
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "fa0/2",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d5",
+          "portA": "g0/1",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d6",
+          "portA": "fa0/2",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "R1",
@@ -25231,12 +26431,318 @@ const sharedNetworkScenarios=[
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "ping",
+      "source": "PC-01",
+      "target": "10.20.0.10"
     }
   },
   {
     "id": "lpm-next-hop",
-    "title": "lpm-next-hop",
+    "title": "Statik rota · Geniş rota varken sunucuya ulaşılmıyor",
+    "symptom": "PC-01 (192.168.1.10) SRV-01'e (10.20.0.10) ulaşamıyor. R1'de 10.20.0.0/16 için R2 üzerinden bir rota var. Kanıtı R1'de hedef adres için seçilen rotadan (show ip route 10.20.0.10) ve PC-01'den (trace) topla.",
+    "cause": "R1'de daha spesifik 10.20.0.0/24 rotası (next-hop 192.168.1.254) en uzun önek eşleşmesiyle seçiliyor; 192.168.1.254'te cihaz yok, ARP çözülmüyor. /16 rotası hiç kullanılmıyor.",
+    "hints": [
+      "show ip route 10.20.0.10: hedef için hangi satır seçiliyor?",
+      "Birden çok rota eşleşince router en uzun öneki seçer. Seçilen rotanın next-hop'unda gerçekten bir cihaz var mı?",
+      "Hatalı /24 rotası kalkarsa /16 rotası kullanılır."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 70,
+          "y": 120,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.1.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.1.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 220,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "R1",
+          "type": "Router",
+          "x": 360,
+          "y": 120,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.1.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.0.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": [
+            {
+              "network": "10.20.0.0",
+              "mask": "255.255.0.0",
+              "nextHop": "10.0.0.2",
+              "distance": 1
+            },
+            {
+              "network": "10.20.0.0",
+              "mask": "255.255.255.0",
+              "nextHop": "192.168.1.254",
+              "distance": 1
+            }
+          ]
+        },
+        {
+          "id": "d4",
+          "name": "R2",
+          "type": "Router",
+          "x": 500,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "10.0.0.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.20.0.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": [
+            {
+              "network": "192.168.1.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.0.1",
+              "distance": 1
+            }
+          ]
+        },
+        {
+          "id": "d5",
+          "name": "SW-02",
+          "type": "Switch",
+          "x": 650,
+          "y": 270,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d6",
+          "name": "SRV-01",
+          "type": "Server",
+          "x": 760,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "10.20.0.10",
+          "mask": "255.255.255.0",
+          "gateway": "10.20.0.1",
+          "services": {},
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "fa0/2",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d5",
+          "portA": "g0/1",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d6",
+          "portA": "fa0/2",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "R1",
@@ -25249,12 +26755,312 @@ const sharedNetworkScenarios=[
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "ping",
+      "source": "PC-01",
+      "target": "10.20.0.10"
     }
   },
   {
     "id": "floating-static",
-    "title": "floating-static",
+    "title": "Statik rota · Asıl hat yokken yedek yol kullanılmıyor",
+    "symptom": "PC-01 (192.168.1.10) SRV-01'e (10.20.0.10) ulaşamıyor. R1'de sunucu ağı için henüz kurulmamış asıl hat üzerinden (next-hop 10.0.1.2) bir statik rota var. Tasarım: asıl rota yapılandırmada kalsın; o kullanılamazken trafik R2 (10.0.0.2) üzerinden gitsin. Kanıtı R1'den (show ip route 10.20.0.10) topla.",
+    "cause": "Asıl rotanın next-hop'u (10.0.1.2) çözümlenemiyor ve R2 üzerinden daha yüksek AD'li yedek (floating) statik rota yok; R1'in sunucu ağına kullanılabilir yolu kalmıyor.",
+    "hints": [
+      "show ip route 10.20.0.10: R1'in bu hedef için kullanılabilir bir yolu var mı?",
+      "Aynı ağa iki statik rota olunca router AD'si düşük olanı seçer; o kullanılamazsa sıradakine geçer.",
+      "R2 üzerinden, asıl rotadan (AD 1) yüksek AD'li ikinci bir rota gerekir; asıl rota silinmez."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 70,
+          "y": 120,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.1.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.1.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 220,
+          "y": 120,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "R1",
+          "type": "Router",
+          "x": 360,
+          "y": 120,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.1.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.0.0.1",
+              "mask": "255.255.255.252",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": [
+            {
+              "network": "10.20.0.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.1.2",
+              "distance": 1
+            }
+          ]
+        },
+        {
+          "id": "d4",
+          "name": "R2",
+          "type": "Router",
+          "x": 500,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "10.0.0.2",
+              "mask": "255.255.255.252",
+              "enabled": true
+            },
+            "g0/1": {
+              "ip": "10.20.0.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": [
+            {
+              "network": "192.168.1.0",
+              "mask": "255.255.255.0",
+              "nextHop": "10.0.0.1",
+              "distance": 1
+            }
+          ]
+        },
+        {
+          "id": "d5",
+          "name": "SW-02",
+          "type": "Switch",
+          "x": 650,
+          "y": 270,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d6",
+          "name": "SRV-01",
+          "type": "Server",
+          "x": 760,
+          "y": 270,
+          "w": 108,
+          "h": 72,
+          "ip": "10.20.0.10",
+          "mask": "255.255.255.0",
+          "gateway": "10.20.0.1",
+          "services": {},
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "fa0/2",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d5",
+          "portA": "g0/1",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d5",
+          "b": "d6",
+          "portA": "fa0/2",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "R1",
@@ -25267,7 +27073,9 @@ const sharedNetworkScenarios=[
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "ping",
+      "source": "PC-01",
+      "target": "10.20.0.10"
     }
   },
   {
@@ -25988,7 +27796,266 @@ const sharedNetworkScenarios=[
   },
   {
     "id": "nat-pat",
-    "title": "nat-pat",
+    "title": "NAT · İç ağ dıştaki sunucuya ulaşamıyor",
+    "symptom": "PC-01 (192.168.1.10) dış ağdaki WEB-PUBLIC'e (203.0.113.8) ulaşamıyor; ping ve curl zaman aşımına uğruyor. R1'in iç ve dış arayüzleri yapılandırılmış. Kanıtı PC-01'den ve R1'den (show ip nat translations, show ip nat statistics, show running-config) topla.",
+    "cause": "R1'de PAT (overload) kuralı yok: ACL 1 iç kaynakları seçiyor ama bunları g0/1 adresine çeviren kural tanımlı değil. Özel adresli paket çevrilmeden çıkıyor, yanıt geri dönemiyor.",
+    "hints": [
+      "PC-01'den ping at, sonra R1'de show ip nat translations: tabloda kayıt oluşuyor mu?",
+      "PAT'ın üç parçası: inside/outside arayüz rolleri, iç kaynakları seçen ACL ve ikisini bağlayan çeviri kuralı. R1'de hangisi eksik?",
+      "Eksik parça, ACL 1'i dış arayüzün (g0/1) adresine overload ile bağlayan çeviri kuralı."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 55,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.1.10",
+          "mask": "255.255.255.0",
+          "gateway": "192.168.1.1",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        },
+        {
+          "id": "d2",
+          "name": "SW-LAN",
+          "type": "Switch",
+          "x": 220,
+          "y": 170,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "R1",
+          "type": "Router",
+          "x": 390,
+          "y": 170,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.1.1",
+              "mask": "255.255.255.0",
+              "enabled": true,
+              "natRole": "inside"
+            },
+            "g0/1": {
+              "ip": "203.0.113.1",
+              "mask": "255.255.255.0",
+              "enabled": true,
+              "natRole": "outside"
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": [],
+          "acls": [
+            {
+              "id": "1",
+              "action": "permit",
+              "protocol": "ip",
+              "srcType": "network",
+              "src": "192.168.1.0",
+              "wildcard": "0.0.0.255",
+              "dstType": "any",
+              "dst": ""
+            }
+          ],
+          "natTranslations": []
+        },
+        {
+          "id": "d4",
+          "name": "SW-WAN",
+          "type": "Switch",
+          "x": 560,
+          "y": 170,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            }
+          }
+        },
+        {
+          "id": "d5",
+          "name": "WEB-PUBLIC",
+          "type": "Server",
+          "x": 735,
+          "y": 170,
+          "w": 108,
+          "h": 72,
+          "ip": "203.0.113.8",
+          "mask": "255.255.255.0",
+          "gateway": "",
+          "services": {
+            "http": true
+          },
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "fa0/2",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "g0/1",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d5",
+          "portA": "fa0/2",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "R1",
@@ -26001,12 +28068,267 @@ const sharedNetworkScenarios=[
       }
     ],
     "verify": {
-      "kind": "ping"
+      "kind": "ping",
+      "source": "PC-01",
+      "target": "203.0.113.8"
     }
   },
   {
     "id": "relay-trunk",
-    "title": "relay-trunk",
+    "title": "DHCP · PC adres alamıyor, relay yapılandırılmış",
+    "symptom": "PC-01 adres alamıyor; DHCP denemesinden sonra 169.254.x.x (APIPA) adresinde kalıyor. R1'de DHCP relay ve DHCP-SRV'de DHCP servisi yapılandırılmış. Kanıtı PC-01'den (ip dhcp, show ip) başlayıp R1'e giden yol üzerindeki switch'lerden topla.",
+    "cause": "SW-01 ile SW-02 arasındaki trunk yalnız VLAN 20'yi taşıyor; PC-01'in VLAN 10'daki DHCP yayını R1'e ulaşmıyor.",
+    "hints": [
+      "DHCP yayını PC-01'den R1'e hangi bağlantılardan geçer?",
+      "Yol üzerindeki trunk'larda show interfaces trunk: VLAN 10 izinli mi?",
+      "VLAN 10'u taşımayan trunk'ın izinli listesine VLAN 10 eklenmeli; sonra PC-01'de DHCP'yi yenile."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 55,
+          "y": 170,
+          "w": 104,
+          "h": 72,
+          "ip": "169.254.30.8",
+          "mask": "255.255.0.0",
+          "gateway": "0.0.0.0",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {},
+          "dhcpLease": false
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 230,
+          "y": 170,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                20
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            }
+          }
+        },
+        {
+          "id": "d3",
+          "name": "SW-02",
+          "type": "Switch",
+          "x": 410,
+          "y": 170,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10,
+            20
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "fa0/2": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                10,
+                20
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            }
+          }
+        },
+        {
+          "id": "d4",
+          "name": "R1",
+          "type": "Router",
+          "x": 590,
+          "y": 170,
+          "w": 108,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "ports": [
+            "g0/0",
+            "g0/1"
+          ],
+          "route": "",
+          "interfaces": {
+            "g0/0": {
+              "ip": "192.168.1.1",
+              "mask": "255.255.255.0",
+              "enabled": true,
+              "helperAddress": "10.10.20.2"
+            },
+            "g0/1": {
+              "ip": "10.10.20.1",
+              "mask": "255.255.255.0",
+              "enabled": true
+            }
+          },
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "staticRoutes": []
+        },
+        {
+          "id": "d5",
+          "name": "DHCP-SRV",
+          "type": "Server",
+          "x": 770,
+          "y": 170,
+          "w": 108,
+          "h": 72,
+          "ip": "10.10.20.2",
+          "mask": "255.255.255.0",
+          "gateway": "10.10.20.1",
+          "services": {
+            "dhcp": true,
+            "dns": false,
+            "http": false
+          },
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "gi0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "fa0/1",
+          "portB": "g0/0",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d5",
+          "portA": "g0/1",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "SW-01",
@@ -26026,12 +28348,308 @@ const sharedNetworkScenarios=[
       }
     ],
     "verify": {
-      "kind": "dhcp"
+      "kind": "dhcp",
+      "source": "PC-01",
+      "target": "10.10.20.2"
     }
   },
   {
     "id": "stp-loop",
-    "title": "stp-loop",
+    "title": "STP · Kök köprü tasarımdaki switch değil",
+    "symptom": "Üç switch halka bağlı. Tasarım: VLAN 10'un kök köprüsü PC-02'nin bağlı olduğu SW-03 olmalı; şu an değil. SW-03 kök olduktan sonra da PC-01 → PC-02 (192.168.10.20) erişimi sürmeli. Kanıtı her switch'te show spanning-tree çıktısından topla.",
+    "cause": "SW-02'nin VLAN 10 önceliği 4096, SW-03'ünki varsayılan 32768; kök SW-02. SW-03'ün VLAN 10 önceliği SW-02'ninkinin altına indirilmeli.",
+    "hints": [
+      "Her switch'te show spanning-tree: VLAN 10'da Root ID kimin?",
+      "Kök, en düşük köprü önceliğine (eşitse en düşük MAC'e) sahip switch'tir. SW-02 ve SW-03'ün öncelikleri ne?",
+      "SW-03'ün VLAN 10 önceliği 4096'dan düşük bir değere (4096'nın katı) çekilmeli."
+    ],
+    "topology": {
+      "app": "AgLab",
+      "version": 23,
+      "devices": [
+        {
+          "id": "d1",
+          "name": "PC-01",
+          "type": "PC",
+          "x": 55,
+          "y": 180,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.10.10",
+          "mask": "255.255.255.0",
+          "gateway": "0.0.0.0",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        },
+        {
+          "id": "d2",
+          "name": "SW-01",
+          "type": "Switch",
+          "x": 245,
+          "y": 90,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1,
+                10
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            },
+            "fa0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                1,
+                10
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                1,
+                10
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                1,
+                10
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            }
+          },
+          "stpPriority": 32768
+        },
+        {
+          "id": "d3",
+          "name": "SW-02",
+          "type": "Switch",
+          "x": 495,
+          "y": 90,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                1,
+                10
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            },
+            "fa0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                1,
+                10
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                1,
+                10
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                1,
+                10
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            }
+          },
+          "stpPriority": 4096
+        },
+        {
+          "id": "d4",
+          "name": "SW-03",
+          "type": "Switch",
+          "x": 370,
+          "y": 300,
+          "w": 112,
+          "h": 72,
+          "ip": "",
+          "mask": "",
+          "gateway": "",
+          "vlans": [
+            1,
+            10
+          ],
+          "ports": [
+            "fa0/1",
+            "fa0/2",
+            "gi0/1",
+            "gi0/2"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {
+            "fa0/1": {
+              "mode": "access",
+              "vlan": 10,
+              "allowed": [
+                1,
+                10
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            },
+            "fa0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                1,
+                10
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            },
+            "gi0/1": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                1,
+                10
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            },
+            "gi0/2": {
+              "mode": "trunk",
+              "vlan": 10,
+              "allowed": [
+                1,
+                10
+              ],
+              "enabled": true,
+              "nativeVlan": 1
+            }
+          },
+          "stpPriority": 32768
+        },
+        {
+          "id": "d5",
+          "name": "PC-02",
+          "type": "PC",
+          "x": 685,
+          "y": 300,
+          "w": 104,
+          "h": 72,
+          "ip": "192.168.10.20",
+          "mask": "255.255.255.0",
+          "gateway": "0.0.0.0",
+          "vlan": 10,
+          "ports": [
+            "eth0"
+          ],
+          "enabled": true,
+          "mode": "user",
+          "config": {},
+          "interfaces": {}
+        }
+      ],
+      "links": [
+        {
+          "a": "d1",
+          "b": "d2",
+          "portA": "eth0",
+          "portB": "fa0/1",
+          "up": true
+        },
+        {
+          "a": "d2",
+          "b": "d3",
+          "portA": "gi0/1",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d3",
+          "b": "d4",
+          "portA": "gi0/2",
+          "portB": "gi0/1",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d2",
+          "portA": "gi0/2",
+          "portB": "gi0/2",
+          "up": true
+        },
+        {
+          "a": "d4",
+          "b": "d5",
+          "portA": "fa0/1",
+          "portB": "eth0",
+          "up": true
+        }
+      ]
+    },
     "solution": [
       {
         "device": "SW-03",
@@ -26046,7 +28664,9 @@ const sharedNetworkScenarios=[
     "verify": {
       "kind": "stp-root",
       "vlan": 10,
-      "root": "SW-03"
+      "root": "SW-03",
+      "source": "PC-01",
+      "target": "192.168.10.20"
     }
   },
   {
@@ -62710,9 +65330,33 @@ function sharedEngineCommandBlock(name, commands) {
 function sharedCauseClear() {
   document.getElementById('sharedScenarioCause')?.remove();
 }
+/**
+ * Kök neden kutusu (#86): yüklemede DOM'da yoktur. Çözüm kilidi açılınca kapalı olarak görev
+ * metninin altına eklenir (sharedCauseUnlock); senaryo çözülünce açık olarak "BAŞARILI" durumunun
+ * yanına konur (sharedCauseReveal). Başka senaryo yüklenince kaldırılır (sharedCauseClear).
+ */
+function sharedCauseBox() {
+  let cause = document.getElementById('sharedScenarioCause');
+  if (cause) return cause;
+  const row = sharedScenario.active && sharedScenarioRecipe(sharedScenario.key);
+  if (!row?.cause) return null;
+  cause = document.createElement('details');
+  const causeSummary = document.createElement('summary'),
+    causeText = document.createElement('p');
+  cause.id = 'sharedScenarioCause';
+  causeSummary.textContent = 'Kök nedeni göster';
+  causeText.textContent = 'Kök neden: ' + row.cause;
+  cause.append(causeSummary, causeText);
+  $p('sharedScenarioInstructions').append(cause);
+  return cause;
+}
+/** Çözüm kilidi açıldı: kök neden kutusu (kapalı) görev metninin altında görünür. */
+function sharedCauseUnlock() {
+  sharedCauseBox();
+}
 /** Senaryo çözüldü: kök neden açılır ve "BAŞARILI" durumunun yanında görünür. */
 function sharedCauseReveal() {
-  const cause = document.getElementById('sharedScenarioCause');
+  const cause = sharedCauseBox();
   if (!cause) return;
   cause.open = true;
   $p('sharedScenarioStatus').after(cause);
@@ -62741,34 +65385,10 @@ function loadNetworkScenario(key) {
     p.textContent = text;
     panel.append(p);
   }
-  const hints = document.createElement('details'),
-    summary = document.createElement('summary');
-  summary.textContent = 'İpuçları ve çözüm komutları';
-  hints.append(summary);
-  for (const hint of row.hints || []) {
-    const p = document.createElement('p');
-    p.textContent = hint;
-    hints.append(p);
-  }
-  for (const block of row.solution) {
-    const pre = document.createElement('pre');
-    pre.textContent =
-      block.device +
-      '\n' +
-      block.commands.map((c) => c.replaceAll('$SOURCE_MAC', macFmt(macOf(source)))).join('\n');
-    hints.append(pre);
-  }
-  panel.append(hints);
-  // Kök neden alıştırmanın cevabıdır: ipuçlarının yanında ayrı ve kapalı durur; senaryo
-  // çözülünce (hedefler sağlanınca) kendiliğinden açılır ve durum satırının yanına taşınır.
-  const cause = document.createElement('details'),
-    causeSummary = document.createElement('summary'),
-    causeText = document.createElement('p');
-  cause.id = 'sharedScenarioCause';
-  causeSummary.textContent = 'Kök nedeni göster';
-  causeText.textContent = 'Kök neden: ' + row.cause;
-  cause.append(causeSummary, causeText);
-  panel.append(cause);
+  // Arayüz PR 3: ipuçları ve çözüm komutları panelde değil. İpuçları Simülatör üst çubuğundaki
+  // "İpucu" ile kademeli açılır; çözüm komutları "Çözümü göster" kilidinin arkasındadır ve kilit
+  // açılmadan DOM'a eklenmez (sim-workspace.js).
+  // Kök neden alıştırmanın cevabıdır: yüklemede DOM'da yoktur (sharedCauseBox).
   sharedStatus(
     row.title + ' yüklendi. İlk erişim başarısız olmalı; tanı komutlarıyla nedeni incele.',
   );
@@ -62819,6 +65439,8 @@ const SHARED_QUERY_FNS = new Set([
   'etherchannel',
   // FHRP: router arayüzü grupta HSRP Active / VRRP Master mı
   'fhrpActive',
+  // Arayüz PR 3: hedef için kullanılan rota {prefix, nextHop, ad, source(C/S/O/default)}
+  'routeFor',
 ]);
 /**
  * Bir hedef satırı: { fn, args, field?, expected, label? }. Bağımsız değişkenlerde cihaz
@@ -62899,6 +65521,52 @@ function sharedRecipeGoal(row) {
     return !!aglabEngineChoice.labberView().devices.find((d) => d.id === sharedScenario.sourceId)
       ?.dhcpLease;
   throw new Error('Labber bu doğrulama türünü desteklemiyor: ' + row.verify.kind);
+}
+/** Kaynak MAC yer tutucusu çözülmüş çözüm blokları ([{device, commands}]). */
+function sharedSolutionBlocks(row) {
+  const source = get(sharedScenario.sourceId);
+  return row.solution.map((block) => ({
+    device: block.device,
+    commands: block.commands.map((c) =>
+      source ? c.replaceAll('$SOURCE_MAC', macFmt(macOf(source))) : c,
+    ),
+  }));
+}
+/**
+ * Arayüz PR 3: Simülatör üst çubuğundaki "Kontrol et". Senaryo hedefi (sharedRecipeGoal) şu an
+ * sağlanıyor mu: sağlanıyorsa ilerleme kaydedilir ve kök neden açılır (hedef ping'iyle aynı
+ * sonuç); değilse durum satırı nedenini söyler. { ok, why } ya da yüklü senaryo yoksa null.
+ */
+function sharedCheck() {
+  if (!sharedScenario.active) return null;
+  const row = sharedScenarioRecipe(sharedScenario.key);
+  if (!row) return null;
+  let ok = false,
+    why = '';
+  try {
+    ok = sharedRecipeGoal(row);
+    if (row.verify.kind === 'query') why = sharedQueryGoal(row).why;
+    else if (!ok)
+      why =
+        row.verify.kind === 'dhcp'
+          ? 'Kaynak bilgisayar DHCP sunucusundan adres almadı.'
+          : row.verify.kind === 'stp-root' &&
+              aglabEngineChoice.labberStpRoot(row.verify.vlan) !== row.verify.root
+            ? 'VLAN ' + row.verify.vlan + ' kök köprüsü henüz ' + row.verify.root + ' değil.'
+            : aglabEngineChoice.labberPing(sharedScenario.sourceId, sharedScenario.target).why;
+  } catch (error) {
+    sharedStatus('Değerlendirme hatası: ' + error.message, false);
+    return { ok: false, why: error.message };
+  }
+  if (ok) {
+    sharedSaveProgress(sharedScenario.key);
+    sharedStatus(
+      'BAŞARILI: senaryo hedefi sağlandı. Senaryo tamamlandı ve ilerleme bu tarayıcıya kaydedildi.',
+      true,
+    );
+    sharedCauseReveal();
+  } else sharedStatus('Henüz çözülmedi: ' + why, false);
+  return { ok, why };
 }
 function validateSharedScenarios() {
   const snapshot = {
@@ -62999,6 +65667,18 @@ window.aglabSharedEngine = {
     };
   },
   goal: () => sharedRecipeGoal(sharedScenarioRecipe(sharedScenario.key)),
+  // Arayüz PR 3: üst çubuk Kontrol et / İpucu / Çözümü göster (yüklü senaryo yoksa null).
+  check: sharedCheck,
+  // Tek bir `query` hedef satırını yüklü senaryonun şu anki durumunda dener ({ ok, why }).
+  queryCheck: (check) => sharedQueryCheck(aglabLabber.cloneRuntime(), check),
+  // Çözüm kilidi açılınca (sim-workspace.js) kök neden kutusu eklenir.
+  unlockCause: () => sharedScenario.active && sharedCauseUnlock(),
+  hints: () =>
+    sharedScenario.active ? [...(sharedScenarioRecipe(sharedScenario.key)?.hints || [])] : null,
+  solution: () => {
+    const row = sharedScenario.active && sharedScenarioRecipe(sharedScenario.key);
+    return row ? { cause: row.cause || '', blocks: sharedSolutionBlocks(row) } : null;
+  },
   // İçeriğin AğLab görünümü (toAglab; terminalle aynı çalışma zamanı).
   view: () => aglabEngineChoice.labberView(),
   // Ad ile iki cihaz arası erişim (Labber ping'i; L7b: eski motor ping'i kaldırıldı); başarılı
@@ -66295,21 +68975,18 @@ function workshopView(ids, cases) {
         relay ? 'relay-trunk → ' + relay.target : 'relay-trunk görevi bulunamadı',
       );
       const srcText = [...document.scripts].map((x) => x.textContent || '').join('\n');
-      const natSetupStart = srcText.indexOf('function loadSharedNatScenario');
-      const natSetupEnd = srcText.indexOf('function loadSharedScenario', natSetupStart + 1);
-      // Kaynak metni boşluktan bağımsız karşılaştırılır; biçimlendirme denetimin sonucunu değiştirmez.
-      const natSetup = (
-        natSetupStart >= 0
-          ? srcText.slice(natSetupStart, natSetupEnd > natSetupStart ? natSetupEnd : undefined)
-          : ''
-      ).replace(/\s+/g, '');
+      // Hazır senaryolar veri tariflidir (network-scenarios.json): NAT/PAT tarifinde R1'in iç
+      // ve dış arayüz rolleri tanımlı olmalı.
+      const natRecipe = (window.aglabSharedEngine?.recipes() || []).find((r) => r.id === 'nat-pat');
+      const natRoles = (natRecipe?.topology?.devices || []).flatMap((d) =>
+        Object.values(d.interfaces || {}).map((i) => i.natRole),
+      );
       add(
         'NAT/PAT ortak motor senaryosu tanımlı',
         optionValues.includes('nat-pat') &&
-          natSetup.includes("key:'nat-pat'") &&
-          natSetup.includes("natRole:'inside'") &&
-          natSetup.includes("natRole:'outside'"),
-        'NAT/PAT, ortak topoloji yükleyicisi üzerinden tanımlanıyor; öğrenme senaryoları dizisinde aranmaz.',
+          natRoles.includes('inside') &&
+          natRoles.includes('outside'),
+        'NAT/PAT, senaryo tarifinin topolojisinden denetlenir (inside/outside arayüz rolleri).',
       );
       add(
         'NAT overload komutu ve akış kontrolü kodda var',
@@ -67582,6 +70259,51 @@ function workshopView(ids, cases) {
     catalogHead.append(modes);
     if (info) others.append(info);
   }
+  // Hazır senaryo konusu kimliğin önekindedir (vlan-…, acl-…, ec-…); öneksiz eski kimlikler
+  // ayrıca eşlenir. Bilinmeyen önek "Diğer" konusuna düşer.
+  const TOPICS = {
+    phy: 'Fiziksel katman',
+    eth: 'Ethernet ve ARP',
+    vlan: 'VLAN ve trunk',
+    roas: 'VLAN arası yönlendirme',
+    stp: 'STP',
+    ec: 'EtherChannel',
+    psec: 'Port security',
+    cdp: 'CDP',
+    mgmt: 'Cihaz yönetimi',
+    ip: 'IP adresleme',
+    gw: 'Ağ geçidi ve statik rota',
+    diag: 'Teşhis araçları',
+    ospf: 'OSPF',
+    fhrp: 'FHRP',
+    dhcp: 'DHCP',
+    dns: 'DNS',
+    acl: 'ACL',
+    nat: 'NAT',
+    method: 'Sorun giderme yöntemi',
+    other: 'Diğer',
+  };
+  const LEGACY_TOPIC = {
+    'subif-missing': 'roas',
+    'port-security': 'psec',
+    'access-vlan': 'vlan',
+    'trunk-allowed': 'vlan',
+    'native-vlan': 'vlan',
+    'return-route': 'gw',
+    'forward-route': 'gw',
+    'default-route': 'gw',
+    'wrong-prefix': 'gw',
+    'unresolved-next-hop': 'gw',
+    'lpm-next-hop': 'gw',
+    'floating-static': 'gw',
+    'relay-trunk': 'dhcp',
+  };
+  function topicOf(id) {
+    if (LEGACY_TOPIC[id]) return LEGACY_TOPIC[id];
+    const prefix = String(id).split('-')[0];
+    return prefix in TOPICS ? prefix : 'other';
+  }
+  const fold = (t) => String(t).toLocaleLowerCase('tr');
   const PROGRESS = {
     academy: 'aglab-academy-progress-v1',
     labber: 'aglab-labber-progress-v1',
@@ -67670,14 +70392,47 @@ function workshopView(ids, cases) {
   if (labberTitle) lb.head.append(labberTitle);
   catalogGrid.append(lb.card);
   const sharedCount = $('sharedScenarioSelect')?.options.length || 0;
+  // Arayüz PR 3: hazır senaryolarda konu süzgeci (kimlik önekinden) ve arama.
+  const sharedTopic = make('select', {
+    id: 'agSimSharedTopic',
+    'aria-label': 'Hazır senaryolar: konu',
+  });
+  const sharedSearch = make('input', {
+    type: 'search',
+    id: 'agSimSharedSearch',
+    placeholder: 'Senaryo ara',
+    'aria-label': 'Hazır senaryolarda ara',
+  });
+  const sharedFilter = make(
+    'div',
+    { class: 'ag-cat-filter', id: 'agSimSharedFilter' },
+    sharedTopic,
+    sharedSearch,
+  );
   const sh = catCard(
     'shared',
     $('sharedScenarioPanel'),
     'Hazır senaryolar',
     $('sharedScenarioSelect'),
     $('sharedScenarioLoad'),
+    [sharedFilter],
   );
   sh.head.append(make('h3', { text: 'Hazır senaryolar (' + sharedCount + ')' }));
+  {
+    const counts = new Map();
+    for (const o of $('sharedScenarioSelect')?.options || []) {
+      const t = topicOf(o.value);
+      counts.set(t, (counts.get(t) || 0) + 1);
+    }
+    sharedTopic.append(make('option', { value: '', text: 'Bütün konular (' + sharedCount + ')' }));
+    for (const [key, label] of Object.entries(TOPICS))
+      if (counts.has(key))
+        sharedTopic.append(
+          make('option', { value: key, text: label + ' (' + counts.get(key) + ')' }),
+        );
+  }
+  sharedTopic.addEventListener('change', () => renderCatalog('shared'));
+  sharedSearch.addEventListener('input', () => renderCatalog('shared'));
   catalogGrid.append(sh.card);
   // Eski araçlar.
   for (const n of [$('labExperiments'), $('ux14LabMore')]) if (n) others.append(n);
@@ -67693,7 +70448,8 @@ function workshopView(ids, cases) {
       return {
         name: lab ? value + ' ' + lab.title : text,
         level: lab?.module || '',
-        status: best === 100 ? '✓ tamamlandı' : Number.isInteger(best) ? 'en iyi ' + best : '',
+        status:
+          best === 100 ? '✓ tamamlandı' : Number.isInteger(best) ? 'en iyi ' + best : 'başlanmadı',
         done: best === 100,
       };
     }
@@ -67703,16 +70459,30 @@ function workshopView(ids, cases) {
       return {
         name: info?.title || text,
         level: info?.level || '',
-        status: done ? '✓ tamamlandı' : '',
+        status: done ? '✓ tamamlandı' : 'başlanmadı',
         done,
       };
     }
     const done = !!readProgress('shared')[value]?.completed;
-    return { name: text, level: '', status: done ? '✓ tamamlandı' : '', done };
+    const topic = topicOf(value);
+    return {
+      name: text,
+      level: '',
+      topicLabel: TOPICS[topic],
+      status: done ? '✓ tamamlandı' : 'başlanmadı',
+      done,
+      topic,
+    };
   }
   function renderCatalog(only) {
     const academyFiltered = typeof window.academy?.searchMatches === 'function';
     const visibleAcademy = new Set(academyFiltered ? window.academy.searchMatches() : []);
+    const topicPick = sharedTopic.value,
+      query = fold(sharedSearch.value.trim());
+    // Hazır senaryo satırı konu ve aramaya uyuyor mu (ad, kimlik ya da konu adı).
+    const sharedVisible = (value, m) =>
+      (!topicPick || m.topic === topicPick) &&
+      (!query || [m.name, value, m.topicLabel].some((t) => fold(t).includes(query)));
     for (const [key, c] of Object.entries(catCards)) {
       if (only && only !== key) continue;
       if (!c.select) continue;
@@ -67730,14 +70500,16 @@ function workshopView(ids, cases) {
               'data-value': o.value,
               'aria-selected': String(selected),
               'data-done': m.done ? 'true' : null,
-              hidden: key === 'academy' && academyFiltered && !visibleAcademy.has(o.value),
+              hidden:
+                (key === 'academy' && academyFiltered && !visibleAcademy.has(o.value)) ||
+                (key === 'shared' && !sharedVisible(o.value, m)),
               tabindex: selected ? '0' : '-1',
             },
-            make('span', { class: 'ag-cat-name', text: m.name }),
+            make('span', { class: 'ag-cat-name', text: m.name, title: m.name }),
             make('span', { class: 'ag-cat-level', text: m.level || '' }),
             make('span', {
               class: 'ag-cat-status',
-              text: isActive ? 'açık' : m.status || '—',
+              text: isActive ? 'açık' : m.status || 'başlanmadı',
             }),
           );
           const pick = () => {
@@ -67804,13 +70576,16 @@ function workshopView(ids, cases) {
   put('free', 'extra', 'aglabFirstNetworkGuide');
   const academyHints = $('academyHints');
   const labberHints = make('ol', { id: 'agSimLabberHints', class: 'ag-sim-hintlist' });
+  const sharedHints = make('ol', { id: 'agSimSharedHints', class: 'ag-sim-hintlist' });
   const hintCtx = {
     academy: make('div', { 'data-ctx': 'academy' }),
     labber: make('div', { 'data-ctx': 'labber' }),
+    shared: make('div', { 'data-ctx': 'shared' }),
   };
   if (academyHints) hintCtx.academy.append(academyHints);
   hintCtx.labber.append(labberHints);
-  hintBox.append(hintCtx.academy, hintCtx.labber);
+  hintCtx.shared.append(sharedHints);
+  hintBox.append(hintCtx.academy, hintCtx.labber, hintCtx.shared);
 
   // Üst çubuk düğmeleri: etkin bağlamın gerçek denetimleri (kimlikleri aynı).
   const choose = button('agSimChoose', 'Görev seç');
@@ -67825,7 +70600,9 @@ function workshopView(ids, cases) {
     labberCheck = $('labberLabCheck');
   const labberReset = button('agSimLabberReset', 'Sıfırla'),
     labberHint = button('agSimLabberHint', 'İpucu');
-  const sharedReset = button('agSimSharedReset', 'Sıfırla');
+  const sharedReset = button('agSimSharedReset', 'Sıfırla'),
+    sharedHint = button('agSimSharedHint', 'İpucu'),
+    sharedCheck = button('agSimSharedCheck', 'Kontrol et', 'ag-btn ag-btn-primary');
   for (const [b, text] of [
     [academyReset, 'Sıfırla'],
     [academyHint, 'İpucu'],
@@ -67840,7 +70617,7 @@ function workshopView(ids, cases) {
   labberCheck?.classList.add('ag-btn-primary');
   actx.academy.append(...[academyReset, academyHint, academyCheck].filter(Boolean));
   actx.labber.append(labberReset, labberHint, ...(labberCheck ? [labberCheck] : []));
-  actx.shared.append(sharedReset);
+  actx.shared.append(sharedReset, sharedHint, sharedCheck);
   const solutionBtn = button('agSimSolutionBtn', 'Çözümü göster');
   solutionBtn.setAttribute('aria-describedby', 'agSimSolutionLock');
   const lockNote = make('span', { id: 'agSimSolutionLock', class: 'ag-sim-sr' });
@@ -67912,6 +70689,7 @@ function workshopView(ids, cases) {
     return level;
   };
   const lockEntry = (key) => (lockState[key] ||= { fails: 0, hints: [] });
+  const sharedHintList = () => window.aglabSharedEngine?.hints?.() || [];
   function current() {
     const a = window.academy?.active?.();
     if (a) return { kind: 'academy', id: a.id, key: 'academy:' + a.id, info: a };
@@ -67958,7 +70736,19 @@ function workshopView(ids, cases) {
           (rows.length > 0 && unmet.length > 0 && commandsOpen === unmet.length),
       };
     }
-    // Ortak senaryoların ipucu/çözüm/kök neden düzeni Sorun Çöz ekranında (PR 3).
+    if (c.kind === 'shared') {
+      // Hazır senaryo: Akademi ile aynı kural (3 başarısız kontrol ya da bütün ipuçları).
+      const e = lockEntry(c.key),
+        total = sharedHintList().length,
+        used = Math.min(e.hints.length, total);
+      return {
+        hasSolution: !!window.aglabSharedEngine.solution()?.blocks.length,
+        fails: e.fails,
+        hintsUsed: used,
+        hintsTotal: total,
+        unlocked: e.fails >= SOLUTION_FAILS || (total > 0 && used >= total),
+      };
+    }
     return { hasSolution: false, unlocked: false, fails: 0, hintsUsed: 0, hintsTotal: 0 };
   }
   function renderSolution(c) {
@@ -67979,6 +70769,13 @@ function workshopView(ids, cases) {
       for (const [dev, script] of Object.entries(window.aglabLabberLabs.solution(c.id)))
         box.append(
           make('pre', { class: 'ag-term', text: dev + ' (ayrıcalıklı moddan)\n' + script }),
+        );
+    } else if (c.kind === 'shared') {
+      const sol = window.aglabSharedEngine.solution();
+      if (sol.cause) box.append(make('p', { text: 'Kök neden: ' + sol.cause }));
+      for (const block of sol.blocks)
+        box.append(
+          make('pre', { class: 'ag-term', text: block.device + '\n' + block.commands.join('\n') }),
         );
     }
     solutionSlot.append(box);
@@ -68027,6 +70824,27 @@ function workshopView(ids, cases) {
     const next = nextLabberHint(e, rows)?.goal;
     if (!next) return;
     e.hints.push(next.id + '#' + ((level[next.id] || 0) + 1));
+    lockSave();
+    schedule();
+  });
+
+  sharedCheck.addEventListener('click', () => {
+    const c = current();
+    if (c.kind !== 'shared') return;
+    const r = window.aglabSharedEngine.check();
+    if (r && !r.ok) {
+      lockEntry(c.key).fails++;
+      lockSave();
+    }
+    if (r?.ok) renderCatalog('shared');
+    schedule();
+  });
+  sharedHint.addEventListener('click', () => {
+    const c = current();
+    if (c.kind !== 'shared') return;
+    const e = lockEntry(c.key);
+    if (e.hints.length >= sharedHintList().length) return;
+    e.hints.push(e.hints.length + 1);
     lockSave();
     schedule();
   });
@@ -68541,6 +71359,27 @@ function workshopView(ids, cases) {
         ),
     );
   }
+  function renderSharedHints(c) {
+    if (c.kind !== 'shared') {
+      sharedHints.replaceChildren();
+      return;
+    }
+    const list = sharedHintList(),
+      used = Math.min(lockEntry(c.key).hints.length, list.length);
+    sharedHints.replaceChildren(
+      ...list.slice(0, used).map((t, i) =>
+        make(
+          'li',
+          { 'data-step': String(i + 1) },
+          make('span', {
+            class: 'ag-sim-hintstep',
+            text: 'İpucu ' + (i + 1) + '/' + list.length + ': ',
+          }),
+          t,
+        ),
+      ),
+    );
+  }
   function engineText(c) {
     const src =
       c.kind === 'academy'
@@ -68576,7 +71415,7 @@ function workshopView(ids, cases) {
       catalogKey = c.key;
       renderCatalog();
     }
-    title.textContent =
+    title.textContent = title.title =
       'Simülatör · ' +
       (c.kind === 'academy'
         ? c.id + ' ' + c.info.title
@@ -68606,18 +71445,44 @@ function workshopView(ids, cases) {
         ? 'Sıradaki: ' + n.goal.title
         : 'Sağlanmamış hedeflerin bütün ipucu basamakları açık.';
     }
-    meta.textContent =
-      c.kind === 'academy'
-        ? 'Başarısız kontrol: ' + st.fails + ' · ipucu ' + st.hintsUsed + '/' + st.hintsTotal
-        : c.kind === 'labber'
-          ? 'Başarısız kontrol: ' +
-            st.fails +
-            ' · komut ipucu ' +
-            st.commandsOpen +
-            '/' +
-            st.commandsNeeded +
-            ' hedef'
-          : '';
+    if (c.kind === 'shared') {
+      const left = Math.max(0, st.hintsTotal - st.hintsUsed);
+      sharedHint.textContent = left ? 'İpucu (' + left + ')' : 'İpuçları açık';
+      sharedHint.disabled = !left;
+      sharedHint.title = left
+        ? 'Sıradaki ipucu: ' + (st.hintsUsed + 1) + '/' + st.hintsTotal
+        : 'Bütün ipuçları açık.';
+    }
+    // Sayaç: görünür kısa biçim (✗ başarısız kontrol · 💡 ipucu), uzun metin ekran okuyucu
+    // ve araç ipucu için (1280 px'te kesilmez; başlık kalan yeri kullanır).
+    const counted = c.kind === 'academy' || c.kind === 'shared';
+    const long = counted
+      ? 'Başarısız kontrol: ' + st.fails + ' · ipucu ' + st.hintsUsed + '/' + st.hintsTotal
+      : c.kind === 'labber'
+        ? 'Başarısız kontrol: ' +
+          st.fails +
+          ' · komut ipucu ' +
+          st.commandsOpen +
+          '/' +
+          st.commandsNeeded +
+          ' hedef'
+        : '';
+    const short = counted
+      ? '✗' + st.fails + ' · 💡' + st.hintsUsed + '/' + st.hintsTotal
+      : c.kind === 'labber'
+        ? '✗' + st.fails + ' · 💡' + st.commandsOpen + '/' + st.commandsNeeded + ' hedef'
+        : '';
+    meta.replaceChildren(
+      ...(long
+        ? [
+            make('span', { class: 'ag-sim-meta-short', 'aria-hidden': 'true', text: short }),
+            make('span', { class: 'ag-sim-sr', text: long }),
+          ]
+        : []),
+    );
+    meta.title = long;
+    // #86: hazır senaryonun kök nedeni kilit açılınca (kapalı kutu) DOM'a girer.
+    if (c.kind === 'shared' && st.unlocked) window.aglabSharedEngine.unlockCause();
     solutionBtn.hidden = !st.hasSolution;
     const shown = !!$('agSimSolution');
     solutionBtn.disabled = !st.unlocked || shown;
@@ -68633,10 +71498,12 @@ function workshopView(ids, cases) {
     solutionBtn.title = lockNote.textContent;
     hintBox.hidden = !(
       (c.kind === 'academy' && st.hintsUsed > 0) ||
-      (c.kind === 'labber' && st.hintsUsed > 0)
+      (c.kind === 'labber' && st.hintsUsed > 0) ||
+      (c.kind === 'shared' && st.hintsUsed > 0)
     );
     renderGoals(c);
     renderLabberHints(c);
+    renderSharedHints(c);
     renderTermTabs();
     if (activeTab === 'port') renderPort();
     renderTimeline();

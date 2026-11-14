@@ -65,14 +65,30 @@ html:not([data-theme='light']) {
 .ag-sim-title {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 10px;
+  flex: 1 1 240px;
   min-width: 0;
+  /* Tek satırlık başlığın doğal genişliği sayfayı genişletmesin (dar ekranda yatay kaydırma). */
+  contain: inline-size;
 }
+/* PR 3: uzun görev adı tek satırda kısalır; tam ad title özniteliğinde. */
 #agSimTitle {
   font-size: 15px;
   color: var(--text);
-  overflow-wrap: anywhere;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ag-sim-title > .ag-tag {
+  flex: none;
+  white-space: nowrap;
+}
+/* Sayaç kısa biçimde (✗0 · 💡0/3) kesilmeden durur; başlık kalan yeri kullanır. */
+.ag-sim-title > #agSimMeta {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .ag-tag {
   display: inline-block;
@@ -87,8 +103,9 @@ html:not([data-theme='light']) {
   background: #f1eadf;
   color: #8a5a14;
 }
+/* Başlık kabı (.ag-sim-title) büyüyerek boşluğu alır; ayraç yer kaplamaz. */
 .ag-sim-spacer {
-  flex: 1 1 auto;
+  flex: 0 0 0;
 }
 .ag-sim-actions,
 .ag-sim-ctxactions {
@@ -1333,6 +1350,18 @@ html:has(#area-lab.active) {
   font-size: 12px;
   font-weight: 600;
   box-shadow: none;
+}
+.ag-cat-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+#area-lab .ag-cat-filter select {
+  flex: 1 1 140px;
+}
+#area-lab .ag-cat-filter input {
+  flex: 2 1 160px;
+  min-width: 0;
 }
 .ag-cat-list {
   list-style: none;
