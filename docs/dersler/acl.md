@@ -1,10 +1,24 @@
 # AğLab Konu #19: ACL (standart ve genişletilmiş)
 
-> Uygulamadaki `acl` dersi bu belgeden üretildi. Senaryolar Sorun Çöz'de `acl-*` kimlikleriyle
+> Uygulamadaki `acl` dersi bu belgeyle uyumludur. Senaryolar Sorun Çöz'de `acl-*` kimlikleriyle
 > Labber'da çalışır; başlangıçtaki ACL'ler kaydedilmiş yapılandırma olarak yüklenir (`pending`).
 > Ön koşul: IP adresleme (Konu #2), statik routing (Konu #8), teşhis araçları (Konu #24).
+> Şemalar: `docs/dersler/gorseller/acl.py`.
 
-Bu konu bittiğinde öğrenci standart ve genişletilmiş ACL yazar, wildcard maskeyi hesaplar ve listeyi doğru arayüze, doğru yönde uygular. `show access-lists` sayaçlarıyla hangi satırın trafiği yakaladığını görür. Satır sırası, örtük deny, yanlış yön ve maske/wildcard karışıklığı arızalarını kanıtla ayırır. Seviye 2 (CCNA), süre yaklaşık 70 dakika (ders 20, lab 15, senaryolar 30, sınav 5).
+Bu konu bittiğinde öğrenci standart ve genişletilmiş ACL yazar, wildcard maskeyi hesaplar ve listeyi doğru arayüze, doğru yönde uygular. `show access-lists` sayaçlarıyla hangi satırın trafiği yakaladığını görür. Satır sırası, örtük deny, yanlış yön ve maske/wildcard karışıklığı arızalarını kanıtla ayırır. Seviye 2 (CCNA), süre yaklaşık 70 dakika.
+
+## 0. Bir bakışta
+
+- ACL yukarıdan aşağı okunur; **ilk eşleşen satır** kazanır.
+- Sonda görünmez bir **örtük deny** vardır: yalnız deny'lardan oluşan liste her şeyi keser.
+- **Standart** ACL yalnız kaynağa bakar → **hedefe yakın**. **Genişletilmiş** ACL protokol/kaynak/hedef/port → **kaynağa yakın**.
+- **Wildcard** maskenin tersidir: /24 → `0.0.0.255`. Maske yazmak klasik hatadır.
+- Yön router'ın gözündendir: arayüze **giren** `in`, **çıkan** `out`.
+- `show access-lists` **sayaçları** hangi satırın trafiği yakaladığını gösterir.
+
+> **Akılda kalsın:** ACL arızasında kablo, VLAN ve rota kusursuzdur; paket bir satıra takılıp sessizce düşer. Sayaçlara bak.
+
+![İlk eşleşen satır kazanır](gorseller/acl/g1.svg)
 
 ## 1. Neden önemli
 
@@ -12,16 +26,54 @@ Bu konu bittiğinde öğrenci standart ve genişletilmiş ACL yazar, wildcard ma
 
 ## 2. Kavram
 
-- **ACL bir filtre listesidir.** Paket listeyi **yukarıdan aşağı** okur; **ilk eşleşen satır** kazanır ve gerisine bakılmaz. Hiçbir satıra uymayan paket listenin sonundaki görünmez **örtük deny** (`deny any`) ile düşer. Bu yüzden yalnız deny satırı olan bir liste her şeyi engeller.
-- **Standart ACL (1–99 ya da `ip access-list standard AD`):** Yalnız **kaynak** adrese bakar. Kaynak dışında bir şey ayıramadığı için **hedefe yakın** uygulanır; yoksa izin verilmesi gereken başka trafiği de keser.
-- **Genişletilmiş ACL (100–199 ya da `ip access-list extended AD`):** Protokol, kaynak, hedef ve port eşler: `permit tcp 192.168.20.0 0.0.0.255 host 192.168.100.10 eq www`. İstenmeyen trafiği yolda taşımamak için **kaynağa yakın** uygulanır.
-- **Wildcard maske:** Alt ağ maskesinin tersidir. **0 bit = eşleşmeli, 1 bit = önemsiz.** /24 → `0.0.0.255`, /30 → `0.0.0.3`, tek adres → `host 10.1.1.1` (= `0.0.0.0`), her şey → `any`. Hızlı hesap: `255.255.255.255 − maske`. Maske yanlışlıkla wildcard yerine yazılırsa (`192.168.10.0 255.255.255.0`) IOS bunu "son oktet 0 olmalı" diye okur ve listede `0.0.0.0, wildcard bits 255.255.255.0` olarak gösterir.
-- **Yön ve yer:** `ip access-group AD in` arayüze **giren**, `out` arayüzden **çıkan** paketi süzer; yön router'ın bakış açısındandır. Her arayüzde, her yönde ve her protokol için tek ACL olur. Misafirden gelen trafik misafir arayüzüne **girer**: `in`.
-- **Dönüş trafiği:** ACL durum tutmaz. Yanlış yöndeki bir liste dönen yanıtları da keser, çünkü yanıtın kaynağı sunucudur ve listedeki hiçbir satıra uymaz.
-- **Düzenleme:** İsimli (ve numaralı) listelerde satırların sıra numarası vardır. `ip access-list extended AD` altında `no 10` tek satırı siler, `15 permit …` araya satır ekler. `no access-list 10` numaralı listenin **tamamını** siler.
-- **Sayaçlar:** `show access-lists` her satırın kaç pakete uyduğunu gösterir (`(12 matches)`). Örtük deny'in sayacı görünmez; sayaçlar artmıyorsa paket ya o arayüzden geçmiyor ya da örtük deny'e takılıyordur.
+### 2.1 Liste nasıl okunur
 
-*(Etkileşimli şema: misafirden gelen web isteği g0/1'e girerken MISAFIR listesinde satır satır ilerliyor; ilk eşleşmede duruyor.)*
+> **Benzetme:** Bir düğünde kapıdaki görevli davetli listesini baştan okur ve adını **ilk** gördüğü satıra göre karar verir. Listenin sonunda yazılı olmayan ama herkesin bildiği bir kural vardır: "listede yoksan giremezsin".
+
+- Paket satırları sırayla dener; ilk eşleşmede durur.
+- Hiçbir satıra uymayan paket **örtük deny** ile düşer.
+- Sonuç: listede en az bir `permit` olmalıdır.
+
+### 2.2 Wildcard ve sıra
+
+![Sıra hatası](gorseller/acl/g2.svg)
+
+Özel satırlar üstte, genel satırlar altta. Genel bir deny özel bir permit'in üstündeyse permit'e hiç sıra gelmez.
+
+![Wildcard tablosu](gorseller/acl/g3.svg)
+
+> **Dikkat:** Wildcard yerine maske yazarsan IOS itiraz etmez; satırı kabul eder ama bambaşka bir anlamla. Listeyi yazdıktan sonra `show access-lists` ile IOS'un nasıl okuduğunu gör.
+
+### 2.3 Standart ve genişletilmiş; nereye?
+
+- **Standart** (1–99 ya da `ip access-list standard AD`): yalnız kaynak.
+- **Genişletilmiş** (100–199 ya da `ip access-list extended AD`): `permit tcp 192.168.20.0 0.0.0.255 host 192.168.100.10 eq www`.
+
+![Yerleştirme](gorseller/acl/g4.svg)
+
+> **Benzetme:** Yalnız "kimden geldiğine" bakan görevliyi (standart) sunucu odasının kapısına koyarsın; binanın girişine koyarsan o kişinin kafeteryaya gitmesini de engeller. Her şeye bakabilen görevliyi (genişletilmiş) binanın girişine koyarsın; istenmeyen misafir koridorda hiç dolaşmaz.
+
+### 2.4 Yön: in ve out
+
+![in ve out](gorseller/acl/g5.svg)
+
+- `ip access-group AD in` arayüze giren, `out` çıkan paketi süzer.
+- Her arayüzde, her yönde, her protokol için **tek** ACL.
+- ACL durum tutmaz; yanlış yön dönüş trafiğini de keser.
+
+### 2.5 Düzenleme
+
+- İsimli (ve numaralı) listelerde satırların sıra numarası vardır.
+- `ip access-list extended AD` altında `no 10` tek satırı siler, `15 permit …` araya satır ekler.
+- `no access-list 10` numaralı listenin **tamamını** siler.
+
+### 2.6 Sayaçlarla teşhis
+
+![Sayaçlar](gorseller/acl/g6.svg)
+
+![Ping geçiyor, web geçmiyor](gorseller/acl/g7.svg)
+
+> **Sahada:** Kural eklemeden önce `show access-lists` çıktısını kaydet; "dün kural ekledik, bugün başka şey çalışmıyor" şikâyetinde ilk bakılacak şey farktır.
 
 ## 3. Çıktı okuma
 
@@ -59,11 +111,11 @@ Topoloji: R1 g0/0 muhasebe (192.168.10.0/24, PC-10), g0/1 misafir (192.168.20.0/
 2. **Listeyi yaz:** `ip access-list extended MISAFIR` → `permit tcp 192.168.20.0 0.0.0.255 host 192.168.100.10 eq www` → `permit icmp 192.168.20.0 0.0.0.255 host 192.168.100.10` → `deny ip any any`. *Neden:* İzin önce; sondaki açık deny sayaç gösterir (örtük deny göstermez).
 3. **Uygula:** `interface g0/1` → `ip access-group MISAFIR in`. *Neden:* Genişletilmiş liste kaynağa yakın; misafir trafiği g0/1'e girer.
 4. **Test:** PC-20'den SRV'ye curl ve ping çalışır, PC-10'a ping çalışmaz; PC-10'dan her şey çalışır.
-5. **Sayaçlar:** `show access-lists`; her testten sonra hangi satırın arttığını yaz.
+5. **Sayaçlar:** `show access-lists`; her testten sonra hangi satırın arttığını yaz. *Neden:* sayaç, kuralın gerçekten çalıştığının tek kanıtıdır.
 6. **Standart liste:** sunucu ağına yalnız muhasebe: `access-list 10 permit 192.168.10.0 0.0.0.255`, `interface g0/2` → `ip access-group 10 out`. *Neden:* Standart liste hedefe yakın.
 7. **Düzenle:** `show access-lists MISAFIR` ile sıra numaralarını oku; ping satırını `no 20` ile sil (hangi numaradaysa), PC-20'den ping'in düştüğünü ve `deny ip any any` sayacının arttığını gör; aynı numarayla geri ekle. Kaydet.
 
-**Lab'ın otomatik değerlendirmesi:** `q.http('PC-20', SRV).ok` ve `q.ping('PC-20', SRV).ok` doğru, `q.ping('PC-20', PC-10).ok` yanlış, `q.ping('PC-10', SRV).ok` doğru.
+> **Benzetme:** Lab, kapıdaki görevliye liste yazmaktır: önce "şu kişiler şu odaya girebilir", en sonda "başka kimse giremez".
 
 ## 5. Sık hatalar
 
@@ -82,41 +134,62 @@ Topoloji: R1 g0/0 muhasebe (192.168.10.0/24, PC-10), g0/1 misafir (192.168.20.0/
 > `acl-wildcard`, `acl-two-faults` kimlikleriyle Labber'da çalışır. Hedefler yalnız erişimin
 > gelmesini değil, **kuralın korunmasını** da sınar: misafirin engellenmesi gereken trafik
 > engelli kalmalı.
+> Önce kendin çöz; neden ve çözüm kapalı kutularda.
 
 ### S1 · Orta · Misafirler izinli sunucuya da ulaşamıyor (E1)
 
 - **Belirti:** Kural: misafir SRV'ye yalnız web ve ping. Misafirler SRV'ye hiç ulaşamıyor; ACL'de izin satırları var.
-- **Neden:** MISAFIR satır 10 `deny ip 192.168.20.0 0.0.0.255 any`; izinler (20, 30) altında kalmış.
-- **Çözüm:** R1 → `ip access-list extended MISAFIR` → `no 10`
-- **Hedefler:** misafir → SRV web ve ping ✓; misafir → muhasebe ✗; muhasebe → SRV ✓
+- **Hedef:** misafir → SRV web ve ping ✓; misafir → muhasebe ✗; muhasebe → SRV ✓
+
+<details><summary>Neden ve çözüm</summary>
+
+MISAFIR satır 10 `deny ip 192.168.20.0 0.0.0.255 any`; izinler (20, 30) altında kalmış. Çözüm: R1 → `ip access-list extended MISAFIR` → `no 10`
+
+</details>
 
 ### S2 · Başlangıç · Misafiri engelleyen kural muhasebeyi kesti (E2)
 
 - **Belirti:** Muhasebenin misafire erişmemesi için g0/0'a ACL uygulandı; muhasebe hiçbir yere ulaşamıyor.
-- **Neden:** MUHASEBE listesinde yalnız deny var; örtük deny geri kalanı kesiyor.
-- **Çözüm:** R1 → `ip access-list extended MUHASEBE` → `permit ip any any`
-- **Hedefler:** muhasebe → SRV ping ve web ✓; muhasebe → misafir ✗
+- **Hedef:** muhasebe → SRV ping ve web ✓; muhasebe → misafir ✗
+
+<details><summary>Neden ve çözüm</summary>
+
+MUHASEBE listesinde yalnız deny var; örtük deny geri kalanı kesiyor. Çözüm: R1 → `ip access-list extended MUHASEBE` → `permit ip any any`
+
+</details>
 
 ### S3 · Orta · Doğru liste, yanlış yön (E3)
 
 - **Belirti:** MISAFIR doğru yazıldı ve g0/1'e uygulandı; misafirler SRV'ye ulaşamıyor, muhasebe misafire ping atamıyor.
-- **Neden:** Liste `out` yönünde: misafire giden yanıtları süzüyor.
-- **Çözüm:** R1 → `interface g0/1` → `no ip access-group MISAFIR out` → `ip access-group MISAFIR in`
-- **Hedefler:** S1 ile aynı
+- **Hedef:** S1 ile aynı
+
+<details><summary>Neden ve çözüm</summary>
+
+Liste `out` yönünde: misafire giden yanıtları süzüyor. Çözüm: R1 → `interface g0/1` → `no ip access-group MISAFIR out` → `ip access-group MISAFIR in`
+
+</details>
 
 ### S4 · Orta · Yeni muhasebe PC'si sunucu odasına giremiyor (E4)
 
 - **Belirti:** Sunucu ağına yalnız muhasebe ulaşabilir (g0/2'de standart ACL 10). Muhasebe ağı /25'ten /24'e büyütüldü; eski PC'ler ulaşıyor, yeni PC-10 (192.168.10.150) ulaşamıyor.
-- **Neden:** ACL 10 hâlâ `permit 192.168.10.0 0.0.0.127`: yalnız .0–.127.
-- **Çözüm:** R1 → `no access-list 10` → `access-list 10 permit 192.168.10.0 0.0.0.255`
-- **Hedefler:** muhasebe (.150) → SRV ✓; misafir → SRV ✗
+- **Hedef:** muhasebe (.150) → SRV ✓; misafir → SRV ✗
+
+<details><summary>Neden ve çözüm</summary>
+
+ACL 10 hâlâ `permit 192.168.10.0 0.0.0.127`: yalnız .0–.127. Çözüm: R1 → `no access-list 10` → `access-list 10 permit 192.168.10.0 0.0.0.255`
+
+</details>
 
 ### S5 · İleri · İki hata: sıra ve yön (E3 + E1)
 
 - **Belirti:** Misafir kuralı yeni uygulandı, misafirler SRV'ye ulaşamıyor; yön düzeltildi, yine ulaşamıyor.
-- **Neden:** Liste `out` yönünde ve ilk satır misafirden her şeyi engelliyor.
-- **Çözüm:** R1 → `interface g0/1` → `no ip access-group MISAFIR out` → `ip access-group MISAFIR in`; `ip access-list extended MISAFIR` → `no 10`
-- **Hedefler:** S1 ile aynı
+- **Hedef:** S1 ile aynı
+
+<details><summary>Neden ve çözüm</summary>
+
+Liste `out` yönünde ve ilk satır misafirden her şeyi engelliyor. Çözüm: R1 → `interface g0/1` → `no ip access-group MISAFIR out` → `ip access-group MISAFIR in`; `ip access-list extended MISAFIR` → `no 10`
+
+</details>
 
 ### Ek · L6'dan gelen senaryo
 
@@ -128,15 +201,79 @@ Topoloji: R1 g0/0 muhasebe (192.168.10.0/24, PC-10), g0/1 misafir (192.168.20.0/
 
 ## 7. Kısa sınav
 
-1. ACL'de bir paket iki satıra da uyuyorsa hangisi uygulanır? **İlk (en üstteki) satır.**
-2. /26 ağın wildcard'ı? **0.0.0.63.**
-3. Standart ACL neden hedefe yakın uygulanır? **Yalnız kaynağa baktığı için; kaynağa yakın konursa kaynağın başka yerlere giden trafiğini de keser.**
-4. Yalnız `deny ip 10.1.1.0 0.0.0.255 any` satırı olan liste ne yapar? **Her şeyi engeller (örtük deny).**
-5. Misafirden gelen trafiği misafir arayüzünde süzmek için yön? **in.**
+**1.** Bir paket iki satıra da uyuyorsa hangisi uygulanır?
 
-## 8. Doğrulama notları
+<details><summary>Cevap</summary>
 
-Kaynaklar: Cisco IOS "Configuring IP Access Lists" (ilk eşleşme, örtük deny, sıra numaralarıyla düzenleme, standart listenin adres/wildcard normalizasyonu), CCNA 200-301 5.6 (ACL yapılandırma ve doğrulama).
+İlk (en üstteki) satır.
+
+</details>
+
+**2.** /26 ağın wildcard'ı?
+
+<details><summary>Cevap</summary>
+
+`0.0.0.63` (255 − 192).
+
+</details>
+
+**3.** Standart ACL neden hedefe yakın uygulanır?
+
+<details><summary>Cevap</summary>
+
+Yalnız kaynağa baktığı için; kaynağa yakın konursa o kaynağın başka yerlere giden trafiğini de keser.
+
+</details>
+
+**4.** Yalnız `deny ip 10.1.1.0 0.0.0.255 any` satırı olan liste ne yapar?
+
+<details><summary>Cevap</summary>
+
+Her şeyi engeller: diğer her paket örtük deny'e takılır.
+
+</details>
+
+**5.** Misafirden gelen trafiği misafir arayüzünde süzmek için yön?
+
+<details><summary>Cevap</summary>
+
+`in`.
+
+</details>
+
+**6.** `show access-lists`'te `permit tcp … eq www` satırının sayacı hiç artmıyor ama web açılmıyor. İlk ne düşünürsün?
+
+<details><summary>Cevap</summary>
+
+Paket o satıra ulaşmıyor: ya üstteki bir satır onu yakalıyor (sayacı artan satıra bak) ya da liste yanlış arayüzde/yönde.
+
+</details>
+
+## 8. Özet kartı
+
+| Komut | Ne işe yarar |
+| --- | --- |
+| `ip access-list extended AD` | İsimli genişletilmiş liste |
+| `permit tcp <kaynak> <wc> host <hedef> eq www` | Port bazlı satır |
+| `access-list 10 permit <ağ> <wildcard>` | Numaralı standart liste |
+| `ip access-group AD in|out` | Arayüze uygula |
+| `no 10`, `15 permit …` | Satır sil / araya ekle |
+| `show access-lists`, `clear access-list counters` | Sayaçlar |
+| `show ip interface <if>` | Hangi liste, hangi yönde |
+
+**Unutma:**
+
+1. İlk eşleşme kazanır; özel üstte.
+2. Örtük deny; en az bir permit.
+3. Wildcard = 255 − maske.
+4. Standart hedefe, genişletilmiş kaynağa yakın.
+5. Yön router'ın gözünden.
+
+## 9. Doğrulama notları
+
+**Lab'ın otomatik değerlendirmesi:** `q.http('PC-20', SRV).ok` ve `q.ping('PC-20', SRV).ok` doğru, `q.ping('PC-20', PC-10).ok` yanlış, `q.ping('PC-10', SRV).ok` doğru.
+
+Kaynaklar: INET CCNA 200-301 v1.1 (ACL); Cisco IOS "Configuring IP Access Lists" (ilk eşleşme, örtük deny, sıra numaralarıyla düzenleme, standart listenin adres/wildcard normalizasyonu), CCNA 200-301 5.6 (ACL yapılandırma ve doğrulama).
 
 | İddia | Sonuç |
 | --- | --- |
