@@ -141,14 +141,14 @@ try:
         assert page.evaluate("academyEngine.snapshot()") == initial
 
         # Invalid session JSON must not replace the student's active work.
-        snapshot = page.evaluate("localStorage.getItem('aglab-topology-v23')")
+        snapshot = page.evaluate("localStorage.getItem('aglab-topology-v24')")
         invalid = json.loads(snapshot)
         invalid["academySession"]["labId"] = "UNKNOWN-LAB"
         path = Path(tmp) / "invalid-session.json"
         path.write_text(json.dumps(invalid))
         page.locator("#ptImportFile").set_input_files(str(path))
         expect(page.locator("#ptTerminal")).to_contain_text("İçe aktarma başarısız:")
-        assert page.evaluate("localStorage.getItem('aglab-topology-v23')") == snapshot
+        assert page.evaluate("localStorage.getItem('aglab-topology-v24')") == snapshot
         page.locator("#ptImportFile").set_input_files(
             str(ROOT / "static-routing-two-routers.aglab.json")
         )

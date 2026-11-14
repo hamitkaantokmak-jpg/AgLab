@@ -109,7 +109,7 @@ class LessonScenarioTests(unittest.TestCase):
         self.assertTrue({r for r in ids if r.startswith("mgmt-")}, ids)
         self.assertTrue({r for r in ids if r.startswith("eth-")}, ids)
         for r in RECIPES:
-            self.assertEqual(self.load(r["id"])["engine"], "labber", r["id"])
+            self.assertTrue(self.load(r["id"])["expressible"], r["id"])
 
     def test_terminal_solution_passes_after_failing_start(self):
         for r in RECIPES:

@@ -202,7 +202,7 @@ with sync_playwright() as pw:
             if kind or device_id:
                 target = next(
                     d
-                    for d in page.evaluate("aglabEngines.capture().devices")
+                    for d in page.evaluate("academyEngine.snapshot().devices")
                     if d["id"] == device_id or device_id is None and d["type"] == kind
                 )
                 node = page.locator('#ptCanvas g[data-id="' + target["id"] + '"]')
@@ -223,11 +223,11 @@ with sync_playwright() as pw:
             page.click("#academyReplaceContinue")
         open_and_close()
         page.click("#ux14Free")
-        previous_ids = {d["id"] for d in page.evaluate("aglabEngines.capture().devices")}
+        previous_ids = {d["id"] for d in page.evaluate("academyEngine.snapshot().devices")}
         page.click('[data-pt-add="Switch"]')
         added = next(
             d
-            for d in page.evaluate("aglabEngines.capture().devices")
+            for d in page.evaluate("academyEngine.snapshot().devices")
             if d["id"] not in previous_ids
         )
         open_and_close(device_id=added["id"])
@@ -235,7 +235,7 @@ with sync_playwright() as pw:
             file = Path(tmp) / "topology.json"
             file.write_text(json.dumps(TOPOLOGY))
             page.locator("#ptImportFile").set_input_files(str(file))
-            page.wait_for_function('aglabEngines.capture().devices.some(d=>d.id==="pc")')
+            page.wait_for_function('academyEngine.snapshot().devices.some(d=>d.id==="pc")')
             open_and_close("PC")
         page.reload()
         page.click('[data-area="lab"]')

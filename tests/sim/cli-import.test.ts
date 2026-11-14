@@ -77,7 +77,7 @@ describe('PKT IOS metin yolu (cliImport)', () => {
   it('gerçek örnek: yapısal ve CLI yolu modellenen alanlarda aynı; uçtan uca ping CLI yolunda geçer', () => {
     const t = SAMPLE()
     const r = cliImport(t)
-    expect(r.bridge.report.engineDecision).toBe('labber')
+    expect(r.bridge.report.expressible).toBe(true)
     expect(r.diffs).toEqual([])
     expect(r.lines.filter((l) => l.status === 'unmodeled')).toEqual([])
     const q = r.runtime.query()

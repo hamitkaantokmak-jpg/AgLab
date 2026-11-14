@@ -47,6 +47,11 @@ bu pinleme sınırı raporda görünür tutulur.
 
 ## Ortak motor yöneticisi
 
+> **L7b notu:** `engine-manager*`, borck-netsim ve AğLab JS motoru kaldırıldı; ürünün tek
+> simülasyon motoru Labber'dır (UYUMLULUK_MATRISI "L7b"). Bu bölüm tarihsel kayıttır; Gerçek Lab
+> (Linux bridge / FRR) aşağıdaki gibi ayrı kalır. Operatör dışa aktarımı Paket Dedektifi altındaki
+> "Gerçek Lab için topolojiyi indir" bölümündedir.
+
 `engine-manager.js` özellik gereksinimlerini (trunk, döngü/STP, OSPF, BGP,
 DHCP/helper, routing, NAT, ACL) tanımlar. Açık seçim: `aglab-js`, `borck`,
 `linux-bridge`, `frr`. Varsayılan AğLab JS kalır. MIT yolundaki kapsam denetimi

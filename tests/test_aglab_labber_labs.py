@@ -119,13 +119,18 @@ class LabberLabsTests(unittest.TestCase):
                 )
                 self.assertEqual(shown, ["true"] * len(done))
 
-    def test_lab_definition_is_fixed_and_restarts_on_reload(self):
+    def test_lab_definition_is_fixed_and_resumes_on_reload(self):
+        # L7 kalıcılık v24: sayfa yenilenince lab baştan başlamaz; Labber durumu (kaydedilmemiş
+        # running dahil) kayıttan geri gelir. Lab tanımı yine sabittir.
         lab_id = catalog_ids()[0]
         self.start(lab_id)
         self.page.select_option("#ptCliDevice", "SW1")
         self.type("enable")
+        self.type("configure terminal")
+        self.type("hostname KALICI-LAB")
+        self.type("end")
         self.assertEqual(
-            json.loads(self.page.evaluate("localStorage.getItem('aglab-topology-v23')"))[
+            json.loads(self.page.evaluate("localStorage.getItem('aglab-topology-v24')"))[
                 "labberLab"
             ],
             {"id": lab_id},
@@ -133,6 +138,7 @@ class LabberLabsTests(unittest.TestCase):
         self.page.reload()
         self.page.click('[data-area="lab"]')
         self.assertEqual(self.page.evaluate("aglabLabberLabs.active()"), lab_id)
+        self.assertEqual(self.page.evaluate("aglabLabberSession.prompt('SW1')"), "KALICI-LAB>")
         self.assertTrue(any(not o["ok"] for o in self.objectives()))
         # düzenleyici topolojiyi değiştirirse sessizce yeni topolojiye geçilmez
         self.page.click('[data-pt-add="PC"]')

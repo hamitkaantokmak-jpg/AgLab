@@ -1,5 +1,5 @@
-// Simulation Mode V1: replay an immutable observation of the existing engine.
-// Never calls ping, routeLookup, forwarding, saveTopology, or a native Lab API.
+// Simulation Mode V1: replay an immutable observation of the Labber trace (L7b: single engine).
+// Never runs traffic, saveTopology, or a native Lab API; it only plays back readEthernetTrace().
 (function () {
   'use strict';
   const canvas = document.getElementById('ptCanvas'),
@@ -151,12 +151,12 @@
  .simulation-table{max-height:350px;overflow:auto}#simulationPanel table{border-collapse:collapse;width:100%;font-size:12px}#simulationPanel th,#simulationPanel td{padding:6px;border-bottom:1px solid var(--line,#3b5277);overflow-wrap:anywhere;text-align:left}
  #simulationPanel caption{text-align:left;padding:6px}#simulationPanel tr[aria-selected=true]{outline:2px solid var(--cyan,#63e1d0);outline-offset:-2px}#simulationPanel td button{min-height:44px;width:auto}
  #simulationFields{display:grid;grid-template-columns:minmax(90px,1fr) minmax(0,2fr);gap:5px;font-size:12px}#simulationFields dd{margin:0;overflow-wrap:anywhere}#simulationRaw{max-height:150px;overflow:auto;overflow-wrap:anywhere}
- body.aglab-simulation-mode #ptPacketStep,body.aglab-simulation-mode #ptCanvas .pt-packet-dot,body.aglab-simulation-mode #ptCanvas .pt-packet-label,body.aglab-simulation-mode .pt-side>.pt-cli-card{display:none}
+ body.aglab-simulation-mode .pt-side>.pt-cli-card{display:none}
  @media(max-width:700px){.simulation-columns{display:block}#simulationDetails{margin-top:14px}.simulation-table{max-height:250px}#simulationPanel{padding:10px}}
  `;
   document.head.append(style);
   let active = false,
-    captured = { origin: 'aglab-js', events: [], legacy: [] },
+    captured = { origin: 'labber', events: [] },
     raf = 0,
     lastTime = 0,
     progress = 1,
@@ -460,7 +460,7 @@
     status.textContent = stale
       ? 'Topoloji/yapılandırma değişti. Eski kayıt canlandırılmaz; CLI testini yeniden çalıştır ve kaydı al.'
       : s.total
-        ? (captured.origin === 'labber' ? 'Labber · ' : 'AğLab JS · ') +
+        ? 'Labber · ' +
           (s.cursor < 0 ? 'Hazır' : 'Görüntülenen ' + (s.cursor + 1)) +
           ' / ' +
           s.total +
@@ -481,11 +481,9 @@
       document.dispatchEvent(
         new CustomEvent('aglab:packet-event-viewed', {
           detail: {
-            origin: captured.origin || 'aglab-js',
+            origin: captured.origin || 'labber',
             raw: e.raw,
-            trace: captured.legacy?.length
-              ? captured.legacy
-              : (captured.events || []).map((x) => x.raw),
+            trace: (captured.events || []).map((x) => x.raw),
           },
         }),
       );

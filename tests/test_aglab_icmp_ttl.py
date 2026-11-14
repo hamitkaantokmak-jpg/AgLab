@@ -3,13 +3,9 @@
 import copy, json, re, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium, legacy_engine
+from aglab_test_support import ROOT, launch_chromium
 
-module = (ROOT / "simulator/icmp.js").read_text()
-assert (
-    "// BEGIN ICMP GENERATED\n" + module + "\n// END ICMP GENERATED\n"
-    in (ROOT / "AgLab_Final_PKT_Import.html").read_text()
-)
+# L7b: eski motorun modülü (ürüne gömülü olduğu denetlenirdi) kaldırıldı; davranış Labber'da sınanır.
 base = json.loads((ROOT / "static-routing-two-routers.aglab.json").read_text())
 with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     browser = launch_chromium(pw)
@@ -163,17 +159,9 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     assert "icmp" not in cmd("d1", "show ip nat translations").split("Outside global")[-1]
     assert cmd("d3", "ping 192.168.2.2").count("84 bytes from 192.168.2.2") == 5
     assert "icmp 10.0.0.1" in cmd("d1", "show ip nat translations")
-    # "Paket adımı" eski motorun aracı (L7'de silinir): eski motor kararındaki topolojide
-    load(legacy_engine(base))
-    before = page.locator("#ptTerminal > div").count()
-    page.evaluate(
-        "document.querySelector('#ptSource').value='d1';document.querySelector('#ptTarget').value='d2';document.querySelector('#ptPacketStep').click()"
-    )
-    step = "\n".join(page.locator("#ptTerminal > div").all_text_contents()[before:])
-    assert "TTL 64" in step and "10.0.0.1" in step, step
-    print(
-        "PASS: PAT expiry before translation; legacy Packet Step router origin keeps TTL 64",
-        flush=True,
-    )
+    # L7b: eski motorun "Paket adımı" ilerleticisi (router kaynaklı paketin TTL 64 ile çıkışı)
+    # eski motorla birlikte kaldırıldı; TTL'nin yalnız router'da azalması yukarıda Labber'da
+    # (ping ttl / Time Exceeded) sınanır.
+    print("PASS: PAT expiry before translation", flush=True)
     assert not errors, errors
     browser.close()

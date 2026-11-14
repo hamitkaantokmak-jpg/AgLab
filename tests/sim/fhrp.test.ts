@@ -316,7 +316,7 @@ describe('köprü: FHRP', () => {
     )
     ;(t.devices[2] as Record<string, unknown>)['tracks'] = [{ id: 1, interface: 'g0/1' }]
     const r = toLabber(t)
-    expect(r.report.engineDecision, JSON.stringify(r.report.reasons)).toBe('labber')
+    expect(r.report.expressible, JSON.stringify(r.report.reasons)).toBe(true)
     const rt = createRuntime(r)
     // R1'in g0/1'i kablosuz (line protocol down): iki izleme düşük → 110 - 20 - 10 = 80 < 100
     expect(rt.query().fhrpActive('r1', 'g0/0', 1)).toBe(false)
@@ -343,7 +343,7 @@ describe('köprü: FHRP', () => {
     expect(v.devices[3]!['tracks']).toEqual([{ id: 7, interface: 'g0/1' }])
     expect(v.devices[3]!.interfaces!['g0/0']!['hsrp']).toEqual([{ group: 1, ip: '192.168.1.254', priority: 150, preempt: true, track: [{ object: 7, decrement: 60 }] }])
     expect('hsrp' in v.devices[2]!.interfaces!['g0/0']!).toBe(false)
-    expect(toLabber(v).report.engineDecision).toBe('labber')
+    expect(toLabber(v).report.expressible).toBe(true)
   })
 
   it('geçersiz FHRP alanı reddedilir (karar eski motor, neden görünür); bilinmeyen alan desteklenmiyor', () => {
@@ -357,7 +357,7 @@ describe('köprü: FHRP', () => {
       { hsrp: { group: 1 } },
     ]) {
       const r = toLabber(aglab(bad, {}))
-      expect(r.report.engineDecision, JSON.stringify(bad)).toBe('legacy')
+      expect(r.report.expressible, JSON.stringify(bad)).toBe(false)
       expect(r.report.rejected.length, JSON.stringify(bad)).toBeGreaterThan(0)
     }
     const r = toLabber(aglab({ hsrp: [{ group: 1, ip: '192.168.1.254', timers: [3, 10] }] }, {}))

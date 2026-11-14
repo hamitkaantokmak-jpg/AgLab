@@ -189,7 +189,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         page.clock.resume()
 
     def trace():
-        return page.evaluate("aglabEngines.trace()")
+        return page.evaluate("aglabLabberSession.trace()")
 
     def cmd(id, commands):
         page.locator('#ptCanvas g[data-id="' + id + '"]').click()
@@ -225,7 +225,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         assert "Topoloji doğrulandı" in "\n".join(
             page.locator("#ptTerminal > div").all_text_contents()[before:]
         )
-        assert len(page.evaluate("aglabEngines.capture().devices")) == len(top["devices"])
+        assert len(page.evaluate("academyEngine.snapshot().devices")) == len(top["devices"])
 
     def select_event(index):
         if not page.locator("#simulationEvents").evaluate("(d)=>d.open"):
@@ -246,7 +246,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         page.click("#ptDeleteDevice")
     for kind in ("PC", "Switch", "PC"):
         page.click('[data-pt-add="' + kind + '"]')
-    ds = page.evaluate("aglabEngines.capture().devices")
+    ds = page.evaluate("academyEngine.snapshot().devices")
     hosts = [d for d in ds if d["type"] == "PC"]
     sw = next(d for d in ds if d["type"] == "Switch")
     a, b = hosts[0]["id"], hosts[1]["id"]
@@ -266,7 +266,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     assert any(e["kind"] == "wire" for e in cold["events"])
     assert not state()["active"]
     baseline = page.evaluate(
-        "JSON.stringify({topology:academyEngine.snapshot(),tables:aglabEngines.tables()})"
+        "JSON.stringify({topology:academyEngine.snapshot(),tables:aglabLabberSession.state()})"
     )
     page.click("#simulationMode")
     same_capture()
@@ -291,7 +291,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
 
     def geometry():
         return page.evaluate(
-            """()=>{const s=aglabSimulation.state(),t=aglabEngines.capture(),e=s.event.edge,ls=t.links.filter(l=>t.devices.some(d=>d.id===l.a)&&t.devices.some(d=>d.id===l.b)),i=AgLabSimulationPlayback.matchWire(s.event,ls),line=document.querySelectorAll('#ptCanvas line.pt-edge')[i],dot=document.getElementById('simulationPacket');let p={x1:+line.getAttribute('x1'),y1:+line.getAttribute('y1'),x2:+line.getAttribute('x2'),y2:+line.getAttribute('y2')};if(ls[i].a!==e.a)p={x1:p.x2,y1:p.y2,x2:p.x1,y2:p.y1};const expected=AgLabSimulationPlayback.interpolate(p,s.progress),box=dot.getBoundingClientRect(),m=document.getElementById('ptCanvas').getScreenCTM(),screen=new DOMPoint(expected.x,expected.y).matrixTransform(m);return {x:+dot.getAttribute('cx'),y:+dot.getAttribute('cy'),expected,screen:{x:screen.x,y:screen.y},actualScreen:{x:box.x+box.width/2,y:box.y+box.height/2}}}"""
+            """()=>{const s=aglabSimulation.state(),t=academyEngine.snapshot(),e=s.event.edge,ls=t.links.filter(l=>t.devices.some(d=>d.id===l.a)&&t.devices.some(d=>d.id===l.b)),i=AgLabSimulationPlayback.matchWire(s.event,ls),line=document.querySelectorAll('#ptCanvas line.pt-edge')[i],dot=document.getElementById('simulationPacket');let p={x1:+line.getAttribute('x1'),y1:+line.getAttribute('y1'),x2:+line.getAttribute('x2'),y2:+line.getAttribute('y2')};if(ls[i].a!==e.a)p={x1:p.x2,y1:p.y2,x2:p.x1,y2:p.y1};const expected=AgLabSimulationPlayback.interpolate(p,s.progress),box=dot.getBoundingClientRect(),m=document.getElementById('ptCanvas').getScreenCTM(),screen=new DOMPoint(expected.x,expected.y).matrixTransform(m);return {x:+dot.getAttribute('cx'),y:+dot.getAttribute('cy'),expected,screen:{x:screen.x,y:screen.y},actualScreen:{x:box.x+box.width/2,y:box.y+box.height/2}}}"""
         )
 
     def aligned():
@@ -324,7 +324,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     print("PASS animation geometry and pause", flush=True)
     assert (
         page.evaluate(
-            "JSON.stringify({topology:academyEngine.snapshot(),tables:aglabEngines.tables()})"
+            "JSON.stringify({topology:academyEngine.snapshot(),tables:aglabLabberSession.state()})"
         )
         == baseline
     ), "Replay must not change network state"
@@ -576,7 +576,9 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             load(top)
             page.click("#simulationMode" if sim else "#simulationRealtime")
             measured = page.evaluate(
-                """([a,b])=>{const start=performance.now(),r=aglabEngines.run('aglab-js',a,b);return {ok:r.ok,ms:performance.now()-start,events:aglabEngines.trace().events.length,overflow:aglabEngines.trace().overflow}}""",
+                # L7b: Labber Simulation Mode izi (eski motor yöneticisinin "aglab-js" çalıştırması
+                # kaldırıldı); süre iz üretimidir, sonuç Labber ping'idir (iz 512 kayıtla sınırlı).
+                """([a,b])=>{const ds=academyEngine.snapshot().devices,name=(id)=>ds.find((d)=>d.id===id).name,ip=ds.find((d)=>d.id===b).ip,start=performance.now();aglabWorkspace.pingTrace(a,ip);const ms=performance.now()-start,t=aglabLabberSession.trace();return {ok:aglabSharedEngine.reach(name(a),name(b)),ms,events:t.events.length,overflow:t.overflow}}""",
                 [source, target],
             )
             assert measured["ok"], (title, measured)

@@ -5,11 +5,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 from aglab_test_support import ROOT, launch_chromium
 
-module = (ROOT / "simulator/traceroute.js").read_text()
-assert (
-    "// BEGIN TRACEROUTE GENERATED\n" + module + "\n// END TRACEROUTE GENERATED\n"
-    in (ROOT / "AgLab_Final_PKT_Import.html").read_text()
-)
+# L7b: eski motorun modülü (ürüne gömülü olduğu denetlenirdi) kaldırıldı; davranış Labber'da sınanır.
 base = json.loads((ROOT / "static-routing-two-routers.aglab.json").read_text())
 with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     browser = launch_chromium(pw)

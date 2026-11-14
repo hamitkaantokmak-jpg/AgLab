@@ -7,10 +7,6 @@ from verify_packages import build_release_manifest
 
 TITLES = [
     "SIMULATION PLAYBACK",
-    "BORCK ENGINE",
-    "ENGINE MANAGER",
-    "ENGINE MANAGER UI",
-    "BORCK UI",
     "LAB EVIDENCE",
     "LAB EVIDENCE UI",
     "SIMULATION UI",

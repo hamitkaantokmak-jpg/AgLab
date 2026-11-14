@@ -1,35 +1,18 @@
 // Isolated regression for port-security's invalid source MAC fail-closed behavior.
+// L7b: oracle (src/engine/portsec.js; the product's port security runs in Labber).
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
-const path = require('node:path');
 
 const events = [];
 let saves = 0;
-const context = {
-  WeakMap,
-  WeakSet,
-  Set,
-  Object,
-  Number,
-  String,
-  parseInt,
+const { createPortSecurity } = require('../../src/engine/portsec.js');
+const ps = createPortSecurity({
   macOf: (source) => source.mac,
-  saveTopology: () => {
+  save: () => {
     saves++;
   },
-  ethernetEvent: (text) => events.push(text),
-};
-vm.createContext(context);
-vm.runInContext(
-  fs.readFileSync(path.join(__dirname, '../../simulator', 'port-security.js'), 'utf8'),
-  context,
-);
-const allow = (sw, source) =>
-  vm.runInContext(
-    'portSecurityAllows(switchUnderTest, "fa0/1", sourceUnderTest)',
-    Object.assign(context, { switchUnderTest: sw, sourceUnderTest: source }),
-  );
+  event: (text) => events.push(text),
+});
+const allow = (sw, source) => ps.allows(sw, 'fa0/1', source);
 const makeSwitch = () => ({
   id: 'sw1',
   interfaces: {

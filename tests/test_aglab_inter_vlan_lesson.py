@@ -76,7 +76,7 @@ class InterVlanLessonScenarioTests(unittest.TestCase):
             with self.subTest(scenario=scenario):
                 self.load(scenario)
                 # L5-a: router-on-a-stick senaryoları Labber kararında; hedef Labber'dan gelir
-                self.assertEqual(self.js("aglabSharedEngine.engine()")["engine"], "labber")
+                self.assertTrue(self.js("aglabSharedEngine.engine()")["expressible"])
                 self.assertFalse(self.js("aglabSharedEngine.goal()"))
                 self.assertFalse(
                     self.reachable("PC-01", "PC-02"), "arıza VLAN'lar arası erişimi kesmeli"

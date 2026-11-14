@@ -36,7 +36,7 @@ APPLY_TEACHER_CLI = """([init, target, cmds]) => {
   const hybrid = { ...target, devices: target.devices.map((d) =>
     own.has(d.id) ? JSON.parse(JSON.stringify(own.get(d.id))) : d) };
   const r = AgLabSim.toLabber(hybrid);
-  if (r.report.engineDecision !== 'labber') return { reasons: r.report.reasons };
+  if (!r.report.expressible) return { reasons: r.report.reasons };
   const rt = AgLabSim.createRuntime(r);
   const errors = [];
   for (const [dev, list] of Object.entries(cmds)) {
@@ -50,9 +50,10 @@ APPLY_TEACHER_CLI = """([init, target, cmds]) => {
 
 def map_decisions():
     text = (ROOT / "docs/LAB_MOTOR_HARITASI.md").read_text(encoding="utf-8")
-    rows = re.findall(r"^\| (AGL-\d{3}) \|(?:[^|]*\|){3} ([^|]+) \|", text, re.M)
+    rows = re.findall(r"^\| (AGL-\d{3}) \|(?:[^|]*\|){2} ([^|]+) \|", text, re.M)
     return {
-        lid: "labber" if cell.strip().startswith("**Labber**") else "legacy" for lid, cell in rows
+        lid: "labber" if cell.strip().startswith("**Labber**") else "unsupported"
+        for lid, cell in rows
     }
 
 
@@ -250,12 +251,8 @@ class AcademyEngineTests(unittest.TestCase):
         self.assertIn("Labber motorunda değerlendirilemiyor", rows["dhcp"]["detail"])
         self.assertEqual(result["status"], "incomplete")
         self.assertLess(result["coverage"], 1)
-        legacy = self.page.evaluate("c => academy.evaluate(c, {}, null, 'legacy')", changed)
-        legacy_rows = {r["id"]: r for r in legacy["criteria"]}
-        self.assertEqual(legacy_rows["dhcp"]["status"], "not_evaluated")
-        # L4: kaynak arayüzlü probe Labber'da da değerlendirilir; eski motorla aynı kural ve
-        # sonuç (PC kaynağı desteklenmez → iki motorda da "hata", "değerlendirilemedi" değil).
-        self.assertEqual(rows["src-if"]["status"], legacy_rows["src-if"]["status"])
+        # L4: kaynak arayüzlü probe Labber'da değerlendirilir (PC kaynağı desteklenmez → "hata",
+        # "değerlendirilemedi" değil). L7b: eski motorla karşılaştırma kaldırıldı (eski motor yok).
         self.assertEqual(rows["src-if"]["status"], "error", rows["src-if"])
 
     def test_unsupported_runtime_topology_is_error_not_fallback(self):
@@ -275,14 +272,15 @@ class AcademyEngineTests(unittest.TestCase):
         for c in result["criteria"]:
             if c["kind"] in ("state.equals", "probe.icmp"):
                 self.assertEqual(c["status"], "error", c)
-                self.assertIn("Motor değiştirilmez", c["detail"])
+                self.assertIn("Simüle edilemiyor", c["detail"])
+                self.assertIn("Başka motor yok", c["detail"])
         self.assertNotEqual(result["status"], "complete")
 
-    def test_m4_labber_matches_legacy_engine_criteria(self):
-        """L4 oracle paritesi (Akademi M4): aynı ölçütler eski motorla ve Labber'la aynı
-        sonucu verir — başlangıçta, öğretmen hedefinde ve hedeften dönüş rotası silinince
-        (başarısız iletim). Eski motor yolu (academy.evaluate(..., 'legacy')) ayrıca
-        çalışır durumda kalır; Akademi'de eski motor kararında lab kalmadı."""
+    def test_m4_criteria_on_labber_start_target_and_broken(self):
+        """Akademi M4 ölçütleri Labber'da: öğretmen hedefinde hepsi sağlanır, hedeften statik
+        rotalar silinince uzak LAN'a erişim başarısızdır
+        (başarısız iletim). L7b: eski motorla parite (academy.evaluate(..., 'legacy')) eski
+        motorla birlikte kaldırıldı; oracle paritesi vitest `routing-acceptance`/`parity`'dedir."""
         for lid in M4:
             student, teacher = lab_json(lid)
             self.start(lid)
@@ -293,23 +291,19 @@ class AcademyEngineTests(unittest.TestCase):
             for d in broken["devices"]:
                 if d["type"] == "Router":
                     d["staticRoutes"] = []
+            status = {}
             for name, topo in [("başlangıç", None), ("hedef", target), ("rotasız", broken)]:
                 if topo is not None:
                     self.page.evaluate("t=>academyEngine.load(t)", topo)
-                both = {
-                    engine: {
-                        r["id"]: r["status"]
-                        for r in self.page.evaluate(
-                            "([c, a, e]) => academy.evaluate(c, a, null, e)",
-                            [criteria, answers, engine],
-                        )["criteria"]
-                    }
-                    for engine in ("labber", "legacy")
-                }
-                self.assertEqual(both["labber"], both["legacy"], (lid, name))
+                result = self.page.evaluate(
+                    "([c, a]) => academy.evaluate(c, a, null)", [criteria, answers]
+                )
+                self.assertEqual(result["engine"], "labber", (lid, name))
+                status[name] = {r["id"]: r["status"] for r in result["criteria"]}
+            self.assertEqual(set(status["hedef"].values()), {"passed"}, (lid, status["hedef"]))
             # rotasız hedefte uzak LAN'a erişim yok (AGL-031/032/033 doğrudan bağlı)
             if any(d.get("staticRoutes") for d in target["devices"]):
-                self.assertIn("failed", both["labber"].values(), lid)
+                self.assertIn("failed", status["rotasız"].values(), lid)
 
 
 if __name__ == "__main__":

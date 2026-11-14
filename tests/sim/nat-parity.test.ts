@@ -74,7 +74,7 @@ describe('NAT oracle paritesi', () => {
       const path = topo.links!.slice(0, 2)
       const o = nat.natPathCheck(topo, path, 'pc', 'srv', '10.0.0.5', '203.0.113.8', 'icmp')
       const br = toLabber(topo)
-      expect(br.report.engineDecision, JSON.stringify(v)).toBe('labber')
+      expect(br.report.expressible, JSON.stringify(v)).toBe(true)
       const rt = createRuntime(br)
       const d = deliver(rt.derived, 'pc', '203.0.113.8')
       expect(d.kind, JSON.stringify(v)).toBe('ok')

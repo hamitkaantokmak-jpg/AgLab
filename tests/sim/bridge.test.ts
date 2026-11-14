@@ -25,7 +25,7 @@ function content(): [string, AglabTopology][] {
 
 function roundTrip(t: AglabTopology): AglabTopology {
   const r = toLabber(t)
-  expect(r.report.engineDecision, JSON.stringify(r.report.reasons)).toBe('labber')
+  expect(r.report.expressible, JSON.stringify(r.report.reasons)).toBe(true)
   return toAglab(createRuntime(r), t)
 }
 
@@ -81,7 +81,7 @@ describe('köprü: Router (L4)', () => {
     const t = routed()
     t.devices[2]!.staticRoutes = [{ network: '192.168.10.0', mask: '255.255.255.0', nextHop: '10.0.12.1' }, { network: '0.0.0.0', mask: '0.0.0.0', nextHop: '10.0.12.1', distance: 250 }]
     const r = toLabber(t)
-    expect(r.report.engineDecision, JSON.stringify(r.report)).toBe('labber')
+    expect(r.report.expressible, JSON.stringify(r.report)).toBe(true)
     const def = r.def.devices.find((d) => d.id === 'r1')!
     expect(def).toMatchObject({ kind: 'switch', router: true, l3: true, model: 'ISR4331', ports: ['GigabitEthernet0/0', 'GigabitEthernet0/1', 'GigabitEthernet0/2'] })
     expect(r.running['r1']!.ifaces['GigabitEthernet0/1']).toMatchObject({ routed: true, shutdown: false, ip: { addr: '10.0.12.1', mask: '255.255.255.252' } })
@@ -192,7 +192,7 @@ describe('köprü: alt arayüz (L5-a)', () => {
     const t = roas()
     t.devices[3]!.interfaces!['g0/0.30'] = { ip: '', mask: '255.255.255.0', enabled: true, vlan: 1, encapsulation: '', parent: 'g0/0' }
     const r = toLabber(t)
-    expect(r.report.engineDecision, JSON.stringify(r.report)).toBe('labber')
+    expect(r.report.expressible, JSON.stringify(r.report)).toBe(true)
     expect(r.running['r1']!.subifs).toEqual({
       'GigabitEthernet0/0.10': { parent: 'GigabitEthernet0/0', vlan: 10, native: false, shutdown: false, description: '', ip: { addr: '192.168.10.1', mask: '255.255.255.0' } },
       'GigabitEthernet0/0.30': { parent: 'GigabitEthernet0/0', vlan: null, native: false, shutdown: false, description: '', ip: null },
@@ -260,7 +260,7 @@ describe('köprü: DHCP/DNS (L5-b)', () => {
   it('relay-trunk: helperAddress, DHCP servisi ve dhcpLease eşlenir; gidiş-dönüş birebir', () => {
     const t = relayTrunk()
     const r = toLabber(t)
-    expect(r.report.engineDecision, JSON.stringify(r.report.reasons)).toBe('labber')
+    expect(r.report.expressible, JSON.stringify(r.report.reasons)).toBe(true)
     expect(r.running['r1']!.ifaces['GigabitEthernet0/0']!.l3).toEqual({ helpers: ['10.10.20.2'] })
     expect(r.pcs['srv']!.services).toEqual({ dhcp: true })
     expect(r.def.devices.find((d) => d.id === 'srv')).toMatchObject({ server: true, name: 'DHCP-SRV' })
@@ -304,7 +304,7 @@ describe('köprü: DHCP/DNS (L5-b)', () => {
     r1.dhcpPools = [{ name: 'LAN', network: '192.168.1.0', mask: '255.255.255.0', defaultRouter: '192.168.1.1', dnsServer: '10.10.20.2' }]
     r1.dhcpExcluded = [{ start: '192.168.1.1', end: '192.168.1.10' }]
     const r = toLabber(t)
-    expect(r.report.engineDecision, JSON.stringify(r.report.reasons)).toBe('labber')
+    expect(r.report.expressible, JSON.stringify(r.report.reasons)).toBe(true)
     expect(r.running['r1']!.dhcpPools).toEqual({ LAN: { net: { addr: '192.168.1.0', mask: '255.255.255.0' }, defaultRouter: '192.168.1.1', dns: '10.10.20.2' } })
     expect(r.running['r1']!.dhcpExcluded).toEqual([{ lo: '192.168.1.1', hi: '192.168.1.10' }])
     expect(roundTrip(t)).toEqual(t)
@@ -323,7 +323,7 @@ describe('köprü: DHCP/DNS (L5-b)', () => {
     t.devices[4]!.services = { dhcp: true, dns: false, http: false }
     t.devices[0]!.dns = '10.10.20.2'
     const r = toLabber(t)
-    expect(r.report.engineDecision, JSON.stringify(r.report.reasons)).toBe('labber')
+    expect(r.report.expressible, JSON.stringify(r.report.reasons)).toBe(true)
     expect(r.pcs['pc']!.dns).toBe('10.10.20.2')
     expect(roundTrip(t)).toEqual(t)
     const rt = createRuntime(r)
@@ -346,7 +346,7 @@ describe('köprü: DHCP/DNS (L5-b)', () => {
       const t = relayTrunk()
       mutate(t)
       const r = toLabber(t).report
-      expect(r.engineDecision, name).toBe('legacy')
+      expect(r.expressible, name).toBe(false)
       expect(r.rejected.map((x) => x.reason).join('\n'), name).toMatch(reason)
     }
     // L5-g: HTTP Labber'da (bkz. "köprü: HTTP (L5-g)"); bilinmeyen servis raporlanır
@@ -355,7 +355,7 @@ describe('köprü: DHCP/DNS (L5-b)', () => {
     expect(toLabber(ftp).report.reasons.join()).toMatch(/Bilinmeyen sunucu servisleri Labber'da yok: ftp/)
     const pcSvc = relayTrunk()
     pcSvc.devices[0]!.services = { dhcp: true }
-    expect(toLabber(pcSvc).report.engineDecision).toBe('legacy')
+    expect(toLabber(pcSvc).report.expressible).toBe(false)
     // L3 switch üzerinde CLI ile havuz: AğLab modelinde yok → açık hata
     const t = lan()
     const rt = createRuntime(toLabber(t))
@@ -374,7 +374,7 @@ describe('köprü: port security (L5-e)', () => {
     const t = secured()
     t.devices[2]!.interfaces!['fa0/2']!.errdisabled = false
     const r = toLabber(t)
-    expect(r.report.engineDecision, JSON.stringify(r.report)).toBe('labber')
+    expect(r.report.expressible, JSON.stringify(r.report)).toBe(true)
     expect(r.running['d3']!.ifaces['FastEthernet0/1']!.portSecurity).toEqual({ enabled: true, max: 2, violation: 'restrict', sticky: false, macs: ['0200.0000.00fe'], stickyMacs: [] })
     expect(roundTrip(t)).toEqual(t)
   })
@@ -411,7 +411,7 @@ describe('köprü: ACL (L5-c)', () => {
   it('kurallar listelere, aclIn/aclOut access-group\'a eşlenir; gidiş-dönüş birebir', () => {
     const t = withAcl()
     const r = toLabber(t)
-    expect(r.report.engineDecision, JSON.stringify(r.report)).toBe('labber')
+    expect(r.report.expressible, JSON.stringify(r.report)).toBe(true)
     expect(r.running['r2']!.acls!['10']).toEqual({ type: 'standard', entries: [
       { seq: 10, action: 'deny', proto: 'ip', src: { addr: '192.168.10.10', wild: '0.0.0.0' } },
       { seq: 20, action: 'permit', proto: 'ip', src: { addr: '0.0.0.0', wild: '255.255.255.255' } },
@@ -445,7 +445,7 @@ describe('köprü: HTTP (L5-g)', () => {
     const t = routed()
     t.devices[3]!.services = { dhcp: false, dns: false, http: true }
     const r = toLabber(t)
-    expect(r.report.engineDecision, JSON.stringify(r.report)).toBe('labber')
+    expect(r.report.expressible, JSON.stringify(r.report)).toBe(true)
     expect(r.pcs['srv']!.services).toEqual({ http: true })
     expect(roundTrip(t)).toEqual(t)
     const rt = createRuntime(r)
@@ -474,7 +474,7 @@ describe('köprü: NAT (L5-d)', () => {
   it('natRole, natOverload ve çeviri tablosu eşlenir; gidiş-dönüş birebir', () => {
     const t = withNat()
     const r = toLabber(t)
-    expect(r.report.engineDecision, JSON.stringify(r.report)).toBe('labber')
+    expect(r.report.expressible, JSON.stringify(r.report)).toBe(true)
     expect(r.running['r1']!.nat).toEqual({ statics: [], pools: {}, rules: [{ acl: '1', iface: 'GigabitEthernet0/1', overload: true }] })
     expect(r.running['r1']!.ifaces['GigabitEthernet0/0']!.l3).toEqual({ nat: 'inside' })
     expect(roundTrip(t)).toEqual(t)
@@ -518,16 +518,24 @@ describe('köprü: NAT (L5-d)', () => {
       const t = withNat()
       mutate(t)
       const r = toLabber(t)
-      expect(r.report.engineDecision, name).toBe('legacy')
+      expect(r.report.expressible, name).toBe(false)
       expect(r.report.rejected.length, name).toBeGreaterThan(0)
     }
   })
 })
 
+describe('köprü: boş topoloji (L7b)', () => {
+  it('cihazsız çalışma alanı ifade edilebilir ve çalışma zamanı kurulur', () => {
+    // L7b'den önce MAC çözücüsü boş listede hata verip içeriği eski motora düşürüyordu.
+    const r = toLabber({ app: 'AgLab', version: 23, devices: [], links: [] } as AglabTopology)
+    expect(r.report.expressible, JSON.stringify(r.report.reasons)).toBe(true)
+    expect(createRuntime(r).topo.devices).toEqual({})
+  })
+})
+
 describe('köprü: gerçek içerik', () => {
   for (const [id, t] of content()) {
-    const decision = toLabber(t).report.engineDecision
-    if (decision !== 'labber') continue
+    if (!toLabber(t).report.expressible) continue
     it(`${id}: gidiş-dönüş birebir`, () => {
       expect(roundTrip(t)).toEqual(t)
     })
@@ -578,7 +586,7 @@ describe('köprü: alan eşlemesi', () => {
     const r = toLabber(t)
     const sw = r.def.devices.find((d) => d.id === 'd3')!
     expect(sw.kind === 'switch' && sw.ports.length).toBe(26)
-    expect(r.report.engineDecision).toBe('labber')
+    expect(r.report.expressible).toBe(true)
   })
 
   it('trunk: AğLab\'da allowed yoksa hiçbir VLAN taşınmaz (Labber null=tümü değil, [] olur)', () => {
@@ -690,7 +698,7 @@ describe('köprü: fiziksel durum (L2)', () => {
       const t = lan()
       mutate(t)
       const r = toLabber(t)
-      expect(r.report.engineDecision, name + ': ' + r.report.reasons.join('; ')).toBe('labber')
+      expect(r.report.expressible, name + ': ' + r.report.reasons.join('; ')).toBe(true)
       expect(r.report.unsupported, name).toEqual([])
       expect(pick(r), name).toEqual(want)
       expect(ping(t), name + ': ping başarısız olmalı').toBe(false)
@@ -781,7 +789,7 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
       const t = lan()
       mutate(t)
       const r = toLabber(t)
-      expect(r.report.engineDecision).toBe('legacy')
+      expect(r.report.expressible).toBe(false)
       expect(r.report.unsupported.map((u) => u.reason).join('\n')).toMatch(reason)
       expect(r.report.reasons.join('\n')).toMatch(reason)
     })
@@ -821,7 +829,7 @@ describe('köprü: desteklenmeyen ve reddedilen', () => {
       const t = lan()
       mutate(t)
       const r = toLabber(t)
-      expect(r.report.engineDecision).toBe('legacy')
+      expect(r.report.expressible).toBe(false)
       expect(r.report.rejected.map((x) => x.reason).join('\n')).toMatch(reason)
     })
 })
@@ -914,12 +922,12 @@ describe('köprü: 200 rastgele topoloji (seed\'li)', () => {
     for (let seed = 1; seed <= 200; seed++) {
       const t = randomTopology(seed)
       const r = toLabber(clone(t))
-      expect(r.report.engineDecision, `seed ${seed}: ${r.report.reasons.join('; ')}`).toBe('labber')
+      expect(r.report.expressible, `seed ${seed}: ${r.report.reasons.join('; ')}`).toBe(true)
       expect(toAglab(createRuntime(r), t), `seed ${seed}`).toEqual(t)
       // aynı topoloji fiziksel arızalarla (kopuk kablo, kapalı cihaz, kapalı NIC)
       const h = withHardwareFaults(t, seed)
       const rh = toLabber(clone(h))
-      expect(rh.report.engineDecision, `seed ${seed} hw: ${rh.report.reasons.join('; ')}`).toBe('labber')
+      expect(rh.report.expressible, `seed ${seed} hw: ${rh.report.reasons.join('; ')}`).toBe(true)
       expect(toAglab(createRuntime(rh), h), `seed ${seed} hw`).toEqual(h)
       checked++
     }

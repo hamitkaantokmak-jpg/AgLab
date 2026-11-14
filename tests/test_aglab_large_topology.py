@@ -127,7 +127,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     too_many_links = json.loads(json.dumps(obj))
     too_many_links["links"] = [obj["links"][0]] * 1001
     for invalid in (too_many_devices, too_many_links):
-        previous = page.evaluate("localStorage.getItem('aglab-topology-v23')")
+        previous = page.evaluate("localStorage.getItem('aglab-topology-v24')")
         before = page.locator("#ptTerminal").inner_text()
         file.write_text(json.dumps(invalid))
         page.locator("#ptImportFile").set_input_files(str(file))
@@ -138,7 +138,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         output = page.locator("#ptTerminal").inner_text()[len(before) :]
         assert "Topoloji sınırı aşıldı" in output, output
         assert page.locator("#ptCanvas .pt-node").count() == 300
-        assert page.evaluate("localStorage.getItem('aglab-topology-v23')") == previous
+        assert page.evaluate("localStorage.getItem('aglab-topology-v24')") == previous
     assert not errors, errors
     browser.close()
 print("PASS: 300 devices, 300 links; ring failover/isolation/recovery; timings_ms", timings)

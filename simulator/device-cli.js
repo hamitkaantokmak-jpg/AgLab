@@ -90,10 +90,6 @@ function positionDeviceCli() {
 function openDeviceCli(id) {
   const device = get(id);
   if (!device || connectMode) return;
-  if (selected !== id) {
-    cliMode = 'user';
-    currentInterface = '';
-  }
   selected = id;
   $p('ptCliDevice').value = id;
   // A pending command for another device must not be submitted accidentally.

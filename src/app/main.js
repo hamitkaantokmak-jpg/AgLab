@@ -338,7 +338,7 @@ function renderTopologyTask() {
             b.type = 'button';
             b.textContent = 'Lab’da seç: ' + t.name + (port ? ' · ' + port : '');
             b.style.cssText = 'font-size:11px;padding:6px 8px';
-            b.addEventListener('click', () => window.aglabFocusAudit(t.id, port, false));
+            b.addEventListener('click', () => window.aglabFocusAudit(t.id, port));
             actions.appendChild(b);
           });
         });
@@ -350,19 +350,6 @@ function renderTopologyTask() {
         b.addEventListener('click', () => showArea('lab'));
         actions.appendChild(b);
       }
-      const trace = document.createElement('button');
-      trace.type = 'button';
-      trace.textContent = 'Paketi bu noktadan izle';
-      trace.style.cssText = 'font-size:11px;padding:6px 8px';
-      const traceTarget = targets[0];
-      trace.disabled = !traceTarget;
-      trace.title = traceTarget
-        ? 'İlgili cihazı içeren uçtan uca yolu paket adımlarıyla başlatır.'
-        : 'Önce bulguda adı geçen cihazın mevcut topolojide bulunması gerekir.';
-      trace.addEventListener('click', () => {
-        if (traceTarget) window.aglabFocusAudit(traceTarget.id, traceTarget.ports[0] || '', true);
-      });
-      actions.appendChild(trace);
       item.appendChild(actions);
       list.appendChild(item);
     });
@@ -4261,10 +4248,10 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
 
 // AğLab interactive topology and IOS-like educational CLI
 (() => {
-  //@@module ENGINE@@
-  // Saf, DOM'suz motor API'si (src/engine). Simülatör durumu (devices/links) bu IIFE'de
-  // kalır ve motora parametre olarak verilir.
-  const engineTopo = {
+  //@@module AGLAB MODEL@@
+  // AğLab modelinin saf yardımcıları (simulator/aglab-model.js; simülasyon Labber'dadır).
+  // Topoloji durumu (devices/links) bu IIFE'de kalır ve yardımcılara parametre olarak verilir.
+  const modelTopo = {
     get devices() {
       return devices;
     },
@@ -4274,18 +4261,16 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   };
   const {
     validIP,
-    ipNum,
     prefixLen,
     subnet,
     inNetwork,
     routePrefixText,
-    maskFromPrefix,
     maskFromWildcard,
-  } = AgLabEngineIpv4;
-  const { portState, linkPort } = AgLabEngineTopology;
-  const { activeRouterInterfaces, staticRoutes, routeKey } = AgLabEngineRouting;
-  const { stpPriorityForVlan } = AgLabEngineStp;
-  const { aclEvaluate } = AgLabEngineAcl;
+    portState,
+    linkPort,
+    activeRouterInterfaces,
+    staticRoutes,
+  } = AgLabModel;
   const $p = (id) => document.getElementById(id);
   const svg = $p('ptCanvas');
   if (!svg) return;
@@ -4334,14 +4319,9 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     connectMode = false,
     connectFirst = '',
     nextId = 1,
-    cliMode = 'user',
-    currentInterface = '',
     auditFocusPort = '',
     sourceArchiveData = null,
     importReportData = null;
-  const macTables = new Map(),
-    arpTables = new Map();
-  let packetWalk = null;
   const clone = (o) => JSON.parse(JSON.stringify(o));
   function validateTopologyData(obj) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj))
@@ -4357,9 +4337,22 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       'sourceArchive',
       'academySession',
       'labberLab',
+      // v24: Labber çalışma zamanının durumu (running/startup ayrı); yükleme ayrıca denetler
+      'labber',
     ]);
     for (const k of Object.keys(obj))
       if (!allowedTop.has(k)) throw new Error('Beklenmeyen üst seviye alan: ' + k);
+    if (
+      obj.labber !== undefined &&
+      (!obj.labber ||
+        typeof obj.labber !== 'object' ||
+        Array.isArray(obj.labber) ||
+        Object.keys(obj.labber).join() !== 'state' ||
+        !obj.labber.state ||
+        typeof obj.labber.state !== 'object' ||
+        obj.labber.state.v !== 1)
+    )
+      throw new Error('labber alanı geçersiz (beklenen: { state: Labber kaydı v1 }).');
     if (obj.academySession !== undefined) academyValidateSession(obj.academySession);
     if (obj.labberLab !== undefined) labberLabValidate(obj.labberLab);
     if (obj.app && obj.app !== 'AgLab') throw new Error('Dosya AgLab topoloji dosyası değil.');
@@ -4783,26 +4776,38 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       throw new Error('selected alanı var olmayan cihazı gösteriyor.');
     return true;
   }
+  /**
+   * Kalıcılık v24 (L7): AğLab görünümü (çizim, denetçi, dönüştürücü girdisi) + Labber çalışma
+   * zamanının tam durumu (`labber.state`: running ve startup-config ayrı, PC'ler, DHCP
+   * kiraları, öğrenilmiş MAC/ARP, donanım). Sayfa yenilemek cihaz reload'u değildir: kaydedilmemiş
+   * running-config değişikliği kaybolmaz, startup-config ayrı kalır; `reload`/güç döngüsü IOS gibi
+   * running'i startup'tan kurar.
+   */
+  function persistedTopology() {
+    const labberState = aglabLabber.active() ? aglabLabber.saveState() : null;
+    return {
+      app: 'AgLab',
+      version: 24,
+      devices,
+      links,
+      nextId,
+      selected,
+      ...(sourceArchiveData ? { sourceArchive: sourceArchiveData } : {}),
+      ...(importReportData ? { importReport: importReportData } : {}),
+      ...academySessionFields(),
+      ...labberLabFields(),
+      ...(labberState ? { labber: { state: labberState } } : {}),
+    };
+  }
   function saveTopology(quiet = false) {
     // Düzenleyici değişikliği Labber oturumuna yansır (labber-session.js).
     aglabLabber.reconcile();
     try {
       academyInvalidateResult();
-      const data = JSON.stringify({
-        app: 'AgLab',
-        version: 23,
-        devices,
-        links,
-        nextId,
-        selected,
-        ...(sourceArchiveData ? { sourceArchive: sourceArchiveData } : {}),
-        ...(importReportData ? { importReport: importReportData } : {}),
-        ...academySessionFields(),
-        ...labberLabFields(),
-      });
-      localStorage.setItem('aglab-topology-v23', data);
+      const data = JSON.stringify(persistedTopology());
+      localStorage.setItem(TOPOLOGY_KEY, data);
       document.getElementById('aglabSaveWarning')?.remove();
-      if (!quiet) say('Topoloji bu tarayıcıda kaydedildi (şema v23).', 'outok');
+      if (!quiet) say('Topoloji bu tarayıcıda kaydedildi (şema v24).', 'outok');
       return true;
     } catch (e) {
       const message =
@@ -4821,30 +4826,131 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     }
   }
   function exportTopology() {
-    const data = JSON.stringify(
-      {
-        app: 'AgLab',
-        version: 23,
-        devices,
-        links,
-        nextId,
-        selected,
-        ...(sourceArchiveData ? { sourceArchive: sourceArchiveData } : {}),
-        ...(importReportData ? { importReport: importReportData } : {}),
-        ...academySessionFields(),
-        ...labberLabFields(),
-      },
-      null,
-      2,
-    );
+    aglabLabber.reconcile();
+    const data = JSON.stringify(persistedTopology(), null, 2);
     const blob = new Blob([data], { type: 'application/json' }),
       url = URL.createObjectURL(blob),
       a = document.createElement('a');
     a.href = url;
-    a.download = 'aglab-topology-v23.json';
+    a.download = 'aglab-topology-v24.json';
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    say('Topoloji doğrulama şeması v23 ile dışa aktarıldı.', 'outok');
+    say(
+      'Topoloji doğrulama şeması v24 ile dışa aktarıldı (running ve startup-config ayrı).',
+      'outok',
+    );
+  }
+  // ---- Kalıcılık v24: eski kayıtların taşınması -------------------------------------------
+  const TOPOLOGY_KEY = 'aglab-topology-v24';
+  // Eski tarayıcı kayıtları (yeniden eskiye). Taşıma yıkıcı değildir: eski anahtar silinmez.
+  const LEGACY_TOPOLOGY_KEYS = [
+    'aglab-topology-v23',
+    'aglab-topology-v21',
+    'aglab-topology-v20',
+    'aglab-topology-v18',
+    'aglab-topology-v17',
+    'aglab-topology-v16',
+    'aglab-topology-v15',
+  ];
+  /**
+   * v23 ve öncesi: eski motorun `copy running-config startup-config` kaydı switch'in
+   * `startupConfig` alanındaydı (cihaz alanlarının kopyası). Labber'da startup-config çalışma
+   * zamanının parçasıdır: alan cihazdan çıkarılır ve oturum kurulduktan sonra Labber
+   * startup'ına çevrilir (restoreLabberState). Kopya döner; özgün nesne değişmez.
+   */
+  function takeLegacyStartups(obj) {
+    const startups = {};
+    const copy = clone(obj);
+    for (const d of copy.devices || [])
+      if (d.startupConfig !== undefined) {
+        startups[d.id] = d.startupConfig;
+        delete d.startupConfig;
+      }
+    return { obj: copy, startups };
+  }
+  /** Eski `startupConfig` → Labber startup-config (köprü: cihazın kayıtlı hâli running olarak). */
+  function legacyStartupConfig(id, saved) {
+    const variant = {
+      app: 'AgLab',
+      version: 23,
+      devices: devices.map((d) => (d.id === id ? { ...clone(d), ...clone(saved) } : clone(d))),
+      links: clone(links),
+    };
+    const r = AgLabSim.toLabber(variant);
+    if (!r.report.expressible) throw new Error(r.report.reasons.join('; '));
+    return r.running[id];
+  }
+  /**
+   * Oturum kurulduktan sonra kayıttaki Labber durumunu (v24) ya da eski startup kayıtlarını
+   * (v23) uygular. Uygulanamayan her parça için kullanıcıya gösterilecek bir not döner.
+   */
+  function restoreLabberState(obj, startups) {
+    const notes = [];
+    if (obj.labber) {
+      if (!aglabLabber.active() || aglabLabber.broken() || !aglabLabber.loadState(obj.labber.state))
+        notes.push(
+          'Kaydedilmiş Labber durumu (running/startup-config, DHCP kiraları, öğrenilmiş tablolar) bu topolojiye uygulanamadı: running-config çizimdeki topolojiden kuruldu, startup-config running ile aynı başladı.',
+        );
+    }
+    for (const [id, saved] of Object.entries(startups)) {
+      const name = get(id)?.name || id;
+      try {
+        if (aglabLabber.broken()) throw new Error(aglabLabber.broken());
+        if (!aglabLabber.setStartup(id, legacyStartupConfig(id, saved)))
+          throw new Error('cihaz Labber çalışma zamanında yok');
+      } catch (error) {
+        notes.push(name + ' için eski startup-config kaydı taşınamadı: ' + error.message);
+      }
+    }
+    return notes;
+  }
+  /**
+   * Taşınamayan kayıt sessizce kaybolmaz: görünür uyarı + özgün kaydı indirme düğmesi. Özgün
+   * metin ayrıca `aglab-topology-recovery` anahtarında tutulur (yer varsa).
+   */
+  function showPersistenceNotice(lines, raw) {
+    for (const line of lines) say(line, 'outerr');
+    let box = document.getElementById('aglabPersistenceNotice');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'aglabPersistenceNotice';
+      box.setAttribute('role', 'alert');
+      box.className = 'aglab-persistence-notice';
+      ($p('ptWorkbench') || document.body).prepend(box);
+    }
+    box.replaceChildren();
+    const title = document.createElement('b');
+    title.textContent = 'Kayıt taşıma uyarısı';
+    const list = document.createElement('ul');
+    for (const line of lines) {
+      const li = document.createElement('li');
+      li.textContent = line;
+      list.append(li);
+    }
+    box.append(title, list);
+    if (raw) {
+      try {
+        localStorage.setItem('aglab-topology-recovery', raw);
+      } catch (e) {}
+      const button = document.createElement('button');
+      button.id = 'aglabPersistenceDownload';
+      button.type = 'button';
+      button.textContent = 'Özgün kaydı indir';
+      button.onclick = () => {
+        const url = URL.createObjectURL(new Blob([raw], { type: 'application/json' })),
+          a = document.createElement('a');
+        a.href = url;
+        a.download = 'aglab-kurtarma-kaydi.json';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      };
+      box.append(button);
+    }
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = 'Kapat';
+    close.onclick = () => box.remove();
+    box.append(close);
   }
   function nextIdForTopology(obj) {
     const suffixes = (obj.devices || []).map(
@@ -4853,16 +4959,16 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     return Math.max(1, Number(obj.nextId) || 1, ...suffixes);
   }
   /**
-   * I-1: çalışma alanı (içe aktarılan, kayıtlı ya da düzenleyicide kurulan topoloji) için motor
-   * kararı. Sorun Çöz ve Akademi ile aynı mekanizma: köprü topolojiyi ifade edebiliyorsa Labber,
-   * edemiyorsa eski motor; rozet nedeni gösterir. Karar yüklemede bir kez verilir; sonraki
-   * düzenleyici değişiklikleri çalışma zamanını yeniden kurar, motor değişmez (labber-session).
+   * I-1: çalışma alanı (içe aktarılan, kayıtlı ya da düzenleyicide kurulan topoloji) Labber
+   * oturumunda açılır. Köprü topolojiyi ifade edemiyorsa (L7b: eski motor yok) oturum "simüle
+   * edilemiyor" durumundadır; rozet ve her komut gerekçeyi söyler. Sonraki düzenleyici
+   * değişiklikleri çalışma zamanını yeniden kurar (labber-session).
    * PKT içe aktarımında (switch/router runningConfig metni varsa) çalışma zamanı IOS metin
    * yoluyla (L5-h, AgLabSim.cliImport) kurulur. Akademi labı ve Labber labı kendi oturumunu
    * kurar; onlara dokunulmaz.
    */
-  // Senaryo kurulurken importTopology çalışma alanı kararını vermez: senaryonun motoru
-  // sharedScenarioDecideEngine ile bir kez belirlenir (tek kalıcı çalışma zamanı).
+  // Senaryo kurulurken importTopology çalışma alanı oturumunu kurmaz: senaryo kendi oturumunu
+  // bir kez kurar (tek kalıcı çalışma zamanı).
   let sharedScenarioLoading = false;
   function workspaceDecideEngine() {
     if (typeof AgLabSim === 'undefined' || typeof aglabLabber === 'undefined') return null;
@@ -4872,7 +4978,11 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     const topo = aglabEngineChoice.snapshot();
     const decision = aglabEngineChoice.decide(topo);
     aglabEngineChoice.renderBadge(null, decision);
-    if (decision.engine !== 'labber') return decision;
+    if (!decision.expressible) {
+      aglabLabber.start();
+      updatePrompt();
+      return decision;
+    }
     const text = devices.some(
       (d) =>
         (d.type === 'Switch' || d.type === 'Router') &&
@@ -4921,9 +5031,11 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     // I-1: çalışma alanı Labber'dayken rehber gibi araçlar terminalle aynı izi üretir.
     pingTrace: (src, target) => labberSimulationTrace(src, target),
   };
-  function importTopology(obj) {
-    validateTopologyData(obj);
-    // Yeni içerik: önceki Labber oturumu biter; içerik Labber kararındaysa yeniden başlar.
+  function importTopology(input) {
+    validateTopologyData(input);
+    // v23 ve öncesi: eski `startupConfig` alanları oturum kurulunca Labber startup'ına çevrilir.
+    const { obj, startups } = takeLegacyStartups(input);
+    // Yeni içerik: önceki Labber oturumu biter ve bu içerik için yeniden kurulur.
     aglabLabber.stop();
     if (typeof resetDeviceCliHistories === 'function') resetDeviceCliHistories();
     sourceArchiveData = obj.sourceArchive || null;
@@ -4936,15 +5048,12 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     links = newLinks;
     nextId = nextIdForTopology(obj);
     selected = ids.has(obj.selected) ? obj.selected : devices[0]?.id || '';
-    macTables.clear();
-    arpTables.clear();
     beginEthernetEvents();
-    packetWalk = null;
-    cliMode = 'user';
-    currentInterface = '';
     academyRestoreSession(obj.academySession || null);
     labberLabRestore(obj.labberLab || null);
     workspaceDecideEngine();
+    const notes = restoreLabberState(obj, startups);
+    academyAfterRestore();
     render();
     syncSelects();
     updateInspector();
@@ -4958,6 +5067,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
         (savedAfterImport ? '' : ' Tarayıcı kaydı başarısız: JSON olarak dışa aktar.'),
       savedAfterImport ? 'outok' : 'outerr',
     );
+    if (notes.length) showPersistenceNotice(notes, JSON.stringify(input));
     showImportReport(report);
   }
   /**
@@ -5131,12 +5241,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     sourceArchiveData = null;
     importReportData = null;
     nextId = 1;
-    cliMode = 'user';
-    currentInterface = '';
-    macTables.clear();
-    arpTables.clear();
     beginEthernetEvents();
-    packetWalk = null;
     let pc1 = addDevice('PC', 75, 112),
       sw1 = addDevice('Switch', 245, 112),
       r = addDevice('Router', 245, 285),
@@ -5168,7 +5273,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     updateInspector();
     $p('ptTerminal').innerHTML = '';
     say(
-      'AğLab v38 CLI hazır. Paket adımları L2/VLAN kontrollerine ek olarak router rota kararlarını da açıklar. Router alt arayüzleri için interface g0/0.20 → encapsulation dot1q 20 → ip address <IP> <MASK> sırasını kullan.',
+      'AğLab CLI hazır (Labber: switch/router IOS, PC VPCS). Paketin izlediği yolu Simulation Mode gösterir. Router alt arayüzleri için interface g0/0.20 → encapsulation dot1q 20 → ip address <IP> <MASK> sırasını kullan.',
       'outinfo',
     );
     say('Başlangıç topolojisi: 2 PC, 2 switch, 1 router, 1 server.');
@@ -5177,16 +5282,16 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     );
   }
   function get(id) {
-    return AgLabEngineTopology.getDevice(engineTopo, id);
+    return AgLabModel.getDevice(modelTopo, id);
   }
   function label(d) {
     return d ? d.name : '?';
   }
   function linkUp(l) {
-    return AgLabEngineTopology.linkUp(engineTopo, l);
+    return AgLabModel.linkUp(modelTopo, l);
   }
   function freePort(d) {
-    return AgLabEngineTopology.freePort(engineTopo, d);
+    return AgLabModel.freePort(modelTopo, d);
   }
   function render() {
     svg.innerHTML = '';
@@ -5211,7 +5316,6 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
         x2 = b.x - ux * (b.w / 2 - 5),
         y2 = b.y - uy * (b.h / 2 - 5);
       let up = linkUp(l),
-        active = packetWalk && packetWalk.index > 0 && packetWalk.path[packetWalk.index - 1] === l,
         focus =
           !!auditFocusPort &&
           ((l.a === selected && String(l.portA).toLowerCase() === auditFocusPort.toLowerCase()) ||
@@ -5221,11 +5325,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
         y1,
         x2,
         y2,
-        class:
-          'pt-edge' +
-          (up ? '' : ' down') +
-          (active ? ' packet-active' : '') +
-          (focus ? ' audit-focus' : ''),
+        class: 'pt-edge' + (up ? '' : ' down') + (focus ? ' audit-focus' : ''),
       });
       line.setAttribute('stroke-linecap', 'round');
       el(
@@ -5238,27 +5338,6 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       el('text', { x: x2 + uy * 10, y: y2 - ux * 10, class: 'pt-port-label' }, svg).textContent =
         l.portB || '?';
     });
-    if (packetWalk && packetWalk.index > 0 && packetWalk.path[packetWalk.index - 1]) {
-      const l = packetWalk.path[packetWalk.index - 1],
-        a = get(l.a),
-        b = get(l.b);
-      if (a && b) {
-        const dx = b.x - a.x,
-          dy = b.y - a.y,
-          len = Math.max(1, Math.hypot(dx, dy)),
-          ux = dx / len,
-          uy = dy / len,
-          x1 = a.x + ux * (a.w / 2 - 5),
-          y1 = a.y + uy * (a.h / 2 - 5),
-          x2 = b.x - ux * (b.w / 2 - 5),
-          y2 = b.y - uy * (b.h / 2 - 5),
-          mx = (x1 + x2) / 2,
-          my = (y1 + y2) / 2;
-        el('circle', { cx: mx, cy: my, r: 7, class: 'pt-packet-dot' }, svg);
-        el('text', { x: mx, y: my - 12, class: 'pt-packet-label' }, svg).textContent =
-          'PKT ' + packetWalk.index + '/' + packetWalk.path.length;
-      }
-    }
     devices.forEach((d) => {
       let g = el('g', {
         class: 'pt-node' + (d.id === selected ? ' selected' : ''),
@@ -5313,10 +5392,6 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
           ev.stopPropagation();
           return;
         }
-        if (selected !== d.id) {
-          cliMode = 'user';
-          currentInterface = '';
-        }
         selected = d.id;
         $p('ptCliDevice').value = d.id;
         updateInspector();
@@ -5364,10 +5439,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     const old = d.name;
     devices = devices.filter((x) => x.id !== d.id);
     links = links.filter((l) => l.a !== d.id && l.b !== d.id);
-    macTables.delete(d.id);
-    arpTables.delete(d.id);
     selected = devices[0]?.id || '';
-    packetWalk = null;
     render();
     syncSelects();
     updateInspector();
@@ -5440,10 +5512,17 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
         .slice()
         .sort((a, b) => a - b)
         .join(', ')}\nYönetim gateway: ${d.gateway || 'atanmadı'}\n`;
+      // L7b: SVI satır protokolü Labber'dan (LabQuery.sviUp); simüle edilemeyen içerikte "?".
+      // Oturum yoksa (içerik kurulurken) yeni çalışma zamanı kurulmaz.
+      let query = null;
+      try {
+        if (aglabLabber.active()) query = aglabLabber.runtime().query();
+      } catch (error) {}
       for (const [name, i] of Object.entries(d.interfaces))
         if (isSwitchSvi(d, name)) {
-          const state = switchSviState(d, name);
-          info += `Vlan${i.vlan}: ${i.ip || 'unassigned'} ${state.status}/${state.protocolUp ? 'up' : 'down'}\n`;
+          const admin = d.enabled !== false && i.enabled !== false;
+          const proto = query ? (query.sviUp(d.id, Number(i.vlan)) ? 'up' : 'down') : '?';
+          info += `Vlan${i.vlan}: ${i.ip || 'unassigned'} ${admin ? 'up' : 'administratively down'}/${proto}\n`;
         }
     }
     if (d.type === 'Router')
@@ -5486,26 +5565,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   function updatePrompt() {
     let d = get($p('ptCliDevice').value);
     if (!d) return;
-    if (aglabLabber.active()) {
-      $p('ptPrompt').textContent = aglabLabber.prompt(d.id) ?? d.name + ' (konsol yok)';
-      refreshDeviceCli();
-      return;
-    }
-    $p('ptPrompt').textContent =
-      d.name +
-      (cliMode === 'user'
-        ? '>'
-        : cliMode === 'priv'
-          ? '#'
-          : cliMode === 'config'
-            ? '(config)#'
-            : cliMode === 'vlan'
-              ? '(config-vlan)#'
-              : ['ospf', 'bgp'].includes(cliMode)
-                ? '(config-router)#'
-                : cliMode === 'if'
-                  ? '(config-if)#'
-                  : '#');
+    $p('ptPrompt').textContent = aglabLabber.prompt(d.id) ?? d.name + ' (konsol yok)';
     refreshDeviceCli();
   }
   function say(t, c = '') {
@@ -5516,13 +5576,9 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     el.appendChild(div);
     el.scrollTop = el.scrollHeight;
   }
-  function connectedRoutes(r) {
-    return AgLabEngineRouting.connectedRoutes(engineTopo, r);
-  }
-  function routeLookup(r, destIp, seen) {
-    return AgLabEngineRouting.routeLookup(engineTopo, r, destIp, { seen, dynamicRoutes });
-  }
   function auditTopology() {
+    let query = null;
+    const auditQuery = () => query || (query = aglabEngineChoice.runtimeQuery());
     const findings = [];
     let errors = 0,
       warnings = 0,
@@ -5591,9 +5647,16 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
             add('error', d.name + ' ' + ifn + ' üzerinde tanınmayan NAT rolü.');
         }
         for (const r of staticRoutes(d)) {
-          // Recursive next-hop çözümlemesi de geçerlidir; yalnızca doğrudan bağlı ağ aramak yanlış alarm üretir.
-          const resolution = routeLookup(d, r.nextHop, new Set([routeKey(r)]));
-          if (!resolution.ok)
+          // Recursive next-hop çözümlemesi de geçerlidir; yalnızca doğrudan bağlı ağ aramak yanlış
+          // alarm üretir. L7b: çözümleme Labber'ın rota tablosundan (LabQuery.routeFor).
+          let route = null,
+            why = 'next-hop için rota tablosunda eşleşen rota yok.';
+          try {
+            route = auditQuery().routeFor(d.id, r.nextHop);
+          } catch (error) {
+            why = error.message;
+          }
+          if (!route)
             add(
               'error',
               d.name +
@@ -5603,9 +5666,9 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
                 ' için next-hop ' +
                 r.nextHop +
                 ' çözümlenemiyor: ' +
-                resolution.why,
+                why,
             );
-          else if (resolution.route.type === 'connected')
+          else if (route.code === 'C')
             add(
               'ok',
               d.name +
@@ -5626,8 +5689,9 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
                 ' via ' +
                 r.nextHop +
                 '; çözümleme rotası ' +
-                resolution.route.network +
-                routePrefixText(resolution.route.mask) +
+                route.net +
+                '/' +
+                route.prefix +
                 '.',
             );
         }
@@ -5754,53 +5818,6 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     );
   }
 
-  function stpRootForVlan(vlan, candidateIds = null) {
-    return AgLabEngineStp.stpRootForVlan(engineTopo, vlan, candidateIds);
-  }
-  function stpTreeInfo(vlan, anchorId = null) {
-    return AgLabEngineStp.stpTreeInfo(engineTopo, vlan, anchorId);
-  }
-  function stpIsBlocked(l, vlan = 10, trees = null) {
-    return AgLabEngineStp.stpIsBlocked(engineTopo, l, vlan, trees);
-  }
-  function endpointVlan(sourceId, fallback = null) {
-    const src = get(sourceId);
-    let vlan = Number(fallback ?? src?.vlan ?? 10) || 10;
-    if (!src || !['PC', 'Server'].includes(src.type)) return vlan;
-    for (const l of links.filter((x) => linkUp(x) && (x.a === sourceId || x.b === sourceId))) {
-      const other = get(l.a === sourceId ? l.b : l.a);
-      if (other?.type !== 'Switch') continue;
-      const port = portState(other, l.a === other.id ? l.portA : l.portB);
-      if (
-        port?.mode === 'access' &&
-        Number.isInteger(Number(port.vlan)) &&
-        Number(port.vlan) >= 1 &&
-        Number(port.vlan) <= 4094
-      )
-        return Number(port.vlan);
-    }
-    return vlan;
-  }
-  function routerEgressVlan(router, link, targetIp, fallback) {
-    const lookup = routeLookup(router, targetIp);
-    if (!lookup.ok) return fallback;
-    const ifaceName = lookup.route.iface,
-      iface = router.interfaces?.[ifaceName];
-    if (!iface) return null;
-    const physical =
-      iface.parent || (ifaceName.includes('.') ? ifaceName.split('.')[0] : ifaceName);
-    if (linkPort(link, router.id) !== physical) return null;
-    if (iface.encapsulation === 'dot1q')
-      return Number(iface.vlan) || Number(ifaceName.split('.').pop()) || fallback;
-    const other = get(link.a === router.id ? link.b : link.a);
-    if (other?.type === 'Switch') {
-      const swPort = portState(other, linkPort(link, other.id));
-      if (swPort?.mode === 'access') return Number(swPort.vlan) || fallback;
-      if (swPort?.mode === 'trunk') return Number(swPort.nativeVlan ?? 1);
-    }
-    return fallback;
-  }
-
   //@@module MAC ADDRESS@@
   function macOf(d) {
     return AgLabMacAddress.resolve(d, devices);
@@ -5811,48 +5828,6 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       .replace(/:/g, '')
       .match(/.{1,4}/g)
       .join('.');
-  }
-  function pathVlan(src, path) {
-    let vlan = Number(src?.vlan) || 10;
-    for (const l of path) {
-      let a = get(l.a),
-        b = get(l.b);
-      if (a?.type === 'Switch') {
-        let p = portState(a, l.a === a.id ? l.portA : l.portB);
-        if (p?.mode === 'access') vlan = Number(p.vlan) || vlan;
-        break;
-      }
-      if (b?.type === 'Switch') {
-        let p = portState(b, l.a === b.id ? l.portA : l.portB);
-        if (p?.mode === 'access') vlan = Number(p.vlan) || vlan;
-        break;
-      }
-    }
-    return vlan;
-  }
-  function learnOnPath(
-    srcId,
-    dstId,
-    path,
-    sourceAddress = null,
-    targetAddress = null,
-    replyPath = null,
-  ) {
-    const src = get(srcId),
-      dst = get(dstId);
-    if (!src || !dst) return;
-    const fallback = pathVlan(src, path),
-      sourceIp = sourceAddress || src.ip,
-      destinationIp = targetAddress || dst.ip;
-    arpTables.set(srcId, arpTables.get(srcId) || new Map());
-    arpTables.set(dstId, arpTables.get(dstId) || new Map());
-    if (destinationIp) arpTables.get(srcId).set(destinationIp, macOf(dst));
-    if (sourceIp) arpTables.get(dstId).set(sourceIp, macOf(src));
-    learnPathMacs(src, path, fallback);
-    const reverse = replyPath || [...path].reverse();
-    if (!replyPath) reverse.vlans = [...(path.vlans || [])].reverse();
-    learnPathMacs(dst, reverse, fallback);
-    learnManagementEndpoints(src, dst, path, sourceIp, destinationIp, replyPath);
   }
   function auditTargets(message) {
     const m = String(message || '').toLowerCase(),
@@ -5867,7 +5842,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     return out;
   }
   window.aglabGetAuditTargets = auditTargets;
-  window.aglabFocusAudit = function (deviceId, port, tracePacket) {
+  window.aglabFocusAudit = function (deviceId, port) {
     const d = get(deviceId);
     if (!d) {
       showArea('lab');
@@ -5877,9 +5852,6 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     showArea('lab');
     selected = d.id;
     auditFocusPort = port || '';
-    cliMode = 'user';
-    currentInterface = '';
-    packetWalk = null;
     $p('ptCliDevice').value = d.id;
     render();
     updateInspector();
@@ -5895,717 +5867,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     );
     const workbench = $p('ptWorkbench');
     if (workbench) workbench.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    if (tracePacket) {
-      const ends = devices.filter((x) => x.type === 'PC' || x.type === 'Server');
-      let choice = null;
-      for (const src of ends) {
-        for (const dst of ends) {
-          if (src.id === dst.id) continue;
-          const path = findPath(
-            src.id,
-            dst.id,
-            endpointVlan(src.id, Number(src.vlan) || 10),
-            dst.ip,
-          );
-          if (path && path.some((l) => l.a === d.id || l.b === d.id)) {
-            choice = { src, dst, path };
-            break;
-          }
-        }
-        if (choice) break;
-      }
-      if (!choice) {
-        say(
-          'Bu cihazı içeren iki uç cihaz arasında fiziksel bir yol bulunamadı. Önce kablo ve port durumlarını kontrol et.',
-          'outerr',
-        );
-        return;
-      }
-      $p('ptSource').value = choice.src.id;
-      $p('ptTarget').value = choice.dst.id;
-      selected = choice.src.id;
-      $p('ptCliDevice').value = choice.src.id;
-      auditFocusPort = '';
-      packetWalk = null;
-      render();
-      updateInspector();
-      say(
-        'Paket akışı başlatılıyor: ' +
-          choice.src.name +
-          ' → ' +
-          choice.dst.name +
-          '. Her “Paket adımı →” tıklaması bir bağlantıyı ilerletir.',
-        'outinfo',
-      );
-      packetStep();
-    }
   };
-  function packetStep() {
-    let src = get($p('ptSource').value),
-      dst = get($p('ptTarget').value);
-    if (!src || !dst) return say('Kaynak ve hedef cihaz seç.', 'outerr');
-    if (src.type === 'Switch' || dst.type === 'Switch')
-      return say(
-        'SVI yönetimi için CLI ping kullan. SVI Paket Dedektifi olay kaydı bu aşamada desteklenmiyor.',
-        'outerr',
-      );
-    const targetIp =
-      dst.ip ||
-      (dst.type === 'Router'
-        ? Object.values(dst.interfaces || {}).find((i) => i.ip && i.enabled !== false)?.ip
-        : '');
-    const sourceIp =
-      src.ip ||
-      (src.type === 'Router'
-        ? src.interfaces?.[routeLookup(src, targetIp).route?.iface]?.ip ||
-          Object.values(src.interfaces || {}).find((i) => i.ip && i.enabled !== false)?.ip
-        : '');
-    if (!targetIp)
-      return say(
-        'Hedef cihazda etkin bir IP adresi yok. Önce hedef IP yapılandırmasını kontrol et.',
-        'outerr',
-      );
-    if (!packetWalk || packetWalk.src !== src.id || packetWalk.dst !== dst.id) {
-      let path = findPath(src.id, dst.id, endpointVlan(src.id, Number(src.vlan) || 10), targetIp);
-      packetWalk = {
-        src: src.id,
-        dst: dst.id,
-        path: path || [],
-        index: 0,
-        ttl: 64,
-        targetIp,
-        sourceIp,
-      };
-      say(
-        'PAKET OLUŞTU: ' +
-          src.name +
-          ' (' +
-          (sourceIp || 'L2') +
-          ') → ' +
-          dst.name +
-          ' (' +
-          targetIp +
-          ').',
-        'outinfo',
-      );
-      if (sourceIp && src.mask && dst.mask) {
-        const sameSubnet = subnet(sourceIp, src.mask) === subnet(targetIp, src.mask);
-        say(
-          'IP kararı: kaynak ve hedef ' +
-            (sameSubnet ? 'aynı alt ağda.' : 'farklı alt ağlarda.') +
-            (sameSubnet
-              ? ' Hedef MAC için yerel ARP çözümlemesi gerekir.'
-              : ' Kaynak cihaz paketi varsayılan gateway MAC adresine gönderir; hedef IP değişmez.'),
-          'outinfo',
-        );
-      }
-      say(
-        'Eğitim modeli: fiziksel yol, VLAN taşıma, router rota kararı ve en sonda uçtan uca erişim ayrı ayrı kontrol edilir.',
-        'outinfo',
-      );
-      if (!path) {
-        say('Paket durdu: L2/gateway/rota ve seçili next-hop kararlarına uygun yol yok.', 'outerr');
-        packetWalk = null;
-        return;
-      }
-    }
-    if (packetWalk.index < packetWalk.path.length) {
-      let l = packetWalk.path[packetWalk.index],
-        current = src;
-      for (let j = 0; j < packetWalk.index; j++) {
-        let prev = packetWalk.path[j];
-        current = get(prev.a === current.id ? prev.b : prev.a);
-      }
-      let next = get(l.a === current.id ? l.b : l.a);
-      if (!current || !next) {
-        say('Paket durdu: yol üzerindeki cihaz artık mevcut değil.', 'outerr');
-        packetWalk = null;
-        render();
-        return;
-      }
-      if (!linkUp(l)) {
-        say(
-          'Adım ' +
-            (packetWalk.index + 1) +
-            ': ' +
-            label(current) +
-            ' → ' +
-            label(next) +
-            ' başarısız; link down.',
-          'outerr',
-        );
-        packetWalk = null;
-        render();
-        return;
-      }
-      if (current.type === 'Router' && packetWalk.sourceIp && packetWalk.targetIp) {
-        const lookup = routeLookup(current, packetWalk.targetIp);
-        if (!lookup.ok) {
-          say('ROUTER KARARI — ' + current.name + ': ' + lookup.why, 'outerr');
-          say(
-            'Paket bu router üzerinde durdu. show ip route ve show ip interface brief ile kontrol et.',
-            'outinfo',
-          );
-          packetWalk = null;
-          render();
-          return;
-        }
-        if (packetWalk.index > 0) packetWalk.ttl--;
-        say(
-          'L3 KARARI — ' +
-            current.name +
-            ': ' +
-            lookup.route.type.toUpperCase() +
-            ' ' +
-            lookup.route.network +
-            routePrefixText(lookup.route.mask) +
-            (lookup.route.nextHop ? ' via ' + lookup.route.nextHop : ' doğrudan bağlı') +
-            ' · çıkış ' +
-            lookup.route.iface +
-            ' · TTL ' +
-            packetWalk.ttl,
-          'outinfo',
-        );
-        if (packetWalk.ttl <= 0) {
-          say('Paket durdu: TTL 0 oldu; routing loop olasılığını araştır.', 'outerr');
-          packetWalk = null;
-          render();
-          return;
-        }
-      }
-      if (current.type === 'Switch' || next.type === 'Switch') {
-        const vlan = packetWalk.path.vlans?.[packetWalk.index] ?? pathVlan(src, packetWalk.path),
-          check = linkCarriesVlan(l, vlan);
-        if (!check.ok) {
-          say(
-            'Adım ' + (packetWalk.index + 1) + ' VLAN ' + vlan + ' kontrolünde durdu: ' + check.why,
-            'outerr',
-          );
-          packetWalk = null;
-          render();
-          return;
-        }
-        say(
-          'L2 KARARI — VLAN ' +
-            vlan +
-            ' bu bağlantıda taşınabiliyor. Ethernet çerçevesi switch tarafından uygun porta iletilir.',
-          'outinfo',
-        );
-      }
-      if (current.type === 'Router') packetWalk.frameSource = current.id;
-      if (next.type === 'Switch')
-        learnSwitchMac(
-          next,
-          get(packetWalk.frameSource || src.id),
-          packetWalk.path.vlans?.[packetWalk.index] ?? pathVlan(src, packetWalk.path),
-          linkPort(l, next.id),
-        );
-      say(
-        'Adım ' +
-          (packetWalk.index + 1) +
-          '/' +
-          packetWalk.path.length +
-          ': ' +
-          label(current) +
-          ' ' +
-          linkPort(l, current.id) +
-          ' → ' +
-          label(next) +
-          ' ' +
-          linkPort(l, next.id) +
-          ' [UP] · VLAN ' +
-          (packetWalk.path.vlans?.[packetWalk.index] ??
-            endpointVlan(src.id, Number(src.vlan) || 10)),
-        'outok',
-      );
-      packetWalk.index++;
-      render();
-      return;
-    }
-    let result = ping(src.id, packetWalk.targetIp);
-    if (result.ok) {
-      say('HEDEF ULAŞILABİLİR: ' + result.why, 'outok');
-      say(
-        'Özet: fiziksel yol + VLAN/L2 + IP/routing kontrolleri geçti. MAC ve ARP öğrenme tabloları güncellendi.',
-        'outok',
-      );
-    } else say('UÇTAN UCA TEST BAŞARISIZ: ' + result.why, 'outerr');
-    packetWalk = null;
-    render();
-  }
-  function linkCarriesVlan(l, vlan) {
-    let a = get(l.a),
-      b = get(l.b),
-      pa = portState(a, l.portA),
-      pb = portState(b, l.portB);
-    if (!linkUp(l))
-      return {
-        ok: false,
-        why:
-          'Bağlantı ' +
-          label(a) +
-          ' ' +
-          l.portA +
-          ' ↔ ' +
-          label(b) +
-          ' ' +
-          l.portB +
-          ' üzerinde down.',
-      };
-    if (
-      a?.type === 'Switch' &&
-      b?.type === 'Switch' &&
-      pa?.mode === 'trunk' &&
-      pb?.mode === 'trunk' &&
-      (pa.nativeVlan ?? 1) !== (pb.nativeVlan ?? 1) &&
-      (Number(vlan) === (pa.nativeVlan ?? 1) || Number(vlan) === (pb.nativeVlan ?? 1))
-    )
-      return {
-        ok: false,
-        why:
-          'Native VLAN uyuşmazlığı: ' +
-          a.name +
-          ' ' +
-          l.portA +
-          ' native VLAN ' +
-          (pa.nativeVlan ?? 1) +
-          ', ' +
-          b.name +
-          ' ' +
-          l.portB +
-          ' native VLAN ' +
-          (pb.nativeVlan ?? 1) +
-          '. Native VLAN olarak taşınan etiketsiz trafik karşı tarafta farklı VLAN’a eşlenir.',
-      };
-    for (const [d, p, other, otherPort] of [
-      [a, pa, b, pb],
-      [b, pb, a, pa],
-    ]) {
-      if (d.type === 'Router' && other.type === 'Switch' && otherPort?.mode === 'trunk') {
-        const routerPort = d === a ? l.portA : l.portB;
-        const sub = Object.entries(d.interfaces || {}).find(
-          ([name, i]) =>
-            (i.parent || (name.includes('.') ? name.split('.')[0] : name)) === routerPort &&
-            i.enabled !== false &&
-            Number(i.vlan) === Number(vlan) &&
-            i.encapsulation === 'dot1q',
-        )?.[1];
-        const native = Number(otherPort.nativeVlan ?? 1) === Number(vlan),
-          physical = d.interfaces?.[routerPort];
-        if (native ? !(physical && physical.enabled !== false && validIP(physical.ip)) : !sub)
-          return {
-            ok: false,
-            why: native
-              ? d.name +
-                ' üzerinde ' +
-                routerPort +
-                ' native VLAN ' +
-                vlan +
-                ' için etkin etiketsiz IP arayüzü yok.'
-              : d.name +
-                ' üzerinde ' +
-                routerPort +
-                '.' +
-                Number(vlan) +
-                ' 802.1Q alt arayüzü eksik veya VLAN etiketi uyumsuz.',
-          };
-      }
-      if (d.type === 'Switch') {
-        if (!p) return { ok: false, why: d.name + ' portu bulunamadı.' };
-        if (!(d.vlans || []).map(Number).includes(Number(vlan)))
-          return { ok: false, why: d.name + ' üzerinde VLAN ' + vlan + ' oluşturulmamış.' };
-        if (p.mode === 'access' && Number(p.vlan) !== Number(vlan))
-          return {
-            ok: false,
-            why:
-              d.name +
-              ' ' +
-              (d === a ? l.portA : l.portB) +
-              ' access VLAN ' +
-              p.vlan +
-              '; gerekli VLAN ' +
-              vlan +
-              '.',
-          };
-        if (p.mode === 'trunk' && !(p.allowed || []).map(Number).includes(Number(vlan)))
-          return {
-            ok: false,
-            why: d.name + ' trunk portunda VLAN ' + vlan + ' allowed listesinde yok.',
-          };
-      }
-    }
-    return { ok: true };
-  }
-  function connected(a, b) {
-    return !!findPath(a, b);
-  }
-  function orderedPathNodes(srcId, path) {
-    return AgLabEngineTopology.orderedPathNodes(engineTopo, srcId, path);
-  }
-  function aclPathDecision(path, srcId, dstId, srcIp, dstIp, protocol, port) {
-    return AgLabEngineAcl.aclPathDecision(
-      engineTopo,
-      path,
-      srcId,
-      dstId,
-      srcIp,
-      dstIp,
-      protocol,
-      port,
-    );
-  }
-  // Denetim motorda saf; çeviri kaydı burada açıkça yazılır.
-  function natPathCheck(path, srcId, dstId, srcIp, dstIp, protocol) {
-    const result = AgLabEngineNat.natPathCheck(
-      engineTopo,
-      path,
-      srcId,
-      dstId,
-      srcIp,
-      dstIp,
-      protocol,
-    );
-    if (!result.translated) return result;
-    AgLabEngineNat.recordNatTranslation(result.natRouter, result.entry);
-    return { ok: true, translated: true, router: result.router };
-  }
-  function directNextHopNeighborExists(router, route) {
-    if (!router || router.type !== 'Router' || !route?.nextHop || !route?.iface) return false;
-    const physicalPort = String(route.iface).split('.')[0],
-      localIface = router.interfaces?.[route.iface] || router.interfaces?.[physicalPort];
-    if (!localIface?.ip || localIface.enabled === false || router.enabled === false) return false;
-    const vlan = localIface.encapsulation === 'dot1q' ? Number(localIface.vlan) : 10;
-    for (const owner of devices) {
-      if (owner.id === router.id || owner.enabled === false) continue;
-      const ownerIface =
-        owner.type === 'Router'
-          ? Object.entries(owner.interfaces || {}).find(
-              ([n, i]) => i.ip === route.nextHop && i.enabled !== false,
-            )
-          : null;
-      const ownerIp = owner.type === 'Router' ? ownerIface?.[1]?.ip : owner.ip;
-      if (ownerIp !== route.nextHop || !inNetwork(route.nextHop, localIface.ip, localIface.mask))
-        continue;
-      if (owner.type === 'Router' && !ownerIface) continue;
-      const path = findPath(router.id, owner.id, vlan, route.nextHop);
-      if (!path?.length) continue;
-      if (linkPort(path[0], router.id) !== physicalPort) continue;
-      if (
-        owner.type === 'Router' &&
-        linkPort(path[path.length - 1], owner.id) !==
-          (ownerIface[1].parent || ownerIface[0].split('.')[0])
-      )
-        continue;
-      let l2ok = true,
-        current = router;
-      for (let idx = 0; idx < path.length; idx++) {
-        const l = path[idx],
-          edgeVlan = path.vlans?.[idx] ?? vlan,
-          next = get(l.a === current.id ? l.b : l.a);
-        if (!next) {
-          l2ok = false;
-          break;
-        }
-        if (next.id !== owner.id && next.type === 'Router') {
-          l2ok = false;
-          break;
-        }
-        if (
-          (current.type === 'Switch' || next.type === 'Switch') &&
-          !linkCarriesVlan(l, edgeVlan).ok
-        ) {
-          l2ok = false;
-          break;
-        }
-        current = next;
-      }
-      if (l2ok) return true;
-    }
-    return false;
-  }
-  function routeResolutionReachable(router, route, seen = new Set()) {
-    if (!route || route.type === 'connected') return true;
-    const key = routeKey(route);
-    if (seen.has(key)) return false;
-    const nextSeen = new Set(seen);
-    nextSeen.add(key);
-    if (route.resolvedVia === 'direct') return directNextHopNeighborExists(router, route);
-    if (route.resolvedVia === 'recursive' && route.resolution)
-      return routeResolutionReachable(router, route.resolution, nextSeen);
-    return false;
-  }
-  function ping(src, target, options = {}) {
-    beginEthernetEvents();
-    const requestTtl = options.ttl ?? 64;
-    if (!Number.isInteger(requestTtl) || requestTtl < 1 || requestTtl > 255)
-      return { ok: false, why: 'TTL 1-255 arasında bir tam sayı olmalı.' };
-    let s = get(src);
-    if (!s) return { ok: false, why: 'Kaynak cihaz bulunamadı.' };
-    if (!validIP(target)) return { ok: false, why: 'Ping hedefi geçerli bir IPv4 adresi olmalı.' };
-    let dst = devices.find(
-      (d) => d.ip === target || Object.values(d.interfaces || {}).some((i) => i.ip === target),
-    );
-    if (!dst) {
-      if (s.enabled === false) return { ok: false, why: 'Kaynak cihaz kapalı.' };
-      return probePingFallback(s, target, requestTtl);
-    }
-    if (s.enabled === false || dst.enabled === false)
-      return { ok: false, why: 'Kaynak veya hedef cihaz kapalı.' };
-    if (src === dst.id && s.type === 'Switch') {
-      const own = switchManagementAddress(s, target, true);
-      return own
-        ? { ok: true, why: 'Etkin yerel SVI hedefi.' }
-        : { ok: false, why: 'Hedef SVI etkin değil: VLAN ve forwarding portlarını kontrol et.' };
-    }
-    if (src === dst.id) {
-      if (s.type === 'Router' && !activeRouterInterfaces(s).some(([name, i]) => i.ip === target))
-        return {
-          ok: false,
-          why: 'Hedef router arayüzü yönetimsel olarak kapalı veya geçersiz yapılandırılmış.',
-        };
-      if (s.type !== 'Router' && (!validIP(s.ip) || prefixLen(s.mask) < 0))
-        return { ok: false, why: 'Yerel hedefte geçersiz IPv4 yapılandırması var.' };
-      return { ok: true, why: 'Yerel hedef.' };
-    }
-    let si =
-      s.type === 'Switch'
-        ? switchManagementAddress(s, target)
-        : s.type === 'Router'
-          ? s.interfaces?.[routeLookup(s, target).route?.iface] ||
-            activeRouterInterfaces(s)
-              .map((x) => x[1])
-              .find((i) => i.ip)
-          : s;
-    let di =
-      dst.type === 'Switch'
-        ? switchManagementAddress(dst, target, true)
-        : dst.type === 'Router'
-          ? activeRouterInterfaces(dst)
-              .map((x) => x[1])
-              .find((i) => i.ip === target)
-          : dst;
-    const managementFlow = s.type === 'Switch' || dst.type === 'Switch';
-    if (managementFlow && (!si || !di))
-      return {
-        ok: false,
-        why: 'Etkin yönetim SVI adresi yok; SVI IP/mask, shutdown, VLAN ve bağlı Layer 2 portlarını kontrol et.',
-      };
-    if (!si?.ip || !di?.ip) return { ok: false, why: 'Kaynak veya hedefte etkin IP arayüzü yok.' };
-    if (!validIP(si.ip) || prefixLen(si.mask) < 0 || !validIP(di.ip) || prefixLen(di.mask) < 0)
-      return {
-        ok: false,
-        why: 'Kaynak veya hedef arayüzünde geçersiz IPv4 adresi ya da subnet maskesi var.',
-      };
-    if (s.type === 'Router') {
-      const forward = routeLookup(s, target);
-      if (!forward.ok)
-        return { ok: false, why: 'Kaynak router yönlendirme hatası: ' + forward.why };
-      if (forward.route.type === 'static' && !routeResolutionReachable(s, forward.route))
-        return { ok: false, why: 'Kaynak router statik rota next-hop adresi çözümlenemiyor.' };
-    }
-    let sameSubnet = subnet(si.ip, si.mask) === subnet(target, si.mask);
-    let vlan = s.type === 'Switch' ? Number(si.vlan) : endpointVlan(src, Number(s.vlan) || 10);
-    const firstSwitchLink = links.find(
-      (l) =>
-        linkUp(l) &&
-        ((l.a === src && get(l.b)?.type === 'Switch') ||
-          (l.b === src && get(l.a)?.type === 'Switch')),
-    );
-    if (firstSwitchLink && s.type !== 'Switch') {
-      let sw =
-          get(firstSwitchLink.a).type === 'Switch'
-            ? get(firstSwitchLink.a)
-            : get(firstSwitchLink.b),
-        sp = portState(
-          sw,
-          firstSwitchLink.a === sw.id ? firstSwitchLink.portA : firstSwitchLink.portB,
-        );
-      if (sp?.mode === 'access') {
-        vlan = Number(sp.vlan) || vlan;
-      }
-    }
-    if (sameSubnet && ['PC', 'Server'].includes(s.type) && ['PC', 'Server'].includes(dst.type))
-      return localEthernetPing(s, dst, vlan, requestTtl);
-    if (!sameSubnet && ['PC', 'Server'].includes(s.type)) {
-      if (!s.gateway)
-        return { ok: false, why: 'Kaynak cihazda varsayılan gateway yapılandırılmamış.' };
-      if (!inNetwork(s.gateway, si.ip, si.mask))
-        return { ok: false, why: 'Kaynak cihazın varsayılan gateway adresi yerel alt ağda değil.' };
-    }
-    const pathOptions = managementFlow
-      ? { management: true, ...(dst.type === 'Switch' ? { targetVlan: di.vlan } : {}) }
-      : {};
-    const path =
-      (!sameSubnet ? findPath(src, dst.id, vlan, target, true, pathOptions) : null) ||
-      findPath(src, dst.id, vlan, target, managementFlow, pathOptions);
-    if (!path) return probePingFallback(s, target, requestTtl);
-    if (
-      s.type !== 'Router' &&
-      dst.type !== 'Router' &&
-      sameSubnet &&
-      path.some((l) => get(l.a)?.type === 'Router' || get(l.b)?.type === 'Router')
-    )
-      return {
-        ok: false,
-        why: 'Kaynak subnet maskesine göre hedef yerel ağda görünüyor; kaynak doğrudan ARP bekler. Hedef aynı L2 segmentinde bulunmadığı için router üzerinden yönlendirme yapılmaz. IP/maskeyi veya VLAN tasarımını kontrol et.',
-      };
-    if ((options.explicitTtl || requestTtl !== 64) && ttlUnsupportedNatPath(path, src))
-      return { ok: false, why: 'NAT/PAT çevrili akışlarda özel TTL henüz desteklenmiyor.' };
-    if (managementFlow) {
-      const forwardGateway = switchManagementGatewayCheck(s, si, di.ip, path);
-      if (!forwardGateway.ok) return forwardGateway;
-    }
-    for (let idx = 0; idx < path.length; idx++) {
-      const l = path[idx],
-        edgeVlan = path.vlans?.[idx] ?? vlan;
-      if (get(l.a).type !== 'Switch' && get(l.b).type !== 'Switch') continue;
-      let r = linkCarriesVlan(l, edgeVlan);
-      if (!r.ok) return r;
-      let otherSwitch = get(l.a).type === 'Switch' && get(l.b).type === 'Switch';
-      if (otherSwitch) {
-        let pa = portState(get(l.a), l.portA),
-          pb = portState(get(l.b), l.portB);
-        if (pa.mode === 'access' && pb.mode === 'access' && Number(pa.vlan) !== Number(pb.vlan))
-          return { ok: false, why: 'Switchler arası access VLAN uyuşmazlığı.' };
-      }
-    }
-    if (!sameSubnet && s.type !== 'Router' && dst.type !== 'Router') {
-      let routers = orderedPathNodes(src, path).filter(
-        (d, i, arr) => d?.type === 'Router' && arr.indexOf(d) === i,
-      );
-      if (!routers.length)
-        return { ok: false, why: 'Hedef farklı alt ağda; yol üzerinde router bulunamadı.' };
-      const srcNet = subnet(si.ip, si.mask),
-        dstNet = subnet(di.ip, di.mask);
-      const firstRouter = routers[0],
-        lastRouter = routers[routers.length - 1];
-      if (
-        !connectedRoutes(firstRouter).some(
-          (r) => r.network === srcNet && r.prefix === prefixLen(si.mask),
-        )
-      )
-        return {
-          ok: false,
-          why: firstRouter.name + ' üzerinde kaynak alt ağa bağlı etkin arayüz yok.',
-        };
-      if (!s.gateway)
-        return { ok: false, why: 'Kaynak cihazda varsayılan gateway yapılandırılmamış.' };
-      if (
-        s.gateway &&
-        !activeRouterInterfaces(firstRouter).some(
-          ([n, i]) => i.ip === s.gateway && inNetwork(si.ip, i.ip, i.mask),
-        )
-      )
-        return {
-          ok: false,
-          why: 'İstemcinin varsayılan gateway adresi kaynak ağdaki router arayüzüyle eşleşmiyor.',
-        };
-      for (const r of routers) {
-        const lookup = routeLookup(r, di.ip);
-        if (!lookup.ok) return lookup;
-        const selected = lookup.route;
-        // A directly connected next-hop subnet is not enough: the next-hop must exist as a neighbor on this simulated topology.
-        // Recursive routes are validated by their resolving route instead of requiring the recursive next-hop to be directly attached.
-        if (selected.type === 'static' && !routeResolutionReachable(r, selected))
-          return {
-            ok: false,
-            why:
-              r.name +
-              ' üzerinde ' +
-              selected.network +
-              routePrefixText(selected.mask) +
-              ' için seçilen next-hop zinciri gerçek Layer-2 komşuluğuna kadar çözümlenemiyor. Recursive next-hop/ARP kontrolünü yap.',
-          };
-      }
-      const natCheck = natPathCheck(path, src, dst.id, si.ip, target, 'icmp');
-      if (!natCheck.ok) return natCheck;
-
-      if (
-        !connectedRoutes(lastRouter).some(
-          (r) => r.network === dstNet && r.prefix === prefixLen(di.mask),
-        )
-      )
-        return {
-          ok: false,
-          why:
-            lastRouter.name +
-            ' üzerinde hedef alt ağa doğrudan bağlı etkin arayüz yok; hedef gateway/geri dönüş rotasını kontrol et.',
-        };
-    }
-    const natCheck = natPathCheck(path, src, dst.id, si.ip, target, 'icmp');
-    if (!natCheck.ok) return natCheck;
-    const frameContext = natCheck.translated ? null : ethernetContext();
-    if (!natCheck.translated) {
-      const request = deliverRoutedFrames(s, path, si.ip, target, 'icmp-request', frameContext, {
-        ttl: requestTtl,
-      });
-      if (!request.ok) return request;
-    } else {
-      const aclCheck = aclPathDecision(path, src, dst.id, si.ip, target, 'icmp', null);
-      if (!aclCheck.ok) return aclCheck;
-    }
-    if (!sameSubnet && s.type !== 'Router' && dst.type !== 'Router' && !dst.gateway)
-      return {
-        ok: false,
-        why: 'Hedef cihazda dönüş trafiği için varsayılan gateway yapılandırılmamış.',
-      };
-    if (dst.type === 'Router' && s.type !== 'Router') {
-      const reply = routeLookup(dst, si.ip);
-      if (!reply.ok) return { ok: false, why: 'Hedef router dönüş yolu bulunamadı: ' + reply.why };
-      if (reply.route.type === 'static' && !routeResolutionReachable(dst, reply.route))
-        return { ok: false, why: 'Hedef router dönüş rotası next-hop adresi çözümlenemiyor.' };
-    }
-    // PAT still has its legacy translated-reply model; do not route an untranslated private reply as if it were public.
-    const replyPath = natCheck.translated
-      ? Object.assign([...path].reverse(), { vlans: [...(path.vlans || [])].reverse() })
-      : findPath(
-          dst.id,
-          src,
-          dst.type === 'Switch' ? Number(di.vlan) : endpointVlan(dst.id, Number(dst.vlan) || 10),
-          si.ip,
-          true,
-          managementFlow
-            ? { management: true, ...(s.type === 'Switch' ? { targetVlan: si.vlan } : {}) }
-            : {},
-        );
-    if (!replyPath)
-      return {
-        ok: false,
-        why: 'Gidiş yolu var ancak seçili next-hop kararlarına uygun gerçek dönüş yolu bulunamadı.',
-      };
-    if (managementFlow) {
-      const replyGateway = switchManagementGatewayCheck(dst, di, si.ip, replyPath);
-      if (!replyGateway.ok) return replyGateway;
-    }
-    if (!natCheck.translated) {
-      const reply = deliverRoutedFrames(dst, replyPath, target, si.ip, 'icmp-reply', frameContext, {
-        ttl: 64,
-      });
-      if (!reply.ok) return { ok: false, why: 'Dönüş trafiği: ' + reply.why };
-      return {
-        ok: true,
-        why:
-          'Seçili next-hop ve gerçek dönüş yolu üzerinde ARP/Ethernet ICMP teslimi doğrulandı.' +
-          (s.type === 'Switch' ? ' Kaynak SVI: ' + si.interfaceName + ' ' + si.ip + '.' : ''),
-      };
-    }
-    const aclReturnCheck = aclPathDecision(replyPath, dst.id, src, target, si.ip, 'icmp', null);
-    if (!aclReturnCheck.ok) return { ok: false, why: 'Dönüş trafiği: ' + aclReturnCheck.why };
-    ethernetEvent(
-      'legacy-nat: çevrilmiş NAT/PAT akışı eski çeviri modeliyle doğrulandı; frame teslimi bu kapsamda değil.',
-    );
-    learnOnPath(src, dst.id, path, si.ip, di.ip, replyPath);
-    return {
-      ok: true,
-      why:
-        'Aktif portlar, VLAN ve IP kontrolleri başarılı; yönlendirme tabloları hedef ağı kapsıyor.' +
-        (natCheck.translated
-          ? ' NAT/PAT çevirisi ' + natCheck.router + ' üzerinde oluşturuldu.'
-          : '') +
-        ' MAC/ARP tabloları öğrenildi.' +
-        (s.type === 'Switch' ? ' Kaynak SVI: ' + si.interfaceName + ' ' + si.ip + '.' : ''),
-    };
-  }
   let ptCommandHistory = [];
   let ptHistoryIndex = 0;
   // L3-a: Labber kararındaki içerikte terminal satırı cihazın Labber oturumuna
@@ -6689,1305 +5951,14 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     updateInspector();
     labberLabsRefresh();
   }
+  // L7b: terminal yalnız Labber oturumuna gider (IosSession/VpcsSession). Eski motorun
+  // AğLab CLI'si (`test ethernet`, `show ethernet events`, `test http` gibi gerçek IOS/VPCS
+  // karşılığı olmayan komutlar dahil) kaldırıldı.
   function command(raw) {
-    let d = get($p('ptCliDevice').value);
+    const d = get($p('ptCliDevice').value);
     if (!d) return;
     selected = d.id;
-    if (aglabLabber.active()) return labberCommand(d, raw);
-    let cmd = raw.trim(),
-      p = cmd.toLowerCase().split(/\s+/);
-    if (!cmd) return;
-    selectDeviceCliHistory(d.id);
-    if (ptCommandHistory[ptCommandHistory.length - 1] !== cmd) ptCommandHistory.push(cmd);
-    if (ptCommandHistory.length > 100) ptCommandHistory.shift();
-    ptHistoryIndex = ptCommandHistory.length;
-    say(
-      d.name +
-        (cliMode === 'user'
-          ? '>'
-          : cliMode === 'priv'
-            ? '#'
-            : cliMode === 'config'
-              ? '(config)#'
-              : cliMode === 'vlan'
-                ? '(config-vlan)#'
-                : '(config-if)#') +
-        ' ' +
-        cmd,
-      'outcmd',
-    );
-    const out = (t, c = '') => {
-      say(t, c);
-      if (
-        c !== 'outerr' &&
-        /^(?:hostname\b|interface\s|ip route\b|no ip route\b|ip address\b|no ip address\b|ip default-gateway\b|ip helper-address\b|no ip helper-address\b|ip nat\b|no ip nat\b|ip access-group\b|ip dhcp\b|ipconfig\s+\/renew\b|no ip access-group\b|access-list\b|switchport\b|vlan\b|spanning-tree\b|service\b|shutdown$|no shutdown$|encapsulation dot1q\b|device power\b)/i.test(
-          cmd,
-        )
-      )
-        saveTopology(true);
-    };
-    if (p[0] === 'help' || p[0] === '?') {
-      [
-        'enable | disable | configure terminal (conf t) | end | exit',
-        'hostname <ad>',
-        'interface g0/0 | interface g0/1 | interface g0/0.10 (alt arayüz) | interface fa0/1 | interface gi0/1 | interface gi0/2',
-        'ip address <IPv4> <MASK> | no ip address | encapsulation dot1q <VLAN> (Router alt arayüzü) | no shutdown | shutdown',
-        'switchport mode access|trunk | switchport access vlan <ID>',
-        'switchport trunk allowed vlan 10,20 | allowed vlan add|remove 10-20 | allowed vlan all|none | switchport trunk native vlan <ID> | vlan <ID>',
-        'Switch: vlan <ID> → name <isim> | no vlan <ID> | interface vlan <ID> → ip address <IP> <MASK> → no shutdown',
-        'Switch: ip default-gateway <IPv4> | show interfaces vlan <ID> | copy running-config startup-config | show startup-config',
-        'show running-config | show ip interface brief | show interfaces status',
-        'show vlan brief | show interfaces trunk | show mac address-table | show ip route [hedef-IP]',
-        'Router: ip route <NETWORK> <MASK> <NEXT-HOP> [AD 1-255] | no ip route ...',
-        'DHCP relay: interface g0/0 → ip helper-address <DHCP-SERVER-IP>',
-        'ACL: access-list 101 deny tcp any host <IP> eq 80 | access-list 101 permit ip any any | interface g0/0 → ip access-group 101 in|out',
-        'NAT/PAT: interface g0/0 → ip nat inside; interface g0/1 → ip nat outside; access-list 1 permit <NETWORK> <WILDCARD>; ip nat inside source list 1 interface g0/1 overload',
-        'ping <IPv4> [ttl <1-255>] | trace <IPv4> [max-hops <1-64>] | show arp | cable status | device power off|on',
-        'Server: service dhcp|dns|http on|off | show services | show ip dhcp binding',
-        'PC: ip dhcp | ipconfig /renew | nslookup <ad> | test http <IP>',
-        'Yerel PC/Server: test ethernet <MAC|broadcast> | show ethernet events (eğitim tanı komutları).',
-        'Switch enable: clear mac address-table dynamic; dinamik MAC yaşlanma süresi 300 saniye.',
-        'MAC/ARP tabloları trafik sonrası öğrenilir; Paket adımı düğmesi paketi adım adım ilerletir.',
-        'Başlangıç testi: PC-01 ping 192.168.1.11; SW-01 show interfaces trunk',
-      ].forEach(out);
-      return;
-    }
-    if (routingProtocolCommand(d, p, out) || portSecurityCommand(d, p, out)) return;
-    if (ethernetCommand(d, p, out)) return;
-    if (macLearningCommand(d, p, out)) return;
-    if (p[0] === 'clear' || p[0] === 'cls') {
-      $p('ptTerminal').innerHTML = '';
-      return;
-    }
-    if (p[0] === 'enable') {
-      cliMode = 'priv';
-      updatePrompt();
-      return;
-    }
-    if (p[0] === 'disable') {
-      cliMode = 'user';
-      updatePrompt();
-      return;
-    }
-    if (
-      (p[0] === 'configure' && (p[1] === 'terminal' || p[1] === 't')) ||
-      cmd.toLowerCase() === 'conf t'
-    ) {
-      if (cliMode === 'user') return out('Önce enable komutunu çalıştır.', 'outerr');
-      cliMode = 'config';
-      updatePrompt();
-      return;
-    }
-    if (p[0] === 'end') {
-      cliMode = 'priv';
-      currentInterface = '';
-      updatePrompt();
-      return;
-    }
-    if (p[0] === 'exit') {
-      if (cliMode === 'if' || cliMode === 'vlan') cliMode = 'config';
-      else if (cliMode === 'config') cliMode = 'priv';
-      else cliMode = 'user';
-      currentInterface = '';
-      updatePrompt();
-      return;
-    }
-    if (p[0] === 'device' && p[1] === 'power' && ['off', 'on'].includes(p[2])) {
-      d.enabled = p[2] === 'on';
-      render();
-      updateInspector();
-      return out(d.name + ' power ' + p[2], 'outok');
-    }
-    if (tracerouteCommand(d, p, out)) return;
-    if (switchManagementCommand(d, cmd, p, out)) return;
-    if (p[0] === 'hostname' && p[1]) {
-      if (cliMode !== 'config')
-        return out('Bu komut için configure terminal moduna geç.', 'outerr');
-      d.name = cmd.split(/\s+/).slice(1).join(' ');
-      render();
-      syncSelects();
-      updateInspector();
-      return out('Hostname değiştirildi: ' + d.name, 'outok');
-    }
-    if (
-      (p[0] === 'ip' && p[1] === 'route') ||
-      (p[0] === 'no' && p[1] === 'ip' && p[2] === 'route')
-    ) {
-      if (d.type !== 'Router')
-        return out('ip route komutu yalnızca Router üzerinde kullanılabilir.', 'outerr');
-      if (cliMode !== 'config')
-        return out('Önce enable ardından configure terminal komutlarını çalıştır.', 'outerr');
-      const removing = p[0] === 'no',
-        offset = removing ? 3 : 2;
-      let network = p[offset],
-        mask = p[offset + 1],
-        nextHop = p[offset + 2];
-      if (network && network.includes('/') && p[offset + 2] === undefined) {
-        const bits = Number(network.split('/')[1]);
-        const base = network.split('/')[0],
-          m = maskFromPrefix(bits);
-        if (validIP(base) && m) {
-          network = base;
-          mask = m;
-          nextHop = p[offset + 1];
-        }
-      }
-      const distanceToken = p[offset + 3],
-        distance = distanceToken === undefined ? 1 : Number(distanceToken);
-      if (
-        !network ||
-        !mask ||
-        !nextHop ||
-        !validIP(network) ||
-        !validIP(mask) ||
-        !validIP(nextHop) ||
-        prefixLen(mask) < 0
-      )
-        return out(
-          'Kullanım: ' +
-            (removing ? 'no ' : '') +
-            'ip route <NETWORK> <MASK> <NEXT-HOP> [AD 1-255]',
-          'outerr',
-        );
-      if (!Number.isInteger(distance) || distance < 1 || distance > 255)
-        return out('Administrative Distance 1–255 arasında tam sayı olmalı.', 'outerr');
-      if (subnet(network, mask) !== network)
-        return out(
-          'Hedef ağ adresi maske ile hizalı değil. Ağ adresini doğru gir; ör. 10.20.0.0 255.255.255.0 192.168.12.2',
-          'outerr',
-        );
-      d.staticRoutes = Array.isArray(d.staticRoutes) ? d.staticRoutes : [];
-      const idx = d.staticRoutes.findIndex(
-        (r) =>
-          r.network === network &&
-          r.mask === mask &&
-          r.nextHop === nextHop &&
-          ((removing && distanceToken === undefined) || Number(r.distance ?? 1) === distance),
-      );
-      if (removing) {
-        if (idx < 0)
-          return out(
-            'Bu statik rota bulunamadı. Kontrol et: prefix, mask, next-hop ve AD.',
-            'outerr',
-          );
-        d.staticRoutes.splice(idx, 1);
-        if (network === '0.0.0.0' && mask === '0.0.0.0' && d.route === nextHop) d.route = '';
-        render();
-        return out('Statik rota silindi: ' + network + ' ' + mask + ' via ' + nextHop, 'outok');
-      }
-      if (idx >= 0) return out('Bu statik rota zaten mevcut.', 'outinfo');
-      d.staticRoutes.push({ network, mask, nextHop, distance });
-      render();
-      return out(
-        'Statik rota eklendi: ' +
-          network +
-          ' ' +
-          mask +
-          ' via ' +
-          nextHop +
-          ' [AD ' +
-          distance +
-          ']. show ip route ile doğrula.',
-        'outok',
-      );
-    }
-    if (p[0] === 'access-list' && p[1] && ['permit', 'deny'].includes(p[2])) {
-      if (d.type !== 'Router')
-        return out('access-list yalnızca Router üzerinde yapılandırılır.', 'outerr');
-      if (cliMode !== 'config') return out('Önce configure terminal moduna geç.', 'outerr');
-      const id = p[1],
-        action = p[2],
-        protocol = p[3];
-      if (!/^\d+$/.test(id) || Number(id) < 1 || Number(id) > 199)
-        return out('Bu simülatörde ACL numarası 1–199 arasında olmalı.', 'outerr');
-      d.acls = Array.isArray(d.acls) ? d.acls : [];
-      let rule;
-      if (Number(id) >= 100) {
-        if (!['ip', 'tcp', 'udp', 'icmp'].includes(protocol))
-          return out('Extended ACL protokolü ip/tcp/udp/icmp olmalı.', 'outerr');
-        let k = 4,
-          srcType = 'any',
-          src = '',
-          dstType = 'any',
-          dst = '',
-          port = null;
-        if (p[k] === 'any') k++;
-        else if (p[k] === 'host' && validIP(p[k + 1])) {
-          srcType = 'host';
-          src = p[k + 1];
-          k += 2;
-        } else return out('Kaynak için any veya host <IP> kullan.', 'outerr');
-        if (p[k] === 'any') k++;
-        else if (p[k] === 'host' && validIP(p[k + 1])) {
-          dstType = 'host';
-          dst = p[k + 1];
-          k += 2;
-        } else return out('Hedef için any veya host <IP> kullan.', 'outerr');
-        if (p[k] === 'eq') {
-          if (!['tcp', 'udp'].includes(protocol))
-            return out(
-              'eq port eşleştirmesi yalnızca TCP/UDP ACL kuralında kullanılabilir.',
-              'outerr',
-            );
-          if (!/^\d+$/.test(p[k + 1] || '') || Number(p[k + 1]) < 1 || Number(p[k + 1]) > 65535)
-            return out('ACL portu 1–65535 arasında tam sayı olmalı.', 'outerr');
-          port = Number(p[k + 1]);
-          k += 2;
-        }
-        if (k !== p.length)
-          return out(
-            'Extended ACL kullanımı: access-list 101 permit|deny tcp|udp|ip|icmp any|host <IP> any|host <IP> [eq <1-65535>].',
-            'outerr',
-          );
-        rule = { id, action, protocol, srcType, src, dstType, dst, port };
-      } else {
-        const network = p[3],
-          wildcard = p[4];
-        if (
-          p.length !== 5 ||
-          !validIP(network) ||
-          !validIP(wildcard) ||
-          prefixLen(maskFromWildcard(wildcard)) < 0 ||
-          subnet(network, maskFromWildcard(wildcard)) !== network
-        )
-          return out(
-            'Standard ACL kullanımı: access-list 1 permit|deny <NETWORK> <WILDCARD>; wildcard geçerli ve ağ adresi hizalı olmalı.',
-            'outerr',
-          );
-        rule = {
-          id,
-          action,
-          protocol: 'ip',
-          srcType: 'network',
-          src: network,
-          wildcard,
-          dstType: 'any',
-          dst: '',
-        };
-      }
-      d.acls.push(rule);
-      saveTopology(true);
-      return out('ACL ' + id + ' ' + action + ' kuralı eklendi.', 'outok');
-    }
-    if (
-      p[0] === 'ip' &&
-      p[1] === 'nat' &&
-      p[2] === 'inside' &&
-      p[3] === 'source' &&
-      p[4] === 'list'
-    ) {
-      if (d.type !== 'Router') return out('NAT yalnızca Router üzerinde yapılandırılır.', 'outerr');
-      if (cliMode !== 'config') return out('Önce configure terminal moduna geç.', 'outerr');
-      const aclId = p[5],
-        ifWord = p[6],
-        outsideInterface = p[7],
-        overload = p[8];
-      if (
-        !aclId ||
-        ifWord !== 'interface' ||
-        !d.interfaces[outsideInterface] ||
-        overload !== 'overload'
-      )
-        return out('Kullanım: ip nat inside source list 1 interface g0/1 overload', 'outerr');
-      if (!(d.acls || []).some((r) => String(r.id) === String(aclId)))
-        return out(
-          'NAT için kaynak ağı izinli kılan standard ACL ' + aclId + ' oluşturulmalı.',
-          'outerr',
-        );
-      d.natOverload = { aclId, outsideInterface };
-      d.natTranslations = Array.isArray(d.natTranslations) ? d.natTranslations : [];
-      saveTopology(true);
-      return out(
-        'NAT overload yapılandırıldı: ACL ' + aclId + ', outside ' + outsideInterface + '.',
-        'outok',
-      );
-    }
-    if (
-      p[0] === 'no' &&
-      p[1] === 'ip' &&
-      p[2] === 'nat' &&
-      p[3] === 'inside' &&
-      p[4] === 'source'
-    ) {
-      if (d.type !== 'Router') return out('NAT yalnızca Router üzerinde kullanılabilir.', 'outerr');
-      if (cliMode !== 'config')
-        return out('Önce enable ardından configure terminal komutlarını çalıştır.', 'outerr');
-      if (!d.natOverload) return out('NAT overload yapılandırması bulunamadı.', 'outerr');
-      delete d.natOverload;
-      saveTopology(true);
-      return out('NAT overload yapılandırması kaldırıldı.', 'outok');
-    }
-    if (p[0] === 'show' && p[1] === 'access-lists' && d.type === 'Router') {
-      const rules = d.acls || [];
-      if (!rules.length) return out('ACL tanımlanmamış.', 'outinfo');
-      rules.forEach((r) =>
-        out(
-          ' access-list ' +
-            r.id +
-            ' ' +
-            r.action +
-            ' ' +
-            r.protocol +
-            (r.srcType === 'host'
-              ? ' host ' + r.src
-              : r.srcType === 'network'
-                ? ' ' + r.src + ' ' + (r.wildcard || '')
-                : ' any') +
-            (r.dstType === 'host'
-              ? ' host ' + r.dst
-              : r.dstType === 'network'
-                ? ' ' + r.dst
-                : ' any') +
-            (r.port ? ' eq ' + r.port : ''),
-        ),
-      );
-      return;
-    }
-    if (
-      p[0] === 'show' &&
-      p[1] === 'ip' &&
-      p[2] === 'nat' &&
-      p[3] === 'statistics' &&
-      d.type === 'Router'
-    ) {
-      const rows = d.natTranslations || [];
-      const inside = Object.entries(d.interfaces || {})
-        .filter(([n, i]) => i.natRole === 'inside')
-        .map(([n]) => n);
-      const outside = Object.entries(d.interfaces || {})
-        .filter(([n, i]) => i.natRole === 'outside')
-        .map(([n]) => n);
-      out('NAT Statistics');
-      out('Inside interfaces: ' + (inside.join(', ') || 'none'));
-      out('Outside interfaces: ' + (outside.join(', ') || 'none'));
-      out('Hits: ' + rows.length + '  Active translations: ' + rows.length);
-      out('Misses: ' + (d.natOverload ? 0 : 1));
-      if (!d.natOverload) out('NAT overload yapılandırması yok.', 'outinfo');
-      else if (!inside.length || !outside.length)
-        out('Uyarı: NAT overload var ancak inside/outside arayüz rollerini kontrol et.', 'outinfo');
-      return;
-    }
-    if (
-      p[0] === 'show' &&
-      p[1] === 'ip' &&
-      p[2] === 'nat' &&
-      p[3] === 'translations' &&
-      d.type === 'Router'
-    ) {
-      out('Pro  Inside global       Inside local        Outside local');
-      const rows = d.natTranslations || [];
-      if (!rows.length)
-        out('% NAT translation tablosu boş. NAT rolü, ACL ve trafik yolunu kontrol et.', 'outinfo');
-      rows.forEach((x) =>
-        out(
-          (x.protocol || 'icmp').toUpperCase().padEnd(4) +
-            ' ' +
-            x.insideGlobal.padEnd(19) +
-            ' ' +
-            x.insideLocal.padEnd(19) +
-            ' ' +
-            x.outsideLocal,
-        ),
-      );
-      return;
-    }
-    if (p[0] === 'interface' && p[1]) {
-      if (d.type !== 'Switch' && d.type !== 'Router')
-        return out('Bu cihazda interface yapılandırması desteklenmiyor.', 'outerr');
-      if (cliMode !== 'config') return out('Önce configure terminal moduna geç.', 'outerr');
-      currentInterface = p[1]
-        .toLowerCase()
-        .replace(/^gigabitethernet/, d.type === 'Switch' ? 'gi' : 'g')
-        .replace(/^fastethernet/, 'fa');
-      const aliases = {
-        'g0/0': 'g0/0',
-        'gig0/0': 'g0/0',
-        'gigabitethernet0/0': 'g0/0',
-        'g0/1': 'g0/1',
-        'gig0/1': 'g0/1',
-        'gigabitethernet0/1': 'g0/1',
-        'gi0/1': 'gi0/1',
-        'gigabitEthernet0/1': 'gi0/1',
-        'gi0/2': 'gi0/2',
-        'fa0/1': 'fa0/1',
-        'fastethernet0/1': 'fa0/1',
-        'fa0/2': 'fa0/2',
-        'fastethernet0/2': 'fa0/2',
-      };
-      currentInterface = aliases[currentInterface] || currentInterface;
-      if (!d.interfaces[currentInterface]) {
-        const sm = currentInterface.match(/^([^.]+)\.(\d{1,10})$/);
-        if (
-          d.type === 'Router' &&
-          sm &&
-          Number(sm[2]) >= 1 &&
-          Number(sm[2]) <= 4294967295 &&
-          d.ports.includes(sm[1]) &&
-          d.interfaces[sm[1]]
-        ) {
-          d.interfaces[currentInterface] = {
-            ip: '',
-            mask: '255.255.255.0',
-            enabled: true,
-            vlan: 1,
-            encapsulation: '',
-            parent: sm[1],
-          };
-        } else
-          return out(
-            'Geçersiz interface. Alt arayüz için interface g0/0.20 biçimini kullan; mevcut fiziksel portları show ip interface brief ile kontrol et.',
-            'outerr',
-          );
-      }
-      cliMode = 'if';
-      updatePrompt();
-      return out('Interface ' + currentInterface + ' seçildi.');
-    }
-    if (p[0] === 'spanning-tree' && p[1] === 'vlan' && p[2] && p[3] === 'priority' && p[4]) {
-      if (d.type !== 'Switch')
-        return out('spanning-tree komutu yalnızca Switch üzerinde kullanılabilir.', 'outerr');
-      if (cliMode !== 'config')
-        return out('Önce enable ve configure terminal komutlarını çalıştır.', 'outerr');
-      const vlan = Number(p[2]),
-        priority = Number(p[4]);
-      if (
-        !Number.isInteger(vlan) ||
-        vlan < 1 ||
-        vlan > 4094 ||
-        !Number.isInteger(priority) ||
-        priority < 0 ||
-        priority > 61440 ||
-        priority % 4096 !== 0
-      )
-        return out(
-          'Kullanım: spanning-tree vlan <1-4094> priority <0-61440; 4096 adımlı>',
-          'outerr',
-        );
-      d.stpPriorities = d.stpPriorities || {};
-      d.stpPriorities[vlan] = priority;
-      render();
-      updateInspector();
-      return out(
-        'STP VLAN ' +
-          vlan +
-          ' bridge priority ' +
-          priority +
-          ' olarak ayarlandı. Root seçimini show spanning-tree ile doğrula.',
-        'outok',
-      );
-    }
-    if (cliMode === 'if') {
-      let i = d.interfaces[currentInterface];
-      if (p[0] === 'shutdown' || (p[0] === 'shut' && p[1] === '')) {
-        i.enabled = false;
-        render();
-        updateInspector();
-        return out(currentInterface + ' administratively down', 'outok');
-      }
-      if (p[0] === 'no' && p[1] === 'shutdown') {
-        i.enabled = true;
-        render();
-        updateInspector();
-        return out(currentInterface + ' enabled', 'outok');
-      }
-      if (p[0] === 'encapsulation') {
-        if (d.type !== 'Router' || !currentInterface.includes('.'))
-          return out(
-            'encapsulation dot1q yalnızca Router alt arayüzünde kullanılabilir.',
-            'outerr',
-          );
-        const v = Number(p[2]);
-        if (
-          p.length !== 3 ||
-          p[1] !== 'dot1q' ||
-          !/^\d+$/.test(p[2] || '') ||
-          !Number.isInteger(v) ||
-          v < 1 ||
-          v > 4094
-        )
-          return out(
-            'Kullanım: encapsulation dot1q <1-4094>. Native VLAN ve ISL bu modelde desteklenmiyor.',
-            'outerr',
-          );
-        i.encapsulation = 'dot1q';
-        i.vlan = v;
-        render();
-        updateInspector();
-        return out('802.1Q encapsulation dot1Q ' + v + ' yapılandırıldı.', 'outok');
-      }
-      if (p[0] === 'ip' && p[1] === 'helper-address' && validIP(p[2])) {
-        if (d.type !== 'Router')
-          return out('ip helper-address yalnızca router arayüzünde kullanılabilir.', 'outerr');
-        i.helperAddress = p[2];
-        saveTopology(true);
-        return out(
-          'DHCP relay hedefi ' +
-            p[2] +
-            ' olarak ayarlandı; istemci VLAN arayüzünde helper-address kullanılmalı.',
-          'outok',
-        );
-      }
-      if (p[0] === 'no' && p[1] === 'ip' && p[2] === 'helper-address') {
-        delete i.helperAddress;
-        saveTopology(true);
-        return out('DHCP helper-address kaldırıldı.', 'outok');
-      }
-      if (p[0] === 'ip' && p[1] === 'nat' && ['inside', 'outside'].includes(p[2])) {
-        if (d.type !== 'Router')
-          return out('NAT inside/outside yalnızca router arayüzünde kullanılabilir.', 'outerr');
-        i.natRole = p[2];
-        saveTopology(true);
-        return out(currentInterface + ' NAT ' + p[2] + ' olarak işaretlendi.', 'outok');
-      }
-      if (
-        p[0] === 'no' &&
-        p[1] === 'ip' &&
-        p[2] === 'nat' &&
-        p[3] &&
-        ['inside', 'outside'].includes(p[3])
-      ) {
-        delete i.natRole;
-        saveTopology(true);
-        return out(currentInterface + ' NAT rolü kaldırıldı.', 'outok');
-      }
-      if (p[0] === 'ip' && p[1] === 'access-group' && p[2] && ['in', 'out'].includes(p[3])) {
-        if (d.type !== 'Router') return out('ACL arayüze router üzerinde uygulanır.', 'outerr');
-        const exists = (d.acls || []).some((r) => String(r.id) === String(p[2]));
-        if (!exists)
-          return out('ACL ' + p[2] + ' bulunamadı; önce access-list komutuyla oluştur.', 'outerr');
-        i[p[3] === 'in' ? 'aclIn' : 'aclOut'] = p[2];
-        saveTopology(true);
-        return out(
-          'ACL ' + p[2] + ' ' + p[3] + ' yönünde ' + currentInterface + ' arayüzüne uygulandı.',
-          'outok',
-        );
-      }
-      if (p[0] === 'no' && p[1] === 'ip' && p[2] === 'access-group' && p[3]) {
-        if (d.type !== 'Router')
-          return out('ACL arayüzden yalnızca router üzerinde kaldırılabilir.', 'outerr');
-        if (!i.aclIn && !i.aclOut) return out('Bu arayüzde uygulanmış ACL yok.', 'outerr');
-        delete i.aclIn;
-        delete i.aclOut;
-        saveTopology(true);
-        return out('Arayüz ACL uygulaması kaldırıldı.', 'outok');
-      }
-      if (p[0] === 'no' && p[1] === 'ip' && p[2] === 'address') {
-        if (d.type !== 'Router')
-          return out('no ip address yalnızca router arayüzünde desteklenir.', 'outerr');
-        i.ip = '';
-        i.mask = '255.255.255.0';
-        render();
-        updateInspector();
-        return out('Arayüz IP adresi kaldırıldı. show ip interface brief ile doğrula.', 'outok');
-      }
-      if (p[0] === 'ip' && p[1] === 'address') {
-        if (d.type !== 'Router')
-          return out(
-            'ip address arayüz komutu bu simülatörde yalnızca Router arayüzünde desteklenir.',
-            'outerr',
-          );
-        if (!validIP(p[2]) || !validIP(p[3]) || prefixLen(p[3]) < 0)
-          return out('Kullanım: ip address <IPv4> <geçerli subnet maskesi>', 'outerr');
-        i.ip = p[2];
-        i.mask = p[3];
-        render();
-        updateInspector();
-        return out('IP address set: ' + i.ip + ' ' + i.mask, 'outok');
-      }
-      if (p[0] === 'switchport' && p[1] === 'mode' && ['access', 'trunk'].includes(p[2])) {
-        if (d.type !== 'Switch')
-          return out('switchport komutu yalnızca switch üzerinde kullanılabilir.', 'outerr');
-        i.mode = p[2];
-        render();
-        updateInspector();
-        return out('Administrative mode: ' + i.mode, 'outok');
-      }
-      if (p[0] === 'switchport' && p[1] === 'access' && p[2] === 'vlan') {
-        if (d.type !== 'Switch')
-          return out('switchport access vlan yalnızca switch portunda kullanılabilir.', 'outerr');
-        const v = Number(p[3]);
-        if (!Number.isInteger(v) || v < 1 || v > 4094)
-          return out('Kullanım: switchport access vlan <1-4094>', 'outerr');
-        i.vlan = v;
-        d.vlans = [...new Set([...(d.vlans || []), i.vlan])];
-        render();
-        updateInspector();
-        return out('Access VLAN set to ' + i.vlan, 'outok');
-      }
-      if (p[0] === 'switchport' && p[1] === 'trunk' && p[2] === 'allowed' && p[3] === 'vlan') {
-        if (d.type !== 'Switch')
-          return out(
-            'switchport trunk allowed vlan yalnızca switch portunda kullanılabilir.',
-            'outerr',
-          );
-        if (i.mode !== 'trunk')
-          return out(
-            'Allowed VLAN listesi trunk modundaki portta yapılandırılmalı. Önce switchport mode trunk kullan.',
-            'outerr',
-          );
-        let action = 'set',
-          listTokens = p.slice(4);
-        if (['add', 'remove'].includes(listTokens[0])) {
-          action = listTokens.shift();
-        }
-        if (!listTokens.length)
-          return out('VLAN listesi eksik: ör. switchport trunk allowed vlan add 20.', 'outerr');
-        let values = [];
-        const raw = listTokens.join('').split(',').filter(Boolean);
-        if (raw.length === 1 && raw[0] === 'all') {
-          values = Array.from({ length: 4094 }, (_, index) => index + 1);
-        } else if (raw.length === 1 && raw[0] === 'none') {
-          values = [];
-        } else {
-          for (const token of raw) {
-            if (/^\d+-\d+$/.test(token)) {
-              const [a, b] = token.split('-').map(Number);
-              if (a < 1 || b > 4094 || a > b || b - a > 4093)
-                return out('VLAN aralığı geçersiz. Kullanım: 10,20 veya 10-20 (1–4094).', 'outerr');
-              for (let n = a; n <= b; n++) values.push(n);
-            } else if (/^\d+$/.test(token)) {
-              const n = Number(token);
-              if (n < 1 || n > 4094) return out('VLAN ID 1–4094 arasında olmalı.', 'outerr');
-              values.push(n);
-            } else
-              return out(
-                'Kullanım: switchport trunk allowed vlan [add|remove] 10,20 veya 10-20; ayrıca all/none.',
-                'outerr',
-              );
-          }
-        }
-        values = [...new Set(values)];
-        if (action === 'add')
-          i.allowed = [...new Set([...(i.allowed || []), ...values])].sort((a, b) => a - b);
-        else if (action === 'remove')
-          i.allowed = (i.allowed || []).filter((n) => !values.includes(Number(n)));
-        else i.allowed = values.sort((a, b) => a - b);
-        render();
-        updateInspector();
-        return out('Allowed VLANs: ' + (i.allowed.length ? i.allowed.join(',') : 'none'), 'outok');
-      }
-      if (
-        p[0] === 'switchport' &&
-        p[1] === 'trunk' &&
-        p[2] === 'native' &&
-        p[3] === 'vlan' &&
-        p[4]
-      ) {
-        const v = Number(p[4]);
-        if (!Number.isInteger(v) || v < 1 || v > 4094)
-          return out('Native VLAN ID 1–4094 arasında olmalı.', 'outerr');
-        if (d.type !== 'Switch' || i.mode !== 'trunk')
-          return out('Native VLAN yalnızca switch trunk portunda yapılandırılır.', 'outerr');
-        i.nativeVlan = v;
-        render();
-        updateInspector();
-        return out('Native VLAN ' + v + ' olarak ayarlandı.', 'outok');
-      }
-      return out('Interface modunda komut tanınmadı. help yaz.', 'outerr');
-    }
-    if (p[0] === 'vlan' && +p[1] >= 1 && +p[1] <= 4094 && d.type === 'Switch') {
-      if (cliMode !== 'config') return out('Önce configure terminal moduna geç.', 'outerr');
-      d.vlans = [...new Set([...(d.vlans || []), +p[1]])];
-      return out('VLAN ' + p[1] + ' oluşturuldu.', 'outok');
-    }
-    if (p[0] === 'show' && p[1] === 'running-config') {
-      out('Building configuration...');
-      routingProtocolConfigurationLines(d).forEach((line) => out(line));
-      out('hostname ' + d.name);
-      out('! device-type ' + d.type);
-      if (d.type === 'Switch') {
-        if (d.stpPriority !== undefined && (d.stpPriorities || {})[10] === undefined)
-          out('spanning-tree vlan 10 priority ' + d.stpPriority);
-        Object.entries(d.stpPriorities || {})
-          .sort((a, b) => Number(a[0]) - Number(b[0]))
-          .forEach(([v, pri]) => out('spanning-tree vlan ' + v + ' priority ' + pri));
-      }
-      if (d.type === 'PC' || d.type === 'Server') {
-        out('ip address ' + (d.ip || '0.0.0.0') + ' ' + (d.mask || '0.0.0.0'));
-        out('ip default-gateway ' + (d.gateway || 'not set'));
-        if (d.type === 'Server')
-          out(
-            'services dhcp ' +
-              (d.services.dhcp ? 'on' : 'off') +
-              ' dns ' +
-              (d.services.dns ? 'on' : 'off') +
-              ' http ' +
-              (d.services.http ? 'on' : 'off'),
-          );
-      }
-      Object.entries(d.interfaces || {}).forEach(([name, i]) => {
-        out('interface ' + name);
-        if (i.encapsulation) out(' encapsulation dot1Q ' + i.vlan);
-        if (i.ip) out(' ip address ' + i.ip + ' ' + i.mask);
-        if (i.helperAddress) out(' ip helper-address ' + i.helperAddress);
-        if (i.natRole) out(' ip nat ' + i.natRole);
-        if (i.aclIn) out(' ip access-group ' + i.aclIn + ' in');
-        if (i.aclOut) out(' ip access-group ' + i.aclOut + ' out');
-        if (d.type === 'Switch') {
-          out(' switchport mode ' + i.mode);
-          if (i.mode === 'access') out(' switchport access vlan ' + i.vlan);
-          else {
-            out(' switchport trunk allowed vlan ' + i.allowed.join(','));
-            out(' switchport trunk native vlan ' + (i.nativeVlan ?? 1));
-          }
-        }
-        out(i.enabled ? ' no shutdown' : ' shutdown');
-      });
-      if (d.type === 'Router') {
-        staticRoutes(d).forEach((r) =>
-          out(
-            'ip route ' +
-              r.network +
-              ' ' +
-              r.mask +
-              ' ' +
-              r.nextHop +
-              ((r.distance ?? 1) !== 1 ? ' ' + r.distance : ''),
-          ),
-        );
-        (d.acls || []).forEach((r) =>
-          out(
-            'access-list ' +
-              r.id +
-              ' ' +
-              r.action +
-              ' ' +
-              r.protocol +
-              (r.srcType === 'host'
-                ? ' host ' + r.src
-                : r.srcType === 'network'
-                  ? ' ' + r.src + ' ' + (r.wildcard || '')
-                  : ' any') +
-              (r.dstType === 'host'
-                ? ' host ' + r.dst
-                : r.dstType === 'network'
-                  ? ' ' + r.dst
-                  : ' any') +
-              (r.port ? ' eq ' + r.port : ''),
-          ),
-        );
-        if (d.natOverload)
-          out(
-            'ip nat inside source list ' +
-              d.natOverload.aclId +
-              ' interface ' +
-              d.natOverload.outsideInterface +
-              ' overload',
-          );
-      }
-      return;
-    }
-    if (p[0] === 'show' && p[1] === 'ip' && p[2] === 'interface' && p[3] === 'brief') {
-      out('Interface       IP-Address      Status     Protocol');
-      if (d.type === 'Router' || d.type === 'Switch')
-        Object.entries(d.interfaces).forEach(([n, i]) => {
-          const parentName = i.parent || (n.includes('.') ? n.split('.')[0] : n);
-          const parent = parentName !== n ? d.interfaces[parentName] : null;
-          const adminUp = !!(d.enabled && i.enabled && (!parent || parent.enabled !== false));
-          const attached = links.some(
-            (l) =>
-              ((l.a === d.id && l.portA === parentName) ||
-                (l.b === d.id && l.portB === parentName)) &&
-              linkUp(l),
-          );
-          const protocolUp = adminUp && attached;
-          const status = !adminUp ? 'administratively down' : attached ? 'up' : 'down';
-          out(
-            `${n.padEnd(15)} ${(i.ip || 'unassigned').padEnd(15)} ${status}     ${protocolUp ? 'up' : 'down'}`,
-          );
-        });
-      else
-        out(
-          `eth0            ${d.ip || 'unassigned'}    ${d.enabled ? 'up' : 'down'}       ${d.enabled ? 'up' : 'down'}`,
-        );
-      return;
-    }
-    if (p[0] === 'show' && p[1] === 'vlan' && p[2] === 'brief' && d.type === 'Switch') {
-      out('VLAN Name                 Status    Ports');
-      (d.vlans || [1])
-        .sort((a, b) => a - b)
-        .forEach((v) =>
-          out(
-            `${String(v).padEnd(5)} VLAN${v}`.padEnd(28) +
-              'active    ' +
-              Object.entries(d.interfaces)
-                .filter(([n, i]) => i.mode === 'access' && i.vlan === v)
-                .map(([n]) => n)
-                .join(','),
-          ),
-        );
-      return;
-    }
-    if (p[0] === 'show' && p[1] === 'interfaces' && p[2] === 'trunk' && d.type === 'Switch') {
-      out('Port   Mode  Status  Native vlan  Allowed VLANs');
-      Object.entries(d.interfaces)
-        .filter(([n, i]) => i.mode === 'trunk')
-        .forEach(([n, i]) =>
-          out(
-            `${n}  ${i.mode}  ${d.enabled && i.enabled && links.some((l) => ((l.a === d.id && l.portA === n) || (l.b === d.id && l.portB === n)) && linkUp(l)) ? 'trunking' : 'down'}  ${i.nativeVlan ?? 1}  ${(i.allowed || []).join(',')}`,
-          ),
-        );
-      const mismatches = links
-        .filter((l) => l.a === d.id || l.b === d.id)
-        .filter((l) => {
-          const a = get(l.a),
-            b = get(l.b),
-            pa = portState(a, l.portA),
-            pb = portState(b, l.portB);
-          return (
-            a?.type === 'Switch' &&
-            b?.type === 'Switch' &&
-            pa?.mode === 'trunk' &&
-            pb?.mode === 'trunk' &&
-            (pa.nativeVlan ?? 1) !== (pb.nativeVlan ?? 1)
-          );
-        });
-      if (mismatches.length)
-        out('%CDP-4-NATIVE_VLAN_MISMATCH: Trunk komşusunda native VLAN farklı.', 'outerr');
-      return;
-    }
-    if (p[0] === 'show' && p[1] === 'interfaces' && p[2] === 'status') {
-      out('Port       Status       VLAN    Type');
-      Object.entries(d.interfaces || {}).forEach(([n, i]) => {
-        const parentName = i.parent || (n.includes('.') ? n.split('.')[0] : n);
-        const parent = parentName !== n ? d.interfaces[parentName] : null;
-        let l = links.find(
-          (x) =>
-            (x.a === d.id && x.portA === parentName) || (x.b === d.id && x.portB === parentName),
-        );
-        let status =
-          !d.enabled || !i.enabled || (parent && parent.enabled === false)
-            ? 'disabled'
-            : l
-              ? linkUp(l)
-                ? 'connected'
-                : 'down'
-              : 'notconnect';
-        out(
-          `${n.padEnd(10)} ${status.padEnd(12)} ${i.mode === 'trunk' ? 'trunk' : i.vlan || '1'}    ${l ? label(get(l.a === d.id ? l.b : l.a)) + ' ' + linkPort(l, d.id) : '--'}`,
-        );
-      });
-      return;
-    }
-    if (p[0] === 'show' && p[1] === 'spanning-tree' && d.type === 'Switch') {
-      out(
-        'Spanning tree is a simplified educational model (priority-based root, deterministic loop-free tree; no BPDU timers/path-cost convergence).',
-      );
-      out('VLAN  Root ID / Priority       Port       Role          State');
-      const stpVlans =
-        p[2] === 'vlan' && Number(p[3]) > 0
-          ? [(d.vlans || [1]).map(Number).includes(Number(p[3])) ? Number(p[3]) : null].filter(
-              (v) => v !== null,
-            )
-          : d.vlans || [1];
-      if (p[2] === 'vlan' && !stpVlans.length) {
-        out('% VLAN ' + p[3] + ' is not active on this switch.', 'outerr');
-        return;
-      }
-      stpVlans.forEach((v) => {
-        const info = stpTreeInfo(Number(v), d.id),
-          root = info.root,
-          tree = info.selected;
-        out(
-          '' +
-            v +
-            '     ' +
-            (root ? root.name + ' / ' + stpPriorityForVlan(root, v) : '--') +
-            '     --         ' +
-            (root?.id === d.id ? 'Root' : 'Non-root') +
-            '       --',
-        );
-        links
-          .filter((l) => l.a === d.id || l.b === d.id)
-          .forEach((l) => {
-            const port = linkPort(l, d.id),
-              other = get(l.a === d.id ? l.b : l.a);
-            if (other?.type !== 'Switch') return;
-            const carries = linkCarriesVlan(l, Number(v)).ok,
-              fwd = tree.has(l) && carries;
-            let role = 'Alternate';
-            if (fwd) {
-              role =
-                root?.id === d.id || info.parent.get(other.id) === d.id
-                  ? 'Designated'
-                  : info.parentLink.get(d.id) === l
-                    ? 'Root'
-                    : 'Designated';
-            }
-            out(
-              '      ' +
-                port +
-                ' ↔ ' +
-                other.name +
-                '   ' +
-                role +
-                '   ' +
-                (fwd ? 'Forwarding' : 'Blocking'),
-            );
-          });
-      });
-      return;
-    }
-    if (p[0] === 'show' && p[1] === 'ip' && p[2] === 'route' && d.type === 'Router') {
-      const query = p[3] && validIP(p[3]) ? p[3] : null;
-      out('Codes: C - connected, S - static, O - OSPF, B - BGP');
-      out(
-        'Statik rota biçimi: [Administrative Distance/metric]. Aynı prefix için kullanılabilir rota kaynakları arasında düşük AD tercih edilir.',
-      );
-      if (query) {
-        const found = routeLookup(d, query);
-        if (!found.ok) {
-          out('% No usable route to ' + query + ': ' + found.why, 'outerr');
-          return;
-        }
-        const r = found.route;
-        out(
-          (r.type === 'connected'
-            ? 'C '
-            : r.type === 'ospf'
-              ? 'O '
-              : r.type === 'bgp'
-                ? 'B '
-                : 'S ') +
-            r.network +
-            routePrefixText(r.mask) +
-            (r.type === 'connected'
-              ? ' is directly connected, ' + r.iface
-              : ' [' +
-                (r.distance ?? 1) +
-                '/' +
-                (r.metric || 0) +
-                '] via ' +
-                r.nextHop +
-                ' · resolved ' +
-                (r.resolvedVia === 'recursive'
-                  ? 'recursively through ' + r.resolutionRoute
-                  : 'directly on ' + r.iface)),
-        );
-        return;
-      }
-      connectedRoutes(d).forEach((r) =>
-        out('C ' + r.network + routePrefixText(r.mask) + ' is directly connected, ' + r.iface),
-      );
-      dynamicRoutes(d).forEach((r) => {
-        const best = routeLookup(d, r.network);
-        if (best.ok && best.route.type === r.type && best.route.nextHop === r.nextHop)
-          out(
-            (r.type === 'ospf' ? 'O ' : 'B ') +
-              r.network +
-              routePrefixText(r.mask) +
-              ' [' +
-              r.distance +
-              '/' +
-              r.metric +
-              '] via ' +
-              r.nextHop,
-          );
-      });
-      let installed = 0;
-      staticRoutes(d).forEach((r) => {
-        const probe = routeLookup(d, r.network);
-        if (
-          probe.ok &&
-          probe.route.type === 'static' &&
-          probe.route.network === r.network &&
-          probe.route.mask === r.mask &&
-          probe.route.nextHop === r.nextHop &&
-          (probe.route.distance ?? 1) === (r.distance ?? 1)
-        ) {
-          out(
-            'S ' +
-              r.network +
-              routePrefixText(r.mask) +
-              ' [' +
-              (r.distance ?? 1) +
-              '/0] via ' +
-              r.nextHop +
-              (probe.route.resolvedVia === 'recursive'
-                ? ' · recursive via ' + probe.route.resolutionRoute
-                : ' · ' + probe.route.iface),
-          );
-          installed++;
-        } else
-          out(
-            '% Static route not usable: ' +
-              r.network +
-              routePrefixText(r.mask) +
-              ' via ' +
-              r.nextHop +
-              ' — next-hop resolution failed.',
-            'outinfo',
-          );
-      });
-      if (!installed && !staticRoutes(d).length) out('No static routes configured.');
-      if (!staticRoutes(d).some((r) => r.prefix === 0)) out('Gateway of last resort is not set');
-      return;
-    }
-    if (p[0] === 'show' && p[1] === 'mac' && p[2] === 'address-table' && d.type === 'Switch') {
-      out('Vlan   Mac Address       Type       Ports');
-      let table = switchMacTable(d);
-      if (!table.size) out('% MAC tablosu boş. Ping veya Paket adımı ile trafik üret.', 'outinfo');
-      table.forEach((v, m) =>
-        out(`${v.vlan}     ${macFmt(v.mac)}  DYNAMIC    ${v.port} (${v.device})`),
-      );
-      return;
-    }
-    if (p[0] === 'show' && p[1] === 'arp') {
-      out('Protocol  Address          Age  Hardware Addr');
-      let table = arpTables.get(d.id) || new Map();
-      if (!table.size) out('% ARP tablosu boş. Ping ile trafik üret.', 'outinfo');
-      table.forEach((m, ip) => out(`Internet  ${ip.padEnd(16)}  0    ${macFmt(m)}`));
-      return;
-    }
-
-    if (
-      p[0] === 'service' &&
-      ['dhcp', 'dns', 'http'].includes(p[1]) &&
-      ['on', 'off'].includes(p[2])
-    ) {
-      if (d.type !== 'Server')
-        return out('service komutu bu simülatörde Server üzerinde kullanılır.', 'outerr');
-      d.services = d.services || { dhcp: false, dns: false, http: false };
-      d.services[p[1]] = p[2] === 'on';
-      saveTopology(true);
-      return out(
-        p[1].toUpperCase() + ' servisi ' + (d.services[p[1]] ? 'açıldı' : 'kapatıldı') + '.',
-        'outok',
-      );
-    }
-    if (p[0] === 'show' && p[1] === 'services' && d.type === 'Server') {
-      out('Service     Status');
-      ['dhcp', 'dns', 'http'].forEach((k) => out(k.padEnd(12) + (d.services?.[k] ? 'on' : 'off')));
-      return;
-    }
-    if (p[0] === 'nslookup' && p[1]) {
-      if (d.type !== 'PC') return out('nslookup istemci üzerinde çalıştırılır.', 'outerr');
-      const dns = devices.find((x) => x.type === 'Server' && x.services?.dns && x.enabled);
-      if (!dns)
-        return out('DNS sorgusu zaman aşımına uğradı: DNS servisi açık sunucu yok.', 'outerr');
-      const reach = ping(d.id, dns.ip);
-      if (!reach.ok) return out('DNS sunucusuna erişilemiyor: ' + reach.why, 'outerr');
-      const rec = devices.find(
-        (x) =>
-          x.name.toLowerCase() === p[1].toLowerCase() ||
-          x.fqdn?.toLowerCase() === p[1].toLowerCase(),
-      );
-      return out(
-        'Server: ' + dns.ip + '\nName: ' + p[1] + '\nAddress: ' + (rec?.ip || '93.184.216.34'),
-        'outok',
-      );
-    }
-    if (
-      p[0] === 'show' &&
-      p[1] === 'ip' &&
-      p[2] === 'dhcp' &&
-      p[3] === 'binding' &&
-      d.type === 'Server'
-    ) {
-      const leases = devices.filter((x) => x.type === 'PC' && x.dhcpLease);
-      if (!leases.length) return out('DHCP binding tablosu boş.', 'outinfo');
-      leases.forEach((x) => out(x.ip + '  ' + macFmt(macOf(x)) + '  Active'));
-      return;
-    }
-    if (p[0] === 'ipconfig' && (p.length === 1 || (p.length === 2 && p[1] === '/all'))) {
-      if (d.type !== 'PC')
-        return out('ipconfig komutu yalnızca PC üzerinde kullanılabilir.', 'outerr');
-      out('Windows IP Configuration');
-      out('Ethernet adapter Ethernet:');
-      out('   Connection-specific DNS Suffix  . :');
-      out('   IPv4 Address. . . . . . . . . . . : ' + (d.ip || '0.0.0.0'));
-      out('   Subnet Mask . . . . . . . . . . . : ' + (d.mask || '0.0.0.0'));
-      out('   Default Gateway . . . . . . . . . : ' + (d.gateway || ''));
-      out('   DNS Servers . . . . . . . . . . . : ' + (d.dns || ''));
-      out('   DHCP Enabled. . . . . . . . . . . : ' + (d.dhcpLease ? 'Yes' : 'No'));
-      out('   Physical Address. . . . . . . . . : ' + macFmt(macOf(d)));
-      if (d.enabled === false)
-        out('   Media State . . . . . . . . . . . : Media disconnected', 'outerr');
-      if (p[1] === '/all') out('   Adapter Name . . . . . . . . . . : ' + d.name);
-      return;
-    }
-    if ((p[0] === 'ip' && p[1] === 'dhcp') || (p[0] === 'ipconfig' && p[1] === '/renew')) {
-      if (d.type !== 'PC')
-        return out('DHCP istemci komutu yalnızca PC üzerinde çalıştırılır.', 'outerr');
-      const servers = devices.filter((x) => x.type === 'Server' && x.services?.dhcp && x.enabled);
-      if (!servers.length)
-        return out('DHCP başarısız: açık DHCP servisi olan etkin sunucu yok.', 'outerr');
-      let srv = servers.find((x) => dhcpDiscoveryPath(d, x)?.local);
-      let leaseNetwork = null,
-        leaseMask = null,
-        leaseGateway = '';
-      if (srv) {
-        leaseNetwork = subnet(srv.ip, srv.mask);
-        leaseMask = srv.mask;
-        leaseGateway = srv.gateway || '';
-      } else {
-        const pathToServer = servers.map((x) => dhcpDiscoveryPath(d, x)).find((x) => x && !x.local);
-        if (!pathToServer)
-          return out(
-            'DHCP Discover gönderildi; DHCP sunucusuna fiziksel yol bulunamadı.',
-            'outerr',
-          );
-        const relay =
-          pathToServer.relay ||
-          AgLabEngineDhcp.findRelayOnPath(
-            engineTopo,
-            d.id,
-            pathToServer.path,
-            pathToServer.server.ip,
-          );
-        if (!relay)
-          return out(
-            'DHCP Discover gönderildi; farklı ağdaki sunucuya ulaşacak ip helper-address yapılandırması bulunamadı.',
-            'outerr',
-          );
-        const route = routeLookup(relay.router, pathToServer.server.ip);
-        if (!route.ok)
-          return out('DHCP relay sunucusuna yönlendirme başarısız: ' + route.why, 'outerr');
-        srv = pathToServer.server;
-        leaseNetwork = subnet(relay.iface.ip, relay.iface.mask);
-        leaseMask = relay.iface.mask;
-        leaseGateway = relay.iface.ip;
-      }
-      const lease = AgLabEngineDhcp.allocateLease(engineTopo, d, {
-        network: leaseNetwork,
-        mask: leaseMask,
-        gateway: leaseGateway,
-        serverIp: srv.ip,
-      });
-      if (!lease.ok && lease.reason === 'invalid-subnet')
-        return out(
-          'DHCP başarısız: sunucu veya relay geçerli bir IPv4 alt ağı sağlamadı.',
-          'outerr',
-        );
-      if (!lease.ok)
-        return out(
-          'DHCP başarısız: simülatörün kontrol ettiği kullanılabilir adres aralığında boş IP bulunamadı.',
-          'outerr',
-        );
-      const leaseIp = lease.ip;
-      d.ip = leaseIp;
-      d.mask = leaseMask;
-      d.gateway = leaseGateway;
-      d.dhcpLease = true;
-      render();
-      updateInspector();
-      return out(
-        'DHCP Discover → ' +
-          (subnet(srv.ip, srv.mask) === leaseNetwork
-            ? 'yerel DHCP sunucusu'
-            : 'Router ip helper-address relay') +
-          ' → DHCP Server → Offer → Request → ACK. IP ' +
-          d.ip +
-          ' ' +
-          d.mask +
-          ', gateway ' +
-          (d.gateway || 'atanmadı'),
-        'outok',
-      );
-    }
-    if ((p[0] === 'test' && p[1] === 'http' && p[2]) || (p[0] === 'curl' && p[1])) {
-      const ip = p[0] === 'curl' ? p[1] : p[2],
-        target = devices.find((x) => x.ip === ip);
-      if (!target) return out('HTTP hedef IP topolojide bulunamadı.', 'outerr');
-      if (!target.services?.http)
-        return out(
-          'TCP/80 başarısız: hedefte HTTP servisi açık değil veya hedef sunucu değil.',
-          'outerr',
-        );
-      const reach = ping(d.id, ip);
-      if (!reach.ok) return out('HTTP bağlantısı kurulamadı: ' + reach.why, 'outerr');
-      const hp = findPath(d.id, target.id, endpointVlan(d.id, Number(d.vlan) || 10), ip);
-      const acl = aclPathDecision(hp, d.id, target.id, d.ip, ip, 'tcp', 80);
-      if (!acl.ok) return out('HTTP başarısız: ' + acl.why, 'outerr');
-      const nat = natPathCheck(hp, d.id, target.id, d.ip, ip, 'tcp');
-      if (!nat.ok) return out('HTTP başarısız: ' + nat.why, 'outerr');
-      return out(
-        'HTTP/1.1 200 OK — ' +
-          target.name +
-          ' web servisi yanıt verdi.' +
-          (nat.translated ? ' NAT/PAT çevirisi oluşturuldu.' : ''),
-        'outok',
-      );
-    }
-    if (p[0] === 'ping') {
-      const parsed = parsePingCommand(p);
-      if (parsed.error) return out(parsed.error, 'outerr');
-      let r = ping(d.id, parsed.target, parsed);
-      if (typeof recordSharedPing === 'function') recordSharedPing(d.id, p[1], r);
-      if (r.ok) {
-        out('!!!!!', 'outok');
-        out('Success rate is 100 percent (5/5)', 'outok');
-        out(r.why, 'outok');
-      } else {
-        out('.....', 'outerr');
-        out('Success rate is 0 percent (0/5)', 'outerr');
-        out(r.why, 'outerr');
-      }
-      return;
-    }
-    if (p[0] === 'cable' && p[1] === 'status') {
-      links
-        .filter((l) => l.a === d.id || l.b === d.id)
-        .forEach((l) =>
-          out(
-            label(get(l.a)) +
-              ' ' +
-              l.portA +
-              ' <-> ' +
-              label(get(l.b)) +
-              ' ' +
-              l.portB +
-              ': ' +
-              (linkUp(l) ? 'UP' : 'DOWN'),
-          ),
-        );
-      return;
-    }
-    if (p[0] === 'ip' && p[1] === 'address' && d.type === 'Router') {
-      return out(
-        'Router arayüzünü seç: interface g0/0, ardından ip address <IP> <MASK>.',
-        'outinfo',
-      );
-    }
-    if (
-      p[0] === 'ip' &&
-      p[1] === 'default-gateway' &&
-      p[2] &&
-      (d.type === 'PC' || d.type === 'Server')
-    ) {
-      if (!validIP(p[2])) return out('Geçersiz IPv4 adresi.', 'outerr');
-      d.gateway = p[2];
-      updateInspector();
-      return out('Default gateway: ' + d.gateway, 'outok');
-    }
-    if (p[0] === 'ip' && p[1] === 'address' && p[2] && (d.type === 'PC' || d.type === 'Server')) {
-      if (!validIP(p[2]) || prefixLen(p[3]) < 0)
-        return out('Kullanım: ip address <IP> <geçerli subnet maskesi>', 'outerr');
-      d.ip = p[2];
-      d.mask = p[3];
-      render();
-      updateInspector();
-      return out('IP yapılandırıldı.', 'outok');
-    }
-    if (p[0] === 'no' && p[1] === 'shutdown')
-      return out(
-        'Interface seçmek için configure terminal → interface g0/0 komutlarını kullan.',
-        'outinfo',
-      );
-    if (p[0] === 'shutdown')
-      return out(
-        'Interface seçmek için configure terminal → interface g0/0 komutlarını kullan.',
-        'outinfo',
-      );
-    if (p[0] === 'ip' && p[1] === 'route' && p[2] === '0.0.0.0/0' && p[3] && d.type === 'Router') {
-      if (!validIP(p[3])) return out('Next-hop IP geçersiz.', 'outerr');
-      d.route = p[3];
-      d.staticRoutes = Array.isArray(d.staticRoutes) ? d.staticRoutes : [];
-      if (!d.staticRoutes.some((r) => r.network === '0.0.0.0' && r.mask === '0.0.0.0'))
-        d.staticRoutes.push({ network: '0.0.0.0', mask: '0.0.0.0', nextHop: p[3] });
-      return out('Static default route added.', 'outok');
-    }
-    out('Komut tanınmadı veya bu modda desteklenmiyor. help yaz.', 'outerr');
+    return labberCommand(d, raw);
   }
   // Shared-engine scenario pilot: these scenarios use the same devices, routing lookup and ping engine as the topology editor.
   let sharedScenario = { active: false, key: '', sourceId: '', target: '10.20.0.10' };
@@ -8013,12 +5984,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     sourceArchiveData = null;
     importReportData = null;
     nextId = 1;
-    cliMode = 'user';
-    currentInterface = '';
-    macTables.clear();
-    arpTables.clear();
     beginEthernetEvents();
-    packetWalk = null;
     const pc1 = addDevice('PC', 55, 180),
       sw1 = addDevice('Switch', 245, 90),
       sw2 = addDevice('Switch', 495, 90),
@@ -8083,12 +6049,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     sourceArchiveData = null;
     importReportData = null;
     nextId = 1;
-    cliMode = 'user';
-    currentInterface = '';
-    macTables.clear();
-    arpTables.clear();
     beginEthernetEvents();
-    packetWalk = null;
     const pc = addDevice('PC', 55, 170),
       swIn = addDevice('Switch', 220, 170),
       r = addDevice('Router', 390, 170),
@@ -8169,12 +6130,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     sourceArchiveData = null;
     importReportData = null;
     nextId = 1;
-    cliMode = 'user';
-    currentInterface = '';
-    macTables.clear();
-    arpTables.clear();
     beginEthernetEvents();
-    packetWalk = null;
     const pc = addDevice('PC', 55, 170),
       sw1 = addDevice('Switch', 230, 170),
       sw2 = addDevice('Switch', 410, 170),
@@ -8244,7 +6200,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       'outinfo',
     );
   }
-  // Senaryo yüklenince motor kararı içerikten verilir ve rozet gösterilir (engine-choice.js).
+  // Senaryo yüklenince Labber oturumu kurulur ve rozet gösterilir (engine-choice.js).
   function loadSharedScenario(key) {
     sharedScenarioLoading = true;
     try {
@@ -8252,7 +6208,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     } finally {
       sharedScenarioLoading = false;
     }
-    sharedScenarioDecideEngine();
+    sharedScenarioStartSession();
   }
   function loadSharedScenarioContent(key) {
     // Önceki içeriğin Labber oturumu yeni senaryo kurulurken (kodla kurulanlar importTopology
@@ -8278,12 +6234,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     sourceArchiveData = null;
     importReportData = null;
     nextId = 1;
-    cliMode = 'user';
-    currentInterface = '';
-    macTables.clear();
-    arpTables.clear();
     beginEthernetEvents();
-    packetWalk = null;
     const pc = addDevice('PC', 70, 120),
       sw1 = addDevice('Switch', 220, 120),
       r1 = addDevice('Router', 360, 120),
@@ -8420,26 +6371,23 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       target !== sharedScenario.target
     )
       return;
-    // Labber'da açılan senaryoda terminal ve değerlendirme aynı Labber çalışma zamanındadır;
-    // sonuç (gerekçesiyle) oradan alınır. Topoloji Labber'da ifade edilemiyorsa hata
-    // gösterilir, motor değiştirilmez.
-    if (sharedScenario.engine?.engine === 'labber') {
-      try {
-        result = aglabEngineChoice.labberPing(src, target);
-        // Sorgu hedefli senaryo: ping yetmez, bütün hedefler (ve gerekiyorsa güç
-        // döngüsünden sonra da) sağlanmalı.
-        const row = sharedScenarioRecipe(sharedScenario.key);
-        if (result.ok && row?.verify.kind === 'query') {
-          const goal = sharedQueryGoal(row);
-          if (!goal.ok) {
-            sharedStatus('Ping başarılı ama senaryo hedefi tamamlanmadı: ' + goal.why, false);
-            return;
-          }
+    // Terminal ve değerlendirme aynı Labber çalışma zamanındadır; sonuç (gerekçesiyle) oradan
+    // alınır. Topoloji Labber'da ifade edilemiyorsa hata gösterilir.
+    try {
+      result = aglabEngineChoice.labberPing(src, target);
+      // Sorgu hedefli senaryo: ping yetmez, bütün hedefler (ve gerekiyorsa güç
+      // döngüsünden sonra da) sağlanmalı.
+      const row = sharedScenarioRecipe(sharedScenario.key);
+      if (result.ok && row?.verify.kind === 'query') {
+        const goal = sharedQueryGoal(row);
+        if (!goal.ok) {
+          sharedStatus('Ping başarılı ama senaryo hedefi tamamlanmadı: ' + goal.why, false);
+          return;
         }
-      } catch (error) {
-        sharedStatus('Değerlendirme hatası: ' + error.message, false);
-        return;
       }
+    } catch (error) {
+      sharedStatus('Değerlendirme hatası: ' + error.message, false);
+      return;
     }
     const sourceDevice = get(src),
       targetDevice = devices.find(
@@ -8527,13 +6475,9 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   });
   $p('ptCliDevice').addEventListener('change', () => {
     selected = $p('ptCliDevice').value;
-    cliMode = 'user';
-    currentInterface = '';
-    packetWalk = null;
     render();
     updateInspector();
   });
-  $p('ptPacketStep').addEventListener('click', packetStep);
   $p('ptQuickCli').addEventListener('click', () => openDeviceCli($p('ptCliDevice').value));
   $p('ptClearTerminal').addEventListener('click', () => {
     $p('ptTerminal').replaceChildren();
@@ -8603,12 +6547,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     .querySelectorAll('[data-pt-cmd]')
     .forEach((b) => b.addEventListener('click', () => command(b.dataset.ptCmd)));
   //@@module SWITCH MANAGEMENT@@
-  //@@module MAC LEARNING@@
-  //@@module ETHERNET FORWARDING@@
-  //@@module ROUTING PATH@@
-  //@@module ROUTED ETHERNET@@
-  //@@module ICMP@@
-  //@@module TRACEROUTE@@
+  //@@module PACKET TRACE@@
   //@@module PACKET EVENTS@@
   //@@module PACKET DETECTIVE UI@@
   //@@module DEVICE CLI@@
@@ -8619,26 +6558,29 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   //@@module NETWORK SCENARIOS@@
   //@@module LABBER LABS UI@@
   //@@module SIMULATION PLAYBACK@@
-  //@@module BORCK ENGINE@@
-  //@@module ENGINE MANAGER@@
-  //@@module ENGINE MANAGER UI@@
-  //@@module BORCK UI@@
   //@@module LAB EVIDENCE@@
   //@@module LAB EVIDENCE UI@@
   //@@module SIMULATION UI@@
   //@@module ACADEMY@@
+  // Açılış: v24 kaydı; yoksa en yeni eski kayıt v24'e taşınır (eski anahtar silinmez). Taşınamayan
+  // kayıt sessizce kaybolmaz: güvenli başlangıç topolojisi açılır, uyarı ve özgün kaydı indirme
+  // düğmesi gösterilir.
+  let savedKey = null,
+    saved = null;
   try {
-    const saved =
-      localStorage.getItem('aglab-topology-v23') ||
-      localStorage.getItem('aglab-topology-v21') ||
-      localStorage.getItem('aglab-topology-v20') ||
-      localStorage.getItem('aglab-topology-v18') ||
-      localStorage.getItem('aglab-topology-v17') ||
-      localStorage.getItem('aglab-topology-v16') ||
-      localStorage.getItem('aglab-topology-v15');
+    for (const key of [TOPOLOGY_KEY, ...LEGACY_TOPOLOGY_KEYS]) {
+      saved = localStorage.getItem(key);
+      if (saved) {
+        savedKey = key;
+        break;
+      }
+    }
+  } catch (e) {}
+  try {
     if (saved) {
-      const obj = JSON.parse(saved);
-      validateTopologyData(obj);
+      const input = JSON.parse(saved);
+      validateTopologyData(input);
+      const { obj, startups } = takeLegacyStartups(input);
       devices = JSON.parse(JSON.stringify(obj.devices));
       links = JSON.parse(JSON.stringify(obj.links));
       sourceArchiveData = obj.sourceArchive || null;
@@ -8648,18 +6590,35 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       academyRestoreSession(obj.academySession || null);
       labberLabRestore(obj.labberLab || null);
       workspaceDecideEngine();
+      const notes = restoreLabberState(obj, startups);
+      academyAfterRestore();
       render();
       syncSelects();
       updateInspector();
       say('Kaydedilmiş topoloji doğrulanarak yüklendi.', 'outinfo');
+      if (savedKey !== TOPOLOGY_KEY)
+        say(
+          'Eski tarayıcı kaydı (' +
+            savedKey +
+            ') v24 biçimine taşındı; eski kayıt yerinde bırakıldı.' +
+            (Object.keys(startups).length
+              ? ' Eski startup-config kayıtları Labber startup-config’ine çevrildi.'
+              : ''),
+          'outinfo',
+        );
+      if (notes.length) showPersistenceNotice(notes, saved);
       showImportReport(importReportData);
     } else reset();
   } catch (e) {
     reset();
-    say(
-      'Kayıtlı topoloji geçersiz veya eski şemaya uymuyor; güvenli başlangıç topolojisi açıldı. ' +
-        e.message,
-      'outerr',
+    showPersistenceNotice(
+      [
+        'Kayıtlı topoloji (' +
+          savedKey +
+          ') açılamadı ya da v24’e taşınamadı; güvenli başlangıç topolojisi açıldı. Özgün kayıt silinmedi. Neden: ' +
+          e.message,
+      ],
+      saved,
     );
   }
 })();

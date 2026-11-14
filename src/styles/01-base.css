@@ -961,11 +961,6 @@ button:disabled {
   stroke: #55708f;
   stroke-width: 3;
 }
-.pt-edge.packet-active {
-  stroke: #ffe08a;
-  stroke-width: 5;
-  filter: drop-shadow(0 0 4px #ffcf5a);
-}
 .pt-edge.audit-focus {
   stroke: #ff9f43;
   stroke-width: 6;
@@ -974,23 +969,6 @@ button:disabled {
 .pt-edge.down {
   stroke: #ff7d8b;
   stroke-dasharray: 7 5;
-}
-.pt-packet-dot {
-  fill: #ffe08a;
-  stroke: #fff7d6;
-  stroke-width: 2;
-  filter: drop-shadow(0 0 6px #ffcf5a);
-  pointer-events: none;
-}
-.pt-packet-label {
-  fill: #ffe08a;
-  font-size: 10px;
-  font-weight: 800;
-  text-anchor: middle;
-  paint-order: stroke;
-  stroke: #0b1424;
-  stroke-width: 3px;
-  pointer-events: none;
 }
 .pt-edge-label {
   fill: #a9bad3;
@@ -2651,4 +2629,19 @@ textarea:focus {
   .proto-head {
     flex-direction: column;
   }
+}
+/* Kalıcılık v24: taşınamayan kayıt uyarısı (main.js showPersistenceNotice) */
+.aglab-persistence-notice {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 2px solid var(--amber, #ffb44a);
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.aglab-persistence-notice ul {
+  margin: 6px 0 10px 18px;
+}
+.aglab-persistence-notice button {
+  margin-right: 8px;
 }

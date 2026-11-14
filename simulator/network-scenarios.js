@@ -7,13 +7,11 @@ function sharedEngineCommandBlock(name, commands) {
   if (!d) throw new Error('Cihaz bulunamadı: ' + name);
   selected = d.id;
   $p('ptCliDevice').value = d.id;
-  cliMode = 'user';
-  currentInterface = '';
-  if (aglabLabber.active()) aglabLabber.resetMode(d.id);
+  aglabLabber.resetMode(d.id);
   updateInspector();
   for (const raw of commands) {
     const before = $p('ptTerminal').childElementCount;
-    // IOS MAC yazımı (H.H.H); eski motor da kabul eder
+    // IOS MAC yazımı (H.H.H)
     command(raw.replaceAll('$SOURCE_MAC', macFmt(macOf(get(sharedScenario.sourceId)))));
     const errors = [...$p('ptTerminal').children]
       .slice(before)
@@ -90,25 +88,22 @@ function loadNetworkScenario(key) {
   saveTopology(true);
   return true;
 }
-function sharedScenarioDecideEngine() {
+function sharedScenarioStartSession() {
   sharedScenario.engine = aglabEngineChoice.decide(aglabEngineChoice.snapshot());
   aglabEngineChoice.renderBadge($p('sharedScenarioEngine'), sharedScenario.engine);
-  // L3-a: Labber kararındaki senaryo boyunca tek kalıcı çalışma zamanı (terminal + hedef).
+  // L3-a: senaryo boyunca tek kalıcı çalışma zamanı (terminal + hedef). İfade edilemeyen
+  // topoloji (L7b: eski motor yok) "simüle edilemiyor" oturumunda açılır; hedefler hata verir.
   aglabLabber.stop();
+  aglabLabber.start();
   const row = sharedScenarioRecipe(sharedScenario.key);
-  if (sharedScenario.engine.engine === 'labber') {
-    aglabLabber.start();
-    // Başlangıçta kaydedilmemiş değişiklik (ör. biri port ayarını değiştirdi, kaydetmedi).
-    if (row?.pending) {
-      aglabLabber.applyPending(row.pending);
-      render();
-      updateInspector();
-    }
-    updatePrompt();
-  } else if (row?.pending)
-    throw new Error(
-      row.id + ': kaydedilmemiş başlangıç değişikliği yalnız Labber motorunda kurulabilir.',
-    );
+  // Başlangıçta kaydedilmemiş değişiklik (ör. biri port ayarını değiştirdi, kaydetmedi).
+  if (row?.pending) {
+    if (aglabLabber.broken()) throw new Error(row.id + ': ' + aglabLabber.broken());
+    aglabLabber.applyPending(row.pending);
+    render();
+    updateInspector();
+  }
+  updatePrompt();
 }
 // Labber `query` hedefleri: izinli LabQuery fonksiyonları (docs/YENIDEN_YAPILANMA.md L5.3).
 const SHARED_QUERY_FNS = new Set([
@@ -206,28 +201,17 @@ function sharedQueryGoal(row) {
   };
 }
 function sharedRecipeGoal(row) {
-  if (sharedScenario.engine?.engine === 'labber') {
-    const reached = () =>
-      aglabEngineChoice.labberPing(sharedScenario.sourceId, sharedScenario.target).ok;
-    if (row.verify.kind === 'stp-root')
-      return aglabEngineChoice.labberStpRoot(row.verify.vlan) === row.verify.root && reached();
-    if (row.verify.kind === 'ping') return reached();
-    if (row.verify.kind === 'query') return sharedQueryGoal(row).ok;
-    // L5-b: kaynak PC'nin adresi DHCP'den (link-local değil); AğLab görünümünde dhcpLease.
-    if (row.verify.kind === 'dhcp')
-      return !!aglabEngineChoice.labberView().devices.find((d) => d.id === sharedScenario.sourceId)
-        ?.dhcpLease;
-    throw new Error('Labber bu doğrulama türünü desteklemiyor: ' + row.verify.kind);
-  }
-  if (row.verify.kind === 'query')
-    throw new Error('Sorgu hedefleri yalnız Labber motorunda değerlendirilir: ' + row.id);
-  if (row.verify.kind === 'dhcp') return !!get(sharedScenario.sourceId)?.dhcpLease;
+  const reached = () =>
+    aglabEngineChoice.labberPing(sharedScenario.sourceId, sharedScenario.target).ok;
   if (row.verify.kind === 'stp-root')
-    return (
-      stpRootForVlan(row.verify.vlan)?.name === row.verify.root &&
-      ping(sharedScenario.sourceId, sharedScenario.target).ok
-    );
-  return ping(sharedScenario.sourceId, sharedScenario.target).ok;
+    return aglabEngineChoice.labberStpRoot(row.verify.vlan) === row.verify.root && reached();
+  if (row.verify.kind === 'ping') return reached();
+  if (row.verify.kind === 'query') return sharedQueryGoal(row).ok;
+  // L5-b: kaynak PC'nin adresi DHCP'den (link-local değil); AğLab görünümünde dhcpLease.
+  if (row.verify.kind === 'dhcp')
+    return !!aglabEngineChoice.labberView().devices.find((d) => d.id === sharedScenario.sourceId)
+      ?.dhcpLease;
+  throw new Error('Labber bu doğrulama türünü desteklemiyor: ' + row.verify.kind);
 }
 function validateSharedScenarios() {
   const snapshot = {
@@ -249,15 +233,8 @@ function validateSharedScenarios() {
       : document.getElementById('sharedScenarioCause'),
     status = $p('sharedScenarioStatus').textContent;
   const terminal = [...$p('ptTerminal').childNodes].map((n) => n.cloneNode(true)),
-    oldMode = cliMode,
-    oldInterface = currentInterface,
     oldInput = $p('ptCliInput').value;
-  const oldMacs = [...macTables].map(([id, rows]) => [
-      id,
-      new Map([...rows].map(([key, value]) => [key, { ...value }])),
-    ]),
-    oldArps = [...arpTables].map(([id, rows]) => [id, new Map(rows)]);
-  const storage = localStorage.getItem('aglab-topology-v23'),
+  const storage = localStorage.getItem(TOPOLOGY_KEY),
     labberSession = aglabLabber.capture(),
     results = [];
   try {
@@ -269,7 +246,7 @@ function validateSharedScenarios() {
         const solved = sharedRecipeGoal(row);
         results.push({
           id: row.id,
-          engine: sharedScenario.engine?.engine || null,
+          expressible: sharedScenario.engine?.expressible ?? null,
           initial,
           solved,
           ok: !initial && solved,
@@ -299,17 +276,11 @@ function validateSharedScenarios() {
     $p('sharedScenarioInstructions').innerHTML = instructions;
     $p('sharedScenarioStatus').textContent = status;
     if (revealedCause) $p('sharedScenarioStatus').after(revealedCause);
-    macTables.clear();
-    oldMacs.forEach(([id, rows]) => macTables.set(id, rows));
-    arpTables.clear();
-    oldArps.forEach(([id, rows]) => arpTables.set(id, rows));
-    cliMode = oldMode;
-    currentInterface = oldInterface;
     $p('ptCliInput').value = oldInput;
     $p('ptTerminal').replaceChildren(...terminal);
     updatePrompt();
-    if (storage === null) localStorage.removeItem('aglab-topology-v23');
-    else localStorage.setItem('aglab-topology-v23', storage);
+    if (storage === null) localStorage.removeItem(TOPOLOGY_KEY);
+    else localStorage.setItem(TOPOLOGY_KEY, storage);
   }
   return results;
 }
@@ -318,34 +289,25 @@ window.aglabSharedEngine = {
   recipes: () => clone(sharedNetworkScenarios),
   validateScenarios: validateSharedScenarios,
   commandBlock: sharedEngineCommandBlock,
-  // Senaryo hedefi ping'i yüklü içeriğin motorunda (L4: Labber içeriğinde Labber ping'i).
-  // L5-e: Labber içeriğinde kaynak PC gerçekten gönderir (öğrencinin ping'i gibi): port
-  // security öğrenir ya da ihlali uygular; sonuç Labber ping'idir.
+  // Senaryo hedefi ping'i (Labber). L5-e: kaynak PC gerçekten gönderir (öğrencinin ping'i
+  // gibi): port security öğrenir ya da ihlali uygular; sonuç Labber ping'idir.
   probe: () => {
-    if (sharedScenario.engine?.engine !== 'labber')
-      return ping(sharedScenario.sourceId, sharedScenario.target);
     if (get(sharedScenario.sourceId)?.type === 'PC') aglabLabber.hostSends(sharedScenario.sourceId);
     return aglabEngineChoice.labberPing(sharedScenario.sourceId, sharedScenario.target);
   },
-  // Yüklü senaryonun motor kararı ({engine, reasons}) ve senaryo hedefinin o motordaki sonucu.
+  // Yüklü senaryonun Labber'da ifade edilebilirliği ({expressible, reasons}).
   engine: () => clone(sharedScenario.engine || null),
   target: () => sharedScenario.target,
   goal: () => sharedRecipeGoal(sharedScenarioRecipe(sharedScenario.key)),
-  // Labber kararındaki içeriğin AğLab görünümü (toAglab; terminalle aynı çalışma zamanı).
+  // İçeriğin AğLab görünümü (toAglab; terminalle aynı çalışma zamanı).
   view: () => aglabEngineChoice.labberView(),
-  // Ad ile iki cihaz arası erişim; başarılı ve başarısız iletim testleri için.
+  // Ad ile iki cihaz arası erişim (Labber ping'i; L7b: eski motor ping'i kaldırıldı); başarılı
+  // ve başarısız iletim testleri için.
   reach: (source, target) => {
     const src = devices.find((d) => d.name === source),
       dst = devices.find((d) => d.name === target);
-    // Eski motorun ping'i (görünüm üzerinde). L7a: tarayıcı paritesi (test_aglab_sim_parity)
-    // emekliye ayrıldı; oracle karşılaştırması vitest parity.test.ts'de ürün dışından yapılır.
-    return !!(src && dst && ping(src.id, dst.ip).ok);
+    return !!(src && dst && aglabEngineChoice.labberPing(src.id, dst.ip).ok);
   },
-  routes: (id) => clone(dynamicRoutes(get(id) || devices.find((d) => d.name === id))),
-  peers: (kind) =>
-    protocolPeers(kind).map((e) => ({ a: e.a.name, b: e.b.name, ok: e.ok, reason: e.reason })),
-  strictPath: (a, b, vlan, ip) =>
-    findPath(a, b, vlan, ip, true)?.map((l) => ({ a: l.a, b: l.b })) || null,
 };
 for (const row of sharedNetworkScenarios)
   if (row.topology) {

@@ -275,19 +275,24 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     assert not ping()
     print("PASS: VRRP default preempt, Master/Backup, virtual MAC, total outage fails", flush=True)
 
-    # 7) Eski motor kararında FHRP sessizce kaybolmaz: rozet söyler
-    legacy = topology(dict(hsrp=[dict(group=1, ip="192.168.1.254")]), {})
-    legacy["devices"][1]["staticRoutes"] = []  # switch'te statik rota: köprü desteklemez
-    load(legacy)
-    assert not page.evaluate("aglabLabberSession.active()")
-    assert "HSRP/VRRP eski motorda modellenmez" in page.locator("#workspaceEngine").inner_text()
+    # 7) Labber'ın ifade edemediği topolojide (L7b: eski motor yok) FHRP sessizce kaybolmaz:
+    # içerik "simüle edilemiyor" olarak açılır, rozet nedeni söyler, gruplar modelde kalır.
+    unsupported = topology(dict(hsrp=[dict(group=1, ip="192.168.1.254")]), {})
+    unsupported["devices"][1]["staticRoutes"] = []  # switch'te statik rota: köprü desteklemez
+    load(unsupported)
+    badge = page.locator("#workspaceEngine").inner_text()
+    assert badge.startswith("Simüle edilemiyor") and "statik rota" in badge, badge
+    assert "Simüle edilemiyor" in cmd("pc", "ping 192.168.2.10")
+    saved = page.evaluate("academyEngine.snapshot()")
+    assert saved["devices"][2]["interfaces"]["g0/0"]["hsrp"][0]["ip"] == "192.168.1.254"
     # geçersiz grup reddedilmez (validateTopologyData); köprü nedeni rozette
     bad = topology(dict(hsrp=[dict(group=300, ip="192.168.1.254")]), {})
     load(bad)
     badge = page.locator("#workspaceEngine").inner_text()
     assert "Reddedildi" in badge and "HSRP" in badge, badge
     print(
-        "PASS: legacy decision reports FHRP visibly; invalid group goes to the bridge", flush=True
+        "PASS: unsupported topology keeps FHRP and reports the reason; invalid group goes to the bridge",
+        flush=True,
     )
     assert not errors, errors
     browser.close()

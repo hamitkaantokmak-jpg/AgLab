@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     assert page.locator("#ptCanvas g[data-id]").count() == 0
     for kind in ["PC", "PC", "Switch", "Switch"]:
         page.click('[data-pt-add="' + kind + '"]')
-    devices = page.evaluate("aglabEngines.capture().devices")
+    devices = page.evaluate("academyEngine.snapshot().devices")
     pcs = [d for d in devices if d["type"] == "PC"]
     switches = [d for d in devices if d["type"] == "Switch"]
 
@@ -68,14 +68,10 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         )
     # VPCS ping: 5 adet "84 bytes from"
     assert cli(pcs[0]["id"], ["ping 10.0.0.2"]).count("84 bytes from 10.0.0.2") == 5
-    assert page.evaluate('([s,t])=>aglabEngines.run("aglab-js",s,t)', [pcs[0]["id"], pcs[1]["id"]])[
-        "ok"
-    ]
-    refused = page.evaluate('aglabEngines.check("borck")')
-    assert not refused["ok"] and any("trunk" in r for r in refused["reasons"])
-    for engine in ["frr", "linux-bridge"]:
-        r = page.evaluate("(e)=>aglabEngines.check(e)", engine)
-        assert not r["ok"] and any("Separate lab" in s for s in r["reasons"])
+    # L7b: tek motor (Labber). Eski motor yöneticisinin "aglab-js"/"borck" seçimi ve borck'un
+    # trunk reddi motorlarla birlikte kaldırıldı; FRR/Linux bridge ayrı Gerçek Lab olarak
+    # aşağıda (rapor paneli ve operatör dışa aktarımı) sınanır.
+    assert page.evaluate("([a,b])=>aglabSharedEngine.reach(a,b)", [pcs[0]["name"], pcs[1]["name"]])
     assert "trunk" in cli(switches[0]["id"], ["enable", "show interfaces trunk"])
     assert "10" in cli(switches[0]["id"], ["show vlan brief"])
     assert "DYNAMIC" in cli(switches[0]["id"], ["show mac address-table"])
@@ -116,14 +112,17 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     page.click('[data-area="lab"]')
     page.click("#ux14Free")
     import_topology(page, exported)
-    assert page.evaluate('([s,t])=>aglabEngines.run("aglab-js",s,t)', [pcs[0]["id"], pcs[1]["id"]])[
-        "ok"
-    ]
-    assert page.evaluate("aglabEngines.capture().links.length") == 3
-    baseline = page.evaluate("JSON.stringify(aglabEngines.capture())")
-    page.locator("#engineCapabilities").evaluate("(d)=>d.open=true")
+    assert page.evaluate("([a,b])=>aglabSharedEngine.reach(a,b)", [pcs[0]["name"], pcs[1]["name"]])
+    assert page.evaluate("academyEngine.snapshot().links.length") == 3
+    # Karşılaştırma: MAC alanı hariç topoloji (operatör dosyası PC MAC'lerini açıkça yazar).
+    state = (
+        "JSON.stringify((({devices, links}) => ({devices: devices.map(({mac, ...d}) => d),"
+        " links}))(academyEngine.snapshot()))"
+    )
+    baseline = page.evaluate(state)
+    page.locator("#realLabExport").evaluate("(d)=>d.open=true")
     with page.expect_download() as download:
-        page.click("#engineExportTopology")
+        page.click("#realLabExportTopology")
     operator_file = Path(tmp) / "operator.json"
     download.value.save_as(str(operator_file))
     operator = json.loads(operator_file.read_text(encoding="utf-8"))
@@ -150,7 +149,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             d["gateway"] = ""
     assert len(convert(operator)["nodes"]) == 4
     import_topology(page, operator_file)
-    assert baseline == page.evaluate("JSON.stringify(aglabEngines.capture())")
+    assert baseline == page.evaluate(state)
     report = {
         "kind": "routing",
         "engine": "FRRouting",
@@ -176,7 +175,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     assert page.locator('#packetDetectivePanel img[src="bad"]').count() == 0
     page.locator("#nativeLabChecks").evaluate("(d)=>d.parentElement.open=true")
     assert "Beklenti karşılandı" in page.locator("#nativeLabChecks").inner_text()
-    assert baseline == page.evaluate("JSON.stringify(aglabEngines.capture())")
+    assert baseline == page.evaluate(state)
     report["execute"] = "shell"
     report_file.write_text(json.dumps(report), encoding="utf-8")
     page.locator("#nativeLabReport").set_input_files(str(report_file))
@@ -197,8 +196,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
                 "cli_fault_and_repair": True,
                 "packet_trace_only_when_produced": True,
                 "save_export_import": True,
-                "single_engine_gate": True,
-                "borck_trunk_rejected": True,
+                "single_engine": "labber",
                 "frr_separate": True,
                 "page_errors": errors,
             },
@@ -209,5 +207,5 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     page.screenshot(path=str(out / "advanced-student-journey.png"))
     b.close()
 print(
-    "PASS UI device creation/cabling, CLI trunk fault/repair, explicit engine gate, export/import"
+    "PASS UI device creation/cabling, CLI trunk fault/repair, single Labber engine, export/import"
 )

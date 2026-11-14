@@ -1,15 +1,11 @@
-"""Real local Ethernet forwarding: FDB selection, flooding, isolation and ARP/ICMP."""
+"""Ethernet forwarding in Labber: MAC learning, VLAN isolation and Simulation Mode frame events."""
 
 import json, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium, import_topology, legacy_engine
+from aglab_test_support import ROOT, launch_chromium, import_topology
 
-module = (ROOT / "simulator/ethernet-forwarding.js").read_text()
-assert (
-    "// BEGIN ETHERNET FORWARDING GENERATED\n" + module + "\n// END ETHERNET FORWARDING GENERATED\n"
-    in (ROOT / "AgLab_Final_PKT_Import.html").read_text()
-)
+# L7b: eski motorun modülü (ürüne gömülü olduğu denetlenirdi) kaldırıldı; davranış Labber'da sınanır.
 
 
 def switch(id):
@@ -85,12 +81,15 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto((ROOT / "AgLab_Final_PKT_Import.html").as_uri())
     path = Path(tmp) / "frames.json"
-    # `test ethernet` / `show ethernet events` gerçek IOS/VPCS komutu değildir; Labber'da yoklar.
-    # Kullanıcı kararı: bu test eski motor kararındaki topolojide kalır, L7'de eski motorla silinir
-    # (UYUMLULUK_MATRISI). legacy_engine köprünün desteklemediği bir alan ekleyip kararı eski motora çevirir.
-    path.write_text(json.dumps(legacy_engine(obj)))
+    # L7b: eski motorun `test ethernet` / `show ethernet events` komutları (gerçek IOS/VPCS
+    # komutu değil) eski motorla birlikte kaldırıldı. Aynı öğretim Labber'daki gerçek
+    # karşılığıyla sınanır: IOS `show mac address-table` (öğrenme, giriş portu, VLAN kapsamı)
+    # ve VPCS ping'i (VLAN yalıtımı). Labber'da olmayan ve bu yüzden sınanmayanlar (UYUMLULUK_
+    # MATRISI "L7b"): bilinmeyen unicast taşırmasının ayrı olay olarak gösterilmesi, FDB yaşlanma
+    # zamanlayıcısı, bayat FDB ile yanlış porta iletim (Labber iletimi topolojiden hesaplar).
+    path.write_text(json.dumps(obj))
     import_topology(page, path)
-    assert not page.evaluate("aglabLabberSession.active()")
+    assert page.evaluate("aglabLabberSession.active()")
 
     def cmd(device, text):
         before = page.locator("#ptTerminal > div").count()
@@ -100,6 +99,23 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         )
         return "\n".join(page.locator("#ptTerminal > div").all_text_contents()[before:])
 
+    def cisco_mac(device):
+        mac = next(
+            line.split(":", 1)[1].strip()
+            for line in cmd(device, "show ip").splitlines()
+            if line.startswith("MAC")
+        )
+        raw = mac.replace(":", "").lower()
+        return ".".join(raw[i : i + 4] for i in (0, 4, 8))
+
+    def mac_rows(switch):
+        rows = {}
+        for line in cmd(switch, "show mac address-table").splitlines():
+            parts = line.split()
+            if len(parts) == 4 and parts[2].upper() == "DYNAMIC":
+                rows[parts[1].lower()] = (int(parts[0]), parts[3].lower())
+        return rows
+
     page.click('[data-area="lab"]')
     assert page.locator("#packetDetectiveRefresh").is_visible()
     page.click("#packetDetectiveRefresh")
@@ -108,200 +124,38 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     assert page.locator("#packetDetectiveGoToDevice").is_disabled()
     assert page.locator("#packetDetectiveNext").is_disabled()
     assert page.locator("#packetDetectivePrevious").is_disabled()
-    cmd("d3", "test ethernet 0200.0000.0004")
-    events = cmd("d3", "show ethernet events")
-    assert "unknown-unicast" in events, events
-    assert "receive d5" in events and "receive d4" in events and "receive d6" not in events, events
-    assert "ingress fa0/1 egress fa0/1" not in events, events
-    assert "100 percent" in cmd("d3", "ping 192.168.10.3")
-    events = cmd("d3", "show ethernet events")
-    assert "arp-request" in events and "broadcast" in events, events
-    # The student playback is a read-only view over the same real event log.
-    page.click("#packetDetectiveRefresh")
-    status = page.locator("#packetDetectiveStatus").inner_text()
-    assert "Adım 1 /" in status, status
-    assert "arp-request" in page.locator("#packetDetectiveRaw").inner_text()
-    assert page.locator('#ptCanvas g[data-id="d3"] rect').get_attribute("stroke") == "#ffcb38"
-    old_events = cmd("d3", "show ethernet events")
-    page.click("#packetDetectiveNext")
-    assert "Adım 2 /" in page.locator("#packetDetectiveStatus").inner_text()
-    page.click("#packetDetectivePrevious")
-    assert "Adım 1 /" in page.locator("#packetDetectiveStatus").inner_text()
-    assert cmd("d3", "show ethernet events") == old_events, "Playback must not simulate new traffic"
-    page.select_option("#packetDetectiveFilter", "arp")
-    assert "Adım 1 /" in page.locator("#packetDetectiveStatus").inner_text()
-    assert "arp-" in page.locator("#packetDetectiveRaw").inner_text()
-    page.select_option("#packetDetectiveFilter", "discard")
-    assert (
-        "Bu filtreye uygun ağ olayı yok." in page.locator("#packetDetectiveStatus").inner_text()
-        or "Adım 1 /" in page.locator("#packetDetectiveStatus").inner_text()
-    )
-    page.select_option("#packetDetectiveFilter", "all")
-    assert "Adım 1 /" in page.locator("#packetDetectiveStatus").inner_text()
-    assert (
-        cmd("d3", "show ethernet events") == old_events
-    ), "Filtering must not simulate new traffic"
-
-    # A known one-port forwarding decision highlights its physical SVG edge.
-    # Read the real event log and advance only to an eligible decision.
-    page.click("#packetDetectiveRefresh")
-    found_edge = False
-    for _ in range(256):
-        if page.locator('#ptCanvas line.pt-edge[stroke="#ffcb38"]').count() == 1:
-            found_edge = True
-            break
-        if page.locator("#packetDetectiveNext").is_disabled():
-            break
-        page.click("#packetDetectiveNext")
-    assert found_edge, "No real single-egress forwarding edge was highlighted during playback"
-    while page.locator("#packetDetectivePrevious").is_enabled():
-        page.click("#packetDetectivePrevious")
-    assert "Adım 1 /" in page.locator("#packetDetectiveStatus").inner_text()
-    assert page.locator('#ptCanvas line.pt-edge[stroke="#ffcb38"]').count() == 0
-
-    assert "100 percent" in cmd("d3", "ping 192.168.10.3")
-    events = cmd("d3", "show ethernet events")
-    assert (
-        "arp-request" not in events
-        and "unknown-unicast" not in events
-        and "receive d5" not in events
-    ), events
+    macs = {d: cisco_mac(d) for d in ("d3", "d4", "d5", "d6")}
+    assert len(set(macs.values())) == 4, macs
+    # Trafik yokken dinamik kayıt yok.
+    assert not set(macs.values()) & set(mac_rows("d1")), mac_rows("d1")
+    # Aynı VLAN'da ping: kaynak MAC'ler giriş portunda ve VLAN 10'da öğrenilir.
+    assert "bytes from 192.168.10.3" in cmd("d3", "ping 192.168.10.3")
+    sw1, sw2 = mac_rows("d1"), mac_rows("d2")
+    assert sw1[macs["d3"]] == (10, "fa0/1") and sw1[macs["d4"]] == (10, "gi0/1"), sw1
+    assert sw2[macs["d4"]] == (10, "fa0/2") and sw2[macs["d3"]] == (10, "gi0/1"), sw2
+    # Hiç göndermeyen PC (d5, aynı VLAN) ve VLAN 20'deki PC (d6) öğrenilmez.
+    assert macs["d5"] not in sw1 and macs["d6"] not in sw2, (sw1, sw2)
     print(
-        "PASS: unknown-unicast flood, VLAN isolation, cold ARP and warm learned unicast", flush=True
+        "PASS: Labber MAC learning per ingress port and VLAN (show mac address-table)", flush=True
     )
-    # A raw broadcast reaches only active receivers in the source VLAN.
-    cmd("d5", "test ethernet broadcast")
-    events = cmd("d5", "show ethernet events")
-    assert (
-        "broadcast" in events
-        and "receive d3" in events
-        and "receive d4" in events
-        and "receive d6" not in events
-    ), events
-    # Known source and destination on the same ingress port must be filtered, not flooded.
-    cmd("d3", "test ethernet 0200.0000.0003")
-    events = cmd("d3", "show ethernet events")
-    assert "filter" in events and "receive d5" not in events, events
-    for c in [
-        "enable",
-        "configure terminal",
-        "interface gi0/1",
-        "switchport trunk allowed vlan none",
-        "end",
-    ]:
-        cmd("d1", c)
-    assert "0 percent (0/5)" in cmd("d3", "ping 192.168.10.3")
-    events = cmd("d3", "show ethernet events")
-    assert "icmp-request" in events and "receive d4" not in events, events
-    cmd("d3", "test ethernet broadcast")
-    events = cmd("d3", "show ethernet events")
-    assert "receive d5" in events and "receive d4" not in events, events
-    for c in [
-        "configure terminal",
-        "interface gi0/1",
-        "switchport trunk allowed vlan 10,20",
-        "end",
-    ]:
-        cmd("d1", c)
-    assert "100 percent" in cmd("d3", "ping 192.168.10.3")
-    # Aging must make the next raw unicast flood again, including the observer.
-    page.evaluate("window.frameTime=Date.now()+300001;Date.now=()=>window.frameTime")
-    cmd("d3", "test ethernet 0200.0000.0004")
-    events = cmd("d3", "show ethernet events")
-    assert "unknown-unicast" in events and "receive d5" in events, events
-    assert "geçersiz" in cmd("d3", "test ethernet invalid").lower()
-    print(
-        "PASS: broadcast, same-ingress filter, allowed-list isolation/recovery and aged FDB flood",
-        flush=True,
-    )
-    # Move the destination while keeping the old upstream FDB port physically valid.
-    # Ping must follow that stale entry and fail, rather than falling back to a BFS path.
-    assert "100 percent" in cmd("d3", "ping 192.168.10.3")
-    page.evaluate(
-        "document.querySelector('#ptSource').value='d2';document.querySelector('#ptTarget').value='d4';document.querySelector('#ptRemoveLink').click()"
-    )
-    page.evaluate(
-        "document.querySelector('#ptSource').value='d1';document.querySelector('#ptTarget').value='d4';document.querySelector('#ptMakeLink').click()"
-    )
-    assert "0 percent (0/5)" in cmd("d3", "ping 192.168.10.3")
-    cmd("d4", "test ethernet broadcast")
-    assert "100 percent" in cmd("d3", "ping 192.168.10.3")
-    print(
-        "PASS: real FDB egress governs ping; source learning repairs a moved-host stale entry",
-        flush=True,
-    )
-    # An access port emits untagged frames: its VLAN must match the peer trunk native VLAN.
-    mixed = json.loads(json.dumps(obj))
-    mixed["devices"][1]["interfaces"]["gi0/1"]["mode"] = "access"
-    path.write_text(json.dumps(legacy_engine(mixed)))
-    import_topology(page, path)
-    cmd("d3", "test ethernet broadcast")
-    events = cmd("d3", "show ethernet events")
-    assert "receive d4" not in events, events
-    for c in [
-        "enable",
-        "configure terminal",
-        "interface gi0/1",
-        "switchport trunk native vlan 10",
-        "end",
-    ]:
-        cmd("d1", c)
-    assert "100 percent" in cmd("d3", "ping 192.168.10.3")
-    print("PASS: access/trunk untagged native VLAN mismatch and recovery", flush=True)
-    # A triangle exercises loop-free flood and recovery after a tree edge goes down.
-    obj["devices"].append(switch("d7"))
-    obj["links"] += [link("d1", "gi0/2", "d7", "gi0/1"), link("d2", "gi0/2", "d7", "gi0/2")]
-    obj["nextId"] = 8
-    path.write_text(json.dumps(legacy_engine(obj)))
-    import_topology(page, path)
-    assert "Henüz" in cmd("d3", "show ethernet events")
-    cmd("d3", "test ethernet broadcast")
-    events = cmd("d3", "show ethernet events")
-    assert (
-        events.count("broadcast d1 ingress") == 1
-        and events.count("broadcast d2 ingress") == 1
-        and events.count("broadcast d7 ingress") == 1
-    ), events
-    assert (
-        "broadcast d2 ingress gi0/1 egress fa0/2 vlan 10" in events
-        and "broadcast d7 ingress gi0/1 egress - vlan 10" in events
-    ), events
-    for c in ["enable", "configure terminal", "interface gi0/1", "shutdown", "end"]:
-        cmd("d1", c)
-    assert "100 percent" in cmd("d3", "ping 192.168.10.3")
-    print(
-        "PASS: topology import clears events; triangle STP flood terminates and link-down recovers",
-        flush=True,
-    )
-    # Routers consume a broadcast on the ingress LAN without bridging it to their other port.
-    obj["devices"] += [
-        dict(
-            id="d8",
-            name="R",
-            type="Router",
-            x=200,
-            y=200,
-            w=112,
-            h=72,
-            enabled=True,
-            ports=["g0/0", "g0/1"],
-            interfaces={
-                "g0/0": dict(ip="192.168.10.1", mask="255.255.255.0", enabled=True),
-                "g0/1": dict(ip="192.168.30.1", mask="255.255.255.0", enabled=True),
-            },
-        ),
-        host("d9", "192.168.30.2"),
-    ]
-    obj["links"] += [link("d7", "fa0/1", "d8", "g0/0"), link("d8", "g0/1", "d9", "eth0")]
-    obj["nextId"] = 10
-    path.write_text(json.dumps(legacy_engine(obj)))
-    import_topology(page, path)
-    cmd("d3", "test ethernet broadcast")
-    events = cmd("d3", "show ethernet events")
-    assert "receive d8" in events and "receive d9" not in events, events
-    for invalid in ["0100.5e00.0001", "0000.0000.0000", "invalid"]:
-        assert "geçersiz" in cmd("d3", "test ethernet " + invalid).lower()
-    print("PASS: router broadcast boundary and unsupported/malformed MAC rejection", flush=True)
+    # VLAN yalıtımı: d6 aynı IP alt ağına alınsa da VLAN 20'deki erişim portundan VLAN 10'a
+    # ulaşamaz; MAC'i VLAN 10'da öğrenilmez. (Gerçek IOS başarısız ARP isteğinin kaynağını VLAN
+    # 20'de öğrenir; Labber yalnız teslim edilen trafikten öğrenir; bilinen fark, UYUMLULUK_
+    # MATRISI "L7b". Bu yüzden VLAN 20 kaydı burada iddia edilmez.)
+    cmd("d6", "ip 192.168.10.6 255.255.255.0")
+    out = cmd("d6", "ping 192.168.10.5")
+    assert "bytes from" not in out, out
+    assert all(v[0] != 10 for m, v in mac_rows("d2").items() if m == macs["d6"])
+    assert macs["d6"] not in mac_rows("d1")
+    # Sorunu gidermek (d6'nın portunu VLAN 10'a almak) erişimi açar.
+    cmd("d2", "enable")
+    cmd("d2", "configure terminal")
+    cmd("d2", "interface fa0/1")
+    cmd("d2", "switchport access vlan 10")
+    cmd("d2", "end")
+    assert "bytes from 192.168.10.5" in cmd("d6", "ping 192.168.10.5")
+    assert mac_rows("d2")[macs["d6"]] == (10, "fa0/1")
+    print("PASS: Labber VLAN isolation and recovery (ping + show mac address-table)", flush=True)
 
     # L3-b: Labber içeriğinde (Sorun Çöz senaryosu) çerçeve olayları Labber olay
     # adaptöründen gelir: başarısız iletimde kablo aktarımı yok, ret ve "teslim edilmedi";

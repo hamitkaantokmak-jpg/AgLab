@@ -120,7 +120,7 @@ v13, traceroute, icmp) `tests/sim/routing-acceptance.test.ts`'de karşılaştır
 | Eşit AD'li iki statik rota | İlk satır kullanılır | İlk satır kurulur (oracle ile aynı) | **Oracle'a uyuldu.** Gerçek IOS'taki ECMP yük paylaşımı modellenmedi. |
 | Olmayan hosta ping | Host Unreachable | **I-1'den beri** son router ARP'yi çözemezse ICMP host unreachable (kod 1); ARP önbelleği sıcaksa sessiz | **Labber (IOS).** Önceden zaman aşımıydı (MOTOR_BULGULARI). |
 | Rota yokken dönen ICMP | Network Unreachable (code 0), traceroute `!N` | IOS gibi `U`; traceroute `!H` | **Labber (IOS).** |
-| `ping … ttl N` / Time Exceeded, `show ethernet events` | Var | TTL ve Time Exceeded L5-i'de eklendi (aşağıda). `show ethernet events` **Labber'a eklenmez** | `show ethernet events` gerçek bir IOS komutu değildir: testi eski motor kararındaki topolojide kalır, L7'de eski motorla birlikte silinir (L5-i kararı). |
+| `ping … ttl N` / Time Exceeded, `show ethernet events` | Var | TTL ve Time Exceeded L5-i'de eklendi (aşağıda). `show ethernet events` **Labber'a eklenmez** | `show ethernet events` gerçek bir IOS komutu değildir: L7b'de eski motorla birlikte silindi (test Labber karşılığına uyarlandı, aşağıda "L7b"). |
 | OSPF teşhis metni (`ospf-area`) | Türkçe neden satırı ("area uyuşmazlığı", "maskesi uyuşmazlığı") | Komşuluk kurulmaz; `%OSPF-4-ERRRCV … mismatched area ID` ve `%OSPF-5-ADJCHG … FULL to DOWN` syslog'u; türetilmiş uyuşmazlık türü (`area`, `subnet`) | **Labber (IOS).** `test_aglab_network_features` türetilmiş durumu sorar. |
 | AğLab OSPF alanları | `pid`, `routerId`, `networks` | Aynı alanlar eşlenir; `passive-interface`, `auto-cost`, stub, `default-information`, arayüz OSPF ayarları ve loopback Labber'da yapılabilir ama AğLab modeline geri yazılamaz | **Açık hata** (`BridgeError`): kayıt/geri yazım sessiz kayıp yerine hata verir. |
 | Routing senaryolarındaki sunucu (`SRV-01`) | Şablonla DHCP/DNS/HTTP servisleri açık | Servissiz sunucu bir uçtur; servisli sunucu L5'e kadar eski motorda | **Senaryoda servisler kapatıldı** (yalnız ICMP hedefi; servisler senaryoda kullanılmıyordu). |
@@ -168,7 +168,7 @@ ile karşılaştırır. Akademi lablarının hiçbiri DHCP/DNS kullanmaz (40 lab
 | `show ip dhcp pool` | Yok | `Total addresses` ağdaki kullanılabilir adres sayısı; `Current index` dışlanmamış ve kiralanmamış ilk adres | **Doğrulanmadı:** gerçek IOS'ta `Current index` sıradaki adaydır (dışlananları atlamadan ilerleyebilir); `Utilization mark`/`Subnet size` satırları sabit yazılır. |
 | Havuz kipi hata metinleri | — | Aynı ağ için ikinci havuz: `% A pool already exists for network …`; ters aralık: `% Invalid range of IP addresses`; olmayan havuz: `% Pool X not found`; geçersiz maske: `% Invalid input` | **Doğrulanmadı** (metinler IOS'a yakın yazıldı; birebir karşılaştırılmadı). `% Range [a, b] is not in the database.` IOS metnidir. |
 | `lease`, `domain-name`, `option`, `host`/`hardware-address`, `service dhcp`, `ip dhcp snooping`, DHCP istemci arayüzü (`ip address dhcp`) | Yok | **Desteklenmiyor** (`% Invalid input`) | — |
-| Kiralar (binding) | PC'nin `dhcpLease` alanı | Çalışma zamanı durumu (RAM): sunucu yeniden başlayınca, `clear ip dhcp binding` ile ve havuz/servis kapatılınca silinir | **Labber (IOS).** Tarayıcı kaydında yalnız PC'nin `dhcpLease`, adresi ve `dns` alanı saklanır; sayfa yenilenince sunucunun binding tablosu boş başlar (kalıcılık L7). |
+| Kiralar (binding) | PC'nin `dhcpLease` alanı | Çalışma zamanı durumu (RAM): sunucu yeniden başlayınca, `clear ip dhcp binding` ile ve havuz/servis kapatılınca silinir | **Labber (IOS).** L7 kalıcılık v24: kira tablosu çalışma zamanı durumu olarak kayıtta (`labber.state.dhcp`) saklanır; sayfa yenilemek sunucunun reload'u değildir, tablo geri gelir. Sunucunun güç döngüsü/reload'u tabloyu IOS gibi boşaltır (`test_aglab_dhcp_dns`). |
 | PC istemcisi | `ip dhcp` / `ipconfig /renew` | VPCS: `ip dhcp` (`-r` yenile, `-x` bırak), `dhcp`; `show ip` DNS ve DHCP sunucusunu gösterir | **Tarif çözüm satırı VPCS sözdizimine çevrildi:** `relay-trunk` PC-01 `ipconfig /renew` → `ip dhcp` (PC terminali VPCS olduğu için zorunlu). |
 | Sunucu yanıt vermezse | PC'nin adresi değişmez | Link-local adresi olan PC'nin durumu değişmez; olmayan PC kendine MAC'ten türetilen `169.254.x.y/16` atar, ağ geçidi boşalır, önceki kirası düşer | **Labber (Windows APIPA davranışı).** Gerçek VPCS link-local adres atamaz; çıktıdaki `Autoconfiguration IPv4 address …` satırı AğLab'a özgüdür. Başarısız yenilemede eski kiranın hemen düşmesi sadeleştirmedir (gerçekte süre dolana kadar kalır). |
 | `nslookup <ad>` | Topolojideki herhangi bir DNS sunucusunu kullanır; bilinmeyen ad için `93.184.216.34` döndürür | PC'nin DNS sunucusu (`ip dns A.B.C.D` ya da kiradan) erişilebilir ve DNS servisi açık olmalı; adlar lab cihazlarının adlarıdır; bilinmeyen ad `Non-existent domain` | **Labber.** Eski motorun sabit yanıtı "desteklenmeyeni çalışıyormuş gibi gösterme" ilkesine aykırıydı. Çıktı Windows `nslookup` biçimindedir; kayıt türleri, özyineleme ve elle DNS kaydı modellenmez. |
@@ -319,7 +319,7 @@ modellediği alanlarda karşılaştırılır. Kabul testleri (`test_aglab_import
 | VPCS trace | — | Her TTL için bir UDP sondası, en çok 8 atlama (VPCS varsayılanı); hedef `*<ip> … (ICMP type:3, code:3, Destination port unreachable)`, `!H`/`!A` karşılığı code 1/13 | **Labber (VPCS).** **Doğrulanmadı:** VPCS'in kaynak/hedef portları. |
 | IOS extended ping | — | Etkileşimli `ping` (Protocol, Target, Repeat, Datagram size, Timeout, Extended commands, Source address or interface, …) ve tek satır `ping <ip> [repeat N] [size N] [timeout N] [source <ip|arayüz>]`; kaynak adres dönüş yolunu belirler | **Labber (IOS).** Type of service, DF biti, doğrulama, veri deseni, LSRTV ve boyut taraması sorulur ama modellenmez (varsayılan kabul edilir; **doğrulanmadı:** değiştirilmiş değerlerin etkisi). |
 | Simulation Mode | Eski iz (`ttl-expired`, `ttl-forward`) | Labber izi aynı kayıt adlarıyla: `ttl-forward <router> N -> N-1`, `ttl-expired <router>`, `icmp-time-exceeded` çerçeveleri (ICMP tip 11), `icmp-time-exceeded <kaynak> from <router>` | Kabul edildi. |
-| `show ethernet events` | Var | **Eklenmez** | Gerçek IOS komutu değil; eski motor kararındaki topolojide kalır, L7'de silinir. |
+| `show ethernet events` | Var | **Eklenmez** | Gerçek IOS komutu değil; L7b'de eski motorla silindi. |
 
 Çalışma alanındaki (içe aktarılan/düzenleyici) eski testler (`test_aglab_icmp_ttl`, `test_aglab_traceroute`, `test_aglab_routed_frames`, `test_aglab_simulation_mode`) bu PR'da eski motorda kalır (çalışma alanı I-1'e kadar eski motorda); I-1'de Labber izine uyarlanır.
 
@@ -353,8 +353,8 @@ düzeltmeleri: [MOTOR_BULGULARI.md](MOTOR_BULGULARI.md).
 | Simulation Mode izi | ARP + ICMP çerçeveleri | Yalnız ICMP çerçeveleri (ARP gösterilmez, durum satırında yazılı); komşu ARP'si `show arp`/`show ip arp` tablolarında | Kabul edildi (L3-b). İz yalnız ping için üretilir. |
 | Paket Dedektifi kaynağı | "AğLab simülasyon motoru" | "Labber motoru" | Kabul edildi. |
 | "İlk Ağım" rehberi ping'i | Eski motor | Çalışma alanının motoru (Labber'da Labber) | Kabul edildi. |
-| Bayat FDB (taşınan host) ve "Paket adımı" | Var | Labber iletimi FDB'den değil topolojiden hesaplar; "Paket adımı" yok | Eski motor kararındaki topolojide sınanır (`test_aglab_routed_frames`), L7'de silinir. |
-| `test ethernet` / `show ethernet events` | Var | **Eklenmez** | Gerçek IOS/VPCS komutu değil; `test_aglab_frame_forwarding` eski motor kararındaki topolojide (`legacy_engine`) kalır, L7'de silinir. |
+| Bayat FDB (taşınan host) ve "Paket adımı" | Var | Labber iletimi FDB'den değil topolojiden hesaplar; "Paket adımı" yok | L7b'de eski motorla silindi; paketin yolu Simulation Mode'dadır. Bayat FDB **bilinen fark** (Labber modellemez). |
+| `test ethernet` / `show ethernet events` | Var | **Eklenmez** | Gerçek IOS/VPCS komutu değil; L7b'de silindi. `test_aglab_frame_forwarding` Labber karşılığına (`show mac address-table`, VLAN yalıtımı, Simulation Mode olayları) uyarlandı. |
 | Alt arayüz durumu (`show ip interface brief`) | Ebeveyn kapalıyken `down` | Labber IOS gösterimi | **Doğrulanmadı:** ebeveyn `shutdown` iken alt arayüzün `administratively down` mı `down` mı yazıldığı. |
 
 Çalışma alanı testleri (`test_aglab_icmp_ttl`, `test_aglab_traceroute`, `test_aglab_routed_frames`,
@@ -412,8 +412,8 @@ tamamlanmış sayılır. Görev kimlikleri ve sırası değişmedi.
 | Protokol atölyesi: BGP (3) | 3 · kavramsal alıştırma | BGP kapsam dışı; örnek çıktılar açıkça kavramsal. Başlık yalnız belirtiyi söyler; üç durum aynı dört aday kök nedeni (network komutu yok, outbound prefix-list, NEXT_HOP'a rota yok, oturum kapalı) paylaşır, doğrusu yalnız kanıt satırlarından ayırt edilir ve her yanlış seçeneğin açıklaması onu eleyen kanıtı söyler. Eski "Ana Lab ile ortak durum" özeti (mini lab durumunu okuyordu) kaldırıldı. |
 
 Ölü kalıntı: oyuncak terminal, mini lab ve atölye modellerinin JS'i, HTML'i ve yalnız onların
-kullandığı CSS kuralları silindi. L7'ye bırakılan motorlu yollar (eski topoloji motorunun CLI'si,
-ör. `test http`, `show ethernet events`) değişmedi.
+kullandığı CSS kuralları silindi. Eski topoloji motorunun CLI'si (ör. `test http`,
+`show ethernet events`) L7b'de eski motorla birlikte silindi.
 
 ### Ortak senaryo panelinde kök neden
 
@@ -435,7 +435,56 @@ tarife taşındı (aşağıda); yönergeleri artık yalnız belirtiyi söyler.
 | `test_aglab_sim_parity` (tarayıcı ping paritesi) | Ürün HTML'indeki eski motor `aglabSharedEngine.reach` ⇄ Labber `LabQuery.ping` | **Emekliye ayrıldı** (dosya silindi, `sim-parity-browser.json` kanıtı ZIP'ten çıkarıldı) | Oracle tarafı ürüne gömülü `main.js` ping'iydi (DOM'a bağlı, ürün dışına taşınamaz); L7b eski motoru üründen kaldırınca karşılaştıracak taraf kalmaz. Gerçek davranış ölçütü Labber'dır: her tarif başta başarısız / çözümle başarılı (`test_aglab_lesson_scenarios`), Akademi labları başlangıç/hedef (`test_aglab_academy*`). Bilinen 13 farkın hepsi eski motorun yanlışıydı (dönüş yolu, EtherChannel, IP çakışması). |
 | `src/engine` | Ürüne gömülü (`//@@module ENGINE@@`) + vitest oracle | **Yalnız test oracle'ı** | `tests/sim/parity.test.ts` oracle'ı ürün dışından (`src/engine/*.js` doğrudan) kullanır; değişmedi. Ürüne gömülmesi L7b'de kaldırılır. |
 
-`test ethernet` / `show ethernet events` (gerçek IOS/VPCS komutu değil) ve bunlara dayanan
-`test_aglab_frame_forwarding` / `test_aglab_routed_frames` bölümleri, eski motor CLI'siyle birlikte
-L7b'de silinir ya da Labber karşılığına (`show mac address-table`, Simulation Mode olayları)
-uyarlanır; ürün içeriği bu komutlara dayanmaz.
+`test ethernet` / `show ethernet events` (gerçek IOS/VPCS komutu değil) ve bunlara dayanan test
+bölümleri L7b'de silindi ya da Labber karşılığına uyarlandı (aşağıda).
+
+## L7b: tek motor (eski motorların kaldırılması)
+
+Ürünün tek simülasyon motoru Labber'dır. Eski çekirdek topoloji motoru (`main.js` ping/yol
+bulucu/eski CLI ve `simulator/` altındaki iletim, ICMP, traceroute, MAC öğrenme, yönlendirme,
+protokol modülleri), borck-netsim (`third_party/borck-netsim`, `borck-*`), motor yöneticisi
+(`engine-manager*`) ve köprünün motor kararı (`engineDecision: 'labber' | 'legacy'`) kaldırıldı.
+`src/engine` ürüne gömülmez; yalnız test oracle'ıdır (vitest `parity.test.ts`, `tests/node`).
+
+| Konu | Önce | Sonra | Gerekçe |
+|---|---|---|---|
+| Labber'ın ifade edemediği topoloji (ör. BGP alanı, switch'te statik rota) | Eski motorda açılırdı ("Eski motor" rozeti) | Köprü raporu `expressible: false`; içerik **"Simüle edilemiyor"** rozetiyle açılır, çizim/düzenleme/kayıt çalışır, terminal-ping-değerlendirme gerekçeli hata verir; düzenlemeyle ifade edilebilir olunca çalışma zamanı kurulur | Sessiz motor değişimi yok; veri kaybı yok (alanlar modelde kalır, `test_aglab_fhrp` 7). |
+| Boş topoloji | Köprü MAC çözücüsü boş listede hata verip içeriği eski motora düşürüyordu | İfade edilebilir (köprü düzeltmesi, `bridge.test.ts` "boş topoloji") | Yeni çalışma alanı Labber'da başlar. |
+| Ağ denetimi (Ağı denetle) | Statik rota next-hop çözümü eski motorun `routeLookup`'ı | Labber rota tablosu (`LabQuery.routeFor`) | Diğer denetimler AğLab modelinin statik okumasıdır (`simulator/aglab-model.js`, motor değil). |
+| Denetçideki SVI durumu | Eski motorun STP/bağlantı modeli | `LabQuery.sviUp`; simüle edilemeyen içerikte `?` | |
+| "Paket adımı →" ve denetim bulgusunda "Paketi bu noktadan izle" | Eski motorun yol bulucusu | **Kaldırıldı** | Karşılığı Simulation Mode (Labber izi). |
+| Paket Dedektifi / Simulation Mode kaynağı | Eski motor olay günlüğü ya da Labber izi; borck olayları | Yalnız Labber izi (`simulator/packet-trace.js`) | |
+| Gerçek Lab için operatör dışa aktarımı | Motor yöneticisi panelinde | Gerçek Lab rapor panelinin yanında ("Gerçek Lab için topolojiyi indir"), aynı JSON | Gerçek Lab (real-lab/) değişmedi. |
+| Port security oracle'ı | Ürünün `simulator/port-security.js` `portSecurityAllows`'u | `src/engine/portsec.js` (yalnız test) | vitest parity aynı sonuçları sınar. |
+
+Labber'ın bilinen farkları (L7b testleri uyarlanırken bulundu; gerçek IOS'tan sapma, düzeltilmedi,
+iddia edilmez):
+
+| Konu | Gerçek IOS | Labber | Test |
+|---|---|---|---|
+| Başarısız ARP isteğinin kaynak MAC'i | Switch broadcast'in kaynağını giriş portunda öğrenir | Yalnız teslim edilen trafikten öğrenir | `test_aglab_frame_forwarding` VLAN 20 kaydını iddia etmez |
+| `show arp` (IOS'ta `show ip arp` eşdeğeri) | Var | Yok (`% Invalid input`); `show ip arp` var | `test_aglab_switch_svi` `show ip arp` kullanır |
+| `copy startup-config running-config` | Birleştirme (startup'taki satırlar running'e uygulanır; kapatılmış arayüzü geri açmaz) | Yok | Startup'a dönüş reload/güç döngüsüyle sınanır (eski motor yerine koyuyordu — IOS'a uymuyordu) |
+| Bayat FDB ile yanlış porta iletim | Var (yaşlanana dek) | Modellenmez (iletim topolojiden) | — |
+
+Silinen/uyarlanan testler ve gerekçeleri: PR açıklaması ve `DEVIR_NOTU.md` "L7b/L7c".
+
+## L7c: kalıcılık v24
+
+Tarayıcı kaydı (`aglab-topology-v24`) ve dışa aktarılan JSON (v24) AğLab görünümünün (çizim,
+denetçi, Gerçek Lab dönüştürücü girdisi) yanında Labber çalışma zamanının tam durumunu taşır:
+`labber.state` = `LabRuntime.save()` (running ve startup-config **ayrı**, PC'ler, DHCP kiraları,
+öğrenilmiş MAC/ARP, err-disable/port security, NAT tablosu, donanım).
+
+| Konu | Davranış |
+|---|---|
+| Sayfa yenileme | Cihaz reload'u değildir: kaydedilmemiş running değişikliği kalır, startup ayrı kalır. |
+| `reload` / güç döngüsü | IOS gibi: running startup-config'ten kurulur (kaydedilmemiş değişiklik gider). |
+| `copy running-config startup-config` | Startup değişir; kayda yazılır. Tarayıcı kaydı başarısızsa terminal hata satırı + uyarı (yanlış "kaydedildi" yok). |
+| Akademi labı, Labber labı | Durum da kaydedilir; Labber labı sayfa yenilenince baştan başlamaz, kaldığı yerden sürer. |
+| Eski kayıtlar (`aglab-topology-v23`, v21…v15) | Açılışta otomatik taşınır, v24 yazılır; **eski anahtar silinmez**. v23'teki eski motor `startupConfig` alanı Labber startup-config'ine çevrilir. |
+| Taşınamayan kayıt | Güvenli başlangıç topolojisi açılır; görünür uyarı (`#aglabPersistenceNotice`), "Özgün kaydı indir" düğmesi; özgün metin `aglab-topology-recovery` anahtarında da tutulur. Kayıttaki Labber durumu topolojiye uymazsa ya da eski startup çevrilemezse aynı uyarı, hangi cihaz olduğu yazılır. |
+| İçe aktarılan v23 dosyası | Aynı taşıma (startupConfig → Labber startup). |
+
+Testler: `test_aglab_persistence` (yenileme/güç döngüsü/v23 taşıma/taşınamayan kayıt),
+`test_aglab_switch_svi` D, `test_aglab_dhcp_dns` (kira tablosu), `test_aglab_labber_labs`.

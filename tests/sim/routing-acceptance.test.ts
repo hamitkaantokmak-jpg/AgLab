@@ -17,7 +17,7 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 
 function runtime(t: AglabTopology) {
   const r = toLabber(t)
-  expect(r.report.engineDecision, JSON.stringify(r.report.reasons)).toBe('labber')
+  expect(r.report.expressible, JSON.stringify(r.report.reasons)).toBe(true)
   return createRuntime(r)
 }
 const ping = (t: AglabTopology, from: string, ip: string) => runtime(t).query().ping(from, ip)

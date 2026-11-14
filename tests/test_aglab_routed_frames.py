@@ -3,13 +3,9 @@
 import json, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium, legacy_engine, ping_succeeded
+from aglab_test_support import ROOT, launch_chromium, ping_succeeded
 
-module = (ROOT / "simulator/routed-ethernet.js").read_text()
-assert (
-    "// BEGIN ROUTED ETHERNET GENERATED\n" + module + "\n// END ROUTED ETHERNET GENERATED\n"
-    in (ROOT / "AgLab_Final_PKT_Import.html").read_text()
-)
+# L7b: eski motorun modülü (ürüne gömülü olduğu denetlenirdi) kaldırıldı; davranış Labber'da sınanır.
 
 
 def switch(id):
@@ -151,36 +147,9 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     ping("d1", "192.168.2.2")
     assert "receive d7" not in events(), events()
     print("PASS: real per-hop ARP, routed request/reply and warm FDB unicast", flush=True)
-    # "Paket adımı" ve bayat FDB (taşınan host) eski motorda sınanır: Labber iletimi FDB'den değil
-    # topolojiden hesaplar (MOTOR_BULGULARI "açık": bayat FDB modellenmiyor).
-    legacy = legacy_engine(obj)
-    path.write_text(json.dumps(legacy))
-    page.locator("#ptImportFile").set_input_files(str(path))
-    page.wait_for_function("()=>!aglabLabberSession.active()")
-    legacy_ping = lambda d, t: cmd(d, "ping " + t)
-    assert "100 percent (5/5)" in legacy_ping("d1", "192.168.2.2")
-    page.evaluate(
-        "document.querySelector('#ptSource').value='d1';document.querySelector('#ptTarget').value='d2';for(let i=0;i<7;i++)document.querySelector('#ptPacketStep').click()"
-    )
-    arp = cmd("d1", "show arp")
-    assert "192.168.1.1" in arp and "192.168.2.2" not in arp, arp
-    print(
-        "PASS: Packet Step completion preserves real neighbor ARP instead of synthetic remote entries",
-        flush=True,
-    )
-    page.evaluate(
-        "document.querySelector('#ptSource').value='d8';document.querySelector('#ptTarget').value='d2';document.querySelector('#ptRemoveLink').click()"
-    )
-    page.evaluate(
-        "document.querySelector('#ptSource').value='d4';document.querySelector('#ptTarget').value='d2';document.querySelector('#ptMakeLink').click()"
-    )
-    assert "0 percent (0/5)" in legacy_ping("d1", "192.168.2.2")
-    assert "100 percent" in legacy_ping("d2", "192.168.2.1")
-    assert "100 percent" in legacy_ping("d1", "192.168.2.2")
-    print(
-        "PASS: legacy: routed ping obeys a stale FDB egress and recovers after source learning",
-        flush=True,
-    )
+    # L7b: eski motordaki "Paket adımı" ve bayat FDB (taşınan host) bölümü eski motorla birlikte
+    # kaldırıldı: Labber iletimi FDB'den değil topolojiden hesaplar (bayat FDB modellenmez;
+    # UYUMLULUK_MATRISI "L7b"), "Paket adımı"nın karşılığı Simulation Mode'dur.
     # Yönetim SVI'si (Labber): yerel/uzak teslim, ağ geçidi ARP'si, shutdown ve geri dönüş
     obj["devices"][3]["interfaces"]["vlan10"] = dict(
         ip="192.168.2.10", mask="255.255.255.0", enabled=True, vlan=10

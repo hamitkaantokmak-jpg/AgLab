@@ -3,13 +3,9 @@
 import json, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import legacy_engine, ROOT, launch_chromium, import_topology
+from aglab_test_support import ROOT, launch_chromium, import_topology
 
-module = (ROOT / "simulator/mac-learning.js").read_text()
-assert (
-    "// BEGIN MAC LEARNING GENERATED\n" + module + "\n// END MAC LEARNING GENERATED\n"
-    in (ROOT / "AgLab_Final_PKT_Import.html").read_text()
-)
+# L7b: eski motorun modülü (ürüne gömülü olduğu denetlenirdi) kaldırıldı; davranış Labber'da sınanır.
 
 
 def switch(id):
@@ -109,19 +105,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             line.split()[0] == str(vlan) and port.lower() in line.lower() for line in rows
         ), (device, mac, port, vlan, rows)
 
-    # "Paket adımı" ilerleticisi eski motorun aracı (Labber içeriğinde de eski yol bulucuyu
-    # kullanır; L7'de silinir): MAC'in yalnız giriş portunda, adım adım öğrenildiğini eski motor
-    # kararındaki aynı topolojide sınar. Çıktı eski motorun MAC tablosudur.
-    load(legacy_engine(obj))
-    page.evaluate(
-        "document.querySelector('#ptSource').value='d3';document.querySelector('#ptTarget').value='d4';document.querySelector('#ptPacketStep').click()"
-    )
-    legacy_rows = cmd("d1", "show mac address-table")
-    assert "0200.0000.0003" in legacy_rows and "fa0/1" in legacy_rows, legacy_rows
-    assert "0200.0000.0004" not in legacy_rows, legacy_rows
-    page.evaluate("document.querySelector('#ptPacketStep').click()")
-    assert "gi0/1" in cmd("d2", "show mac address-table")
-    print("PASS: legacy packet stepper learns source MAC hop by hop", flush=True)
+    # L7b: eski motorun "Paket adımı" ilerleticisiyle adım adım öğrenme bölümü eski motorla
+    # birlikte kaldırıldı (Labber'da adım ilerleticisi yok; paketin yolu Simulation Mode'dadır).
     # Labber: gerçek trafik (ping) kaynak MAC'leri giriş portlarında öğretir
     load(obj)
     ping("d3", "192.168.10.3")

@@ -38,12 +38,6 @@ jobs:
           npm run format:check
           python -m pip install black==26.5.1
           black --check .
-      - name: Sabit üçüncü taraf motoru derle ve doğrula
-        run: |
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm run build:engine
-          git diff --exit-code -- simulator/borck-engine.generated.js
-          node tests/node/test_borck_engine.cjs
       - name: Dağıtılamayan materyal engeli (PDF)
         run: |
           # pdfs/ klasörü ve PDF dosyaları depoya hiçbir zaman girmez (Labber kaynak notu).
@@ -104,9 +98,6 @@ jobs:
             dist/device-cli-mobile.png
             dist/network-scenario-results.json
             dist/network-audit.md
-            dist/borck-benchmark.json
-            dist/borck-ui-results.json
-            dist/browser-engine-benchmark.json
             dist/unified-rc-performance.json
             dist/advanced-student-journey.json
             dist/advanced-student-journey.png

@@ -3,10 +3,9 @@
 // Eşleme tablosu: docs/YENIDEN_YAPILANMA.md → "L2. Veri modeli köprüsü".
 // İlke: desteklenen alan çevrilir; arayüz/meta alanları opak geçer; Labber'da karşılığı
 // olmayan her alan `unsupported`, geçersiz/eşlenemeyen her öğe `rejected` olarak
-// raporlanır ve bu durumda motor kararı 'legacy' olur. Hiçbir şey sessizce düşürülmez.
-//
-// L1'de bu modül ürün tarafından çağrılmaz; yalnızca testler ve motor seçim tablosu
-// aracı kullanır.
+// raporlanır ve bu durumda topoloji Labber'da ifade edilemez (`expressible: false`). Hiçbir şey
+// sessizce düşürülmez. L7b: ürünün tek motoru Labber'dır; ifade edilemeyen topoloji başka bir
+// motorda açılmaz, ürün onu gerekçesiyle "simüle edilemiyor" diye gösterir.
 
 import AgLabMacAddress from '../../simulator/mac-address.js'
 import { defaultL2, defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED_VLANS } from '../sim/config'
@@ -31,7 +30,8 @@ export interface RejectedItem {
 export interface BridgeReport {
   unsupported: UnsupportedItem[]
   rejected: RejectedItem[]
-  engineDecision: 'labber' | 'legacy'
+  /** Topolojinin bütün alanları Labber'a eşlendi mi (unsupported ve rejected boş). */
+  expressible: boolean
   reasons: string[]
   /** cihaz → (Labber kanonik port adı → AğLab'daki özgün ad) */
   portNames: Record<string, Record<string, string>>
@@ -101,9 +101,9 @@ const FEATURE_REASON: Record<string, string> = {
   natOverload: 'NAT Labber\'da yok (L5)',
   natTranslations: 'NAT çeviri tablosu Labber\'da yok (L5)',
   ospf: 'Switch üzerinde OSPF AğLab modelinde yok',
-  bgp: 'BGP Labber\'da yok (L5)',
+  bgp: 'BGP Labber\'da modellenmez (kapsam dışı)',
   services: 'Sunucu servisleri yalnız Server cihazında modellenir',
-  startupConfig: 'Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)',
+  startupConfig: 'Eski kayıt (v23) startup-config alanı: kayıt açılırken Labber startup-config’ine taşınır, köprüye verilmez',
   portSecurity: 'Port security Labber\'da yok (L5)',
   errdisabled: 'Port security err-disable durumu Labber\'da yok (L5)',
   encapsulation: 'Alt arayüz alanı (encapsulation) yalnız router alt arayüzünde (g0/0.N) eşlenir',
@@ -150,7 +150,7 @@ function vlanId(v: unknown): number | null {
 }
 
 export function toLabber(input: AglabTopology): BridgeResult {
-  const report: BridgeReport = { unsupported: [], rejected: [], engineDecision: 'labber', reasons: [], portNames: {} }
+  const report: BridgeReport = { unsupported: [], rejected: [], expressible: true, reasons: [], portNames: {} }
   const unsupported = (device: string, field: string, reason: string) =>
     report.unsupported.push({ device, field, reason })
   const reject = (device: string, item: string, reason: string) => report.rejected.push({ device, item, reason })
@@ -166,7 +166,9 @@ export function toLabber(input: AglabTopology): BridgeResult {
   let resolveMac: ((d: AglabDevice) => string) | null = null
   try {
     const resolver = AgLabMacAddress.createResolver()
-    resolver(devices[0] ?? {}, devices)
+    // Boş topoloji (yeni çalışma alanı) geçerlidir: doğrulanacak cihaz yok. L7b'den önce boş
+    // topoloji burada reddedilip eski motorda açılıyordu.
+    if (devices.length) resolver(devices[0]!, devices)
     resolveMac = (d) => resolver(d, devices)
   } catch (error) {
     reject('*', 'mac', 'MAC adresi doğrulaması başarısız: ' + String((error as Error).message ?? error))
@@ -948,7 +950,7 @@ export function toLabber(input: AglabTopology): BridgeResult {
   for (const u of report.unsupported) reasons.add(u.reason)
   for (const r of report.rejected) reasons.add('Reddedildi: ' + r.reason)
   report.reasons = [...reasons].sort()
-  report.engineDecision = report.unsupported.length || report.rejected.length ? 'legacy' : 'labber'
+  report.expressible = !report.unsupported.length && !report.rejected.length
   return { def, running, pcs, report, ...(errdis.length ? { errdis } : {}), ...(nat.length ? { nat } : {}) }
 }
 

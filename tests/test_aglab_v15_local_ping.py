@@ -20,7 +20,7 @@ with sync_playwright() as p:
         page.locator("#ptImportFile").set_input_files(name)
         # FileReader completion is asynchronous; fixed 120ms could probe the prior lab.
         page.wait_for_function(
-            "e=>{const d=aglabEngines.capture().devices.find(d=>d.id===e.id);return d&&d.enabled===e.enabled&&d.interfaces['g0/1'].enabled===e.interfaces['g0/1'].enabled}",
+            "e=>{const d=academyEngine.snapshot().devices.find(d=>d.id===e.id);return d&&d.enabled===e.enabled&&d.interfaces['g0/1'].enabled===e.interfaces['g0/1'].enabled}",
             arg=expected,
         )
         before = page.locator("#ptTerminal").inner_text()
