@@ -1,9 +1,22 @@
 # AğLab Konu #12: CDP/LLDP ile komşu keşfi
 
-> Uygulamadaki `discovery` dersi bu belgeden üretildi. Senaryolar Sorun Çöz'de `cdp-*`
-> kimlikleriyle Labber'da çalışır.
+> Uygulamadaki `discovery` dersi bu belgeyle uyumludur. Senaryolar Sorun Çöz'de `cdp-*`
+> kimlikleriyle Labber'da çalışır. Şemalar: `docs/dersler/gorseller/cdp-lldp.py`.
 
-Bu konu bittiğinde öğrenci, elinde topoloji çizimi olmayan bir ağda CDP ve LLDP ile hangi cihazın hangi porttan hangi cihaza bağlı olduğunu çıkarır. Komşu tablosunu kanıt olarak kullanıp bir arızanın katman 1, katman 2 ya da katman 3'te olduğuna karar verir. CDP'nin nerede kapatılması gerektiğini bilir. Seviye 1, süre yaklaşık 60 dakika (ders 12, lab 20, senaryolar 20, sınav 8).
+Bu konu bittiğinde öğrenci, elinde topoloji çizimi olmayan bir ağda CDP ve LLDP ile hangi cihazın hangi porttan hangi cihaza bağlı olduğunu çıkarır. Komşu tablosunu kanıt olarak kullanıp bir arızanın katman 1, katman 2 ya da katman 3'te olduğuna karar verir. CDP'nin nerede kapatılması gerektiğini bilir. Seviye 1, süre yaklaşık 60 dakika.
+
+## 0. Bir bakışta
+
+- **CDP**, Cisco cihazlarının doğrudan komşularına kendilerini tanıttığı katman 2 protokolüdür; varsayılan **açıktır**.
+- **LLDP** aynı işi yapan açık standarttır (IEEE 802.1AB); Cisco'da varsayılan **kapalıdır**, iki uçta da `lldp run` gerekir.
+- `show cdp neighbors`: **Local Intrfce** senin portun, **Port ID** komşunun portu.
+- `show cdp neighbors detail`: komşunun **IP adresi**, modeli ve yazılım sürümü.
+- **Komşu görünüyorsa** katman 1–2 sağlamdır, sorun yukarıdadır; **görünmüyorsa** sorun aşağıdadır.
+- Şirket dışına bakan portta `no cdp enable`.
+
+> **Akılda kalsın:** CDP yalnız kapı komşusunu gösterir. PC'ler CDP göndermez; onları MAC tablosunda ararsın.
+
+![Komşu keşfi: kapı komşuları](gorseller/cdp-lldp/g1.svg)
 
 ## 1. Neden önemli
 
@@ -13,28 +26,59 @@ Komşu tablosu sorun gidermede de kanıttır. CDP komşusu görünüyorsa iki ci
 
 ## 2. Kavram
 
-**CDP (Cisco Discovery Protocol)**, Cisco cihazlarının doğrudan bağlı komşularına kendilerini tanıttığı bir katman 2 protokolüdür. Her cihaz her porttan 60 saniyede bir küçük bir duyuru gönderir: adı, modeli, yazılım sürümü, yönetim IP adresi ve duyurunun çıktığı port. Komşu bu bilgiyi 180 saniye saklar (holdtime); bu sürede yeni duyuru gelmezse kaydı siler.
+### 2.1 CDP: kapı komşusuna kartvizit
 
-Dört özellik CDP'yi teşhis aracı yapar:
+> **Benzetme:** Yeni taşındığın apartmanda kapı komşularına kartvizit bırakırsın: adın, mesleğin, telefonun. Komşun kartı buzdolabına asar; uzun süre senden haber almazsa atar. Ama kartını iki kat yukarıdaki daireye o götürmez.
 
-- **IP gerektirmez.** CDP katman 2'de çalışır; arayüzde IP adresi olmasa, VLAN ya da maske yanlış olsa bile komşuyu görürsün.
-- **Yalnız doğrudan komşuyu gösterir.** Duyuru bir sonraki cihaza aktarılmaz. Uzaktaki bir cihazı görmek için o cihazın komşusuna bağlanman gerekir.
-- **Cisco cihazlarında varsayılan olarak açıktır.** Hiçbir şey yapmadan kullanılabilir.
-- **PC'ler CDP göndermez.** Komşu tablosunda yalnız ağ cihazları (switch, router, IP telefon, erişim noktası) görünür.
+- Her Cisco cihazı her porttan **60 saniyede bir** duyuru gönderir: adı, modeli, yazılım sürümü, IP adresi, duyurunun çıktığı port.
+- Komşu bu bilgiyi **180 saniye** (holdtime) saklar; yeni duyuru gelmezse siler.
+- **IP gerektirmez:** katman 2'de çalışır; adres yanlış olsa bile komşu görünür.
+- **Yalnız doğrudan komşu:** duyuru bir sonraki cihaza aktarılmaz.
+- **PC'ler CDP göndermez:** tabloda yalnız ağ cihazları (switch, router, IP telefon, erişim noktası) görünür.
 
-**LLDP (Link Layer Discovery Protocol)** aynı işi yapan, IEEE 802.1AB ile tanımlanmış açık standarttır. Cisco'nun yanında başka üreticilerin cihazları da varsa (ör. bir firewall ya da başka marka switch) LLDP gerekir. Cisco switch'lerde varsayılan olarak **kapalıdır**: `lldp run` ile açılır ve iki uçta da açık olmalıdır. Duyuru aralığı 30 saniye, holdtime 120 saniyedir.
+![CDP duyurusunun içi](gorseller/cdp-lldp/g2.svg)
 
-| | CDP | LLDP |
-| --- | --- | --- |
-| Tanım | Cisco'ya özel | IEEE 802.1AB, açık standart |
-| Cisco'da varsayılan | Açık | Kapalı (`lldp run`) |
-| Duyuru aralığı / holdtime | 60 sn / 180 sn | 30 sn / 120 sn |
-| Tümüyle kapatma | `no cdp run` | `no lldp run` |
-| Tek portta kapatma | `no cdp enable` | `no lldp transmit` ve `no lldp receive` |
+### 2.2 Komşu tablosunu doğru okumak
 
-*(Etkileşimli şema: router, merkez switch ve iki kat switch'i; her bağlantının iki ucundaki port adları.)*
+Satırdaki iki port sütunu en çok karıştırılan yerdir.
 
-**Güvenlik:** CDP duyurusu cihazın modelini, yazılım sürümünü ve IP adresini açıkça yayınlar. Bu bilgi bir saldırgana hangi açıkları deneyeceğini söyler. Bu yüzden şirket dışına bakan portlarda (internet servis sağlayıcısına giden bağlantı, misafir ağı) CDP kapatılır: `interface g0/1` → `no cdp enable`. İç ağda ise açık bırakılır; sorun giderme değeri riskten büyüktür.
+- **Local Intrfce:** **senin** cihazındaki port ("SW-KAT2 benim Gi0/3'ümde").
+- **Port ID:** **komşunun** portu ("kablo SW-KAT2'nin Gi0/1'ine gidiyor").
+
+![Local Intrfce ile Port ID](gorseller/cdp-lldp/g3.svg)
+
+> **Dikkat:** Holdtime sürekli 120–180 arasında dolaşmalıdır. Aşağı inip yenilenmiyorsa kayıt eskidir; kablo yeni çıkmış olabilir. Taze olmayan bir kayıt bağlantının şu an çalıştığını kanıtlamaz.
+
+### 2.3 Teşhis aracı olarak CDP
+
+> **Benzetme:** Komşunun kapısını çalıyorsun ve "kim o?" diye cevap geliyor: duvar da kapı da sağlam. Ama telefonla aradığında açmıyorsa sorun numaradadır (IP), duvarda değil.
+
+![Komşu var mı, yok mu?](gorseller/cdp-lldp/g4.svg)
+
+- Komşu **görünüyor**, ping **gitmiyor**: IP, maske, gateway, VLAN. `detail`'deki adres beklenen ağda mı?
+- Komşu **görünmüyor**: `show interfaces status` ile port durumu, kablo, `shutdown`, CDP kapalı mı?
+
+### 2.4 Bilinmeyen ağı çizmek
+
+Bildiğin tek cihazdan başla ve komşudan komşuya ilerle. Her bağlantının iki ucuna port adlarını, her cihaza `detail`'den aldığın adresi yaz.
+
+![Komşudan komşuya keşif](gorseller/cdp-lldp/g5.svg)
+
+### 2.5 LLDP: herkesin konuştuğu dil
+
+> **Benzetme:** CDP bir şirketin iç dilidir; LLDP herkesin bildiği ortak dil. Binaya başka şirketten bir komşu (başka marka firewall, IP telefon) taşındıysa ortak dille konuşursun.
+
+![CDP ile LLDP](gorseller/cdp-lldp/g6.svg)
+
+> **Dikkat:** LLDP iki uçta da açık olmalıdır. Yalnız bir tarafta `lldp run` yapmak komşu tablosunu doldurmaz.
+
+### 2.6 Güvenlik
+
+CDP duyurusu cihazın modelini, yazılım sürümünü ve IP adresini açıkça yayınlar; bu bilgi bir saldırgana hangi açıkları deneyeceğini söyler. Şirket dışına bakan portlarda (servis sağlayıcı, misafir ağı) CDP kapatılır: `interface g0/1` → `no cdp enable`. İç ağda açık bırakılır; sorun giderme değeri riskten büyüktür.
+
+![Dışa bakan portta CDP kapalı](gorseller/cdp-lldp/g7.svg)
+
+> **Sahada:** Gerçek switch'te iki uçtaki native VLAN farklıysa CDP konsola `%CDP-4-NATIVE_VLAN_MISMATCH` yazar. Bu uyarı çoğu zaman trunk hatasının ilk ipucudur (Konu #6).
 
 ## 3. Çıktı okuma
 
@@ -123,11 +167,7 @@ Topoloji: R1, merkez switch SW-CORE, iki kat switch'i (SW-KAT1, SW-KAT2), her ka
 7. **Dışa bakan portu kapat.** R1'in Gi0/1'i internet servis sağlayıcısına gidiyor. `interface g0/1` → `no cdp enable`, ardından `show cdp interface`: Gi0/1 artık listede yok. *Neden:* Şirket dışına cihaz modeli ve sürüm bilgisi gönderilmez.
 8. **CDP'yi tümüyle kapat ve geri aç.** SW-KAT2'de `no cdp run`; SW-CORE'da `show cdp neighbors`: SW-KAT2 kayboldu. SW-KAT2'de `show cdp neighbors` "CDP is not enabled" der. `cdp run` ile geri aç. *Neden:* CDP kapalı bir cihaz ağda "görünmez" olur; envanter araçları onu bulamaz.
 
-**Lab'ın otomatik değerlendirmesi** (motordan bağımsız yazım):
-
-- `q.ping('ADMIN', '192.168.1.3').ok` ve `q.ping('ADMIN', '192.168.1.4').ok`: CDP ile bulunan yönetim adreslerine erişim.
-- SW-CORE'da LLDP komşusu olarak SW-KAT1 görünür (LabQuery'de LLDP sorgusu eklenince).
-- R1 Gi0/1'de CDP kapalı (LabQuery'de CDP sorgusu eklenince).
+> **Benzetme:** Bu lab, karanlık bir binada her kapıyı çalıp "yanında kim oturuyor?" diye sorarak kat planını çıkarmaktır.
 
 ## 5. Sık hatalar
 
@@ -147,95 +187,150 @@ Bu konudaki hatalar iki türlüdür. Bir kısmı CDP'nin kendisiyle ilgilidir (E
 
 > **Uygulamada:** S1–S5 Sorun Çöz'de `cdp-uplink-park-port`, `cdp-native-mismatch`,
 > `cdp-gateway-typo`, `cdp-no-neighbor`, `cdp-two-faults` kimlikleriyle Labber'da çalışır
-> (`simulator/network-scenarios.json`, `verify.kind: "query"`).
+> (`simulator/network-scenarios.json`, `verify.kind: "query"`). Önce kendin çöz; neden ve çözüm kapalı kutularda.
 
 Temel topoloji lab'dakiyle aynıdır. Kullanıcılar VLAN 10'da (192.168.10.0/24, gateway R1 192.168.10.1), switch yönetimi VLAN 1'de (192.168.1.0/24). SW-CORE'da Gi0/2 ve Gi0/3 uplink trunk'larıdır (izinli VLAN 1,10,20). Gi0/4 ise kullanılmayan portlar için ayrılan VLAN 99'da (park).
 
 ### S1 · Başlangıç · Dünkü kablolamadan sonra 2. kat ağdan koptu (E1)
 
-- **Başlangıç:** SW-KAT2'nin uplink kablosu SW-CORE'da Gi0/3 yerine Gi0/4'e takılmış; Gi0/4 VLAN 99'da access port.
 - **Belirti:** 2. kattaki bilgisayarlar birbirine ulaşıyor ama ne 1. kata ne gateway'e ulaşabiliyor.
+- **Hedef:** `q.ping('PC-21', '192.168.10.11').ok`; `q.ping('PC-21', '192.168.10.1').ok`
 - **İpuçları:** (1) Bütün kat etkileniyorsa sorun katın ortak noktasında. (2) SW-CORE'da `show cdp neighbors`: SW-KAT2 hangi porttan görünüyor? (3) O portu belgedeki uplink'le karşılaştır: `show running-config interface gi0/4` ve `gi0/3`.
-- **Çözüm:** SW-CORE → `interface gi0/4` → `switchport trunk allowed vlan 1,10,20` → `switchport mode trunk`
-- **Hedefler:** `q.ping('PC-21', '192.168.10.11').ok`; `q.ping('PC-21', '192.168.10.1').ok`
+
+<details><summary>Neden ve çözüm</summary>
+
+SW-KAT2'nin uplink kablosu SW-CORE'da Gi0/3 yerine Gi0/4'e takılmış; Gi0/4 VLAN 99'da access port. Çözüm: SW-CORE → `interface gi0/4` → `switchport trunk allowed vlan 1,10,20` → `switchport mode trunk`
 
 Kabloyu Gi0/3'e taşımak da doğru bir çözümdür; Sorun Çöz terminalden yapılan düzeltmeyi değerlendirdiği için burada port yapılandırılır.
 
+</details>
+
 ### S2 · Başlangıç · Kullanıcılar çalışıyor, 1. kat switch'i yönetilemiyor (E2)
 
-- **Başlangıç:** SW-KAT1 Gi0/1 trunk'ında native VLAN 99 yapılmış; SW-CORE tarafı 1.
 - **Belirti:** Kullanıcılardan şikâyet yok. ADMIN, SW-KAT1'in yönetim adresine (192.168.1.3) ulaşamıyor; diğer switch'lere ulaşıyor.
+- **Hedef:** `q.ping('ADMIN', '192.168.1.3').ok`; `q.ping('PC-11', '192.168.10.21').ok`
 - **İpuçları:** (1) Kullanıcı VLAN'ı çalışıyor, yönetim VLAN'ı çalışmıyor: ikisi trunk'ta nasıl taşınıyor? (2) SW-CORE'da `show cdp neighbors` ile bağlantının iki ucunu bul. (3) İki switch'te de `show interfaces trunk` ile native VLAN'ları karşılaştır.
-- **Çözüm:** SW-KAT1 → `interface gi0/1` → `switchport trunk native vlan 1`
-- **Hedefler:** `q.ping('ADMIN', '192.168.1.3').ok`; `q.ping('PC-11', '192.168.10.21').ok`
+
+<details><summary>Neden ve çözüm</summary>
+
+SW-KAT1 Gi0/1 trunk'ında native VLAN 99 yapılmış; SW-CORE tarafı 1. Çözüm: SW-KAT1 → `interface gi0/1` → `switchport trunk native vlan 1`
+
+</details>
 
 ### S3 · Orta · Kimse gateway'e ulaşamıyor, kablo sağlam (E3)
 
-- **Başlangıç:** R1 Gi0/0'a 192.168.10.1 yerine 192.168.100.1 yazılmış.
 - **Belirti:** Hafta sonu R1'in yapılandırması yenilendi. Pazartesi hiçbir kullanıcı kendi ağı dışına çıkamıyor; katlar arası trafik çalışıyor. Teknisyen "kablo takılı, ışıklar yanıyor" diyor.
+- **Hedef:** `q.ping('PC-11', '192.168.10.1').ok`; `q.ping('PC-21', '192.168.10.1').ok`
 - **İpuçları:** (1) Switch R1'i gerçekten görüyor mu? (2) SW-CORE'da `show cdp neighbors detail`: R1'in kaydındaki IP adresi ne? (3) Komşu görünüyor ama ping yoksa sorun katman 3'te.
-- **Çözüm:** R1 → `interface g0/0` → `ip address 192.168.10.1 255.255.255.0`
-- **Hedefler:** `q.ping('PC-11', '192.168.10.1').ok`; `q.ping('PC-21', '192.168.10.1').ok`
+
+<details><summary>Neden ve çözüm</summary>
+
+R1 Gi0/0'a 192.168.10.1 yerine 192.168.100.1 yazılmış. Çözüm: R1 → `interface g0/0` → `ip address 192.168.10.1 255.255.255.0`
+
+</details>
 
 ### S4 · Orta · 1. kat kendi içinde çalışıyor, dışarı çıkamıyor (E4)
 
-- **Başlangıç:** SW-KAT1'in uplink portu Gi0/1 `shutdown`.
 - **Belirti:** 1. kattaki iki bilgisayar birbirine ulaşıyor; ikisi de 2. kata ve gateway'e ulaşamıyor.
+- **Hedef:** `q.ping('PC-11', '192.168.10.21').ok`; `q.ping('PC-12', '192.168.10.1').ok`
 - **İpuçları:** (1) Kat içi çalışıyorsa kat switch'i ayakta; sorun yukarı bağlantıda. (2) SW-KAT1'de `show cdp neighbors`: SW-CORE görünüyor mu? (3) `show interfaces status`: Gi0/1'in durumu ne?
-- **Çözüm:** SW-KAT1 → `interface gi0/1` → `no shutdown`
-- **Hedefler:** `q.ping('PC-11', '192.168.10.21').ok`; `q.ping('PC-12', '192.168.10.1').ok`
+
+<details><summary>Neden ve çözüm</summary>
+
+SW-KAT1'in uplink portu Gi0/1 `shutdown`. Çözüm: SW-KAT1 → `interface gi0/1` → `no shutdown`
+
+</details>
 
 ### S5 · İleri · İki hata birden: belgelenmemiş değişiklikler (E1 + E3)
 
-- **Başlangıç:** S1 ve S3 birlikte.
 - **Belirti:** 2. kat hiçbir yere çıkamıyor; 1. kat kendi arasında konuşuyor ama gateway'e ulaşamıyor.
+- **Hedef:** `q.ping('PC-21', '192.168.10.11').ok`; `q.ping('PC-21', '192.168.10.1').ok`; `q.ping('PC-11', '192.168.10.1').ok`
 - **İpuçları:** (1) İki farklı belirti var; tek bir hata ikisini birden açıklıyor mu? (2) SW-CORE'da `show cdp neighbors` ve `detail`: komşular belgedeki portlarda mı, adresleri doğru mu? (3) Hataları tek tek düzelt ve her düzeltmeden sonra hangi belirtinin gittiğini ping ile gör.
-- **Çözüm:** S1'in ve S3'ün çözümü.
-- **Hedefler:** `q.ping('PC-21', '192.168.10.11').ok`; `q.ping('PC-21', '192.168.10.1').ok`; `q.ping('PC-11', '192.168.10.1').ok`
+
+<details><summary>Neden ve çözüm</summary>
+
+S1 ve S3 birlikte. Çözüm: S1'in ve S3'ün çözümü.
+
+</details>
 
 ## 7. Kısa sınav
 
-Beş soru, hepsi çıktı okuma ya da teşhis. Geçme ölçütü 4/5.
+**1.** SW-CORE'daki satır: `SW-KAT2  Gig 0/3  151  S I  WS-C2960-  Gig 0/1`. Kablo SW-KAT2'nin hangi portuna gidiyor?
 
-1. SW-CORE'daki `show cdp neighbors` satırı: `SW-KAT2  Gig 0/3  151  S I  WS-C2960-  Gig 0/1`. Kablo SW-KAT2'nin hangi portuna gidiyor?
-   - A) Gi0/3
-   - B) Gi0/1
-   - C) Her ikisi de SW-KAT2'nin portu
-   - D) Çıktıdan anlaşılmaz
+<details><summary>Cevap</summary>
 
-   **Cevap: B.** Port ID komşunun portudur; Local Intrfce (Gi0/3) SW-CORE'un kendi portudur.
-2. R1 ile SW-CORE arasındaki ping başarısız, ama SW-CORE'un CDP tablosunda R1 görünüyor ve holdtime 120–180 arasında dolaşıyor. Sorun büyük olasılıkla nerede?
-   - A) Kablo kopuk
-   - B) SW-CORE'un portu kapalı
-   - C) Katman 3'te: IP adresi ya da maske
-   - D) R1 kapalı
+Gi0/1. Port ID komşunun portudur; Gi0/3 SW-CORE'un kendi portudur.
 
-   **Cevap: C.** Taze bir CDP kaydı katman 1–2'nin çalıştığını kanıtlar.
-3. Bir switch'e bağlı PC'lerin hiçbiri `show cdp neighbors` çıktısında görünmüyor. Neden?
-   - A) PC'lerin portları yanlış VLAN'da
-   - B) PC'ler CDP duyurusu göndermez
-   - C) CDP yalnız trunk portlarda çalışır
-   - D) PC'ler henüz trafik göndermedi
+</details>
 
-   **Cevap: B.** PC'nin hangi portta olduğu MAC tablosundan bulunur.
-4. Başka marka bir firewall'un Cisco switch'e hangi porttan bağlı olduğunu bulmak istiyorsun. Ne yaparsın?
-   - A) `show cdp neighbors detail`
-   - B) İki cihazda da LLDP'yi açıp `show lldp neighbors`
-   - C) `show ip arp`
-   - D) Yalnız switch'te `lldp run` yeterli
+**2.** CDP tablosunda R1 görünüyor, holdtime 120–180 arasında dolaşıyor, ama ping gitmiyor. Sorun nerede?
 
-   **Cevap: B.** CDP Cisco'ya özeldir. LLDP açık standarttır ve iki uçta da açık olmalıdır.
-5. İnternet servis sağlayıcısına giden router portunda CDP ile ilgili doğru uygulama hangisidir?
-   - A) CDP açık kalmalı; servis sağlayıcı sorun gidermede kullanır
-   - B) `no cdp run` ile router'ın tamamında kapatılmalı
-   - C) O portta `no cdp enable` ile kapatılmalı
-   - D) CDP sürüm 1'e düşürülmeli
+<details><summary>Cevap</summary>
 
-   **Cevap: C.** Yalnız dışa bakan port kapatılır; iç ağda CDP sorun giderme için açık kalır.
+Katman 3'te: IP adresi, maske ya da gateway. Taze bir CDP kaydı katman 1–2'nin çalıştığını kanıtlar.
 
-## 8. Doğrulama notları
+</details>
 
-Kaynaklar: Cisco Catalyst yapılandırma kılavuzlarının CDP ve LLDP bölümleri; CCNA 200-301 sınav konuları (1.0'da "CDP ve LLDP" başlığı). ENCOR slaytları yalnız kapsam kontrolü için kullanıldı. Ders metni ve bütün topolojiler özgün yazıldı.
+**3.** Switch'e bağlı PC'lerin hiçbiri `show cdp neighbors`'ta görünmüyor. Neden?
+
+<details><summary>Cevap</summary>
+
+PC'ler CDP duyurusu göndermez. PC'nin portu MAC tablosundan bulunur.
+
+</details>
+
+**4.** Başka marka bir firewall'un Cisco switch'e hangi porttan bağlı olduğunu nasıl bulursun?
+
+<details><summary>Cevap</summary>
+
+İki cihazda da LLDP'yi açıp `show lldp neighbors`. CDP Cisco'ya özeldir.
+
+</details>
+
+**5.** Servis sağlayıcıya giden router portunda CDP için doğru uygulama?
+
+<details><summary>Cevap</summary>
+
+O portta `no cdp enable`. Router'ın tamamında kapatmak iç ağdaki sorun giderme değerini de götürür.
+
+</details>
+
+**6.** SW-KAT1'de çalışırken R1'i komşu tablosunda göremiyorsun, ama kullanıcılar internete çıkabiliyor. Bir sorun var mı?
+
+<details><summary>Cevap</summary>
+
+Hayır. R1 SW-KAT1'in doğrudan komşusu değil, arada SW-CORE var; CDP duyuruları aktarılmaz.
+
+</details>
+
+## 8. Özet kartı
+
+| Komut | Ne işe yarar |
+| --- | --- |
+| `show cdp neighbors` | Komşular, iki uçtaki portlar |
+| `show cdp neighbors detail` | Komşunun IP adresi, modeli, sürümü |
+| `show cdp interface` | CDP açık portlar ve zamanlayıcılar |
+| `no cdp run` / `cdp run` | Cihazın tamamında kapat / aç |
+| `no cdp enable` (arayüzde) | Tek portta kapat |
+| `lldp run`, `show lldp neighbors` | LLDP'yi aç, komşuları gör |
+
+**Unutma:**
+
+1. Local Intrfce benim, Port ID onun.
+2. Komşu var → sorun yukarıda; komşu yok → sorun aşağıda.
+3. CDP yalnız doğrudan komşuyu gösterir; PC'leri göstermez.
+4. LLDP iki uçta da açık olmalı.
+5. Dışa bakan portta `no cdp enable`.
+
+## 9. Doğrulama notları
+
+Kaynaklar: INET CCNA 200-301 v1.1 (CDP ve LLDP); Cisco Catalyst yapılandırma kılavuzlarının CDP ve LLDP bölümleri; CCNA 200-301 sınav konuları (1.0'da "CDP ve LLDP" başlığı). ENCOR slaytları yalnız kapsam kontrolü için kullanıldı. Ders metni ve bütün topolojiler özgün yazıldı.
+
+**Lab'ın otomatik değerlendirmesi** (motordan bağımsız yazım):
+
+- `q.ping('ADMIN', '192.168.1.3').ok` ve `q.ping('ADMIN', '192.168.1.4').ok`: CDP ile bulunan yönetim adreslerine erişim.
+- SW-CORE'da LLDP komşusu olarak SW-KAT1 görünür (LabQuery'de LLDP sorgusu eklenince).
+- R1 Gi0/1'de CDP kapalı (LabQuery'de CDP sorgusu eklenince).
 
 **Kontrol edilen iddialar**
 

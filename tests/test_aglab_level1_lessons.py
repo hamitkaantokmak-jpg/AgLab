@@ -21,7 +21,7 @@ FLOW = (ROOT / "src/app/student-flow.js").read_text(encoding="utf-8")
 # (kurs kimliği, ayrıntı kimliği, belge, senaryo öneki, kısa kartta, ayrıntıda)
 # Senaryo öneki None: okuma dersi (senaryoları motor ya da AğLab modeli hazır olunca eklenecek).
 LESSONS = [
-    ("discovery", "discovery", "cdp-lldp.md", "cdp-", "LLDP", "çizimi olmayan ağı çıkarmak"),
+    ("discovery", "discovery", "cdp-lldp.md", "cdp-", "LLDP", "Bilinmeyen ağı çizmek"),
     ("dhcp", "dhcp", "dhcp.md", "dhcp-", "169.254", "başka binadaki resepsiyon"),
     ("dns", "dns", "dns.md", "dns-", "nslookup", "İki test"),
     ("routing", "routing", "gateway-statik-routing.md", "gw-", "floating static", "Gidiş ve dönüş"),
