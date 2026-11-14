@@ -79,8 +79,15 @@
     attributes: true,
     attributeFilter: ['class'],
   });
-  function fromHash() {
-    const key = decodeURIComponent(location.hash.replace(/^#/, '')).toLowerCase();
+  function fromHash(e) {
+    // Hedef, olayın kendi adresinden okunur: olay işlenmeden önce bir sınıf değişikliği
+    // syncRail'i tetikleyip adresi eski bölüme geri yazmış olabilir (replaceState), o zaman
+    // location.hash geçişi kaybettirir.
+    let hash = location.hash;
+    try {
+      if (e?.newURL) hash = new URL(e.newURL).hash;
+    } catch (err) {}
+    const key = decodeURIComponent(hash.replace(/^#/, '')).toLowerCase();
     const area = ALIASES[key];
     if (area && area !== current()) go(area);
     else syncRail();
