@@ -68,6 +68,8 @@ html:not([data-theme='light']) {
   gap: 10px;
   flex: 1 1 240px;
   min-width: 0;
+  /* Tek satırlık başlığın doğal genişliği sayfayı genişletmesin (dar ekranda yatay kaydırma). */
+  contain: inline-size;
 }
 /* PR 3: uzun görev adı tek satırda kısalır; tam ad title özniteliğinde. */
 #agSimTitle {
