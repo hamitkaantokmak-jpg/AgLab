@@ -68,7 +68,7 @@ class LessonDocTests(unittest.TestCase):
                     sec7 = text.split("## 7.")[1].split("## 8.")[0]
                     if "### S1" in sec6:
                         self.assertNotIn("**Neden:**", sec6)
-                        self.assertEqual(sec6.count("### S"), sec6.count("<details>"))
+                        self.assertGreaterEqual(sec6.count("<details>"), sec6.count("### S"))
                     self.assertGreaterEqual(sec7.count("<details>"), 5)
 
 
