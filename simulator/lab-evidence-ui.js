@@ -1,10 +1,14 @@
 (function () {
   'use strict';
-  const panel = document.getElementById('packetDetectivePanel');
+  // Arayüz yenilemesi PR 1: Canlı Lab bölümünde (eski adı "Gerçek Lab"; davranış aynı).
+  const panel =
+    document.getElementById('liveLabPanel') || document.getElementById('packetDetectivePanel');
   if (!panel) return;
   const details = document.createElement('details'),
     heading = document.createElement('summary');
-  heading.textContent = 'Ayrı Gerçek Lab raporunu incele';
+  heading.textContent = 'Canlı Lab raporunu incele';
+  details.className = 'card';
+  details.open = true;
   details.append(heading);
   const description = document.createElement('p');
   description.textContent =
@@ -26,13 +30,15 @@
   const checks = document.createElement('div');
   checks.id = 'nativeLabChecks';
   details.append(checks);
-  // Gerçek Lab girdisi: operatörün dönüştürücüsü (real-lab/shared_topology.py,
+  // Canlı Lab girdisi: operatörün dönüştürücüsü (real-lab/shared_topology.py,
   // routed_topology.py) için topoloji JSON'u. L7b'de kaldırılan motor yöneticisi panelinden
   // taşındı; davranış aynı (switch/router MAC'i yazılmaz, seçim boş).
   const exportBlock = document.createElement('details'),
     exportHeading = document.createElement('summary');
   exportBlock.id = 'realLabExport';
-  exportHeading.textContent = 'Gerçek Lab için topolojiyi indir';
+  exportHeading.textContent = 'Canlı Lab için topolojiyi indir';
+  exportBlock.className = 'card';
+  exportBlock.open = true;
   exportBlock.append(exportHeading);
   const exportButton = document.createElement('button');
   exportButton.id = 'realLabExportTopology';
@@ -59,7 +65,7 @@
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     exportStatus.textContent =
-      'JSON indirildi. Gerçek Lab dönüşümü ve çalıştırması yetkili operatörde yapılır. Desteklenmeyen topolojiler dönüştürücüde reddedilir.';
+      'JSON indirildi. Canlı Lab dönüşümü ve çalıştırması yetkili operatörde yapılır. Desteklenmeyen topolojiler dönüştürücüde reddedilir.';
   };
   input.onchange = async () => {
     const file = input.files?.[0];
@@ -70,7 +76,7 @@
       const r = AgLabLabEvidence.parse(await file.text());
       status.textContent =
         r.engine +
-        ' · ayrı Lab · ' +
+        ' · Canlı Lab · ' +
         r.events.length +
         ' doğrulama adımı · içe aktarılan rapor, imzası doğrulanmadı';
       for (const event of r.events) {

@@ -1,9 +1,84 @@
-# Devir notu — Labber entegrasyonu (I-1 → FHRP → L6 → L7)
+# Devir notu — Labber entegrasyonu (I-1 → FHRP → L6 → L7) ve arayüz yenilemesi
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
 Motor kararları: [LAB_MOTOR_HARITASI.md](LAB_MOTOR_HARITASI.md). Kararlar ve bilinen
 farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölümü).
+
+## Arayüz yenilemesi (L7'den sonra)
+
+Referans taslak: `docs/arayuz/` (dal `claude/arayuz-taslak`; README, dolu-1..4.png, wire/dolu.html).
+Plan: `SONRAKI_ISLER.md` "Arayüz yenilemesi", "Adlandırma", "Öğrenci/öğretmen ayrımı kalkar".
+Her adım ayrı PR, bir öncekinin dalı üstüne; birleştirilmez.
+
+| Adım | Dal | Durum |
+|---|---|---|
+| PR 1 iskelet, adlandırma, tek paket | #91, `claude/arayuz-1-iskelet` (taban `claude/arayuz-taslak`) | açık |
+| PR 2 Simülatör çalışma alanı | — | sırada |
+| PR 3 Arıza senaryosu ekranı | — | sırada |
+| PR 4 Müfredat haritası ve ders ekranı | — | sırada |
+
+PR 1:
+- `src/index.html`: üst bar (`#agTop`: logo, `#areaTabs` dört bölüm, `#agSearch`, `#agTopTools`
+  tema düğmesi), sol ikon şeridi (`#agRail`, `data-rail`), `main.ag-main`; yeni bölümler
+  `#area-live` (Canlı Lab: rapor + operatör dışa aktarımı, `lab-evidence-ui.js`) ve
+  `#area-advanced` (Gelişmiş: regresyon denetimi). Eski başlık/hero ve "1·Öğren 2·Uygula"
+  yön çubuğu kaldırıldı; senaryo ilerlemesi (`#progressText`) Sorun Çöz'de.
+- `src/app/shell.js`: şerit, adres çubuğu (#mufredat, #simulator, #sorun-coz, #canli-lab,
+  #gelismis) ve eski bağlantı yönlendirmesi (#lab, #area-lab, #gercek-lab, #real-lab …), arama
+  (müfredat konu araması). `src/styles/08-shell.css`: taslak renkleri (açık) ve koyu karşılığı.
+- Müfredat bloğundaki sabit koyu renkler token'a bağlandı (açık temada okunmuyordu; main'de de).
+- Adlandırma: ürün metinlerinde "Lab" (bölüm) → Simülatör, "Gerçek Lab" → Canlı Lab; "lab"
+  yalnız alıştırma anlamında (Akademi labı, yönlendirmeli lab). Kayıt anahtarları aynı.
+- Tek paket: `run_pipeline.py`, `verify_packages.py` (tek argüman), CI'daki öğretmen ZIP adımı
+  kaldırıldı; çözümler ve kaynaklar aynı ZIP'te, HTML'e yalnız öğrenci alanları gömülür.
+- Test: yeni `test_aglab_shell.py`; `network_features` (Gelişmiş), `advanced_engines` (Canlı Lab)
+  gezinmesi.
+
+Kalan (PR 2–4), her biri ayrı PR, bir öncekinin dalı üstüne (PR 2 → `claude/arayuz-1-iskelet`):
+
+- **PR 2 Simülatör çalışma alanı** (taslak `dolu-3.png`): üstte başlık + motor rozeti + Sıfırla /
+  İpucu / Kontrol et; solda görev ve canlı hedef listesi (Akademi ölçütleri `academy.evaluate`,
+  Labber labı `aglabLabberLabs.objectives()`, ortak senaryo `sharedQueryGoal` — sağlandıkça
+  işaretlenir); ortada tuval (`#ptCanvas`); sağda inceleme paneli (Port/Cihaz/Olaylar sekmeleri,
+  `#ptDeviceInfo` verisi, hızlı show çıktısı Labber oturumundan); altta cihaz sekmeli terminal
+  (`#ptTerminal`, `#ptCliDevice`, `#ptCliInput`) ve yanında Simulation Mode zaman çizelgesi
+  (`simulation-ui.js`). "Çözümü göster": birkaç başarısız Kontrol et ya da bütün ipuçlarından sonra
+  **Kullanıcı kararı (PR 2'de uygulanacak): öğretmen çözümleri HTML'e gömülür.**
+  `verify_packages.py`'deki "Teacher fields embedded in HTML" yasağı PR 2'de gerekçesiyle
+  kaldırılır — gerekçe: öğrenci/öğretmen ayrımı kalktı (`SONRAKI_ISLER.md`), uygulama kendi kendine
+  öğrenme içindir, Sorun Çöz senaryolarının çözümleri (`network-scenarios.json` `solution`) zaten
+  gömülüdür. Yasağın yerine gelecek denetimler (test + paket doğrulaması):
+  1. Çözüm yalnız "Çözümü göster" kilidi açılınca görünür: kilit açılana kadar çözüm DOM'da
+     **oluşturulmaz** (gizli öğe olarak da bulunmaz).
+  2. Kilit birkaç başarısız "Kontrol et"ten ya da bütün ipuçları kullanıldıktan sonra açılır.
+  3. Çözümler tek pakettedir (`academy/teacher/` ZIP'te) ve her labın öğretmen çözümüyle 100/100
+     kontrolleri sürer.
+- **PR 3 Arıza senaryosu ekranı** (`dolu-4.png`): belirti kartı; Belirti → Teşhis → Kanıt →
+  Düzeltme; düzeltmeden önce katman seçici (L1, L2, L3, servis, uygulama); terminalden iğnelenen
+  kanıt defteri; kök neden çözülene kadar gizli (#86, `sharedCauseReveal`). Değerlendirme: bağlantı
+  (mevcut hedefler), doğru kök neden (seçilen katman/teşhis ⇄ `cause`; gerekirse tariflere yalnız
+  ekleme olarak `layer`), gereksiz değişiklik (başlangıç/bitiş running-config farkı ⇄ çözümün
+  farkı; fazlası uyarı). "Çözümü göster" (ipuçlarının son basamağı; tarifte `solution` var).
+  Kavramsal BGP aynı ekranda "motor yok" rozetiyle (`TROUBLESHOOT_TASKS` `bgp`).
+- **PR 4 Müfredat haritası ve ders** (`dolu-1.png`, `dolu-2.png`): seviye başına konu kartları
+  (durum, pratik türü etiketi Simülatör/Canlı Lab/Okuma), kaldığın yerden devam, son arıza
+  senaryoları; ders ekranında yedi parçalı adım çubuğu, çıktı okuma bloğunda satır vurgusu ve yan
+  açıklama, konunun senaryolarına geçiş (`docs/MUFREDAT.md` eşlemesi, `student-flow.js` kurs →
+  ayrıntı eşlemesi). İçerik verisine dokunulmaz.
+
+Uygulama notları (PR 1'de öğrenilenler):
+- `simulator/network-scenarios.js` `accessibilityStyle` bütün `button,input,select`'e
+  `background-color: var(--panel2) !important` ve `color: var(--text) !important` verir; taslak
+  düğme biçimleri için daha özgül seçiciyle `!important` gerekir (bkz. `08-shell.css`).
+- `01-base.css`'teki genel `.active { background: #1b355a }` kuralı her `.active` öğeyi boyar.
+- Eski stil dosyalarında (03–07) sabit koyu renkler vardı; PR 1 bunları token'a bağladı
+  (`--panel`, `--panel2`, `--line`, `--text`, `--muted`, `--accent`, `--accent-soft`,
+  `--accent-text`). Yeni ekranlar yalnız token kullanmalı.
+- `data-area` yalnız `#areaTabs`'ta olmalı (testler `[data-area="lab"]` tıklar; ikinci eşleşme
+  Playwright strict mode hatası verir). Şerit `data-rail` kullanır.
+- Ekran görüntüleri: 1280 px, `localStorage aglab-theme` ile tema; taslakla yan yana görüntü
+  PIL ile (`docs/arayuz/pr1/`). PR açıklamasında raw.githubusercontent bağlantıları.
 
 ## Birleşen ve açık işler
 

@@ -1,4 +1,8 @@
-"""Validate the two offline Academy archives, including content and source separation."""
+"""Validate the single offline release archive (Academy content, sources and build identity).
+
+Arayüz yenilemesi PR 1: öğrenci/öğretmen ayrımı kalktı; tek paket üretilir. Öğretmen çözümleri
+(`academy/teacher/`) ve kaynaklar (`academy/source/`) aynı ZIP'tedir. HTML'e yalnız öğrenci
+alanları gömülür; çözümlerle yapılan 100/100 kontrolleri testlerde kalır."""
 
 import hashlib, json, os, re, sys, zipfile
 
@@ -38,7 +42,7 @@ def build_release_manifest(root):
     }
 
 
-def verify_release_packages(student_path, teacher_path):
+def verify_release_packages(package_path):
     ids = {f"AGL-{i:03d}" for i in range(1, 41)}
     docs = {
         "AKADEMI.md",
@@ -50,18 +54,17 @@ def verify_release_packages(student_path, teacher_path):
     def read_json(archive, name):
         return json.loads(archive.read(name).decode("utf-8"))
 
-    with zipfile.ZipFile(student_path) as student, zipfile.ZipFile(teacher_path) as teacher:
-        for archive in [student, teacher]:
-            names = archive.namelist()
-            assert len(names) == len(set(names)), "Duplicate ZIP entry"
-            assert archive.testzip() is None, "ZIP CRC failure"
-            assert docs <= set(names), "Missing Academy documentation: " + str(docs - set(names))
-            audit = read_json(archive, "academy/adaptation-audit.json")
-            assert (
-                len(audit) == 40 and {row["id"] for row in audit} == ids
-            ), "Incomplete adaptation audit"
-        student_names = set(student.namelist())
-        teacher_names = set(teacher.namelist())
+    with zipfile.ZipFile(package_path) as student:
+        teacher = student
+        names = student.namelist()
+        assert len(names) == len(set(names)), "Duplicate ZIP entry"
+        assert student.testzip() is None, "ZIP CRC failure"
+        assert docs <= set(names), "Missing Academy documentation: " + str(docs - set(names))
+        audit = read_json(student, "academy/adaptation-audit.json")
+        assert (
+            len(audit) == 40 and {row["id"] for row in audit} == ids
+        ), "Incomplete adaptation audit"
+        student_names = teacher_names = set(names)
         assert {
             "docs/UYUMLULUK_MATRISI.md",
             "docs/GELISMIS_MOTOR_ENTEGRASYON.md",
@@ -87,9 +90,6 @@ def verify_release_packages(student_path, teacher_path):
             "unified-rc-performance.json",
         } <= student_names, "Missing unified RC evidence/tests"
         assert "tests/aglab_test_support.py" in student_names, "Missing shared test fixture"
-        assert not any(
-            n.startswith(("academy/teacher/", "academy/source/")) for n in student_names
-        ), "Teacher/source data in student ZIP"
         assert {
             n for n in student_names if n.startswith("academy/student/") and n.endswith(".json")
         } == {f"academy/student/{i}.json" for i in ids}, "Student lab inventory mismatch"
@@ -123,9 +123,6 @@ def verify_release_packages(student_path, teacher_path):
         assert (
             student.read("html-build.sha256").decode().split()[0] == manifest["html_sha256"]
         ), "Unexpected compiled HTML identity"
-        assert (
-            read_json(teacher, "html-build-manifest.json") == manifest
-        ), "Student/teacher build identity mismatch"
         assert manifest.get("source_commit") is None or re.fullmatch(
             "[0-9a-f]{40}", manifest["source_commit"]
         ), "Invalid build commit"
@@ -153,7 +150,7 @@ def verify_release_packages(student_path, teacher_path):
             assert generated in html, "Stale/missing embedded module: " + source
         assert (
             "teacher_solution" not in html and "target_topology" not in html
-        ), "Teacher fields in student HTML"
+        ), "Teacher fields embedded in HTML (solutions stay in academy/teacher/)"
         match = re.search(r"^const academyLabs = (.+);\r?$", html, re.MULTILINE)
         assert match, "Embedded Academy data missing"
         embedded = json.loads(match.group(1))
@@ -182,12 +179,12 @@ def verify_release_packages(student_path, teacher_path):
     return {
         "labs": 40,
         "source_hashes": 40,
-        "student_teacher_separation": True,
+        "single_package": True,
         "documentation": True,
     }
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        raise SystemExit("Usage: python verify_packages.py student.zip teacher.zip")
-    print(json.dumps(verify_release_packages(sys.argv[1], sys.argv[2]), ensure_ascii=False))
+    if len(sys.argv) != 2:
+        raise SystemExit("Usage: python verify_packages.py AgLab_Otomatik_Dogrulanmis_Paket.zip")
+    print(json.dumps(verify_release_packages(sys.argv[1]), ensure_ascii=False))

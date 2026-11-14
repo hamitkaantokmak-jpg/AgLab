@@ -293,15 +293,13 @@
         el(
           'p',
           target
-            ? 'Bu konu için doğrudan başlanabilen bir temel AğLab laboratuvarı mevcut: ' +
-                target +
-                '.'
-            : 'Bu konuya özel otomatik puanlanan laboratuvar henüz yok. Serbest laboratuvarı açıp öğrendiklerini dene.',
+            ? 'Bu konu için doğrudan başlanabilen bir yönlendirmeli lab mevcut: ' + target + '.'
+            : 'Bu konuya özel otomatik puanlanan lab henüz yok. Simülatörü serbest çalışmada açıp öğrendiklerini dene.',
         ),
       );
       sheet.append(
         btn(
-          target ? 'Rehberli laboratuvarı aç: ' + target : 'Serbest laboratuvarı aç',
+          target ? 'Yönlendirmeli labı aç: ' + target : 'Simülatörü serbest çalışmada aç',
           () => {
             rr.labOpened = true;
             save();

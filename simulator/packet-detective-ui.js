@@ -11,7 +11,7 @@
   panel.append(title);
   const help = document.createElement('p');
   help.textContent =
-    'Önce CLI üzerinden ping veya Ethernet testi çalıştır. Motor kayıtlarını adım adım incele; burada yeni paket gönderilmez. Kaynak etiketine bak: adaptör tanısı ve ayrı Lab raporu paket yakalaması değildir.';
+    'Önce CLI üzerinden ping veya Ethernet testi çalıştır. Motor kayıtlarını adım adım incele; burada yeni paket gönderilmez. Kaynak etiketine bak: adaptör tanısı ve Canlı Lab raporu paket yakalaması değildir.';
   panel.append(help);
   const controls = document.createElement('div');
   const refresh = document.createElement('button');
@@ -116,7 +116,7 @@
     const r = event.detail;
     if (r?.scope !== 'separate-lab' || !Array.isArray(r.events)) return;
     eventSource = 'native-report';
-    eventOrigin = r.engine + ' · ayrı Lab raporu, imzası doğrulanmadı';
+    eventOrigin = r.engine + ' · Canlı Lab raporu, imzası doğrulanmadı';
     allEvents = { events: r.events, overflow: 0, truncated: false };
     filter.value = 'all';
     snapshot = filtered();

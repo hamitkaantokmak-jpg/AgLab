@@ -86,6 +86,8 @@ class CommonEngineTests(unittest.TestCase):
         self.assertTrue(all(r["ok"] for r in REPORT["scenarios"]), REPORT["scenarios"])
         self.assertEqual(self.run_js("academyEngine.snapshot()"), before)
         self.assertEqual(self.page.locator("#academyHints").inner_text(), hints)
+        # Arayüz yenilemesi: regresyon denetimi öğrencinin yolundan çıktı, "Gelişmiş" bölümünde
+        self.page.click('[data-rail="advanced"]')
         self.page.click("#runRegressionAudit")
         expect(self.page.locator("#regressionAuditSummary")).to_contain_text("0 başarısız")
 

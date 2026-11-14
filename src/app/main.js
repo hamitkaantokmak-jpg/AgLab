@@ -251,7 +251,7 @@ $('scenarioList').addEventListener('click', (e) => {
   if (b) load(+b.dataset.s);
 });
 $('mission').innerHTML =
-  '<div class="mission-top"><span class="tag">LABBER MOTORU</span></div><h3>Bir arıza görevi seç</h3><p>Her görev Lab bölümünde gerçek bir topolojide açılır: belirtiyi cihaz terminallerinden araştır, düzelt ve başarıyı gerçek ping ile doğrula. Kavramsal alıştırmalar motor kullanmaz ve öyle etiketlidir.</p>';
+  '<div class="mission-top"><span class="tag">LABBER MOTORU</span></div><h3>Bir arıza görevi seç</h3><p>Her görev Simülatör’de gerçek bir topolojide açılır: belirtiyi cihaz terminallerinden araştır, düzelt ve başarıyı gerçek ping ile doğrula. Kavramsal alıştırmalar motor kullanmaz ve öyle etiketlidir.</p>';
 renderList();
 // Labber'da tamamlanan karşılıklar listeye yansısın
 document.addEventListener('click', (e) => {
@@ -336,7 +336,7 @@ function renderTopologyTask() {
           ports.forEach((port) => {
             const b = document.createElement('button');
             b.type = 'button';
-            b.textContent = 'Lab’da seç: ' + t.name + (port ? ' · ' + port : '');
+            b.textContent = 'Simülatör’de seç: ' + t.name + (port ? ' · ' + port : '');
             b.style.cssText = 'font-size:11px;padding:6px 8px';
             b.addEventListener('click', () => window.aglabFocusAudit(t.id, port));
             actions.appendChild(b);
@@ -345,7 +345,7 @@ function renderTopologyTask() {
       } else {
         const b = document.createElement('button');
         b.type = 'button';
-        b.textContent = 'Lab bölümünü aç';
+        b.textContent = 'Simülatörü aç';
         b.style.cssText = 'font-size:11px;padding:6px 8px';
         b.addEventListener('click', () => showArea('lab'));
         actions.appendChild(b);
@@ -377,7 +377,7 @@ $('verifyTopologyTask').addEventListener('click', () => {
   const feedback = $('topologyTaskFeedback');
   if (!report) {
     feedback.innerHTML =
-      '<div class="feedback bad">Önce Lab bölümünde Ağı denetle komutunu çalıştır.</div>';
+      '<div class="feedback bad">Önce Simülatör’de Ağı denetle komutunu çalıştır.</div>';
     return;
   }
   if (!$('topologyTaskReviewed') || !$('topologyTaskFixed')) {
@@ -391,7 +391,7 @@ $('verifyTopologyTask').addEventListener('click', () => {
       report.errors +
       ' hata ve ' +
       report.warnings +
-      ' uyarı var. Lab’a dön, düzelt ve yeniden denetle.</div>';
+      ' uyarı var. Simülatör’e dön, düzelt ve yeniden denetle.</div>';
     return;
   }
   if (!$('topologyTaskReviewed').checked || !$('topologyTaskFixed').checked) {

@@ -309,8 +309,9 @@ def run() -> int:
         lines.append(report["error"])
     (out / "test-report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    # Arayüz yenilemesi PR 1: tek paket (öğrenci/öğretmen ayrımı kalktı).
     student_zip = out / "AgLab_Otomatik_Dogrulanmis_Paket.zip"
-    teacher_zip = out / "AgLab_Akademi_Ogretmen.zip"
+    (out / "AgLab_Akademi_Ogretmen.zip").unlink(missing_ok=True)
     if report["passed"]:
         source = json.loads(
             (ROOT / "static-routing-two-routers.aglab.json").read_text(encoding="utf-8")
@@ -331,22 +332,15 @@ def run() -> int:
                 *EVIDENCE,
             ]:
                 z.write(out / name, name)
-            for f in sorted((ROOT / "academy/student").glob("*.json")):
-                z.write(f, "academy/student/" + f.name)
-            for name in ACADEMY_DOCS:
-                z.write(ROOT / name, name)
-        with zipfile.ZipFile(teacher_zip, "w", zipfile.ZIP_DEFLATED) as z:
-            z.write(out / "html-build-manifest.json", "html-build-manifest.json")
-            for folder in ["teacher", "source"]:
+            for folder in ["student", "teacher", "source"]:
                 for f in sorted((ROOT / "academy" / folder).glob("*.json")):
                     z.write(f, "academy/" + folder + "/" + f.name)
             for name in ACADEMY_DOCS:
                 z.write(ROOT / name, name)
         try:
-            package_result = verify_release_packages(student_zip, teacher_zip)
+            package_result = verify_release_packages(student_zip)
         except Exception as error:
             student_zip.unlink(missing_ok=True)
-            teacher_zip.unlink(missing_ok=True)
             report["passed"] = False
             report["package_error"] = str(error)
             (out / "test-results.json").write_text(
@@ -363,7 +357,6 @@ def run() -> int:
         print("PASS: all tests; verified ZIP:", student_zip)
     else:
         student_zip.unlink(missing_ok=True)
-        teacher_zip.unlink(missing_ok=True)
         print("FAIL: no verified release generated; see", out / "test-report.md")
     for t in report["tests"]:
         print(t["status"], t["name"])

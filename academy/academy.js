@@ -12,7 +12,7 @@ academyPanel.className = 'panel';
 academyPanel.id = 'academyPanel';
 academyPanel.innerHTML = `<h2>AğLab Akademi v1</h2>
 <details id="academyRealLab">
-<summary>Gerçek Lab tanıları</summary>
+<summary>Canlı Lab tanıları</summary>
 <p>İki router ve iki PC'den oluşan gerçek örnek topolojinin salt okunur tanılarını incele.</p>
 <p>Bu bilgisayarda öğrenci servisi çalışıyor olmalı. Öğrenci anahtarını açılan ekranda gir.</p>
 <p><a id="academyRealLabLink" href="http://127.0.0.1:8766/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Öğrenci tanılarını aç ↗</a></p>
@@ -86,7 +86,7 @@ function academyRenderEngineScope() {
     id +
     ': tarayıcıdaki AğLab eğitim simülasyonunda çalışır. ' +
     evidence +
-    ' Gerçek Lab ayrı Linux ortamında operatör kontrolü gerektirir; burada native komut çalıştırılmaz. ACL/NAT örnekleri ayrı native senaryolardır.';
+    ' Canlı Lab ayrı Linux ortamında operatör kontrolü gerektirir; burada native komut çalıştırılmaz. ACL/NAT örnekleri ayrı native senaryolardır.';
 }
 function academySearchMatches() {
   const term = ac('academySearch').value.trim().toLocaleLowerCase('tr-TR');

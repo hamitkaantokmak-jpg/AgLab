@@ -17,7 +17,8 @@
     } catch (e) {}
     apply(t);
   });
-  document.body.appendChild(btn);
+  // Arayüz yenilemesi: üst gezinmenin sağında (taslaktaki kullanıcı simgesinin yeri).
+  (document.getElementById('agTopTools') || document.body).appendChild(btn);
   apply(root.dataset.theme || 'dark');
   const terminal = document.getElementById('terminal'),
     command = document.getElementById('command'),
