@@ -2725,12 +2725,17 @@ html[data-theme='light'] button {
 }
 </style>
 <script>(function () {
+  // PR 2b: kayıtlı seçim yoksa sistem tercihi (prefers-color-scheme); o da yoksa açık tema
+  // (taslak açık temadadır).
+  let saved = null;
   try {
-    document.documentElement.dataset.theme =
-      localStorage.getItem('aglab-theme') === 'light' ? 'light' : 'dark';
-  } catch (e) {
-    document.documentElement.dataset.theme = 'dark';
-  }
+    saved = localStorage.getItem('aglab-theme');
+  } catch (e) {}
+  const system =
+    typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+  document.documentElement.dataset.theme = saved === 'light' || saved === 'dark' ? saved : system;
 })();
 </script>
 
@@ -3761,6 +3766,8 @@ html[data-theme='light'] .tag {
    Düğmeler: network-scenarios.js'nin genel `button { … !important }` kuralını aşmak için
    kimlikli seçici + !important. */
 html[data-theme='light'] {
+  /* dolu birincil düğme zemini: beyaz yazıyla WCAG AA (≥ 4.5:1) */
+  --ag-btn-strong: #2d55d6;
   --ag-term-bg: #1d2128;
   --ag-term-line: #2c323c;
   --ag-term-text: #d6dbe3;
@@ -3770,6 +3777,7 @@ html[data-theme='light'] {
   --ag-canvas: #f8f9fb;
 }
 html:not([data-theme='light']) {
+  --ag-btn-strong: #3157cc;
   --ag-term-bg: #0f1318;
   --ag-term-line: #262c36;
   --ag-term-text: #d6dbe3;
@@ -4571,7 +4579,7 @@ html:not([data-theme='light']) {
 }
 .ag-sim-catalog-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
   align-items: start;
 }
@@ -4602,12 +4610,64 @@ html:not([data-theme='light']) {
   margin-top: 14px;
 }
 /* ---- dar kaplar */
-@container agmain (max-width: 1180px) {
+/* PR 2b: kap 761–1100 px (ör. 1024 px ekran): üç dar sütunda tuval küçük kalıyordu. Görev solda dar,
+   tuval geniş; İnceleme tuvalin altında tam genişlikte (port özellikleri | show çıktısı yan
+   yana). Çalışma alanı bu genişlikte ekran boyuna sabitlenmez, sayfa kayar. */
+@container agmain (max-width: 1100px) {
+  #ptWorkbench.ag-sim {
+    height: auto;
+    min-height: 0;
+    grid-template-rows: auto auto 236px;
+  }
   .ag-sim-body {
-    grid-template-columns: 230px minmax(0, 1fr) 260px;
+    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-rows: 440px auto;
+  }
+  .ag-sim-task {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .ag-sim-stage {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .ag-sim-inspect {
+    grid-column: 1 / 3;
+    grid-row: 2;
+    max-height: 340px;
+  }
+  #agSimPane-port:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+    grid-template-rows: auto auto 1fr;
+    column-gap: 16px;
+  }
+  #agSimPane-port > .ag-sim-porthead,
+  #agSimPane-port > .ag-sim-props,
+  #agSimPane-port > .ag-sim-quick {
+    grid-column: 1;
+  }
+  #agSimPane-port > .ag-sim-showout {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    min-height: 0;
+    max-height: 270px;
   }
 }
 @container agmain (max-width: 760px) {
+  /* 1100 px kuralının sabit ızgara yerleşimi burada sıfırlanır (alt alta). */
+  .ag-sim-body {
+    grid-template-rows: none;
+  }
+  .ag-sim-task,
+  .ag-sim-stage,
+  .ag-sim-inspect {
+    grid-column: auto;
+    grid-row: auto;
+  }
+  #agSimPane-port:not([hidden]) {
+    display: flex;
+  }
   #ptWorkbench.ag-sim {
     height: auto;
     min-height: 0;
@@ -4935,6 +4995,257 @@ html:has(#area-lab.active) {
   .ag-sim-termbar {
     flex-wrap: wrap;
   }
+}
+/* ---- PR 2b: görev kataloğu (taslağın kartları) */
+.ag-sim-catalog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.ag-sim-catalog #ux14LabModes {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.ag-sim-catalog #ux14LabModes .ux14-row {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+}
+#area-lab .ag-sim-catalog .ux14-mode {
+  min-height: 0;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: none;
+}
+#area-lab .ag-sim-catalog .ux14-mode[aria-pressed='true'] {
+  background-color: var(--accent-soft) !important;
+  color: var(--accent-text) !important;
+}
+.ag-cat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+#ux14AcademySlot {
+  min-width: 0;
+}
+#ux14AcademySlot[hidden] {
+  display: none;
+}
+.ag-cat-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ag-cat-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.ag-cat-head #academyProgress {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.ag-cat-card #academyCatalogSearch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+.ag-cat-card #academyCatalogSearch label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  min-width: 0;
+}
+#area-lab .ag-cat-card input,
+#area-lab .ag-cat-card select {
+  min-height: 0;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 12px;
+}
+#area-lab .ag-cat-card button {
+  min-height: 0;
+  width: auto;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.ag-cat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 280px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+.ag-cat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ag-cat-row[hidden] {
+  display: none;
+}
+.ag-cat-row:hover {
+  background: var(--panel2);
+}
+.ag-cat-row[aria-selected='true'] {
+  background: var(--accent-soft);
+}
+.ag-cat-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ag-cat-level {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--accent-text);
+}
+.ag-cat-status {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ag-cat-row[data-done='true'] .ag-cat-status {
+  color: var(--ag-ok);
+  font-weight: 700;
+}
+.ag-cat-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ag-cat-foot select {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+#area-lab .ag-cat-foot #academyStart,
+#area-lab .ag-cat-foot #labberLabStart,
+#area-lab .ag-cat-foot #sharedScenarioLoad {
+  background-color: var(--ag-btn-strong) !important;
+  color: #fff !important;
+}
+.ag-cat-others {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  font-size: 12px;
+}
+.ag-cat-others > summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.ag-cat-others > * + * {
+  margin-top: 10px;
+}
+@container agmain (max-width: 1100px) {
+  .ag-sim-catalog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container agmain (max-width: 760px) {
+  .ag-sim-catalog-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* ---- PR 2b: çakışan etiketler, sekme okları, 390 px */
+#ptWorkbench.ag-sim .ag-label-hidden {
+  opacity: 0;
+}
+#ptWorkbench.ag-sim .ag-label-hidden:hover {
+  opacity: 1;
+}
+#ptWorkbench .ag-sim-tabscroll {
+  flex: 0 0 auto;
+  width: 24px;
+  min-height: 0;
+  padding: 2px 0;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+}
+#ptWorkbench .ag-sim-tabscroll[hidden] {
+  display: none;
+}
+@container agmain (max-width: 520px) {
+  #ptWorkbench .ag-sim-palette {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: auto;
+    gap: 2px;
+    padding: 4px;
+  }
+  #ptWorkbench.ag-sim .ag-sim-palette button {
+    width: 30px;
+    min-width: 0;
+    height: 30px;
+    flex: 0 0 auto;
+  }
+  .ag-sim-toolsep {
+    width: 1px;
+    height: auto;
+  }
+  /* Tuval en az ekran genişliği kadar yüksek. */
+  .ag-sim-canvaswrap {
+    height: max(340px, 100vw);
+  }
+}
+
+.ag-cat-rest h4 {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+}
+#ptWorkbench .ag-btn-primary,
+#ptWorkbench .ag-sim-head .ag-btn-primary {
+  background-color: var(--ag-btn-strong) !important;
+}
+.ag-cat-card #academyRealLab {
+  font-size: 12px;
+  color: var(--muted);
+}
+/* Akademi kartı: eski #academyPanel düğme/ızgara kuralları kartın diline uyar. */
+#area-lab #academyPanel.ag-cat-card {
+  display: flex;
+  padding: 14px !important;
+}
+#area-lab #academyPanel.ag-cat-card button {
+  min-height: 0;
+  width: auto;
+  padding: 5px 10px;
+  margin: 0;
+  font-size: 12px;
 }
 </style>
 </head>
@@ -62878,6 +63189,17 @@ function labberLabsRefresh() {
     list.append(li);
   }
   const done = rows.filter((o) => o.ok).length;
+  // Arayüz PR 2b: tamamlanan Labber labı Simülatör görev kataloğunda "tamamlandı" görünür.
+  if (done === rows.length && rows.length)
+    try {
+      const key = 'aglab-labber-progress-v1',
+        prog = JSON.parse(localStorage.getItem(key) || '{}') || {},
+        id = aglabLabber.lab()?.id;
+      if (id && !prog[id]?.completed) {
+        prog[id] = { completed: true };
+        localStorage.setItem(key, JSON.stringify(prog));
+      }
+    } catch (e) {}
   $p('labberLabStatus').textContent =
     done === rows.length
       ? 'Lab tamamlandı: ' + done + '/' + rows.length + ' hedef sağlandı.'
@@ -65367,6 +65689,12 @@ window.academy = {
           academyActive.probe_health,
         ).criteria.map((r) => ({ id: r.id, label: r.label, ok: r.status === 'passed' }))
       : null,
+  // Arayüz PR 2b: Simülatör görev kataloğu (satır: ad, modül; arama/ilerleme süzgeci).
+  catalog: (id) => {
+    const l = academyLabs.find((x) => x.id === id);
+    return l ? { id: l.id, title: l.title, module: l.module_id } : null;
+  },
+  searchMatches: () => academySearchMatches().map((l) => l.id),
   // Öğretmen çözümü (academy/solution-data.js); yalnız kilit açılınca gösterilir.
   solution: (id) => (Object.hasOwn(academySolutions, id) ? clone(academySolutions[id]) : null),
 };
@@ -66049,12 +66377,25 @@ function workshopView(ids, cases) {
   btn.type = 'button';
   btn.id = 'themeToggle';
   btn.className = 'aglab-theme-toggle';
+  // PR 2b: düğme şimdiki temayı değil eylemi söyler ("Koyu temaya geç"); aria-label aynı.
   function apply(t) {
     root.dataset.theme = t;
-    btn.textContent = t === 'light' ? '☾ Koyu tema' : '☀ Açık tema';
-    btn.setAttribute('aria-pressed', String(t === 'light'));
-    btn.setAttribute('aria-label', 'Renk temasını değiştir');
+    const label = t === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç';
+    btn.textContent = (t === 'light' ? '☾ ' : '☀ ') + label;
+    btn.setAttribute('aria-label', label);
+    btn.removeAttribute('aria-pressed');
   }
+  // Kullanıcı seçim yapmadıysa sistem tercihi değişince tema da değişir.
+  try {
+    const media = matchMedia('(prefers-color-scheme: dark)');
+    media.addEventListener('change', (e) => {
+      let saved = null;
+      try {
+        saved = localStorage.getItem('aglab-theme');
+      } catch (err) {}
+      if (saved !== 'light' && saved !== 'dark') apply(e.matches ? 'dark' : 'light');
+    });
+  } catch (e) {}
   btn.addEventListener('click', () => {
     const t = root.dataset.theme === 'light' ? 'dark' : 'light';
     try {
@@ -66064,7 +66405,7 @@ function workshopView(ids, cases) {
   });
   // Arayüz yenilemesi: üst gezinmenin sağında (taslaktaki kullanıcı simgesinin yeri).
   (document.getElementById('agTopTools') || document.body).appendChild(btn);
-  apply(root.dataset.theme || 'dark');
+  apply(root.dataset.theme || 'light');
   const terminal = document.getElementById('terminal'),
     command = document.getElementById('command'),
     toast = document.getElementById('toast');
@@ -67065,7 +67406,32 @@ function workshopView(ids, cases) {
     role: 'group',
     'aria-label': 'Terminal cihazı',
   });
-  termBar.append(termTabs);
+  // PR 2b: sekmeler taşınca kaydırma okları (dar ekranda "SW-0" gibi kesilmez).
+  const tabScroll = (dir) => {
+    const b = make('button', {
+      type: 'button',
+      class: 'ag-sim-tabscroll',
+      'data-dir': String(dir),
+      'aria-label': dir < 0 ? 'Önceki cihaz sekmeleri' : 'Sonraki cihaz sekmeleri',
+      text: dir < 0 ? '‹' : '›',
+      hidden: true,
+    });
+    b.addEventListener('click', () =>
+      termTabs.scrollBy({ left: dir * Math.max(80, termTabs.clientWidth * 0.7), behavior: 'auto' }),
+    );
+    return b;
+  };
+  const tabPrev = tabScroll(-1),
+    tabNext = tabScroll(1);
+  const syncTabArrows = () => {
+    const over = termTabs.scrollWidth > termTabs.clientWidth + 1;
+    tabPrev.hidden = tabNext.hidden = !over;
+    tabPrev.disabled = termTabs.scrollLeft <= 0;
+    tabNext.disabled = termTabs.scrollLeft + termTabs.clientWidth >= termTabs.scrollWidth - 1;
+  };
+  termTabs.addEventListener('scroll', syncTabArrows, { passive: true });
+  if (typeof ResizeObserver === 'function') new ResizeObserver(syncTabArrows).observe(termTabs);
+  termBar.append(tabPrev, termTabs, tabNext);
   termPane.append(termBar);
   const simPane = make('section', {
     class: 'ag-sim-simpane',
@@ -67178,40 +67544,233 @@ function workshopView(ids, cases) {
   if (legacyHead && !legacyHead.querySelector('button, input, select')) legacyHead.remove();
 
   // ---------------------------------------------------------------- görev seç kartı
+  // PR 2b: taslağın kart dili. Üç kart (Akademi labları · Labber labları · Hazır senaryolar);
+  // her görev tek satır (ad, seviye, durum). Satıra basmak görevi seçer (asıl seçim kutusu da
+  // kartın altında görünür kalır), "Başlat" açar. Uzun açıklamalar, motor notları, eski deney
+  // ortamı ve hızlı başlangıç daraltılmış "Diğer araçlar"da.
   const catalog = make('section', {
     class: 'card ag-sim-catalog',
     id: 'agSimCatalog',
     'aria-labelledby': 'agSimCatalogTitle',
   });
-  catalog.append(
+  const catalogHead = make(
+    'div',
+    { class: 'ag-sim-catalog-head' },
     make(
       'div',
-      { class: 'ag-sim-catalog-head' },
+      {},
       make('h2', { id: 'agSimCatalogTitle', text: 'Görev seç' }),
       make('p', {
         class: 'muted small',
-        text: 'Akademi labı, Labber labı ya da hazır arıza senaryosu yukarıdaki çalışma alanında açılır. Seçmek çalışmanı değiştirmez; başlatmak topolojiyi değiştirir.',
+        text: 'Seçmek çalışmanı değiştirmez; başlatmak topolojiyi değiştirir.',
       }),
     ),
   );
   const catalogGrid = make('div', { class: 'ag-sim-catalog-grid' });
-  catalog.append(catalogGrid);
+  const others = make(
+    'details',
+    { class: 'ag-cat-others', id: 'agSimCatalogOthers' },
+    make('summary', { text: 'Diğer araçlar · açıklamalar, motor notları, eski deney ortamı' }),
+  );
+  catalog.append(catalogHead, catalogGrid, others);
   const modes = $('ux14LabModes'),
     academySlot = $('ux14AcademySlot');
-  if (modes) catalog.insertBefore(modes, catalogGrid);
-  if (academySlot) catalogGrid.append(academySlot);
-  for (const id of ['labberLabsPanel', 'sharedScenarioPanel', 'labExperiments']) {
-    const n = $(id);
-    if (n) catalogGrid.append(n);
+  if (modes) {
+    // Rehberli / Serbest: kısa segment (açıklama satırı Diğer araçlar'da).
+    modes.querySelector('h3')?.remove();
+    const info = $('ux14ModeInfo');
+    catalogHead.append(modes);
+    if (info) others.append(info);
   }
-  const more = $('ux14LabMore');
-  if (more) {
-    $('uxLabScenarios')?.remove();
-    catalog.append(more);
+  const PROGRESS = {
+    academy: 'aglab-academy-progress-v1',
+    labber: 'aglab-labber-progress-v1',
+    shared: 'aglab-shared-engine-progress-v1',
+  };
+  const readProgress = (key) => {
+    try {
+      const v = JSON.parse(localStorage.getItem(PROGRESS[key]) || '{}');
+      return v && typeof v === 'object' ? v : {};
+    } catch (e) {
+      return {};
+    }
+  };
+  const catCards = {};
+  // Kart, eski panelin kendisidir (kimlik korunur: #academyPanel, #labberLabsPanel,
+  // #sharedScenarioPanel); panelin kart dışında kalan uzun metinleri "Diğer araçlar"a taşınır.
+  function catCard(key, panel, title, select, start, keep = []) {
+    const card = panel || make('section', {});
+    const rest = make(
+      'div',
+      { class: 'ag-cat-rest', 'data-cat-rest': key },
+      make('h4', { text: title + ' · açıklamalar ve notlar' }),
+    );
+    const list = make('ul', {
+      class: 'ag-cat-list',
+      id: 'agSimCatList-' + key,
+      role: 'listbox',
+      'aria-label': title,
+    });
+    const head = make('div', { class: 'ag-cat-head' });
+    const foot = make('div', { class: 'ag-cat-foot' });
+    if (select) {
+      select.setAttribute('aria-label', title + ': seçili görev');
+      foot.append(make('span', { class: 'muted small', text: 'Seçili' }), select);
+    }
+    if (start) foot.append(start);
+    // Kalan çocuklar (seçim kutusunun boş etiketi dahil) açıklama bölümüne.
+    for (const n of [...card.childNodes]) {
+      if (keep.includes(n)) continue;
+      if (n.nodeType === 1 && n.matches('label') && !n.querySelector('input,select,button'))
+        n.textContent = '';
+      if (n.nodeType === 3 && !n.textContent.trim()) n.remove();
+      else if (n.nodeType === 1 && !n.id && !n.textContent.trim() && !n.querySelector('[id]'))
+        n.remove();
+      else rest.append(n);
+    }
+    card.removeAttribute('style');
+    card.classList.add('ag-cat-card');
+    card.dataset.cat = key;
+    card.replaceChildren(head, ...keep.filter(Boolean), list, foot);
+    if (rest.childNodes.length > 1) others.append(rest);
+    catCards[key] = { card, list, select, head };
+    if (select) select.addEventListener('change', () => renderCatalog(key));
+    return { card, head };
   }
+  // Akademi kartı (#academyPanel; ux14 yuvasında, Serbest modda gizlenir — eski davranış).
+  const academyPanel = $('academyPanel');
+  const academySearch = $('academyCatalogSearch');
+  const academySearchStatus = $('academySearchStatus');
+  if (academySearchStatus) others.append(academySearchStatus);
+  const ac1 = catCard(
+    'academy',
+    academyPanel,
+    'Akademi labları',
+    $('academySelect'),
+    $('academyStart'),
+    // "Canlı Lab tanıları" bağlantısı kartta (real-lab öğrenci akışı; davranış aynı).
+    [academySearch, $('academyRealLab')],
+  );
+  ac1.head.append(make('h3', { text: 'Akademi labları' }));
+  if ($('academyProgress')) ac1.head.append($('academyProgress'));
+  if (academySlot) {
+    if (academyPanel && academyPanel.parentElement !== academySlot)
+      academySlot.append(academyPanel);
+    catalogGrid.append(academySlot);
+  } else if (academyPanel) catalogGrid.append(academyPanel);
+  // Labber kartı: "Labber labları (13)" başlığı (#labberLabsTitle) korunur.
+  const labberTitle = $('labberLabsTitle');
+  const lb = catCard(
+    'labber',
+    $('labberLabsPanel'),
+    'Labber labları',
+    $('labberLabSelect'),
+    $('labberLabStart'),
+  );
+  if (labberTitle) lb.head.append(labberTitle);
+  catalogGrid.append(lb.card);
+  const sharedCount = $('sharedScenarioSelect')?.options.length || 0;
+  const sh = catCard(
+    'shared',
+    $('sharedScenarioPanel'),
+    'Hazır senaryolar',
+    $('sharedScenarioSelect'),
+    $('sharedScenarioLoad'),
+  );
+  sh.head.append(make('h3', { text: 'Hazır senaryolar (' + sharedCount + ')' }));
+  catalogGrid.append(sh.card);
+  // Eski araçlar.
+  for (const n of [$('labExperiments'), $('ux14LabMore')]) if (n) others.append(n);
+  $('uxLabScenarios')?.remove();
   work.after(catalog);
   const heading = area.querySelector(':scope > .lab-heading');
   heading?.remove();
+
+  function rowMeta(key, value, text) {
+    if (key === 'academy') {
+      const lab = window.academy?.catalog?.(value);
+      const best = readProgress('academy')[value]?.bestScore;
+      return {
+        name: lab ? value + ' ' + lab.title : text,
+        level: lab?.module || '',
+        status: best === 100 ? '✓ tamamlandı' : Number.isInteger(best) ? 'en iyi ' + best : '',
+        done: best === 100,
+      };
+    }
+    if (key === 'labber') {
+      const info = window.aglabLabberLabs?.list().find((l) => l.id === value);
+      const done = !!readProgress('labber')[value]?.completed;
+      return {
+        name: info?.title || text,
+        level: info?.level || '',
+        status: done ? '✓ tamamlandı' : '',
+        done,
+      };
+    }
+    const done = !!readProgress('shared')[value]?.completed;
+    return { name: text, level: '', status: done ? '✓ tamamlandı' : '', done };
+  }
+  function renderCatalog(only) {
+    const academyFiltered = typeof window.academy?.searchMatches === 'function';
+    const visibleAcademy = new Set(academyFiltered ? window.academy.searchMatches() : []);
+    for (const [key, c] of Object.entries(catCards)) {
+      if (only && only !== key) continue;
+      if (!c.select) continue;
+      const active = window.aglabSimWorkspace?.context?.();
+      c.list.replaceChildren(
+        ...[...c.select.options].map((o) => {
+          const m = rowMeta(key, o.value, o.textContent);
+          const selected = o.value === c.select.value;
+          const isActive = active && active.kind === key && active.id === o.value;
+          const row = make(
+            'li',
+            {
+              role: 'option',
+              class: 'ag-cat-row',
+              'data-value': o.value,
+              'aria-selected': String(selected),
+              'data-done': m.done ? 'true' : null,
+              hidden: key === 'academy' && academyFiltered && !visibleAcademy.has(o.value),
+              tabindex: selected ? '0' : '-1',
+            },
+            make('span', { class: 'ag-cat-name', text: m.name }),
+            make('span', { class: 'ag-cat-level', text: m.level || '' }),
+            make('span', {
+              class: 'ag-cat-status',
+              text: isActive ? 'açık' : m.status || '—',
+            }),
+          );
+          const pick = () => {
+            c.select.value = o.value;
+            c.select.dispatchEvent(new Event('change', { bubbles: true }));
+          };
+          row.addEventListener('click', pick);
+          row.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              pick();
+            }
+          });
+          return row;
+        }),
+      );
+      // Seçili satır listenin görünür kısmında (sayfa kaydırılmaz).
+      const sel = c.list.querySelector('[aria-selected="true"]');
+      if (sel) {
+        const top = sel.offsetTop - c.list.offsetTop;
+        if (
+          top < c.list.scrollTop ||
+          top + sel.offsetHeight > c.list.scrollTop + c.list.clientHeight
+        )
+          c.list.scrollTop = Math.max(0, top - c.list.clientHeight / 2);
+      }
+    }
+  }
+  for (const id of ['academySearch', 'academyProgressFilter'])
+    $(id)?.addEventListener(id === 'academySearch' ? 'input' : 'change', () =>
+      renderCatalog('academy'),
+    );
+  document.addEventListener('aglab:academy-checked', () => renderCatalog('academy'));
 
   // ---------------------------------------------------------------- bağlam
   // Görev kartının bölümleri: her bağlamın kendi öğeleri tek kapta; yalnız etkin olan görünür.
@@ -67451,12 +68010,12 @@ function workshopView(ids, cases) {
     }
     schedule();
   });
-  // Sıradaki ipucu: ilk sağlanmamış hedefin bir sonraki basamağı (neye bak → kavram → komut);
-  // sağlanmamış hedeflerin basamakları bitince kalan hedefler.
+  // Sıradaki ipucu: ilk sağlanmamış hedefin bir sonraki basamağı (neye bak → kavram → komut).
+  // PR 2b: yalnız sağlanmamış hedefler dolaşılır; hepsinin basamakları açıksa ipucu kalmaz.
   function nextLabberHint(e, rows) {
     const level = hintLevels(e);
     const more = (o) => (level[o.id] || 0) < o.hints.length;
-    const goal = rows.find((o) => !o.ok && more(o)) || rows.find(more);
+    const goal = rows.find((o) => !o.ok && more(o));
     return goal ? { goal, index: rows.indexOf(goal), level: level[goal.id] || 0 } : null;
   }
   labberHint.addEventListener('click', () => {
@@ -67514,7 +68073,10 @@ function workshopView(ids, cases) {
     }
   }
   function quickCommands(dev, port, iface) {
-    if (dev.type === 'PC') return ['show ip'];
+    // PC/sunucu (VPCS): Labber'ın desteklediği yan etkisiz show komutları. Ping trafik ürettiği
+    // için hızlı çıktıda yok; sonucu ARP tablosunda (show arp) görünür.
+    if (dev.type === 'PC') return ['show ip', 'show arp'];
+    if (dev.type === 'Server') return ['show ip', 'show arp', 'show services'];
     if (dev.type === 'Switch')
       return [
         iface?.mode === 'trunk'
@@ -67706,6 +68268,47 @@ function workshopView(ids, cases) {
     );
   }
   cliSelect?.addEventListener('change', () => renderTermTabs());
+  // Sekme değişince etkin sekme görünür alana gelir ve oklar güncellenir.
+  new MutationObserver(() => {
+    const on = termTabs.querySelector('[aria-pressed="true"]');
+    if (on) {
+      const l = on.offsetLeft - termTabs.offsetLeft,
+        r = l + on.offsetWidth;
+      if (l < termTabs.scrollLeft) termTabs.scrollLeft = l;
+      else if (r > termTabs.scrollLeft + termTabs.clientWidth)
+        termTabs.scrollLeft = r - termTabs.clientWidth;
+    }
+    syncTabArrows();
+  }).observe(termTabs, { childList: true });
+
+  // ---------------------------------------------------------------- etiket çakışması
+  // PR 2b: port/bağlantı etiketleri birbirine ya da bir düğüm kartına binerse soluklaşır
+  // (gizlenir); üzerine gelince ya da bağlantının kablosuna gelince görünür.
+  let declutterFrame = 0;
+  function declutter() {
+    declutterFrame = 0;
+    const rects = [...canvas.querySelectorAll('g[data-id] rect')].map((r) =>
+      r.getBoundingClientRect(),
+    );
+    const kept = [];
+    const hit = (a, b) =>
+      a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+    for (const t of canvas.querySelectorAll('text.pt-edge-label, text.pt-port-label')) {
+      t.classList.remove('ag-label-hidden');
+      const b = t.getBoundingClientRect();
+      if (!b.width) continue;
+      if (kept.some((k) => hit(k, b)) || rects.some((r) => hit(r, b)))
+        t.classList.add('ag-label-hidden');
+      else kept.push(b);
+    }
+  }
+  new MutationObserver(() => {
+    if (!declutterFrame) declutterFrame = requestAnimationFrame(declutter);
+  }).observe(canvas, { childList: true });
+  if (typeof ResizeObserver === 'function')
+    new ResizeObserver(() => {
+      if (!declutterFrame) declutterFrame = requestAnimationFrame(declutter);
+    }).observe(canvas);
 
   // ---------------------------------------------------------------- zaman çizelgesi
   const simRows = $('simulationRows');
@@ -67966,8 +68569,13 @@ function workshopView(ids, cases) {
     }
     return c;
   }
+  let catalogKey; // ilk yenilemede katalog çizilir
   function refresh() {
     const c = syncContext();
+    if (catalogKey !== c.key) {
+      catalogKey = c.key;
+      renderCatalog();
+    }
     title.textContent =
       'Simülatör · ' +
       (c.kind === 'academy'
@@ -67992,9 +68600,11 @@ function workshopView(ids, cases) {
       const n = nextLabberHint(lockEntry(c.key), labberGoals());
       labberHint.textContent = n
         ? 'İpucu · hedef ' + (n.index + 1) + ': ' + n.level + '/' + n.goal.hints.length
-        : 'İpucu · hepsi açık';
+        : 'İpuçları açık';
       labberHint.disabled = !n;
-      labberHint.title = n ? 'Sıradaki: ' + n.goal.title : 'Bütün ipucu basamakları açıldı.';
+      labberHint.title = n
+        ? 'Sıradaki: ' + n.goal.title
+        : 'Sağlanmamış hedeflerin bütün ipucu basamakları açık.';
     }
     meta.textContent =
       c.kind === 'academy'

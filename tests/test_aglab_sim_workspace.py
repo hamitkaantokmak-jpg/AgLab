@@ -354,7 +354,10 @@ class SimWorkspaceTests(unittest.TestCase):
         self.assertEqual((lock["commandsOpen"], lock["commandsNeeded"]), (len(unmet), len(unmet)))
         self.assertEqual(lock["hintsUsed"], needed)
         self.assertLess(lock["hintsUsed"], lock["hintsTotal"])
-        expect(p.locator("#agSimLabberHint")).not_to_have_text("İpucu · hepsi açık")
+        # PR 2b: ipucu düğmesi yalnız sağlanmamış hedefleri dolaşır; hepsi açıkken sağlanmış
+        # hedefe ("hedef 1: 0/3") dönmez.
+        expect(p.locator("#agSimLabberHint")).to_have_text("İpuçları açık")
+        expect(p.locator("#agSimLabberHint")).to_be_disabled()
         for g in unmet:
             expect(
                 p.locator('#agSimLabberHints > li[data-goal="%s"] [data-step="3"]' % g["id"])
@@ -465,13 +468,19 @@ class SimWorkspaceTests(unittest.TestCase):
             b = p.locator(sel).bounding_box()
             self.assertLessEqual(b["y"] + b["height"], top["y"] + top["height"] + 0.5, sel)
             self.assertLessEqual(b["y"] + b["height"], head["y"], sel)
-        # Üç sütun yan yana.
+        # PR 2b: 1024'te Görev dar sütun, tuval geniş; İnceleme tuvalin altında tam genişlikte.
         task, stage, inspect = (
             p.locator(s).bounding_box() for s in ["#agSimTask", "#agSimStage", "#agSimInspect"]
         )
         self.assertLess(task["x"] + task["width"], stage["x"])
-        self.assertLess(stage["x"] + stage["width"], inspect["x"])
+        self.assertGreater(stage["width"], 600)
+        self.assertGreaterEqual(inspect["y"], stage["y"] + stage["height"] - 0.5)
+        self.assertAlmostEqual(inspect["x"], task["x"], delta=1)
         self.assertLessEqual(inspect["x"] + inspect["width"], 1024 + 0.5)
+        # Port özellikleri ve show çıktısı yan yana.
+        props = p.locator("#agSimPortProps").bounding_box()
+        out = p.locator("#agSimShowOut").bounding_box()
+        self.assertLess(props["x"] + props["width"], out["x"])
         # Palet tuvalin dışında: hiçbir düğümün üstüne binmez.
         pal = p.locator(".ag-sim-palette").bounding_box()
         for i in range(p.locator("#ptCanvas g[data-id]").count()):
@@ -710,6 +719,215 @@ class SimWorkspaceTests(unittest.TestCase):
             centers.append(b["y"] + b["height"] / 2)
         self.assertLess(max(centers) - min(centers), 3, centers)
         self.assertLess(bar.bounding_box()["height"], 40)
+
+    # ------------------------------------------------------------ PR 2b
+    def test_1280_keeps_three_columns(self):
+        p = self.page
+        p.set_viewport_size({"width": 1280, "height": 800})
+        task, stage, inspect = (
+            p.locator(s).bounding_box() for s in ["#agSimTask", "#agSimStage", "#agSimInspect"]
+        )
+        self.assertLess(task["x"] + task["width"], stage["x"])
+        self.assertLess(stage["x"] + stage["width"], inspect["x"])
+        self.assertAlmostEqual(task["y"], inspect["y"], delta=2)
+
+    def test_catalog_cards_rows_and_other_tools(self):
+        p = self.page
+        p.set_viewport_size({"width": 1280, "height": 900})
+        cards = p.locator("#agSimCatalog .ag-cat-card")
+        self.assertEqual(cards.count(), 3)
+        titles = [cards.nth(i).locator(".ag-cat-head h3").text_content() for i in range(3)]
+        self.assertTrue(titles[0].startswith("Akademi labları"), titles)
+        self.assertTrue(titles[1].startswith("Labber labları"), titles)
+        self.assertTrue(titles[2].startswith("Hazır senaryolar"), titles)
+        # Her görev tek satır: ad, seviye, durum; satır sayısı seçenek sayısı kadar.
+        for key, sel in [
+            ("academy", "#academySelect"),
+            ("labber", "#labberLabSelect"),
+            ("shared", "#sharedScenarioSelect"),
+        ]:
+            rows = p.locator("#agSimCatList-%s .ag-cat-row" % key)
+            self.assertEqual(rows.count(), p.locator(sel + " option").count(), key)
+            first = rows.first
+            for part in (".ag-cat-name", ".ag-cat-level", ".ag-cat-status"):
+                self.assertEqual(first.locator(part).count(), 1, (key, part))
+            box = first.bounding_box()
+            self.assertLess(box["height"], 40, key)
+        # Seviye: Akademi modülü, Labber labının düzeyi.
+        expect(
+            p.locator("#agSimCatList-academy .ag-cat-row").first.locator(".ag-cat-level")
+        ).to_have_text("M1")
+        level = p.evaluate("aglabLabberLabs.list()[0].level")
+        expect(
+            p.locator("#agSimCatList-labber .ag-cat-row").first.locator(".ag-cat-level")
+        ).to_have_text(level)
+        # Satıra basmak görevi seçer (başlatmaz).
+        before = p.evaluate("JSON.stringify(academyEngine.snapshot())")
+        p.locator("#agSimCatList-labber .ag-cat-row").nth(2).click()
+        lab2 = p.evaluate("aglabLabberLabs.list()[2].id")
+        expect(p.locator("#labberLabSelect")).to_have_value(lab2)
+        expect(p.locator("#agSimCatList-labber .ag-cat-row").nth(2)).to_have_attribute(
+            "aria-selected", "true"
+        )
+        self.assertEqual(p.evaluate("JSON.stringify(academyEngine.snapshot())"), before)
+        # Akademi araması satırları süzer.
+        p.fill("#academySearch", "AGL-024")
+        visible = p.locator("#agSimCatList-academy .ag-cat-row:visible")
+        expect(visible).to_have_count(1)
+        expect(visible.first).to_contain_text("AGL-024")
+        p.fill("#academySearch", "")
+        # Durum: Akademi en iyi puanı / tamamlandı; Labber labı tamamlandı; senaryo tamamlandı.
+        p.evaluate(
+            """localStorage.setItem('aglab-academy-progress-v1', JSON.stringify({'AGL-001':{bestScore:100},'AGL-002':{bestScore:60}}));
+            localStorage.setItem('aglab-shared-engine-progress-v1', JSON.stringify({'return-route':{completed:true}}));"""
+        )
+        p.reload()
+        p.click('[data-area="lab"]')
+        rows = p.locator("#agSimCatList-academy .ag-cat-row")
+        expect(rows.nth(0).locator(".ag-cat-status")).to_have_text("✓ tamamlandı")
+        expect(rows.nth(0)).to_have_attribute("data-done", "true")
+        expect(rows.nth(1).locator(".ag-cat-status")).to_have_text("en iyi 60")
+        expect(
+            p.locator('#agSimCatList-shared .ag-cat-row[data-value="return-route"] .ag-cat-status')
+        ).to_have_text("✓ tamamlandı")
+        lab = p.evaluate("aglabLabberLabs.list()[0].id")
+        p.select_option("#labberLabSelect", lab)
+        p.click("#labberLabStart")
+        expect(
+            p.locator('#agSimCatList-labber .ag-cat-row[data-value="%s"] .ag-cat-status' % lab)
+        ).to_have_text("açık")
+        for dev, script in p.evaluate("(id)=>aglabLabberLabs.solution(id)", lab).items():
+            self.cli(dev, "enable", *script.split("\n"))
+        p.wait_for_function("aglabLabberLabs.goals().every(g=>g.ok)")
+        p.fill("#ptCliInput", "")
+        p.evaluate("academyEngine.load({app:'AgLab',version:23,devices:[],links:[],nextId:1})")
+        expect(
+            p.locator('#agSimCatList-labber .ag-cat-row[data-value="%s"] .ag-cat-status' % lab)
+        ).to_have_text("✓ tamamlandı")
+        # Uzun açıklamalar ve eski deney ortamı daraltılmış "Diğer araçlar"da.
+        others = p.locator("#agSimCatalogOthers")
+        expect(others).to_have_js_property("open", False)
+        for sel in ["#labExperiments", "#academyEngineScope", "#labberLabsIntro", "#ux14LabMore"]:
+            self.assertEqual(others.locator(sel).count(), 1, sel)
+            expect(p.locator(sel)).to_be_hidden()
+
+    def test_1024_labels_do_not_overlap(self):
+        p = self.page
+        p.set_viewport_size({"width": 1024, "height": 768})
+        for lab in p.evaluate("aglabLabberLabs.list().map(l=>l.id)")[:6]:
+            p.select_option("#labberLabSelect", lab)
+            p.click("#labberLabStart")
+            p.evaluate("scrollTo(0,0)")
+            p.wait_for_timeout(150)
+            boxes = p.evaluate("""() => {
+                  const vis = [...document.querySelectorAll('#ptCanvas text.pt-edge-label, #ptCanvas text.pt-port-label')]
+                    .filter((t) => getComputedStyle(t).opacity !== '0').map((t) => t.getBoundingClientRect());
+                  const cards = [...document.querySelectorAll('#ptCanvas g[data-id] rect')].map((r) => r.getBoundingClientRect());
+                  const hit = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+                  let bad = 0;
+                  vis.forEach((a, i) => { if (vis.slice(i + 1).some((b) => hit(a, b)) || cards.some((c) => hit(a, c))) bad++; });
+                  return [bad, vis.length];
+                }""")
+            self.assertEqual(boxes[0], 0, (lab, boxes))
+            self.assertGreater(boxes[1], 0, lab)
+        # Gizlenen etiket üzerine gelince görünür.
+        hidden = p.locator("#ptCanvas text.ag-label-hidden")
+        if hidden.count():
+            self.assertIn(
+                "ag-label-hidden:hover",
+                p.evaluate(
+                    "[...document.styleSheets].flatMap(s=>{try{return [...s.cssRules].map(r=>r.cssText)}catch(e){return []}}).join(' ')"
+                ),
+            )
+
+    def test_terminal_tab_arrows_and_390_layout(self):
+        p = self.page
+        # 1024'te sekmeler seçim kutusu ve "Terminali temizle" ile aynı satırda: taşar.
+        p.set_viewport_size({"width": 1024, "height": 768})
+        tabs = p.locator("#agSimTermTabs")
+        self.assertGreater(tabs.evaluate("(e)=>e.scrollWidth"), tabs.evaluate("(e)=>e.clientWidth"))
+        nxt = p.locator('.ag-sim-tabscroll[data-dir="1"]')
+        prev = p.locator('.ag-sim-tabscroll[data-dir="-1"]')
+        expect(nxt).to_be_visible()
+        expect(prev).to_be_disabled()
+        start = tabs.evaluate("(e)=>e.scrollLeft")
+        nxt.click()
+        p.wait_for_function("document.getElementById('agSimTermTabs').scrollLeft > %d" % start)
+        expect(prev).to_be_enabled()
+        # Seçilen cihazın sekmesi görünür alana kayar.
+        last = p.evaluate("[...document.querySelectorAll('#ptCliDevice option')].at(-1).value")
+        p.select_option("#ptCliDevice", last)
+        tab = p.locator('#agSimTermTabs [data-dev="%s"]' % last).bounding_box()
+        bar = tabs.bounding_box()
+        self.assertGreaterEqual(tab["x"], bar["x"] - 1)
+        self.assertLessEqual(tab["x"] + tab["width"], bar["x"] + bar["width"] + 1)
+        # 390 px: palet tek satır küçük ikon; tuval en az ekran genişliği kadar yüksek.
+        p.set_viewport_size({"width": 390, "height": 844})
+        ys = {round(b.bounding_box()["y"]) for b in p.locator(".ag-sim-palette button").all()}
+        self.assertEqual(len(ys), 1, ys)
+        self.assertLessEqual(p.locator(".ag-sim-palette button").first.bounding_box()["width"], 34)
+        self.assertGreaterEqual(p.locator("#ptCanvas").bounding_box()["height"], 390 - 1)
+        self.assertLessEqual(p.evaluate("document.documentElement.scrollWidth"), 390)
+        # Oklar yalnız taşma varken görünür.
+        p.set_viewport_size({"width": 1600, "height": 900})
+        p.wait_for_timeout(100)
+        self.assertLessEqual(
+            tabs.evaluate("(e)=>e.scrollWidth"), tabs.evaluate("(e)=>e.clientWidth") + 1
+        )
+        expect(nxt).to_be_hidden()
+
+    def test_pc_quick_show_includes_arp(self):
+        p = self.page
+        snap = p.evaluate("academyEngine.snapshot()")
+        pc1, pc2 = [d for d in snap["devices"] if d["type"] == "PC"][:2]
+        self.cli(pc1["id"], "ping " + pc2["ip"])
+        p.locator('#ptCanvas g[data-id="%s"]' % pc1["id"]).click()
+        p.keyboard.press("Escape")
+        cmds = p.locator("#agSimQuick [data-show]").evaluate_all("(bs)=>bs.map(b=>b.dataset.show)")
+        self.assertEqual(cmds, ["show ip", "show arp"])
+        p.click('#agSimQuick [data-show="show arp"]')
+        expect(p.locator("#agSimShowOut")).to_contain_text("show arp")
+        expect(p.locator("#agSimShowOut")).to_contain_text(pc2["ip"])
+        self.assertNotIn("ping", " ".join(cmds))
+
+
+class ThemeDefaultTests(unittest.TestCase):
+    """PR 2b: kayıtlı seçim yoksa sistem tercihi; tercih yoksa açık. Düğme eylemi söyler."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pw = sync_playwright().start()
+        cls.browser = launch_chromium(cls.pw)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.browser.close()
+        cls.pw.stop()
+
+    def theme(self, scheme):
+        ctx = self.browser.new_context(color_scheme=scheme)
+        page = ctx.new_page()
+        page.goto(HTML.as_uri())
+        page.evaluate("localStorage.removeItem('aglab-theme')")
+        page.reload()
+        t = page.locator("html").get_attribute("data-theme")
+        return ctx, page, t
+
+    def test_follows_system_preference_then_saved_choice(self):
+        for scheme, expected in [("dark", "dark"), ("light", "light"), ("no-preference", "light")]:
+            ctx, page, t = self.theme(scheme)
+            self.assertEqual(t, expected, scheme)
+            btn = page.locator("#themeToggle")
+            label = "Koyu temaya geç" if expected == "light" else "Açık temaya geç"
+            expect(btn).to_contain_text(label)
+            expect(btn).to_have_attribute("aria-label", label)
+            btn.click()
+            other = "dark" if expected == "light" else "light"
+            expect(page.locator("html")).to_have_attribute("data-theme", other)
+            self.assertEqual(page.evaluate("localStorage.getItem('aglab-theme')"), other)
+            page.reload()
+            expect(page.locator("html")).to_have_attribute("data-theme", other)
+            ctx.close()
 
 
 if __name__ == "__main__":

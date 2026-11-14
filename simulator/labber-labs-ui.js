@@ -111,6 +111,17 @@ function labberLabsRefresh() {
     list.append(li);
   }
   const done = rows.filter((o) => o.ok).length;
+  // Arayüz PR 2b: tamamlanan Labber labı Simülatör görev kataloğunda "tamamlandı" görünür.
+  if (done === rows.length && rows.length)
+    try {
+      const key = 'aglab-labber-progress-v1',
+        prog = JSON.parse(localStorage.getItem(key) || '{}') || {},
+        id = aglabLabber.lab()?.id;
+      if (id && !prog[id]?.completed) {
+        prog[id] = { completed: true };
+        localStorage.setItem(key, JSON.stringify(prog));
+      }
+    } catch (e) {}
   $p('labberLabStatus').textContent =
     done === rows.length
       ? 'Lab tamamlandı: ' + done + '/' + rows.length + ' hedef sağlandı.'
