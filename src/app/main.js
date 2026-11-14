@@ -4337,9 +4337,22 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       'sourceArchive',
       'academySession',
       'labberLab',
+      // v24: Labber çalışma zamanının durumu (running/startup ayrı); yükleme ayrıca denetler
+      'labber',
     ]);
     for (const k of Object.keys(obj))
       if (!allowedTop.has(k)) throw new Error('Beklenmeyen üst seviye alan: ' + k);
+    if (
+      obj.labber !== undefined &&
+      (!obj.labber ||
+        typeof obj.labber !== 'object' ||
+        Array.isArray(obj.labber) ||
+        Object.keys(obj.labber).join() !== 'state' ||
+        !obj.labber.state ||
+        typeof obj.labber.state !== 'object' ||
+        obj.labber.state.v !== 1)
+    )
+      throw new Error('labber alanı geçersiz (beklenen: { state: Labber kaydı v1 }).');
     if (obj.academySession !== undefined) academyValidateSession(obj.academySession);
     if (obj.labberLab !== undefined) labberLabValidate(obj.labberLab);
     if (obj.app && obj.app !== 'AgLab') throw new Error('Dosya AgLab topoloji dosyası değil.');
@@ -4763,26 +4776,38 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       throw new Error('selected alanı var olmayan cihazı gösteriyor.');
     return true;
   }
+  /**
+   * Kalıcılık v24 (L7): AğLab görünümü (çizim, denetçi, dönüştürücü girdisi) + Labber çalışma
+   * zamanının tam durumu (`labber.state`: running ve startup-config ayrı, PC'ler, DHCP
+   * kiraları, öğrenilmiş MAC/ARP, donanım). Sayfa yenilemek cihaz reload'u değildir: kaydedilmemiş
+   * running-config değişikliği kaybolmaz, startup-config ayrı kalır; `reload`/güç döngüsü IOS gibi
+   * running'i startup'tan kurar.
+   */
+  function persistedTopology() {
+    const labberState = aglabLabber.active() ? aglabLabber.saveState() : null;
+    return {
+      app: 'AgLab',
+      version: 24,
+      devices,
+      links,
+      nextId,
+      selected,
+      ...(sourceArchiveData ? { sourceArchive: sourceArchiveData } : {}),
+      ...(importReportData ? { importReport: importReportData } : {}),
+      ...academySessionFields(),
+      ...labberLabFields(),
+      ...(labberState ? { labber: { state: labberState } } : {}),
+    };
+  }
   function saveTopology(quiet = false) {
     // Düzenleyici değişikliği Labber oturumuna yansır (labber-session.js).
     aglabLabber.reconcile();
     try {
       academyInvalidateResult();
-      const data = JSON.stringify({
-        app: 'AgLab',
-        version: 23,
-        devices,
-        links,
-        nextId,
-        selected,
-        ...(sourceArchiveData ? { sourceArchive: sourceArchiveData } : {}),
-        ...(importReportData ? { importReport: importReportData } : {}),
-        ...academySessionFields(),
-        ...labberLabFields(),
-      });
-      localStorage.setItem('aglab-topology-v23', data);
+      const data = JSON.stringify(persistedTopology());
+      localStorage.setItem(TOPOLOGY_KEY, data);
       document.getElementById('aglabSaveWarning')?.remove();
-      if (!quiet) say('Topoloji bu tarayıcıda kaydedildi (şema v23).', 'outok');
+      if (!quiet) say('Topoloji bu tarayıcıda kaydedildi (şema v24).', 'outok');
       return true;
     } catch (e) {
       const message =
@@ -4801,30 +4826,131 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     }
   }
   function exportTopology() {
-    const data = JSON.stringify(
-      {
-        app: 'AgLab',
-        version: 23,
-        devices,
-        links,
-        nextId,
-        selected,
-        ...(sourceArchiveData ? { sourceArchive: sourceArchiveData } : {}),
-        ...(importReportData ? { importReport: importReportData } : {}),
-        ...academySessionFields(),
-        ...labberLabFields(),
-      },
-      null,
-      2,
-    );
+    aglabLabber.reconcile();
+    const data = JSON.stringify(persistedTopology(), null, 2);
     const blob = new Blob([data], { type: 'application/json' }),
       url = URL.createObjectURL(blob),
       a = document.createElement('a');
     a.href = url;
-    a.download = 'aglab-topology-v23.json';
+    a.download = 'aglab-topology-v24.json';
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    say('Topoloji doğrulama şeması v23 ile dışa aktarıldı.', 'outok');
+    say(
+      'Topoloji doğrulama şeması v24 ile dışa aktarıldı (running ve startup-config ayrı).',
+      'outok',
+    );
+  }
+  // ---- Kalıcılık v24: eski kayıtların taşınması -------------------------------------------
+  const TOPOLOGY_KEY = 'aglab-topology-v24';
+  // Eski tarayıcı kayıtları (yeniden eskiye). Taşıma yıkıcı değildir: eski anahtar silinmez.
+  const LEGACY_TOPOLOGY_KEYS = [
+    'aglab-topology-v23',
+    'aglab-topology-v21',
+    'aglab-topology-v20',
+    'aglab-topology-v18',
+    'aglab-topology-v17',
+    'aglab-topology-v16',
+    'aglab-topology-v15',
+  ];
+  /**
+   * v23 ve öncesi: eski motorun `copy running-config startup-config` kaydı switch'in
+   * `startupConfig` alanındaydı (cihaz alanlarının kopyası). Labber'da startup-config çalışma
+   * zamanının parçasıdır: alan cihazdan çıkarılır ve oturum kurulduktan sonra Labber
+   * startup'ına çevrilir (restoreLabberState). Kopya döner; özgün nesne değişmez.
+   */
+  function takeLegacyStartups(obj) {
+    const startups = {};
+    const copy = clone(obj);
+    for (const d of copy.devices || [])
+      if (d.startupConfig !== undefined) {
+        startups[d.id] = d.startupConfig;
+        delete d.startupConfig;
+      }
+    return { obj: copy, startups };
+  }
+  /** Eski `startupConfig` → Labber startup-config (köprü: cihazın kayıtlı hâli running olarak). */
+  function legacyStartupConfig(id, saved) {
+    const variant = {
+      app: 'AgLab',
+      version: 23,
+      devices: devices.map((d) => (d.id === id ? { ...clone(d), ...clone(saved) } : clone(d))),
+      links: clone(links),
+    };
+    const r = AgLabSim.toLabber(variant);
+    if (!r.report.expressible) throw new Error(r.report.reasons.join('; '));
+    return r.running[id];
+  }
+  /**
+   * Oturum kurulduktan sonra kayıttaki Labber durumunu (v24) ya da eski startup kayıtlarını
+   * (v23) uygular. Uygulanamayan her parça için kullanıcıya gösterilecek bir not döner.
+   */
+  function restoreLabberState(obj, startups) {
+    const notes = [];
+    if (obj.labber) {
+      if (!aglabLabber.active() || aglabLabber.broken() || !aglabLabber.loadState(obj.labber.state))
+        notes.push(
+          'Kaydedilmiş Labber durumu (running/startup-config, DHCP kiraları, öğrenilmiş tablolar) bu topolojiye uygulanamadı: running-config çizimdeki topolojiden kuruldu, startup-config running ile aynı başladı.',
+        );
+    }
+    for (const [id, saved] of Object.entries(startups)) {
+      const name = get(id)?.name || id;
+      try {
+        if (aglabLabber.broken()) throw new Error(aglabLabber.broken());
+        if (!aglabLabber.setStartup(id, legacyStartupConfig(id, saved)))
+          throw new Error('cihaz Labber çalışma zamanında yok');
+      } catch (error) {
+        notes.push(name + ' için eski startup-config kaydı taşınamadı: ' + error.message);
+      }
+    }
+    return notes;
+  }
+  /**
+   * Taşınamayan kayıt sessizce kaybolmaz: görünür uyarı + özgün kaydı indirme düğmesi. Özgün
+   * metin ayrıca `aglab-topology-recovery` anahtarında tutulur (yer varsa).
+   */
+  function showPersistenceNotice(lines, raw) {
+    for (const line of lines) say(line, 'outerr');
+    let box = document.getElementById('aglabPersistenceNotice');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'aglabPersistenceNotice';
+      box.setAttribute('role', 'alert');
+      box.className = 'aglab-persistence-notice';
+      ($p('ptWorkbench') || document.body).prepend(box);
+    }
+    box.replaceChildren();
+    const title = document.createElement('b');
+    title.textContent = 'Kayıt taşıma uyarısı';
+    const list = document.createElement('ul');
+    for (const line of lines) {
+      const li = document.createElement('li');
+      li.textContent = line;
+      list.append(li);
+    }
+    box.append(title, list);
+    if (raw) {
+      try {
+        localStorage.setItem('aglab-topology-recovery', raw);
+      } catch (e) {}
+      const button = document.createElement('button');
+      button.id = 'aglabPersistenceDownload';
+      button.type = 'button';
+      button.textContent = 'Özgün kaydı indir';
+      button.onclick = () => {
+        const url = URL.createObjectURL(new Blob([raw], { type: 'application/json' })),
+          a = document.createElement('a');
+        a.href = url;
+        a.download = 'aglab-kurtarma-kaydi.json';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      };
+      box.append(button);
+    }
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = 'Kapat';
+    close.onclick = () => box.remove();
+    box.append(close);
   }
   function nextIdForTopology(obj) {
     const suffixes = (obj.devices || []).map(
@@ -4905,9 +5031,11 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     // I-1: çalışma alanı Labber'dayken rehber gibi araçlar terminalle aynı izi üretir.
     pingTrace: (src, target) => labberSimulationTrace(src, target),
   };
-  function importTopology(obj) {
-    validateTopologyData(obj);
-    // Yeni içerik: önceki Labber oturumu biter; içerik Labber kararındaysa yeniden başlar.
+  function importTopology(input) {
+    validateTopologyData(input);
+    // v23 ve öncesi: eski `startupConfig` alanları oturum kurulunca Labber startup'ına çevrilir.
+    const { obj, startups } = takeLegacyStartups(input);
+    // Yeni içerik: önceki Labber oturumu biter ve bu içerik için yeniden kurulur.
     aglabLabber.stop();
     if (typeof resetDeviceCliHistories === 'function') resetDeviceCliHistories();
     sourceArchiveData = obj.sourceArchive || null;
@@ -4924,6 +5052,8 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     academyRestoreSession(obj.academySession || null);
     labberLabRestore(obj.labberLab || null);
     workspaceDecideEngine();
+    const notes = restoreLabberState(obj, startups);
+    academyAfterRestore();
     render();
     syncSelects();
     updateInspector();
@@ -4937,6 +5067,7 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
         (savedAfterImport ? '' : ' Tarayıcı kaydı başarısız: JSON olarak dışa aktar.'),
       savedAfterImport ? 'outok' : 'outerr',
     );
+    if (notes.length) showPersistenceNotice(notes, JSON.stringify(input));
     showImportReport(report);
   }
   /**
@@ -6431,18 +6562,25 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
   //@@module LAB EVIDENCE UI@@
   //@@module SIMULATION UI@@
   //@@module ACADEMY@@
+  // Açılış: v24 kaydı; yoksa en yeni eski kayıt v24'e taşınır (eski anahtar silinmez). Taşınamayan
+  // kayıt sessizce kaybolmaz: güvenli başlangıç topolojisi açılır, uyarı ve özgün kaydı indirme
+  // düğmesi gösterilir.
+  let savedKey = null,
+    saved = null;
   try {
-    const saved =
-      localStorage.getItem('aglab-topology-v23') ||
-      localStorage.getItem('aglab-topology-v21') ||
-      localStorage.getItem('aglab-topology-v20') ||
-      localStorage.getItem('aglab-topology-v18') ||
-      localStorage.getItem('aglab-topology-v17') ||
-      localStorage.getItem('aglab-topology-v16') ||
-      localStorage.getItem('aglab-topology-v15');
+    for (const key of [TOPOLOGY_KEY, ...LEGACY_TOPOLOGY_KEYS]) {
+      saved = localStorage.getItem(key);
+      if (saved) {
+        savedKey = key;
+        break;
+      }
+    }
+  } catch (e) {}
+  try {
     if (saved) {
-      const obj = JSON.parse(saved);
-      validateTopologyData(obj);
+      const input = JSON.parse(saved);
+      validateTopologyData(input);
+      const { obj, startups } = takeLegacyStartups(input);
       devices = JSON.parse(JSON.stringify(obj.devices));
       links = JSON.parse(JSON.stringify(obj.links));
       sourceArchiveData = obj.sourceArchive || null;
@@ -6452,18 +6590,35 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       academyRestoreSession(obj.academySession || null);
       labberLabRestore(obj.labberLab || null);
       workspaceDecideEngine();
+      const notes = restoreLabberState(obj, startups);
+      academyAfterRestore();
       render();
       syncSelects();
       updateInspector();
       say('Kaydedilmiş topoloji doğrulanarak yüklendi.', 'outinfo');
+      if (savedKey !== TOPOLOGY_KEY)
+        say(
+          'Eski tarayıcı kaydı (' +
+            savedKey +
+            ') v24 biçimine taşındı; eski kayıt yerinde bırakıldı.' +
+            (Object.keys(startups).length
+              ? ' Eski startup-config kayıtları Labber startup-config’ine çevrildi.'
+              : ''),
+          'outinfo',
+        );
+      if (notes.length) showPersistenceNotice(notes, saved);
       showImportReport(importReportData);
     } else reset();
   } catch (e) {
     reset();
-    say(
-      'Kayıtlı topoloji geçersiz veya eski şemaya uymuyor; güvenli başlangıç topolojisi açıldı. ' +
-        e.message,
-      'outerr',
+    showPersistenceNotice(
+      [
+        'Kayıtlı topoloji (' +
+          savedKey +
+          ') açılamadı ya da v24’e taşınamadı; güvenli başlangıç topolojisi açıldı. Özgün kayıt silinmedi. Neden: ' +
+          e.message,
+      ],
+      saved,
     );
   }
 })();

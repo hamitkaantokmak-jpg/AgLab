@@ -1,4 +1,11 @@
-"""Real origin and disk-backed browser profile: topology persistence and recovery."""
+"""Real origin and disk-backed browser profile: topology persistence (v24) and recovery.
+
+L7 kalıcılık v24: kayıt AğLab görünümünün yanında Labber çalışma zamanının durumunu taşır
+(`labber.state`: running ve startup-config ayrı). Sayfa yenilemek cihaz reload'u değildir:
+kaydedilmemiş running değişikliği kalır, startup ayrı kalır; güç döngüsü running'i startup'tan
+kurar. Eski kayıtlar (v23 ve öncesi) otomatik taşınır; taşınamayan kayıt görünür uyarı ve
+indirme düğmesiyle kalır.
+"""
 
 import functools
 import http.server
@@ -10,7 +17,8 @@ from playwright.sync_api import sync_playwright, expect
 
 from aglab_test_support import ROOT
 
-KEY = "aglab-topology-v23"
+KEY = "aglab-topology-v24"
+LEGACY_KEY = "aglab-topology-v23"
 fixture = json.loads((ROOT / "static-routing-two-routers.aglab.json").read_text())
 expected_report = fixture["importReport"]
 expected_archive = fixture["sourceArchive"]
@@ -67,6 +75,13 @@ try:
             # I-1: içe aktarılan topoloji Labber'da; PC terminali VPCS (5 yanıt satırı)
             output = command(page, "d3", "ping 192.168.2.2")
             assert output.count("84 bytes from 192.168.2.2") == 5, output
+            # v24: Labber durumu kayıtta; running değişikliği kaydedilmedi, startup ayrı kaldı
+            state = snapshot["labber"]["state"]
+            assert state["running"][switch_id]["hostname"] == "KALICI-SW"
+            assert state["startup"][switch_id]["hostname"] == "SW1"
+            command(page, switch_id, "enable")
+            assert "hostname SW1" in command(page, switch_id, "show startup-config")
+            assert "hostname KALICI-SW" in command(page, switch_id, "show running-config")
             return snapshot
 
         context, page = open_context()
@@ -111,7 +126,7 @@ try:
         page.evaluate("""() => {
             const original = Storage.prototype.setItem;
             Storage.prototype.setItem = function(key, value) {
-                if (key === 'aglab-topology-v23') throw new DOMException('test quota', 'QuotaExceededError');
+                if (key === 'aglab-topology-v24') throw new DOMException('test quota', 'QuotaExceededError');
                 return original.call(this, key, value);
             };
         }""")
@@ -132,6 +147,22 @@ try:
 
         context, page = open_context()
         verify(page)  # only the last successful disk save survived the quota failure
+        # Güç döngüsü IOS reload'u gibidir: kaydedilmemiş running gider, startup'tan gelir.
+        command(page, switch_id, "device power off")
+        command(page, switch_id, "device power on")
+        command(page, switch_id, "enable")
+        assert "hostname SW1" in command(page, switch_id, "show running-config")
+        assert saved(page)["labber"]["state"]["running"][switch_id]["hostname"] == "SW1"
+        # copy run start sonrası startup değişir ve sayfa yenilemesinden sonra da korunur
+        for text in ["configure terminal", "hostname KAYITLI-SW", "end"]:
+            command(page, switch_id, text)
+        command(page, switch_id, "copy running-config startup-config")
+        command(page, switch_id, "")  # Destination filename [startup-config]?
+        page.reload()
+        page.evaluate("showArea('lab')")
+        command(page, switch_id, "enable")
+        assert "hostname KAYITLI-SW" in command(page, switch_id, "show startup-config")
+        print("PASS: v24 running/startup separation across reload and power cycle", flush=True)
         page.evaluate("""() => {
             document.querySelector('#sharedScenarioSelect').value = 'access-vlan';
             document.querySelector('#sharedScenarioLoad').click();
@@ -147,11 +178,62 @@ try:
         clean = saved(page)
         assert "importReport" not in clean and "sourceArchive" not in clean
         assert len(clean["devices"]) == 6
+        # Eski kayıt (v23): eski motorun startup-config'i (`startupConfig`) Labber startup'ına
+        # taşınır; eski anahtar silinmez.
+        legacy = json.loads(json.dumps(fixture))
+        sw = next(d for d in legacy["devices"] if d["id"] == switch_id)
+        sw["startupConfig"] = {
+            "name": "ESKI-SW",
+            "gateway": sw.get("gateway", ""),
+            "vlans": sw["vlans"],
+            "ports": sw["ports"],
+            "interfaces": sw["interfaces"],
+        }
+        legacy["version"] = 23
+        page.evaluate(
+            "([k, old, v]) => { localStorage.removeItem(k); localStorage.setItem(old, v) }",
+            [KEY, LEGACY_KEY, json.dumps(legacy)],
+        )
+        page.reload()
+        page.evaluate("showArea('lab')")
+        expect(page.locator("#ptTerminal")).to_contain_text(
+            "Eski tarayıcı kaydı (aglab-topology-v23) v24 biçimine taşındı"
+        )
+        assert page.locator("#aglabPersistenceNotice").count() == 0
+        command(page, switch_id, "enable")
+        assert "hostname ESKI-SW" in command(page, switch_id, "show startup-config")
+        assert "hostname SW1" in command(page, switch_id, "show running-config")
+        migrated = saved(page)
+        assert migrated["version"] == 24
+        assert all("startupConfig" not in d for d in migrated["devices"])
+        assert migrated["labber"]["state"]["startup"][switch_id]["hostname"] == "ESKI-SW"
+        assert page.evaluate("(k) => localStorage.getItem(k)", LEGACY_KEY) == json.dumps(legacy)
+        print("PASS: v23 record with legacy startup-config migrated to v24", flush=True)
+        # Taşınamayan kayıt sessizce kaybolmaz: uyarı + özgün kaydı indirme; eski kayıt yerinde.
+        broken = '{"app":"AgLab","devices":[{"id":"x"}],'
+        page.evaluate(
+            "([k, old, v]) => { localStorage.removeItem(k); localStorage.setItem(old, v) }",
+            [KEY, LEGACY_KEY, broken],
+        )
+        page.reload()
+        page.evaluate("showArea('lab')")
+        notice = page.locator("#aglabPersistenceNotice")
+        expect(notice).to_be_visible()
+        expect(notice).to_contain_text("aglab-topology-v23")
+        expect(notice).to_contain_text("Özgün kayıt silinmedi")
+        assert page.evaluate("(k) => localStorage.getItem(k)", LEGACY_KEY) == broken
+        assert page.evaluate("localStorage.getItem('aglab-topology-recovery')") == broken
+        with page.expect_download() as download:
+            page.locator("#aglabPersistenceDownload").click()
+        recovered = Path(tmp) / "recovered-raw.json"
+        download.value.save_as(str(recovered))
+        assert recovered.read_text() == broken
+        print("PASS: unmigratable record reported with download, original kept", flush=True)
         assert not errors, errors
         context.close()
 finally:
     server.shutdown()
     server.server_close()
 print(
-    "PASS: reload, fresh browser session, VLAN/port state, source report/archive, invalid import and quota recovery"
+    "PASS: reload, fresh browser session, VLAN/port state, source report/archive, invalid import, quota recovery and v24 migration"
 )

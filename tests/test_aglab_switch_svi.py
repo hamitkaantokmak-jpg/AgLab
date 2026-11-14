@@ -63,7 +63,7 @@ try:
                 cmd(device, text)
 
         def snapshot():
-            return page.evaluate("JSON.parse(localStorage.getItem('aglab-topology-v23'))")
+            return page.evaluate("JSON.parse(localStorage.getItem('aglab-topology-v24'))")
 
         def ping(device, target, success):
             # L7b: Labber IOS/VPCS çıktısı (IOS'ta ilk ping ARP yüzünden .!!!! olabilir).
@@ -326,27 +326,38 @@ try:
             "PASS C: management ping, PC-to-SVI, gateway, router/SVI/VLAN/port/native/allowed failures and recovery",
             flush=True,
         )
+        # D (L7 kalıcılık v24): startup-config Labber çalışma zamanındadır ve kayıtta
+        # `labber.state.startup` olarak running'den ayrı tutulur. IOS hedef dosya adını sorar.
         cmd("d1", "enable")
-        print("DBG1", cmd("d1", "copy running-config startup-config"))
-        print("DBG2", cmd("d1", "show startup-config")[:1500])
+        cmd("d1", "copy running-config startup-config")
+        cmd("d1", "")  # Destination filename [startup-config]?
         assert "interface Vlan10" in cmd("d1", "show startup-config")
         run("d1", ["enable", "configure terminal", "interface vlan 10", "shutdown", "end"])
         ping("d1", "192.168.10.1", False)
-        cmd("d1", "copy startup-config running-config")
+        # Kaydedilmemiş değişiklik reload (güç döngüsü) ile gider: running startup'tan kurulur.
+        # (`copy startup-config running-config` Labber'da yok; gerçek IOS'ta birleştirme yapar ve
+        # kapatılmış SVI'yi geri açmaz; eski motor yerine koyuyordu. UYUMLULUK_MATRISI "L7".)
+        cmd("d1", "device power off")
+        cmd("d1", "device power on")
+        cmd("d1", "enable")
         ping("d1", "192.168.10.1", True)
         # Explicit startup save reports quota failure, not a false successful save.
-        before_startup = next(d for d in snapshot()["devices"] if d["id"] == "d1")["startupConfig"]
+        run("d1", ["configure terminal", "hostname KOTA-SW", "end"])
+        before_startup = snapshot()["labber"]["state"]["startup"]["d1"]
         page.evaluate(
-            """() => {window.sviOriginalSetItem=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='aglab-topology-v23')throw new DOMException('test quota','QuotaExceededError');return window.sviOriginalSetItem.call(this,k,v)}}"""
+            """() => {window.sviOriginalSetItem=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='aglab-topology-v24')throw new DOMException('test quota','QuotaExceededError');return window.sviOriginalSetItem.call(this,k,v)}}"""
         )
+        # tarayıcı kaydı başarısız: terminal hata satırı ve uyarı (yanlış "kaydedildi" yok)
         cmd("d1", "copy running-config startup-config", False)
+        cmd("d1", "", False)
+        expect(page.locator("#aglabSaveWarning")).to_be_visible()
         page.evaluate(
             "Storage.prototype.setItem=window.sviOriginalSetItem;delete window.sviOriginalSetItem"
         )
-        assert (
-            next(d for d in snapshot()["devices"] if d["id"] == "d1")["startupConfig"]
-            == before_startup
-        )
+        assert snapshot()["labber"]["state"]["startup"]["d1"] == before_startup
+        run("d1", ["configure terminal", "hostname SW-01", "end"])
+        cmd("d1", "copy running-config startup-config")
+        cmd("d1", "")
         # Arbitrary VLAN/IP, not dependent on the example VLAN 10.
         for vlan, network in [(77, "172.16.77"), (4094, "172.16.254")]:
             run(
@@ -376,8 +387,7 @@ try:
                     "end",
                 ],
             )
-            output = ping("d1", network + ".1", True)
-            assert f"Kaynak SVI: vlan{vlan} {network}.2" in output
+            ping("d1", network + ".1", True)
 
         run(
             "d2",
@@ -389,8 +399,9 @@ try:
                 "end",
             ],
         )
+        cmd("d1", "device power off")
+        cmd("d1", "device power on")
         cmd("d1", "enable")
-        cmd("d1", "copy startup-config running-config")
         ping("d1", "192.168.10.1", True)
         page.locator("#uxMoreLabActions").click()
         with page.expect_download() as download:
@@ -398,9 +409,8 @@ try:
         exported = Path(tmp) / "svi.json"
         download.value.save_as(str(exported))
         saved = json.loads(exported.read_text())
-        assert next(d for d in saved["devices"] if d["id"] == "d1")["startupConfig"]["interfaces"][
-            "vlan10"
-        ]["enabled"]
+        assert saved["version"] == 24
+        assert not saved["labber"]["state"]["startup"]["d1"]["svis"]["10"]["shutdown"]
         page.reload()
         page.click('[data-area="lab"]')
         page.click("#ux14Free")
@@ -410,18 +420,18 @@ try:
         ping("d1", "192.168.10.1", True)
         import_topology(page, exported)
         ping("d1", "192.168.20.2", True)
-        for kind in ("vlan-mismatch", "startup-ports", "bad-gateway"):
+        for kind in ("vlan-mismatch", "labber-state", "bad-gateway"):
             invalid = json.loads(exported.read_text())
             device = next(d for d in invalid["devices"] if d["id"] == "d1")
             if kind == "vlan-mismatch":
                 device["interfaces"]["vlan10"]["vlan"] = 20
-            elif kind == "startup-ports":
-                device["startupConfig"]["ports"].pop()
+            elif kind == "labber-state":
+                invalid["labber"] = {"state": {"v": 2}}
             else:
                 device["gateway"] = "not-an-ip"
             bad = Path(tmp) / "bad.json"
             bad.write_text(json.dumps(invalid))
-            before = page.evaluate("localStorage.getItem('aglab-topology-v23')")
+            before = page.evaluate("localStorage.getItem('aglab-topology-v24')")
             terminal = page.locator("#ptTerminal").inner_text()
             page.locator("#ptImportFile").set_input_files(str(bad))
             page.wait_for_function(
@@ -431,7 +441,7 @@ try:
                 "İçe aktarma başarısız:"
                 in page.locator("#ptTerminal").inner_text()[len(terminal) :]
             )
-            assert page.evaluate("localStorage.getItem('aglab-topology-v23')") == before
+            assert page.evaluate("localStorage.getItem('aglab-topology-v24')") == before
         ping("d1", "192.168.10.1", True)
         assert not errors, errors
         context.close()

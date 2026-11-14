@@ -2630,3 +2630,18 @@ textarea:focus {
     flex-direction: column;
   }
 }
+/* Kalıcılık v24: taşınamayan kayıt uyarısı (main.js showPersistenceNotice) */
+.aglab-persistence-notice {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 2px solid var(--amber, #ffb44a);
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.aglab-persistence-notice ul {
+  margin: 6px 0 10px 18px;
+}
+.aglab-persistence-notice button {
+  margin-right: 8px;
+}

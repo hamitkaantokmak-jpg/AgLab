@@ -171,7 +171,6 @@ function guideFingerprint() {
 function guideBackupFingerprint(
   t = {
     app: 'AgLab',
-    version: 23,
     devices,
     links,
     nextId,
@@ -180,9 +179,9 @@ function guideBackupFingerprint(
     ...academySessionFields(),
   },
 ) {
+  // Şema sürümü (v23/v24) içerik değildir; karşılaştırmaya girmez (L7 kalıcılık v24).
   const fields = [
     'app',
-    'version',
     'devices',
     'links',
     'nextId',
@@ -341,10 +340,13 @@ ac('firstGuideVerifyFile').onchange = async (event) => {
             'sourceArchive',
             'importReport',
             'academySession',
+            'labberLab',
+            // v24 (L7): Labber çalışma zamanı durumu
+            'labber',
           ].includes(k),
       ) ||
       t.app !== 'AgLab' ||
-      t.version !== 23 ||
+      (t.version !== 24 && t.version !== 23) ||
       !Array.isArray(t.devices) ||
       !Array.isArray(t.links) ||
       guideBackupFingerprint(t) !== guideBackupFingerprint()
@@ -830,7 +832,11 @@ function academyRestoreSession(session) {
   ac('academyCheck').disabled = false;
   ac('academyHint').disabled = academyHintIndex >= lab.hints.length;
   academyNotice();
-  if (academyChecked) academyCheck(false);
+  // Kontrol, kayıttaki Labber durumu (v24) yüklendikten sonra yapılır: academyAfterRestore.
+}
+/** Kalıcılık v24: kayıttan açılışta Labber durumu geri geldikten sonra son kontrol yenilenir. */
+function academyAfterRestore() {
+  if (academyActive && academyChecked) academyCheck(false);
 }
 // Protect existing work: the user must explicitly choose to overwrite it.
 // Export never implicitly continues; confirmation follows a completed download.

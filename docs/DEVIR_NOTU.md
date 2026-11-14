@@ -37,13 +37,32 @@ farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölü
 | Seviye 1/2 dersleri (paralel iş) | #78, #79 | birleşti |
 | L6 motor kullanmayan eski içerik | #84 (main'den, dal `claude/l6-legacy-content`) | birleşti |
 | Ortak senaryo kök nedeni gizli | #86 | birleşti |
-| L7a içerik (bgp-as, 3 switching senaryosu) + oracle kararı | dal `claude/l7a-icerik-oracle` (main'den) | açık |
-| L7b eski motorları üründen kaldırma | — | L7a'dan sonra |
-| L7c kalıcılık v24 | — | L7b'den sonra |
+| L7a içerik (bgp-as, 3 switching senaryosu) + oracle kararı | #87 (main'den, dal `claude/l7a-icerik-oracle`) | açık |
+| L7b+c eski motorların kaldırılması + kalıcılık v24 | dal `claude/l7b-eski-motor-kaldirma` (L7a dalından; PR tabanı L7a dalı) | açık |
 
-**Durum:** #75–#86 birleşti. **L7a** açık (taban `main`); birleştirilmedi. L7 üç PR'a bölündü:
-L7a içerik + oracle, L7b eski motorların kaldırılması, L7c kalıcılık v24. Arayüz yenilemesine
-başlanmaz.
+**Durum:** #75–#86 birleşti. **L7a (#87)** ve **L7b+c** açık; birleştirilmedi. L7b ve L7c tek PR:
+eski `startupConfig` kaydını yalnız eski motor işliyordu; v24 olmadan eski motoru kaldırmak kayıtlı
+çalışmaları "simüle edilemiyor"a düşürür ve `test_aglab_switch_svi` D'yi bozardı. #87 birleşince
+L7b+c PR'ının tabanı `main`'e çevrilmeli. Arayüz yenilemesine başlanmadı.
+
+### L7b+c özeti
+
+- Tek motor Labber. Kaldırılanlar: eski çekirdek motor (`main.js` ping/yol bulucu/eski CLI ~1600
+  satır; `simulator/` icmp, traceroute, routing-path, routed-ethernet, mac-learning, ethernet
+  iletimi), borck-netsim (`third_party/`, `borck-*`, `tools/build_borck_engine.cjs`, CI adımı),
+  `engine-manager*`, `engine-adapter-prototype.cjs`, köprünün `engineDecision`'ı
+  (`report.expressible`). `src/engine` ürüne gömülmez (oracle); yeni `src/engine/portsec.js`.
+- Yeni: `simulator/aglab-model.js` (modelin saf yardımcıları, motor değil), `simulator/packet-trace.js`
+  (yalnız Labber izi). İfade edilemeyen topoloji "Simüle edilemiyor" oturumu (labber-session).
+- Köprü düzeltmesi: boş topoloji artık ifade edilebilir.
+- Kalıcılık v24: `aglab-topology-v24` + `labber.state`; v23 ve öncesi taşınır (eski anahtar
+  kalır), taşınamayan kayıt uyarı + indirme. Ayrıntı UYUMLULUK_MATRISI "L7b", "L7c".
+- HTML: 3 013 168 (L7a) → 2 766 358 bayt (−246 810); main'e göre 3 007 015 → 2 766 358.
+- Testler: silinen `test_aglab_borck_engine`, `test_aglab_browser_benchmark`, node
+  `test_borck_engine`, `benchmark_borck_engine`, `test_engine_manager`,
+  `test_engine_adapter_parity`, `test_engine_adapter_prototype`; uyarlananlar PR açıklamasında.
+- Bilinen Labber farkları (düzeltilmedi): başarısız ARP kaynak MAC öğrenimi, `show arp`,
+  `copy startup-config running-config`, bayat FDB.
 
 ### L7a özeti
 
@@ -58,9 +77,7 @@ başlanmaz.
   `test_legacy_content_keeps_legacy_terminal` silindi; `test_aglab_engine_choice` eski motor
   senaryosu testi "her ortak senaryo Labber" testiyle değişti; `test_aglab_sim_embedded` eski motor
   bloğu çıktı.
-- L7b'ye kalan: eski motor, borck-netsim, engine-manager, `engineDecision`/legacy yolları, eski CLI
-  (`test ethernet`, `show ethernet events`, `test http`), bunlara dayanan testler
-  (`frame_forwarding`, `routed_frames`, `vlan_lesson`/`inter_vlan_lesson` `reach`'i vb.).
+- L7b'ye kalanlar L7b+c'de yapıldı (yukarıda).
 
 ### L6 (#84) özeti
 

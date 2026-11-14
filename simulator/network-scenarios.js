@@ -234,7 +234,7 @@ function validateSharedScenarios() {
     status = $p('sharedScenarioStatus').textContent;
   const terminal = [...$p('ptTerminal').childNodes].map((n) => n.cloneNode(true)),
     oldInput = $p('ptCliInput').value;
-  const storage = localStorage.getItem('aglab-topology-v23'),
+  const storage = localStorage.getItem(TOPOLOGY_KEY),
     labberSession = aglabLabber.capture(),
     results = [];
   try {
@@ -279,8 +279,8 @@ function validateSharedScenarios() {
     $p('ptCliInput').value = oldInput;
     $p('ptTerminal').replaceChildren(...terminal);
     updatePrompt();
-    if (storage === null) localStorage.removeItem('aglab-topology-v23');
-    else localStorage.setItem('aglab-topology-v23', storage);
+    if (storage === null) localStorage.removeItem(TOPOLOGY_KEY);
+    else localStorage.setItem(TOPOLOGY_KEY, storage);
   }
   return results;
 }

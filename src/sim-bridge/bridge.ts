@@ -103,7 +103,7 @@ const FEATURE_REASON: Record<string, string> = {
   ospf: 'Switch üzerinde OSPF AğLab modelinde yok',
   bgp: 'BGP Labber\'da modellenmez (kapsam dışı)',
   services: 'Sunucu servisleri yalnız Server cihazında modellenir',
-  startupConfig: 'Kaydedilmiş startup-config köprüde henüz eşlenmiyor (L7)',
+  startupConfig: 'Eski kayıt (v23) startup-config alanı: kayıt açılırken Labber startup-config’ine taşınır, köprüye verilmez',
   portSecurity: 'Port security Labber\'da yok (L5)',
   errdisabled: 'Port security err-disable durumu Labber\'da yok (L5)',
   encapsulation: 'Alt arayüz alanı (encapsulation) yalnız router alt arayüzünde (g0/0.N) eşlenir',

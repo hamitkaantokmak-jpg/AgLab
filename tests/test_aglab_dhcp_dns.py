@@ -195,6 +195,13 @@ class DhcpDnsTests(unittest.TestCase):
         self.assertTrue(
             self.page.evaluate("(t) => AgLabSim.toLabber(t).report.expressible", restored)
         )
+        # L7 kalıcılık v24: sayfa yenilemek sunucunun reload'u değildir; kira tablosu (çalışma
+        # zamanı durumu) kayıttan geri gelir. Sunucunun güç döngüsü (IOS reload) tabloyu boşaltır.
+        out = self.run_on("R1", ["show ip dhcp binding"])
+        self.assertTrue(any(line.startswith("192.168.1.10 ") for line in out), out)
+        self.run_on("R1", ["device power off", "device power on"])
+        out = self.run_on("R1", ["show ip dhcp binding"])
+        self.assertFalse(any(line.startswith("192.168.1.10 ") for line in out), out)
 
 
 if __name__ == "__main__":

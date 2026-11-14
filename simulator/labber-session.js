@@ -17,7 +17,9 @@
 //
 // Labber durumu AğLab modelinde ifade edilemiyorsa (ör. portfast, OSPF) toAglab
 // BridgeError atar; bu durumda AğLab görünümü güncellenmez ve terminalde açıkça yazılır
-// (sessiz veri kaybı yok). Kalıcılık (running/startup ayrımının tarayıcı kaydı) L7'dedir.
+// (sessiz veri kaybı yok). Kalıcılık v24 (L7): kayıt, görünümün yanında çalışma zamanının tam
+// durumunu (saveState: running ve startup ayrı, PC'ler, DHCP kiraları, öğrenilmiş MAC/ARP,
+// donanım) taşır; açılışta loadState ile geri yüklenir (sayfa yenilemek cihaz reload'u değildir).
 /** Lab tanımındaki tam port adının çizimdeki kısa yazımı: FastEthernet0/1 → fa0/1. */
 function labShortPort(p) {
   const m = /^(FastEthernet|GigabitEthernet|TenGigabitEthernet|Ethernet)(.*)$/.exec(p);
@@ -435,6 +437,36 @@ const aglabLabber = (() => {
     const last = state.rt.logs.at(-1)?.seq || 0;
     for (const dev of Object.keys(state.logSeq)) state.logSeq[dev] = last;
   }
+  /** v24 kaydı: çalışma zamanının tam durumu (simüle edilemeyen içerikte null). */
+  function saveState() {
+    if (!state?.rt || state.broken) return null;
+    reconcile();
+    return state.broken ? null : state.rt.save();
+  }
+  /**
+   * v24 kaydından durum: running/startup ve diğer çalışma zamanı durumu geri gelir, görünüm
+   * ondan yeniden yazılır. Kayıt bu topolojiye uymuyorsa (port envanteri farklı vb.) false.
+   */
+  function loadState(saved) {
+    if (!state?.rt || state.broken) return false;
+    let ok = false;
+    try {
+      ok = state.rt.load(saved);
+    } catch (e) {
+      ok = false;
+    }
+    if (!ok) return false;
+    state.sessions = {};
+    state.logSeq = {};
+    writeBack();
+    return true;
+  }
+  /** Eski kayıt taşıma (v23 `startupConfig`): cihazın startup-config'i. */
+  function setStartup(dev, cfg) {
+    if (!state?.rt || state.broken || !(dev in state.rt.running)) return false;
+    state.rt.startup[dev] = clone(cfg);
+    return true;
+  }
   /** Geçici içerik değişimleri (senaryo doğrulaması) için oturumun kendisi. */
   function capture() {
     return state;
@@ -466,6 +498,9 @@ const aglabLabber = (() => {
     applyPending,
     broken: () => state?.broken || null,
     unsupportedMessage: brokenMessage,
+    saveState,
+    loadState,
+    setStartup,
   };
 })();
 window.aglabLabberSession = {
