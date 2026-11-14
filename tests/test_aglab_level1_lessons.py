@@ -26,7 +26,7 @@ LESSONS = [
     ("dns", "dns", "dns.md", "dns-", "nslookup", "isim yok"),
     ("routing", "routing", "gateway-statik-routing.md", "gw-", "floating static", "nasıl döner"),
     ("ip", "ipv4", "ip-adresleme.md", "ip-", "Hızlı hesap", "Kısa yol: blok büyüklüğü"),
-    ("physical", "physical", "fiziksel-baglanti.md", "phy-", "İki uç kuralı", "port ne diyor"),
+    ("physical", "physical", "fiziksel-baglanti.md", "phy-", "İki uç kuralı", "İki uç kuralı"),
     (
         "method",
         "method",
