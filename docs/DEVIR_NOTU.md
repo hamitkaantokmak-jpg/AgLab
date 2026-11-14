@@ -13,7 +13,7 @@ Her adım ayrı PR, bir öncekinin dalı üstüne; birleştirilmez.
 
 | Adım | Dal | Durum |
 |---|---|---|
-| PR 1 iskelet, adlandırma, tek paket | `claude/arayuz-1-iskelet` (taslak dalından) | açık |
+| PR 1 iskelet, adlandırma, tek paket | #91, `claude/arayuz-1-iskelet` (taban `claude/arayuz-taslak`) | açık |
 | PR 2 Simülatör çalışma alanı | — | sırada |
 | PR 3 Arıza senaryosu ekranı | — | sırada |
 | PR 4 Müfredat haritası ve ders ekranı | — | sırada |
@@ -35,8 +35,42 @@ PR 1:
 - Test: yeni `test_aglab_shell.py`; `network_features` (Gelişmiş), `advanced_engines` (Canlı Lab)
   gezinmesi.
 
-Kalan (PR 2–4): yukarıdaki tablo ve kullanıcının 4 adımlık tarifi (Simülatör çalışma alanı;
-arıza senaryosu ekranı ve üç ölçütlü değerlendirme, "Çözümü göster"; müfredat haritası ve ders).
+Kalan (PR 2–4), her biri ayrı PR, bir öncekinin dalı üstüne (PR 2 → `claude/arayuz-1-iskelet`):
+
+- **PR 2 Simülatör çalışma alanı** (taslak `dolu-3.png`): üstte başlık + motor rozeti + Sıfırla /
+  İpucu / Kontrol et; solda görev ve canlı hedef listesi (Akademi ölçütleri `academy.evaluate`,
+  Labber labı `aglabLabberLabs.objectives()`, ortak senaryo `sharedQueryGoal` — sağlandıkça
+  işaretlenir); ortada tuval (`#ptCanvas`); sağda inceleme paneli (Port/Cihaz/Olaylar sekmeleri,
+  `#ptDeviceInfo` verisi, hızlı show çıktısı Labber oturumundan); altta cihaz sekmeli terminal
+  (`#ptTerminal`, `#ptCliDevice`, `#ptCliInput`) ve yanında Simulation Mode zaman çizelgesi
+  (`simulation-ui.js`). "Çözümü göster": birkaç başarısız Kontrol et ya da bütün ipuçlarından sonra
+  (Akademi öğretmen çözümü HTML'e gömülü değil — gömülmesi gerekirse `verify_packages.py`'deki
+  "Teacher fields embedded in HTML" kuralı bilinçli olarak değiştirilmeli ve PR'da yazılmalı).
+- **PR 3 Arıza senaryosu ekranı** (`dolu-4.png`): belirti kartı; Belirti → Teşhis → Kanıt →
+  Düzeltme; düzeltmeden önce katman seçici (L1, L2, L3, servis, uygulama); terminalden iğnelenen
+  kanıt defteri; kök neden çözülene kadar gizli (#86, `sharedCauseReveal`). Değerlendirme: bağlantı
+  (mevcut hedefler), doğru kök neden (seçilen katman/teşhis ⇄ `cause`; gerekirse tariflere yalnız
+  ekleme olarak `layer`), gereksiz değişiklik (başlangıç/bitiş running-config farkı ⇄ çözümün
+  farkı; fazlası uyarı). "Çözümü göster" (ipuçlarının son basamağı; tarifte `solution` var).
+  Kavramsal BGP aynı ekranda "motor yok" rozetiyle (`TROUBLESHOOT_TASKS` `bgp`).
+- **PR 4 Müfredat haritası ve ders** (`dolu-1.png`, `dolu-2.png`): seviye başına konu kartları
+  (durum, pratik türü etiketi Simülatör/Canlı Lab/Okuma), kaldığın yerden devam, son arıza
+  senaryoları; ders ekranında yedi parçalı adım çubuğu, çıktı okuma bloğunda satır vurgusu ve yan
+  açıklama, konunun senaryolarına geçiş (`docs/MUFREDAT.md` eşlemesi, `student-flow.js` kurs →
+  ayrıntı eşlemesi). İçerik verisine dokunulmaz.
+
+Uygulama notları (PR 1'de öğrenilenler):
+- `simulator/network-scenarios.js` `accessibilityStyle` bütün `button,input,select`'e
+  `background-color: var(--panel2) !important` ve `color: var(--text) !important` verir; taslak
+  düğme biçimleri için daha özgül seçiciyle `!important` gerekir (bkz. `08-shell.css`).
+- `01-base.css`'teki genel `.active { background: #1b355a }` kuralı her `.active` öğeyi boyar.
+- Eski stil dosyalarında (03–07) sabit koyu renkler vardı; PR 1 bunları token'a bağladı
+  (`--panel`, `--panel2`, `--line`, `--text`, `--muted`, `--accent`, `--accent-soft`,
+  `--accent-text`). Yeni ekranlar yalnız token kullanmalı.
+- `data-area` yalnız `#areaTabs`'ta olmalı (testler `[data-area="lab"]` tıklar; ikinci eşleşme
+  Playwright strict mode hatası verir). Şerit `data-rail` kullanır.
+- Ekran görüntüleri: 1280 px, `localStorage aglab-theme` ile tema; taslakla yan yana görüntü
+  PIL ile (`docs/arayuz/pr1/`). PR açıklamasında raw.githubusercontent bağlantıları.
 
 ## Birleşen ve açık işler
 
