@@ -28,19 +28,19 @@
   margin: 13px 0 22px;
 }
 #studentFlow .sf-metric {
-  border: 1px solid #47637b;
+  border: 1px solid var(--line);
   border-radius: 12px;
   padding: 12px;
-  background: #142b41;
+  background: var(--panel2);
 }
 #studentFlow .sf-metric strong {
   display: block;
   font-size: 25px;
-  color: #7ae7ca;
+  color: var(--accent-text);
 }
 #studentFlow .sf-metric span {
   font-size: 12px;
-  color: #bfd0df;
+  color: var(--muted);
 }
 #studentFlow .sf-tools {
   display: flex;
@@ -56,9 +56,9 @@
 #studentFlow .sf-tools select,
 #studentFlow .sf-tools input {
   border-radius: 9px;
-  border: 1px solid #55728c;
-  background: #102639;
-  color: #fff;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--text);
   padding: 10px;
 }
 #studentFlow .sf-tools input {
@@ -66,9 +66,9 @@
   min-width: 140px;
 }
 #studentFlow button.sf-action {
-  border: 1px solid #6382a0;
-  background: #173954;
-  color: #fff;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--text);
   border-radius: 10px;
   padding: 10px 14px;
   cursor: pointer;
@@ -76,13 +76,13 @@
 }
 #studentFlow button.sf-action:hover,
 #studentFlow button.sf-action:focus-visible {
-  background: #22547a;
-  outline: 2px solid #8bdce9;
+  background: var(--accent-soft);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 #studentFlow .sf-primary {
-  background: #1f725f !important;
-  border-color: #60ccb1 !important;
+  background: var(--accent-soft) !important;
+  border-color: var(--accent) !important;
 }
 #studentFlow .sf-layout {
   display: grid;
@@ -98,28 +98,28 @@
 }
 #studentFlow .sf-list button {
   width: 100%;
-  border: 1px solid #3c5e79;
+  border: 1px solid var(--line);
   border-radius: 9px;
   padding: 12px;
-  background: #152c42;
-  color: #eaf6ff;
+  background: var(--panel2);
+  color: var(--text);
   text-align: left;
   cursor: pointer;
 }
 #studentFlow .sf-list button[aria-current='true'] {
-  border: 2px solid #71e0bf;
-  background: #215044;
+  border: 2px solid var(--accent);
+  background: var(--accent-soft);
 }
 #studentFlow .sf-list small {
   display: block;
-  color: #bed1e0;
+  color: var(--muted);
   font-size: 12px;
   margin-top: 4px;
 }
 #studentFlow .sf-sheet {
-  border: 1px solid #46627a;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #10263b;
+  background: var(--panel2);
   padding: 19px;
   line-height: 1.75;
   min-width: 0;
@@ -131,7 +131,7 @@
 #studentFlow .sf-sheet h4 {
   font-size: 18px;
   margin: 20px 0 6px;
-  color: #8fdde4;
+  color: var(--accent-text);
 }
 #studentFlow .sf-sheet p {
   margin: 8px 0 12px;
@@ -141,8 +141,8 @@
   overflow-wrap: anywhere;
   padding: 13px;
   border-radius: 9px;
-  background: #061828;
-  color: #ccf6e5;
+  background: var(--term);
+  color: var(--text);
 }
 #studentFlow .sf-steps {
   display: flex;
@@ -154,14 +154,14 @@
   font-size: 13px;
 }
 #studentFlow .sf-steps button[aria-current='step'] {
-  outline: 2px solid #75e6be;
+  outline: 2px solid var(--accent);
 }
 #studentFlow .sf-callout {
   padding: 14px;
-  border: 1px solid #48766b;
-  border-left: 4px solid #6ee1af;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
   border-radius: 8px;
-  background: #183b42;
+  background: var(--accent-soft);
   margin: 13px 0;
 }
 #studentFlow .sf-choice {
@@ -175,11 +175,11 @@
   padding: 10px;
   border-radius: 8px;
   margin: 11px 0;
-  background: #284960;
+  background: var(--panel2);
 }
 #studentFlow .sf-history {
   font-size: 13px;
-  color: #c5d6e3;
+  color: var(--muted);
   margin: 15px 0;
 }
 #studentFlow .sf-toolbar {
@@ -191,14 +191,14 @@
 #studentFlow details {
   margin-top: 20px;
   padding: 12px;
-  border: 1px solid #4c6378;
+  border: 1px solid var(--line);
   border-radius: 10px;
 }
 #studentFlow details summary {
   cursor: pointer;
 }
 #studentFlow .sf-due {
-  color: #ffe5aa;
+  color: var(--accent-text);
 }
 #studentFlow [hidden] {
   display: none !important;

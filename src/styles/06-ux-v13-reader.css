@@ -19,28 +19,28 @@
 #studentFlow .ux13-controls button {
   min-height: 44px;
   padding: 9px 16px;
-  border: 1px solid #5c8192;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: #17384a;
-  color: #edf8ff;
+  background: var(--panel2);
+  color: var(--text);
   cursor: pointer;
   font: inherit;
 }
 #studentFlow .ux13-controls button[aria-expanded='true'] {
-  background: #216154;
-  border-color: #72e2c0;
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 #studentFlow .ux13-stage {
   font-size: 14px;
-  color: #bce6e4;
+  color: var(--muted);
   padding: 7px 11px;
   border-radius: 8px;
-  background: #143548;
+  background: var(--accent-soft);
 }
 #studentFlow .ux13-progress-details {
-  border: 1px solid #46627a;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: #10263b;
+  background: var(--panel2);
   margin: 0 0 15px;
   padding: 9px 14px;
 }
@@ -64,18 +64,18 @@
   min-height: 44px;
 }
 #studentFlow .sf-sheet .sf-steps button[aria-current='step'] {
-  background: #215548;
-  border-color: #77e3c4;
+  background: var(--accent-soft);
+  border-color: var(--accent-text);
 }
 #studentFlow .sf-sheet .sf-toolbar {
   padding-top: 15px;
-  border-top: 1px solid #39556b;
+  border-top: 1px solid var(--line);
 }
 #studentFlow .sf-list {
   max-height: 380px;
 }
 #studentFlow .ux13-tip {
-  color: #c0d5df;
+  color: var(--muted);
   font-size: 13px;
   margin: -4px 0 12px;
 }

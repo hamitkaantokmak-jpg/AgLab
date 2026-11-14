@@ -1,9 +1,42 @@
-# Devir notu — Labber entegrasyonu (I-1 → FHRP → L6 → L7)
+# Devir notu — Labber entegrasyonu (I-1 → FHRP → L6 → L7) ve arayüz yenilemesi
 
 Bu not, oturum bağlamı dolmak üzereyken bırakılan durumu ve kalan işleri anlatır.
 Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", L5).
 Motor kararları: [LAB_MOTOR_HARITASI.md](LAB_MOTOR_HARITASI.md). Kararlar ve bilinen
 farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölümü).
+
+## Arayüz yenilemesi (L7'den sonra)
+
+Referans taslak: `docs/arayuz/` (dal `claude/arayuz-taslak`; README, dolu-1..4.png, wire/dolu.html).
+Plan: `SONRAKI_ISLER.md` "Arayüz yenilemesi", "Adlandırma", "Öğrenci/öğretmen ayrımı kalkar".
+Her adım ayrı PR, bir öncekinin dalı üstüne; birleştirilmez.
+
+| Adım | Dal | Durum |
+|---|---|---|
+| PR 1 iskelet, adlandırma, tek paket | `claude/arayuz-1-iskelet` (taslak dalından) | açık |
+| PR 2 Simülatör çalışma alanı | — | sırada |
+| PR 3 Arıza senaryosu ekranı | — | sırada |
+| PR 4 Müfredat haritası ve ders ekranı | — | sırada |
+
+PR 1:
+- `src/index.html`: üst bar (`#agTop`: logo, `#areaTabs` dört bölüm, `#agSearch`, `#agTopTools`
+  tema düğmesi), sol ikon şeridi (`#agRail`, `data-rail`), `main.ag-main`; yeni bölümler
+  `#area-live` (Canlı Lab: rapor + operatör dışa aktarımı, `lab-evidence-ui.js`) ve
+  `#area-advanced` (Gelişmiş: regresyon denetimi). Eski başlık/hero ve "1·Öğren 2·Uygula"
+  yön çubuğu kaldırıldı; senaryo ilerlemesi (`#progressText`) Sorun Çöz'de.
+- `src/app/shell.js`: şerit, adres çubuğu (#mufredat, #simulator, #sorun-coz, #canli-lab,
+  #gelismis) ve eski bağlantı yönlendirmesi (#lab, #area-lab, #gercek-lab, #real-lab …), arama
+  (müfredat konu araması). `src/styles/08-shell.css`: taslak renkleri (açık) ve koyu karşılığı.
+- Müfredat bloğundaki sabit koyu renkler token'a bağlandı (açık temada okunmuyordu; main'de de).
+- Adlandırma: ürün metinlerinde "Lab" (bölüm) → Simülatör, "Gerçek Lab" → Canlı Lab; "lab"
+  yalnız alıştırma anlamında (Akademi labı, yönlendirmeli lab). Kayıt anahtarları aynı.
+- Tek paket: `run_pipeline.py`, `verify_packages.py` (tek argüman), CI'daki öğretmen ZIP adımı
+  kaldırıldı; çözümler ve kaynaklar aynı ZIP'te, HTML'e yalnız öğrenci alanları gömülür.
+- Test: yeni `test_aglab_shell.py`; `network_features` (Gelişmiş), `advanced_engines` (Canlı Lab)
+  gezinmesi.
+
+Kalan (PR 2–4): yukarıdaki tablo ve kullanıcının 4 adımlık tarifi (Simülatör çalışma alanı;
+arıza senaryosu ekranı ve üç ölçütlü değerlendirme, "Çözümü göster"; müfredat haritası ve ders).
 
 ## Birleşen ve açık işler
 

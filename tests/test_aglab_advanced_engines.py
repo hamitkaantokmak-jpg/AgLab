@@ -120,6 +120,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         " links}))(academyEngine.snapshot()))"
     )
     baseline = page.evaluate(state)
+    # Arayüz yenilemesi: Canlı Lab (eski adı Gerçek Lab) kendi bölümünde
+    page.click('[data-area="live"]')
     page.locator("#realLabExport").evaluate("(d)=>d.open=true")
     with page.expect_download() as download:
         page.click("#realLabExportTopology")
@@ -170,11 +172,13 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     page.wait_for_function(
         "document.querySelector('#nativeLabReportStatus').textContent.includes('imzası doğrulanmadı')"
     )
-    assert "ayrı Lab" in page.locator("#packetDetectiveStatus").inner_text()
-    assert "paket olayı değil" in page.locator("#packetDetectiveExplanation").inner_text()
-    assert page.locator('#packetDetectivePanel img[src="bad"]').count() == 0
     page.locator("#nativeLabChecks").evaluate("(d)=>d.parentElement.open=true")
     assert "Beklenti karşılandı" in page.locator("#nativeLabChecks").inner_text()
+    # rapor Simülatör'deki Paket Dedektifi'nde de "Canlı Lab" kaynağıyla görünür
+    page.click('[data-area="lab"]')
+    assert "Canlı Lab" in page.locator("#packetDetectiveStatus").inner_text()
+    assert "paket olayı değil" in page.locator("#packetDetectiveExplanation").inner_text()
+    assert page.locator('#packetDetectivePanel img[src="bad"]').count() == 0
     assert baseline == page.evaluate(state)
     report["execute"] = "shell"
     report_file.write_text(json.dumps(report), encoding="utf-8")

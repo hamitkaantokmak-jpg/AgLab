@@ -14,44 +14,8 @@
     troubleshoot: document.getElementById('area-troubleshoot'),
   };
   const tabs = $$('#areaTabs [data-area]');
-  // Compact navigation is an accessible orientation cue, not a second curriculum.
-  const nav = document.createElement('nav');
-  nav.id = 'uxStudentMap';
-  nav.setAttribute('aria-label', 'Öğrenme yolundaki konumun');
-  const names = { learn: '1 · Öğren', lab: '2 · Uygula', troubleshoot: '3 · Sorun çöz' };
-  for (const key of Object.keys(areas)) {
-    const b = btn(names[key], 'uxGo' + key);
-    b.dataset.uxArea = key;
-    b.addEventListener('click', () => {
-      const t = tabs.find((tab) => tab.dataset.area === key);
-      if (t) {
-        t.click();
-        setTimeout(
-          () =>
-            document
-              .getElementById('areaTabs')
-              ?.scrollIntoView({ block: 'start', behavior: 'smooth' }),
-          20,
-        );
-      }
-    });
-    nav.append(b);
-  }
-  const note = document.createElement('span');
-  note.className = 'ux-map-note';
-  note.textContent = 'İlgili bölümde kaldığın yer korunur. Laboratuvarı sıfırlama işlemi ayrıdır.';
-  nav.append(note);
-  const tabsNode = document.getElementById('areaTabs');
-  tabsNode?.insertAdjacentElement('afterend', nav);
-  const sync = () => {
-    const active = tabs.find((x) => x.classList.contains('active'))?.dataset.area || 'learn';
-    $$('#uxStudentMap [data-ux-area]').forEach((x) => {
-      if (x.dataset.uxArea === active) x.setAttribute('aria-current', 'step');
-      else x.removeAttribute('aria-current');
-    });
-  };
-  tabs.forEach((x) => x.addEventListener('click', () => setTimeout(sync, 0)));
-  sync();
+  // Arayüz yenilemesi PR 1: eski "1 · Öğren 2 · Uygula 3 · Sorun çöz" yön çubuğu kaldırıldı;
+  // yerini üst gezinme ve sol ikon şeridi aldı (src/app/shell.js).
   // Keep save, audit and cabling immediately visible; rarely-used destructive and export/import actions behind disclosure.
   const lab = document.getElementById('ptWorkbench');
   const actions = lab?.querySelector('.pt-head-actions');
@@ -69,7 +33,7 @@
     const guide = document.createElement('div');
     guide.className = 'ux-lab-guide';
     guide.innerHTML =
-      '<div class="ux-guide-row"><div><strong>Lab çalışma yolu:</strong> cihaz ekle → kablo bağla → CLI ile yapılandır → ağı denetle.<br><small>İçe/dışa aktarma ve topolojiyi sıfırlama için “Diğer işlemler”i aç.</small></div></div>';
+      '<div class="ux-guide-row"><div><strong>Simülatör çalışma yolu:</strong> cihaz ekle → kablo bağla → CLI ile yapılandır → ağı denetle.<br><small>İçe/dışa aktarma ve topolojiyi sıfırlama için “Diğer işlemler”i aç.</small></div></div>';
     lab.querySelector('.pt-head')?.insertAdjacentElement('afterend', guide);
   }
   if (areas.troubleshoot) {

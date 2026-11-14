@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AğLab — Kararlı teslim sürümü</title>
+<title>AğLab</title>
 <style>@@include src/styles/01-base.css@@</style>
 <!-- v47: LPM migration. -->
 <!-- v48: VLAN access-port and trunk allowed-VLAN scenarios now use shared topology, IOS-like CLI, and real ping engine. -->
@@ -19,27 +19,35 @@
 <style id="ux-v12-style">@@include src/styles/05-ux-v12.css@@</style>
 <style id="ux-v13-style">@@include src/styles/06-ux-v13-reader.css@@</style>
 <style id="ux-v14-style">@@include src/styles/07-ux-v14-lab-focus.css@@</style>
+<style id="agShellStyle">@@include src/styles/08-shell.css@@</style>
 </head>
 <body>
-<div class="app">
-<header class="top">
-  <div class="brand"><div class="logo">⌁</div><div><h1>AğLab</h1><p>Öğren · Lab · Sorun Çöz</p></div></div>
-  <div class="status"><b>●</b> Yerel simülasyon <span style="margin:0 5px">·</span> İnternet bağlantısı gerekmez</div>
+<div class="app ag-shell">
+<header class="ag-top" id="agTop">
+  <div class="ag-logo" aria-hidden="true">AğL</div><div class="ag-brand">AğLab</div>
+  <nav class="area-tabs ag-nav" id="areaTabs" aria-label="AğLab ana bölümleri">
+    <button type="button" class="area-tab active" data-area="learn">Müfredat</button>
+    <button type="button" class="area-tab" data-area="lab">Simülatör</button>
+    <button type="button" class="area-tab" data-area="troubleshoot">Sorun Çöz</button>
+    <button type="button" class="area-tab" data-area="live">Canlı Lab</button>
+  </nav>
+  <input class="ag-search" id="agSearch" type="search" placeholder="Konu, komut, senaryo ara…" aria-label="Konu, komut, senaryo ara">
+  <div class="ag-top-tools" id="agTopTools"></div>
 </header>
-<section class="hero">
-  <div><div class="eyebrow">NETWORK TROUBLESHOOTING LAB · KARARLI TESLİM</div><h2>Ağı öğren. Mantığını kavra. Sorunları çöz.</h2><p>Üç ayrı alanda ilerle: temelden öğren, uygulama içi laboratuvarda dene, ardından belirtilerden arızayı teşhis et.</p></div>
-  <div class="progress"><span id="progressText">0 / 8 senaryo tamamlandı</span><div class="bar"><span id="progressBar"></span></div></div>
-</section>
-<nav class="area-tabs" id="areaTabs" aria-label="AğLab ana alanları">
-  <button class="area-tab active" data-area="learn"><span class="area-num">01</span><span><b>Öğren</b><small>Konuları sıfırdan öğren</small></span></button>
-  <button class="area-tab" data-area="lab"><span class="area-num">02</span><span><b>Lab</b><small>Yapılandır ve dene</small></span></button>
-  <button class="area-tab" data-area="troubleshoot"><span class="area-num">03</span><span><b>Sorun Çöz</b><small>Arızayı teşhis et</small></span></button>
+<nav class="ag-rail" id="agRail" aria-label="Kısayollar">
+  <button type="button" data-rail="learn" title="Müfredat haritası" aria-label="Müfredat haritası">🗺</button>
+  <button type="button" data-rail="lesson" title="Ders" aria-label="Ders">📘</button>
+  <button type="button" data-rail="lab" title="Simülatör" aria-label="Simülatör">🧪</button>
+  <button type="button" data-rail="troubleshoot" title="Sorun Çöz" aria-label="Sorun Çöz">🛠</button>
+  <button type="button" data-rail="live" title="Canlı Lab" aria-label="Canlı Lab">📦</button>
+  <button type="button" data-rail="advanced" title="Gelişmiş" aria-label="Gelişmiş">⚙</button>
 </nav>
+<main class="ag-main" id="agMain">
 <section class="workspace active" id="area-learn">
 
 <section id="studentFlow" aria-label="Tek müfredat ve öğrenci yolculuğu">
   <h2>Öğrenme yolun</h2>
-  <p class="sf-sub">Bir konu seç ve sırayla ilerle: <b>Öğren → Örnek → Test → Lab → Sorun Çöz.</b> Diğer araçlar gerektiğinde açılabilir.</p>
+  <p class="sf-sub">Bir konu seç ve sırayla ilerle: <b>Öğren → Örnek → Test → Simülatör → Sorun Çöz.</b> Diğer araçlar gerektiğinde açılabilir.</p>
   <div class="sf-metrics" aria-label="İlerleme özeti"><div class="sf-metric"><strong id="sfVisited">0</strong><span>Çalışılan konu</span></div><div class="sf-metric"><strong id="sfMastered">0</strong><span>70+ test puanı</span></div><div class="sf-metric"><strong id="sfProgress">0%</strong><span>Genel konu başarısı</span></div></div>
   <div class="sf-tools"><label for="sfLevel">Seviye <select id="sfLevel"><option value="all">Tüm seviyeler</option><option value="beginner">Başlangıç</option><option value="intermediate">Orta</option><option value="advanced">İleri</option></select></label><label for="sfSearch">Konu ara <input id="sfSearch" type="search" placeholder="Ör. subnetting, SD-WAN, VLAN"></label></div>
   <div class="sf-layout"><nav id="sfList" class="sf-list" aria-label="Konu listesi"></nav><article id="sfSheet" class="sf-sheet" aria-live="polite"></article></div>
@@ -73,7 +81,7 @@
 <section class="panel route-workshop" id="routeWorkshop" aria-labelledby="routeWorkshopTitle">
   <div class="panel-head"><div><h3 id="routeWorkshopTitle">Uygulama · Routing ve erişim teşhis atölyesi</h3><span>LPM, Administrative Distance ve metric sırasını gerçek router'larda gör</span></div><span class="tag">LABBER MOTORU</span></div>
   <div class="route-workshop-body">
-    <p>Bir durum seç. AD, LPM ve varsayılan rota Lab'daki Labber senaryolarında çözülür; metric ve eşit maliyetli yollar (ECMP) burada Labber router'larında gerçek <code>show ip route</code> çıktısı ve motorun rota kararıyla gösterilir.</p>
+    <p>Bir durum seç. AD, LPM ve varsayılan rota Simülatör'deki senaryolarda çözülür; metric ve eşit maliyetli yollar (ECMP) burada Labber router'larında gerçek <code>show ip route</code> çıktısı ve motorun rota kararıyla gösterilir.</p>
     <div class="route-workshop-controls">
       <label for="routeCalcScenario">Durum<select id="routeCalcScenario"><option value="static-ospf">1 · Hatalı statik rota / OSPF (AD)</option><option value="lpm">2 · LPM: daha uzun önek</option><option value="metric">3 · OSPF metric karşılaştırması</option><option value="ecmp">4 · Eşit maliyetli yollar (ECMP)</option><option value="default">5 · Varsayılan rota</option></select></label>
       <button type="button" id="routeCalcReset">Başlangıca dön</button>
@@ -118,7 +126,7 @@
 </div></details>
 </section>
 <section class="workspace" id="area-lab">
-  <div class="lab-heading"><div><div class="eyebrow">02 · LABORATUVAR</div><h2>Kendi ağını kur ve dene</h2><p>Bu alan bir eğitim simülasyonudur: ayarları değiştir, komut çalıştır ve paketin neden ulaşıp ulaşmadığını gözlemle. Gerçek donanıma veya internete bağlanmaz.</p></div></div>
+  <div class="lab-heading"><div><div class="eyebrow">SİMÜLATÖR</div><h2>Kendi ağını kur ve dene</h2><p>Bu alan bir eğitim simülasyonudur: ayarları değiştir, komut çalıştır ve paketin neden ulaşıp ulaşmadığını gözlemle. Gerçek donanıma veya internete bağlanmaz.</p></div></div>
   <section class="panel pt-workbench" id="ptWorkbench">
     <div class="pt-head"><div><div class="eyebrow">INTERACTIVE NETWORK BUILDER</div><h3>Packet Tracer tarzı çalışma alanı</h3><p>Cihaz ekle, kablo bağla, cihazı seç ve CLI üzerinden yapılandır. Değişiklikler simülasyon ağına uygulanır; topolojiyi tarayıcıya kaydedebilir veya JSON olarak taşıyabilirsin.</p><p class="pt-import-note" style="margin-top:8px;padding:10px 12px;border:1px solid #52627b;border-radius:9px;background:#101c2e;color:#d3e2f6;font-size:12px;line-height:1.6"><b>Packet Tracer içe aktarma:</b> .pkt dosyasını önce <a href="convert_pkt_to_aglab.py" download style="color:#9dc8ff;text-decoration:underline">dönüştürücü betiği</a> ile AgLab JSON biçimine çevir, ardından <b>İçe aktar</b> ile oluşturulan .aglab.json dosyasını seç. Aktarımda desteklenmeyen cihazlar raporlanır; kaynak .pkt değiştirilmez.</p></div><div class="pt-head-actions"><button id="ptSave">Kaydet</button><button id="ptAudit" class="primary">Ağı denetle</button><button id="ptExport">Dışa aktar</button><button id="ptDeleteDevice">Seçili cihazı sil</button><button id="ptImport">İçe aktar (JSON)</button><input id="ptImportFile" type="file" accept="application/json,.json" hidden><button id="ptReset">Topolojiyi sıfırla</button><button class="primary" id="ptConnectMode">Kablo bağla</button></div></div>
     <section class="pt-quickstart" aria-labelledby="ptQuickTitle">
@@ -139,11 +147,7 @@
       <div id="sharedScenarioInstructions" style="margin-top:10px;font-size:13px;line-height:1.55">Senaryo seçip yükle. Topoloji, arızalı yapılandırmayla oluşturulacak.</div>
       <div id="sharedScenarioEngine" class="engine-badge" style="margin-top:8px;font-size:12px;font-weight:600">Motor: senaryo yüklenince belirlenir.</div>
       <div id="sharedScenarioStatus" role="status" aria-live="polite" style="margin-top:8px;padding:9px 11px;border-radius:8px;background:rgba(100,116,139,.15);font-size:13px">Henüz gerçek motorlu senaryo yüklenmedi.</div>
-      <div id="troubleSharedBridge" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px"><span id="troubleSharedBridgeText" role="status" style="font-size:12px;color:var(--muted)">Sorun Çöz görevi Lab motorunda sürüyor.</span><button type="button" id="troubleReturn" class="primary">← Sorun Çöz'e dön</button></div>
-      <div id="regressionAuditPanel" style="margin-top:10px;padding:12px;border:1px solid #3b5277;border-radius:10px;background:rgba(15,23,42,.45)">
-        <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div><b style="font-size:13px">Ortak senaryo regresyon denetimi</b><div style="font-size:11px;color:var(--muted,#a9b7c8);margin-top:3px">Senaryo tanımları ve temel başlangıç koşulları için yerel statik kontrol. Gerçek paket/CLI uçtan uca testi yerine geçmez.</div></div><button type="button" id="runRegressionAudit" class="primary">Kontrolleri çalıştır</button></div>
-        <div id="regressionAuditSummary" role="status" aria-live="polite" style="margin-top:9px;font-size:12px;color:var(--muted,#a9b7c8)">Denetim henüz çalıştırılmadı.</div><div id="regressionAuditResults" style="display:grid;gap:5px;margin-top:8px"></div>
-      </div>
+      <div id="troubleSharedBridge" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px"><span id="troubleSharedBridgeText" role="status" style="font-size:12px;color:var(--muted)">Sorun Çöz görevi Simülatör'de sürüyor.</span><button type="button" id="troubleReturn" class="primary">← Sorun Çöz'e dön</button></div>
     </section>
 </div></details>
     <div class="pt-workgrid">
@@ -161,12 +165,13 @@
 </details>
 </section>
 <section class="workspace" id="area-troubleshoot">
-<div class="lab-heading"><div><div class="eyebrow">03 · SORUN ÇÖZ</div><h2>Belirtilerden arızayı teşhis et</h2><p>Çözüm komutu doğrudan verilmez. Görev Labber motorundaki gerçek topolojide açılır: belirtiyi araştır, düzelt ve test ederek doğrula.</p></div></div>
-<details class="ux-extra-tools" id="uxTopologyAudit"><summary><span><b>Kendi topolojimden arıza görevi oluştur</b><small>Önce Lab'da ağ denetimi yaptıysan kullan</small></span></summary><div class="ux-extra-body">
+<div class="ag-progress"><span id="progressText">0 / 8 senaryo tamamlandı</span><div class="bar"><span id="progressBar"></span></div></div>
+<div class="lab-heading"><div><div class="eyebrow">SORUN ÇÖZ</div><h2>Belirtilerden arızayı teşhis et</h2><p>Çözüm komutu doğrudan verilmez. Görev Labber motorundaki gerçek topolojide açılır: belirtiyi araştır, düzelt ve test ederek doğrula.</p></div></div>
+<details class="ux-extra-tools" id="uxTopologyAudit"><summary><span><b>Kendi topolojimden arıza görevi oluştur</b><small>Önce Simülatör'de ağ denetimi yaptıysan kullan</small></span></summary><div class="ux-extra-body">
 <section class="panel" id="topologyTaskCard" style="padding:16px;margin-bottom:17px">
-  <div class="panel-head" style="padding:0 0 12px;border:0"><div><h3>Kendi topolojinden sorun çözme görevi</h3><span>Lab denetim bulgularını teşhis görevine dönüştür</span></div><button id="loadTopologyTask">Son denetimi yükle</button></div>
-  <div id="topologyTaskBody" aria-live="polite"><p style="color:var(--muted);margin:0">Önce Lab bölümünde topolojini kurup <b>Ağı denetle</b> düğmesine bas. Buradan bulguları görev olarak açabilir, önerilen komutlarla araştırabilir ve düzeltme sonrası yeniden denetleyebilirsin.</p></div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="primary" id="runTopologyAuditTask">Lab'da denetle ve görevi oluştur</button><button id="verifyTopologyTask">Görevi doğrula</button></div>
+  <div class="panel-head" style="padding:0 0 12px;border:0"><div><h3>Kendi topolojinden sorun çözme görevi</h3><span>Simülatör denetim bulgularını teşhis görevine dönüştür</span></div><button id="loadTopologyTask">Son denetimi yükle</button></div>
+  <div id="topologyTaskBody" aria-live="polite"><p style="color:var(--muted);margin:0">Önce Simülatör'de topolojini kurup <b>Ağı denetle</b> düğmesine bas. Buradan bulguları görev olarak açabilir, önerilen komutlarla araştırabilir ve düzeltme sonrası yeniden denetleyebilirsin.</p></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="primary" id="runTopologyAuditTask">Simülatör'de denetle ve görevi oluştur</button><button id="verifyTopologyTask">Görevi doğrula</button></div>
   <div id="topologyTaskFeedback" aria-live="polite" style="margin-top:10px"></div>
 </section>
 </div></details>
@@ -174,13 +179,29 @@
   <aside class="panel">
     <div class="panel-head"><h3>Arıza senaryoları</h3><span id="countText">25 görev</span></div>
     <div class="scenario-list" id="scenarioList"></div>
-    <div class="side-foot">İlerleme bu tarayıcıda saklanır. Labber görevleri Lab bölümünde gerçek ağda doğrulanınca tamamlanır; kavramsal alıştırmalar motor kullanmaz.</div>
+    <div class="side-foot">İlerleme bu tarayıcıda saklanır. Senaryo görevleri Simülatör'de gerçek ağda doğrulanınca tamamlanır; kavramsal alıştırmalar motor kullanmaz.</div>
   </aside>
-  <main class="maincol">
+  <div class="maincol">
     <section class="panel mission" id="mission"></section>
-  </main>
+  </div>
 </div>
 </section>
+<section class="workspace" id="area-live" aria-labelledby="liveTitle">
+  <div class="ag-page-head card"><div class="muted small">Canlı Lab</div><h1 id="liveTitle">Canlı Lab · gerçek cihaz yazılımı</h1>
+  <p class="muted">Canlı Lab, FRRouting ve Linux bridge'i containerlab ile gerçek süreçler olarak çalıştırır. Tarayıcıdaki Simülatör'den ayrıdır: yetkili operatör (ya da CI) çalıştırır, sonuç raporu buradan açılır. Tarayıcı topolojisiyle birleştirilmez.</p></div>
+  <div class="ag-live-grid" id="liveLabPanel"></div>
+</section>
+<section class="workspace" id="area-advanced" aria-labelledby="advancedTitle">
+  <div class="ag-page-head card"><div class="muted small">Gelişmiş</div><h1 id="advancedTitle">Gelişmiş</h1>
+  <p class="muted">Geliştirici ve bakım araçları. Öğrenme yolunda gerekmez.</p></div>
+  <div class="card ag-advanced-body">
+      <div id="regressionAuditPanel" style="margin-top:10px;padding:12px;border:1px solid #3b5277;border-radius:10px;background:rgba(15,23,42,.45)">
+        <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div><b style="font-size:13px">Ortak senaryo regresyon denetimi</b><div style="font-size:11px;color:var(--muted,#a9b7c8);margin-top:3px">Senaryo tanımları ve temel başlangıç koşulları için yerel statik kontrol. Gerçek paket/CLI uçtan uca testi yerine geçmez.</div></div><button type="button" id="runRegressionAudit" class="primary">Kontrolleri çalıştır</button></div>
+        <div id="regressionAuditSummary" role="status" aria-live="polite" style="margin-top:9px;font-size:12px;color:var(--muted,#a9b7c8)">Denetim henüz çalıştırılmadı.</div><div id="regressionAuditResults" style="display:grid;gap:5px;margin-top:8px"></div>
+      </div>
+  </div>
+</section>
+</main>
 </div><div class="toast" id="toast"></div>
 <script>@@include src/app/main.js@@</script>
 
@@ -188,6 +209,7 @@
 
 
 <script>@@include src/app/theme-toggle.js@@</script>
+<script>@@include src/app/shell.js@@</script>
 <script id="sfCourseData" type="application/json">@@include src/data/courses.json@@</script>
 <script id="sfDetailData" type="application/json">@@include src/data/course-details.json@@</script>
 <script id="sfStudentFlowScript">@@include src/app/student-flow.js@@</script>

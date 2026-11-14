@@ -29,7 +29,7 @@
     make(
       'p',
       null,
-      'Kaynak: AğLab JS · ARP/ICMP eğitim modeli. Kayıt oynatımı yeni paket göndermez; gerçek Lab veya PCAP değildir. Geçmiş bu sayfada tutulur, yenilemede silinir.',
+      'Kaynak: AğLab JS · ARP/ICMP eğitim modeli. Kayıt oynatımı yeni paket göndermez; Canlı Lab veya PCAP değildir. Geçmiş bu sayfada tutulur, yenilemede silinir.',
     ),
   );
   const limits = make('details');
@@ -38,7 +38,7 @@
     make(
       'p',
       null,
-      'Hız yalnız görselleştirme süresidir, ağ gecikmesi değildir. TCP/UDP ve gerçek Lab/NetSim kayıtları burada canlandırılmaz. Bir aktarım kaydı tek başına hedef IP’ye teslim garantisi vermez.',
+      'Hız yalnız görselleştirme süresidir, ağ gecikmesi değildir. TCP/UDP ve Canlı Lab kayıtları burada canlandırılmaz. Bir aktarım kaydı tek başına hedef IP’ye teslim garantisi vermez.',
     ),
   );
   panel.append(limits);
