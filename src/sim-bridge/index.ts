@@ -9,6 +9,8 @@ export { createLab, createSession, IosSession, runScript, VpcsSession } from '..
 export { LabQuery } from '../sim/query'
 // E: Labber'ın kendi labları (src/labs, kullanıcının içeriği; değiştirilmeden alındı).
 export { LABS as LABBER_LABS } from '../labs/index'
+// AğLab arayüz PR 2: hedef ipuçlarının ilk iki basamağı (neye bak, kavram); 3. basamak labın `hint`i.
+export { HINT_TIERS as LABBER_HINT_TIERS } from '../labs/hint-tiers'
 export type { Session } from '../sim/index'
 export type * from '../sim/types'
 export { BridgeError, canonPort, createRuntime, needsEncapFor, toAglab, toLabber, MODEL_L2, MODEL_L3 } from './bridge'

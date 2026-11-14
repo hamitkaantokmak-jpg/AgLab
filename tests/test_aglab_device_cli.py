@@ -1,4 +1,10 @@
-"""Device-local CLI interactions in Chromium: click, drag, cabling and mobile."""
+"""Device-local CLI interactions in Chromium: click, drag, cabling and mobile.
+
+Arayüz PR 2: Simülatör'de terminal alt şeritte hep açıktır (docs/arayuz/dolu-3.png). Cihaza
+tıklamak/Enter yüzen `#ptDeviceCliDialog` penceresi yerine o cihazın terminal sekmesini seçer ve
+komut satırına odaklanır; Esc odağı cihaza geri verir. "CLI açık" = `#ptCliInput` odakta, doğru
+cihaz seçili ve ekranda; "açılmadı" = odak komut satırına geçmedi.
+"""
 
 import json
 import os
@@ -6,7 +12,7 @@ import tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, open_cable_tool
 
 TOPOLOGY = {
     "app": "AgLab",
@@ -46,6 +52,21 @@ TOPOLOGY = {
     "nextId": 3,
 }
 
+
+def cli_open(page, device_id=None):
+    expect(page.locator("#ptCliInput")).to_be_focused()
+    if device_id:
+        expect(page.locator("#ptCliDevice")).to_have_value(device_id)
+    tab = page.locator(
+        "#agSimTermTabs [data-dev='" + page.locator("#ptCliDevice").input_value() + "']"
+    )
+    expect(tab).to_have_attribute("aria-pressed", "true")
+
+
+def cli_closed(page):
+    expect(page.locator("#ptCliInput")).not_to_be_focused()
+
+
 with sync_playwright() as pw:
     browser = launch_chromium(pw)
     for mobile in (False, True):
@@ -63,16 +84,15 @@ with sync_playwright() as pw:
         page.evaluate("(topology) => academyEngine.load(topology)", TOPOLOGY)
         pc = page.locator('#ptCanvas g[data-id="pc"]')
         pc.tap() if mobile else pc.click()
-        dialog = page.locator("#ptDeviceCliDialog")
-        expect(dialog).to_be_visible()
-        expect(dialog).to_contain_text("PC-Test")
+        cli_open(page, "pc")
+        expect(page.locator("#agSimTermTabs [aria-pressed=true]")).to_have_text("PC-Test")
         expect(page.locator("#ptCliDevice")).to_have_value("pc")
         expect(page.locator("#ptCliInput")).to_be_focused()
         # I-1: düzenleyicideki topoloji Labber'da; PC terminali VPCS (adres `show ip` ile görülür)
         page.locator("#ptCliInput").fill("show ip")
         page.locator("#ptCliInput").press("Enter")
         expect(page.locator("#ptTerminal")).to_contain_text("192.168.10.10")
-        bounds = dialog.bounding_box()
+        bounds = page.locator("#ptCliInput").bounding_box()
         assert (
             bounds
             and bounds["x"] >= 0
@@ -87,7 +107,7 @@ with sync_playwright() as pw:
             path=str(output / ("device-cli-mobile.png" if mobile else "device-cli.png"))
         )
         page.keyboard.press("Escape")
-        expect(dialog).not_to_be_visible()
+        cli_closed(page)
         expect(pc).to_be_focused()
         # A real tap/click can include a few pixels of hand movement. It must
         # not be mistaken for a deliberate drag or silently stop opening CLI.
@@ -110,12 +130,12 @@ with sync_playwright() as pw:
             page.mouse.down()
             page.mouse.move(x + 2, y + 2)
             page.mouse.up()
-        expect(dialog).to_be_visible()
+        cli_open(page)
         page.keyboard.press("Escape")
         router = page.locator('#ptCanvas g[data-id="router"]')
         router.focus()
         router.press("Enter")
-        expect(dialog).to_be_visible()
+        cli_open(page)
         expect(page.locator("#ptCliDevice")).to_have_value("router")
         expect(page.locator("#ptPrompt")).to_have_text("Router-Test>")
         page.locator("#ptCliInput").press("ArrowUp")
@@ -126,8 +146,8 @@ with sync_playwright() as pw:
         state = page.evaluate("academyEngine.snapshot()")
         assert state["devices"][1]["interfaces"]["g0/0"]["enabled"] is False
         assert state["devices"][0]["interfaces"]["eth0"]["enabled"] is True
-        page.get_by_role("button", name="CLI penceresini kapat").click()
-        expect(dialog).not_to_be_visible()
+        page.keyboard.press("Escape")
+        cli_closed(page)
         pc.tap() if mobile else pc.click()
         page.locator("#ptCliInput").press("ArrowUp")
         expect(page.locator("#ptCliInput")).to_have_value("show ip")
@@ -157,31 +177,33 @@ with sync_playwright() as pw:
             page.mouse.down()
             page.mouse.move(x + 35, y + 20, steps=8)
             page.mouse.up()
-        expect(dialog).not_to_be_visible()
+        cli_closed(page)
         after = page.evaluate("academyEngine.snapshot()")
         assert after["devices"][0]["x"] != before["devices"][0]["x"]
+        open_cable_tool(page)
         page.click("#ptConnectMode")
         pc.tap() if mobile else pc.click()
         router.tap() if mobile else router.click()
-        expect(dialog).not_to_be_visible()
+        cli_closed(page)
         final_state = page.evaluate("academyEngine.snapshot()")
         assert len(final_state["links"]) == 1, final_state
         # The completed cable gesture leaves CLI clicks usable again.
         pc.tap() if mobile else pc.click()
-        expect(dialog).to_be_visible()
+        cli_open(page)
         page.keyboard.press("Escape")
         closed = page.evaluate("academyEngine.snapshot()")
         assert {k: v for k, v in closed.items() if k != "selected"} == {
             k: v for k, v in final_state.items() if k != "selected"
         }
+        open_cable_tool(page)
         page.click("#ptConnectMode")
         page.keyboard.press("Escape")
         router.tap() if mobile else router.click()
-        expect(dialog).to_be_visible()
+        cli_open(page)
         page.keyboard.press("Escape")
         router.focus()
         router.press("Space")
-        expect(dialog).to_be_visible()
+        cli_open(page)
         expect(page.locator("#ptCliDevice")).to_have_value("router")
         page.keyboard.press("Escape")
         assert not errors, errors
@@ -209,7 +231,7 @@ with sync_playwright() as pw:
             else:
                 node = page.locator("#ptCanvas g[data-id]").first
             node.tap() if mobile else node.click()
-            expect(page.locator("#ptDeviceCliDialog")).to_be_visible()
+            cli_open(page)
             expect(page.locator("#ptCliDevice")).to_have_value(node.get_attribute("data-id"))
             expect(page.locator("#ptCliInput")).to_be_focused()
             page.keyboard.press("Escape")
@@ -254,7 +276,7 @@ with sync_playwright() as pw:
             page.fill("#ptCliInput", "shutdown")
             page.select_option("#ptCliDevice", "router")
             expect(page.locator("#ptCliInput")).to_have_value("")
-            expect(page.locator("#ptDeviceCliTitle")).to_contain_text("Router-Test")
+            expect(page.locator("#agSimTermTabs [aria-pressed=true]")).to_have_text("Router-Test")
             page.keyboard.press("Escape")
         context.close()
     browser.close()

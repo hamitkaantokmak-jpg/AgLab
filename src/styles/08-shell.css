@@ -36,6 +36,8 @@ html[data-theme='light'] body {
     sans-serif;
 }
 .ag-shell {
+  /* Sol şeridin zemini sayfa boyunca uzanır (şerit kendisi yapışkan, ekran boyu). */
+  background: linear-gradient(90deg, var(--panel) 0 63px, var(--line) 63px 64px, transparent 64px);
   max-width: none;
   margin: 0;
   padding: 0;
@@ -72,12 +74,11 @@ html[data-theme='light'] body {
   font-weight: 700;
   font-size: 16px;
   flex: 0 1 300px;
-  min-width: 60px;
+  min-width: max-content;
 }
 #areaTabs.ag-nav {
   display: flex;
   align-items: center;
-  height: 100%;
   gap: 8px;
   flex: 1 1 auto;
   min-width: 0;
@@ -109,6 +110,7 @@ html[data-theme='light'] body {
   flex: 0 1 240px;
   min-width: 120px;
   width: 240px;
+  min-height: 32px;
   border: 0;
   border-radius: 8px;
   padding: 6px 12px;
@@ -220,6 +222,7 @@ html[data-theme='light'] body {
 }
 @media (max-width: 760px) {
   .ag-shell {
+    background: none;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto auto;
   }
@@ -265,4 +268,35 @@ html[data-theme='light'] body {
 .ag-main > .workspace.active {
   background: none;
   border-color: transparent;
+}
+/* 761–1180 px: üst bar tek satırda kalır (sekmeler ve arama daralır). */
+@media (min-width: 761px) and (max-width: 1180px) {
+  .ag-top {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .ag-brand {
+    flex: 0 0 auto;
+  }
+  #areaTabs.ag-nav {
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+  #areaTabs .area-tab {
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+  .ag-search {
+    flex: 1 1 140px;
+    width: auto;
+    min-width: 90px;
+  }
+}
+/* Eski `.tag` rozeti (ör. Sorun Çöz "LABBER MOTORU") sabit koyu zeminliydi; açık temada
+   koyu yazı koyu zeminde okunmuyordu. Taslağın rozet tonlarına bağlandı. Sorun Çöz ekranının
+   kendisi PR 3'te yenilenir. */
+html[data-theme='light'] .tag {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent-text);
 }

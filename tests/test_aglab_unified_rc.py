@@ -3,7 +3,7 @@
 import json, tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, open_cable_tool
 
 with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     browser = launch_chromium(pw)
@@ -47,6 +47,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     sw = next(d for d in snapshot["devices"] if d["type"] == "Switch")
 
     def cable(pc):
+        open_cable_tool(page)
         page.select_option("#ptSource", pc["id"])
         page.select_option("#ptTarget", sw["id"])
         page.click("#ptMakeLink")
@@ -86,6 +87,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     step(6, True)
     step(7, False)
     step(8, False)
+    # Arayüz PR 2: Paket Dedektifi inceleme panelinin "Olaylar" sekmesinde.
+    page.click("#agSimTab-events")
     page.click("#packetDetectiveRefresh")
     step(7, True)
     raw = page.locator("#packetDetectiveRaw").text_content()

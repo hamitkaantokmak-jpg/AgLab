@@ -1143,6 +1143,12 @@ function academyCheck(persist = true) {
   if (persist) {
     academyRecordProgress(result);
     saveTopology(true);
+    // Arayüz PR 2: Simülatör'ün "Çözümü göster" kilidi başarısız kontrolleri sayar.
+    document.dispatchEvent(
+      new CustomEvent('aglab:academy-checked', {
+        detail: { id: academyActive.id, points: result.earned_points },
+      }),
+    );
   }
   return result;
 }
@@ -1168,7 +1174,32 @@ ac('academyHint').onclick = () => {
   if (academyHintIndex >= academyActive.hints.length) ac('academyHint').disabled = true;
   saveTopology(true);
 };
-window.academy = { check: academyCheck, evaluate: academyEvaluate };
+window.academy = {
+  check: academyCheck,
+  evaluate: academyEvaluate,
+  // Arayüz PR 2: Simülatör çalışma alanı (görev kartı, canlı hedef listesi, çözüm kilidi).
+  active: () =>
+    academyActive
+      ? {
+          id: academyActive.id,
+          title: academyActive.title,
+          hints: academyActive.hints.length,
+          hintIndex: academyHintIndex,
+        }
+      : null,
+  // Canlı hedefler: ölçütler güncel topolojide değerlendirilir; puan ve ilerleme kaydedilmez
+  // (Labber sorguları saf; öğrencinin çalışma zamanı değişmez).
+  goals: () =>
+    academyActive
+      ? academyEvaluate(
+          academyActive.assessment.criteria,
+          academyAnswers(),
+          academyActive.probe_health,
+        ).criteria.map((r) => ({ id: r.id, label: r.label, ok: r.status === 'passed' }))
+      : null,
+  // Öğretmen çözümü (academy/solution-data.js); yalnız kilit açılınca gösterilir.
+  solution: (id) => (Object.hasOwn(academySolutions, id) ? clone(academySolutions[id]) : null),
+};
 window.academyEngine = {
   load: (t) => importTopology({ ...clone(t), ...academySessionFields() }),
   snapshot: () => clone({ app: 'AgLab', version: 23, devices, links, nextId, selected }),

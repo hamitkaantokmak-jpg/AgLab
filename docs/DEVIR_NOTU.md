@@ -14,7 +14,7 @@ Her adım ayrı PR, bir öncekinin dalı üstüne; birleştirilmez.
 | Adım | Dal | Durum |
 |---|---|---|
 | PR 1 iskelet, adlandırma, tek paket | #91, `claude/arayuz-1-iskelet` (taban `claude/arayuz-taslak`) | açık |
-| PR 2 Simülatör çalışma alanı | — | sırada |
+| PR 2 Simülatör çalışma alanı, çözüm kilidi | #92, `claude/arayuz-2-simulator` (taban `claude/arayuz-1-iskelet`) | açık |
 | PR 3 Arıza senaryosu ekranı | — | sırada |
 | PR 4 Müfredat haritası ve ders ekranı | — | sırada |
 
@@ -35,7 +35,34 @@ PR 1:
 - Test: yeni `test_aglab_shell.py`; `network_features` (Gelişmiş), `advanced_engines` (Canlı Lab)
   gezinmesi.
 
-Kalan (PR 2–4), her biri ayrı PR, bir öncekinin dalı üstüne (PR 2 → `claude/arayuz-1-iskelet`):
+PR 2 (dal `claude/arayuz-2-simulator`):
+- `src/app/sim-workspace.js` + `src/styles/09-simulator.css`: `#ptWorkbench` taslaktaki ekran 3 olur
+  (üst çubuk `#agSimHead`, görev `#agSimTask` + canlı hedefler `#agSimGoals`, tuval `#agSimStage`,
+  inceleme `#agSimInspect` Port/Cihaz/Olaylar, alt şerit `#agSimDock` terminal + Simulation Mode
+  zaman çizelgesi); görev seçimi altta `#agSimCatalog`. Mevcut denetimler yeniden oluşturulmaz,
+  taşınır (kimlikler aynı). Bağlam: Akademi > Labber labı > ortak senaryo > serbest
+  (`aglabSimWorkspace.context()`); bağlam geçişi anında, canlı hedefler/hızlı show 120 ms sonra.
+- Hızlı show: `aglabLabberSession.peek(dev, 'show …')` geçici oturumda (durum değişmez).
+- Cihaza tıklamak yüzen `#ptDeviceCliDialog` açmaz; terminal sekmesi + komut satırı odağı.
+- Çözüm kilidi (kullanıcı kararı uygulandı): `tools/build_academy_solutions.py` →
+  `academy/solution-data.js` (`.prettierignore`'da, `run_pipeline` `--check`); kilit 3 başarısız
+  kontrol ya da bütün ipuçları (`aglab-solution-lock-v1`); çözüm yalnız düğmeyle DOM'a eklenir.
+  `verify_packages.py` yasak yerine gömülü çözüm = öğretmen JSON denetimi. Labber labının
+  `#labberLabSolution` kutusu kaldırıldı. **Ortak senaryoların ipucu/çözüm kutusu PR 3'te aynı
+  kilide bağlanmalı** (`test_aglab_scenario_cause` o kutuyu bekliyor; PR 3'te uyarlanır).
+- Simülatör açıkken `scroll-behavior: auto` (üst çubuk ⇄ katalog arası yumuşak kaydırma testleri
+  ~3 kat yavaşlatıyordu). Akademi "değiştir" onayı basılan düğmenin yanında açılır.
+- Test: yeni `test_aglab_sim_workspace.py`; uyarlananlar PR açıklamasında. Tam hat 89 PASS.
+- Kullanıcı testi düzeltmeleri (aynı PR): 1024 px üst bar/sütunlar, palet ayrı sütun, tuval üstü
+  araç çubuğu yok (kablo işlemleri paletteki kablo aracında `#agSimCablePanel`; testler
+  `open_cable_tool`), zaman çizelgesi etiketleri + ayrıntı satırı, Olaylar sekmesi kendiliğinden
+  güncellenir, show çıktısı satır kırar, istem ve `.tag` kontrastı, şerit zemini, görev kartında
+  hedefler üstte, bağlantı etiketleri port adları. Labber lab ipuçları kademeli
+  (`src/labs/hint-tiers.ts`: neye bak → kavram → komut).
+- PR 3'e not: Sorun Çöz "LABBER MOTORU" rozetinin açık tema kontrastı ortak `.tag` kuralıyla
+  düzeldi; Sorun Çöz ekranının kendisi ve ortak senaryo ipuçlarının kademesi/çözüm kilidi PR 3'te.
+
+Kalan (PR 3–4), her biri ayrı PR, bir öncekinin dalı üstüne (PR 2 → `claude/arayuz-1-iskelet`):
 
 - **PR 2 Simülatör çalışma alanı** (taslak `dolu-3.png`): üstte başlık + motor rozeti + Sıfırla /
   İpucu / Kontrol et; solda görev ve canlı hedef listesi (Akademi ölçütleri `academy.evaluate`,

@@ -3,7 +3,7 @@
 import json, os, tempfile, time, math
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from aglab_test_support import ROOT, launch_chromium
+from aglab_test_support import ROOT, launch_chromium, open_cable_tool
 
 
 def topology(count):
@@ -127,9 +127,11 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
             page.evaluate("academyEngine.snapshot().devices.find(d=>d.id==='p0').x") != previous
         )
         assert row["drag_changed"], row
+        open_cable_tool(page)
         page.select_option("#ptSource", added)
         page.select_option("#ptTarget", "s0")
         before = page.locator("#ptCanvas line.pt-edge").count()
+        open_cable_tool(page)
         measure("cable_add_ms", lambda: page.click("#ptMakeLink"))
         expect(page.locator("#ptCanvas line.pt-edge")).to_have_count(before + 1)
         measure(
@@ -140,8 +142,10 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         cdp.send("Emulation.setPageScaleFactor", {"pageScaleFactor": 1})
 
         def open_cli():
+            # Arayüz PR 2: terminal alt şeritte; cihaza tıklamak komut satırına odaklanır.
             page.locator('#ptCanvas g[data-id="p0"]').click()
-            expect(page.locator("#ptDeviceCliDialog")).to_be_visible()
+            expect(page.locator("#ptCliInput")).to_be_focused()
+            expect(page.locator("#ptCliDevice")).to_have_value("p0")
 
         measure("cli_open_ms", open_cli)
         page.keyboard.press("Escape")
@@ -158,6 +162,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         # I-1: çalışma alanı Labber'da; PC terminali VPCS. VPCS özet satırı yazmaz, beşinci yanıt
         # satırı ping'in tamamlandığını gösterir.
         expect(page.locator("#ptTerminal")).to_contain_text("84 bytes from 10.0.0.2 icmp_seq=5")
+        # Arayüz PR 2: Paket Dedektifi inceleme panelinin "Olaylar" sekmesinde.
+        page.click("#agSimTab-events")
         measure("packet_detective_ms", lambda: page.click("#packetDetectiveRefresh"))
         assert page.locator("#packetDetectiveRaw").text_content()
         cdp.send("HeapProfiler.collectGarbage")

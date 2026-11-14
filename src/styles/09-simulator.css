@@ -1,0 +1,1182 @@
+/* Arayüz yenilemesi PR 2: Simülatör çalışma alanı (docs/arayuz/dolu-3.png). Üst çubuk,
+   görev / tuval / inceleme sütunları, altta koyu terminal + Simulation Mode şeridi.
+   Dar kaplarda (ör. 200% yakınlaştırma, telefon) sütunlar alt alta dizilir: kap sorgusu
+   (container query) kullanılır, çünkü body zoom'u ortam sorgularını değiştirmez.
+   Düğmeler: network-scenarios.js'nin genel `button { … !important }` kuralını aşmak için
+   kimlikli seçici + !important. */
+html[data-theme='light'] {
+  --ag-term-bg: #1d2128;
+  --ag-term-line: #2c323c;
+  --ag-term-text: #d6dbe3;
+  --ag-term-muted: #9aa3b0;
+  --ag-ok: #1d9a55;
+  --ag-bad: #e0532b;
+  --ag-canvas: #f8f9fb;
+}
+html:not([data-theme='light']) {
+  --ag-term-bg: #0f1318;
+  --ag-term-line: #262c36;
+  --ag-term-text: #d6dbe3;
+  --ag-term-muted: #9aa3b0;
+  --ag-ok: #4fd08a;
+  --ag-bad: #ff8a6b;
+  --ag-canvas: #161b23;
+}
+.ag-main {
+  container-type: inline-size;
+  container-name: agmain;
+}
+/* Simülatör tam genişlik: taslakta başlık çubuğu üst gezinmenin hemen altında kenardan kenara. */
+.ag-main > #area-lab.workspace.active {
+  margin: -20px -20px -20px -24px;
+  animation: none;
+  transform: none;
+}
+#ptWorkbench.ag-sim {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) 236px;
+  height: calc(100vh - 56px);
+  min-height: 700px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
+}
+#ptWorkbench.ag-sim > :not(.ag-sim-head):not(.ag-sim-body):not(.ag-sim-dock) {
+  display: none;
+}
+/* ---- üst çubuk */
+.ag-sim-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.ag-sim-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+#agSimTitle {
+  font-size: 15px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.ag-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.ag-tag[data-engine='other'] {
+  background: #f1eadf;
+  color: #8a5a14;
+}
+.ag-sim-spacer {
+  flex: 1 1 auto;
+}
+.ag-sim-actions,
+.ag-sim-ctxactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.ag-sim-ctxactions[hidden],
+#ptWorkbench [data-ctx][hidden] {
+  display: none !important;
+}
+#ptWorkbench .ag-btn,
+#ptWorkbench .ag-sim-head button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-height: 36px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+  box-shadow: none;
+  background-color: var(--panel2) !important;
+  color: var(--text) !important;
+}
+#ptWorkbench .ag-btn:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+#ptWorkbench .ag-btn-primary,
+#ptWorkbench .ag-sim-head .ag-btn-primary {
+  background-color: var(--accent) !important;
+  color: #fff !important;
+}
+#ptWorkbench .ag-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+#ptWorkbench #agSimSolutionBtn:not(:disabled) {
+  background-color: var(--accent-soft) !important;
+  color: var(--accent-text) !important;
+}
+.ag-sim-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+/* ---- gövde: görev | tuval | inceleme */
+.ag-sim-body {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr) 300px;
+  gap: 12px;
+  padding: 12px 12px 0;
+  min-height: 0;
+}
+.ag-sim-body > .card {
+  min-height: 0;
+  min-width: 0;
+}
+.ag-sim-task {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.ag-sim-task h2 {
+  font-size: 15px;
+  margin: 0;
+}
+.ag-sim-task-text {
+  margin: 4px 0 12px;
+}
+.ag-sim-task-text p,
+.ag-sim-task-text ol {
+  margin: 0 0 6px;
+}
+.ag-sim-task-text h3,
+.ag-sim-task-text h4 {
+  font-size: 12.5px;
+  color: var(--text);
+  margin: 0 0 4px;
+}
+.ag-sim-task-text ol {
+  padding-left: 18px;
+}
+.ag-sim-goals {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ag-sim-goals li,
+#labberLabObjectives li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+}
+.ag-check {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ag-sim-goals li[data-ok='true'] .ag-check {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.ag-sim-goals li[data-ok='true'] .ag-check::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  border: 2px solid #fff;
+  border-top: 0;
+  border-right: 0;
+  transform: translateY(-1px) rotate(-45deg);
+}
+.ag-sim-goals li[data-ok='true'] span {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+/* Labber labında ayrıntılı hedef satırları canlı listeyle aynı; tekrar gösterilmez. */
+#ptWorkbench[data-ctx='labber'] #labberLabObjectives {
+  display: none;
+}
+.ag-sim-task-extra {
+  font-size: 12px;
+}
+.ag-sim-task-extra label {
+  display: block;
+  margin: 6px 0;
+}
+.ag-sim-task-extra input,
+.ag-sim-task-extra select {
+  width: 100%;
+  margin-top: 4px;
+}
+#academyResult h3 {
+  font-size: 13px;
+  margin: 8px 0 4px;
+}
+#academyResult ul {
+  padding-left: 16px;
+  margin: 4px 0;
+}
+.ag-sim-fill {
+  flex: 1 1 auto;
+}
+.ag-sim-hint {
+  background: var(--accent-soft);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+  margin-top: 10px;
+}
+.ag-sim-hint ol {
+  margin: 0;
+  padding-left: 16px;
+}
+.ag-sim-hint li + li {
+  margin-top: 6px;
+}
+.ag-sim-hint li::marker {
+  font-weight: 700;
+}
+.ag-sim-solution {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+}
+.ag-sim-solution h3 {
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+.ag-term {
+  background: var(--ag-term-bg);
+  color: var(--ag-term-text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font:
+    10.5px/1.5 ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
+  white-space: pre;
+  overflow: auto;
+  margin: 6px 0;
+}
+/* ---- tuval */
+/* Tuval kartı: solda palet sütunu (düğümlerin üstüne binmez), sağda tuval; altında kablo
+   aracının satırı ve durum + Kaydet / Ağı denetle / Diğer işlemler. Taslakta üst çubuk yok. */
+.ag-sim-stage {
+  position: relative;
+  background: var(--ag-canvas);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  overflow: hidden;
+}
+#ptWorkbench .ag-sim-palette {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  margin: 12px 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+#ptWorkbench .ag-sim-palette button {
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  font-size: 15px;
+  line-height: 32px;
+  background-color: transparent !important;
+}
+#ptWorkbench .ag-sim-palette button:hover,
+#ptWorkbench .ag-sim-palette button[aria-pressed='true'] {
+  background-color: var(--accent-soft) !important;
+}
+.ag-sim-toolsep {
+  display: block;
+  height: 1px;
+  margin: 2px 4px;
+  background: var(--line);
+}
+.ag-sim-canvaswrap {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+  min-width: 0;
+  padding: 0 8px;
+}
+/* Tuval kutuyu doldurur; görünüm kutusu (main.js fitView) topolojiye ve kutunun oranına göre
+   hesaplanır, iki eksende aynı ölçek. */
+#ptWorkbench.ag-sim #ptCanvas {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.ag-sim-cable {
+  grid-column: 1 / 3;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12px;
+}
+.ag-sim-stagefoot {
+  grid-column: 1 / 3;
+  grid-row: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 6px 12px 8px;
+  color: var(--muted);
+}
+.ag-sim-stagestatus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  min-width: 0;
+}
+#ptWorkbench .ag-sim-cable .pt-connectgroup,
+#ptWorkbench .ag-sim-stagefoot .pt-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+#ptWorkbench .ag-sim-cable label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+#ptWorkbench .ag-sim-cable select {
+  width: auto;
+  max-width: 140px;
+  min-height: 30px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 12px;
+}
+#ptWorkbench.ag-sim .ag-sim-cable button,
+#ptWorkbench.ag-sim.ux14-lab .ag-sim-stagefoot .pt-head-actions button {
+  width: auto;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: none;
+}
+#ptWorkbench.ag-sim .ag-sim-cable button.primary,
+#ptWorkbench.ag-sim .ag-sim-stagefoot button.primary {
+  background-color: var(--accent-soft) !important;
+  color: var(--accent-text) !important;
+  border-color: transparent;
+}
+#ptWorkbench.ag-sim #ptConnectMode.active {
+  background-color: var(--accent) !important;
+  color: #fff !important;
+}
+#ptWorkbench .ag-sim-stagefoot .engine-badge {
+  margin: 0 !important;
+  font-size: 11.5px !important;
+  font-weight: 600;
+  color: var(--muted);
+}
+/* ---- inceleme paneli */
+.ag-sim-inspect {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+}
+.ag-sim-tabs {
+  display: flex;
+  gap: 6px;
+}
+#ptWorkbench .ag-sim-tabs button {
+  width: auto;
+  min-height: 0;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  box-shadow: none;
+}
+#ptWorkbench .ag-sim-tabs button[aria-selected='true'] {
+  background-color: var(--accent-soft) !important;
+  color: var(--accent-text) !important;
+}
+.ag-sim-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.ag-sim-pane[hidden] {
+  display: none;
+}
+.ag-sim-porthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ag-sim-porthead h3 {
+  font-size: 13px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+#ptWorkbench #agSimPortSelect {
+  width: auto;
+  min-height: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 11.5px;
+}
+.ag-sim-props {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin: 0;
+  font-size: 11.5px;
+}
+.ag-sim-props dt,
+.ag-sim-props dd {
+  margin: 0;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+.ag-sim-props dt {
+  color: var(--muted);
+}
+.ag-sim-props dd {
+  text-align: right;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.ag-sim-props dd.ok {
+  color: var(--ag-ok);
+}
+.ag-sim-props dd.bad {
+  color: var(--ag-bad);
+}
+.ag-sim-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+#ptWorkbench .ag-chip {
+  width: auto;
+  min-height: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font:
+    10.5px ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
+  box-shadow: none;
+}
+#ptWorkbench .ag-chip[aria-pressed='true'] {
+  background-color: var(--accent-soft) !important;
+  color: var(--accent-text) !important;
+  border-color: transparent;
+}
+.ag-sim-showout {
+  flex: 1 1 auto;
+  min-height: 140px;
+  margin: 0;
+}
+#ptWorkbench .ag-sim-pane .pt-device-card {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+#ptWorkbench .ag-sim-pane #packetDetectivePanel {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 12px;
+}
+#ptWorkbench .ag-sim-pane #packetDetectivePanel h2 {
+  font-size: 13px;
+}
+#ptWorkbench .ag-sim-pane #packetDetectivePanel button {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+/* ---- alt şerit: terminal | Simulation Mode */
+.ag-sim-dock {
+  margin: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 0;
+  background: var(--ag-term-bg);
+  color: var(--ag-term-text);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ag-sim-termpane,
+.ag-sim-simpane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  padding: 10px 14px;
+}
+.ag-sim-termpane {
+  border-right: 1px solid var(--ag-term-line);
+}
+.ag-sim-termbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.ag-sim-termtabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+#ptWorkbench .ag-sim-dock button,
+#ptWorkbench .ag-sim-dock select,
+#ptWorkbench .ag-sim-dock input {
+  background-color: var(--ag-term-line) !important;
+  color: var(--ag-term-text) !important;
+  border: 0;
+  box-shadow: none;
+}
+#ptWorkbench .ag-sim-termtab {
+  width: auto;
+  min-height: 0;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+}
+#ptWorkbench .ag-sim-termtab[aria-pressed='true'],
+#ptWorkbench .ag-sim-dock button[aria-pressed='true'] {
+  background-color: var(--accent) !important;
+  color: #fff !important;
+}
+#ptWorkbench .ag-sim-termbar select,
+#ptWorkbench .ag-sim-termbar button {
+  width: auto;
+  min-height: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+}
+#ptWorkbench.ag-sim #ptTerminal {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--ag-term-text);
+  font:
+    12px/1.5 ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
+}
+#ptWorkbench.ag-sim #ptCliForm {
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--ag-term-line);
+  padding: 6px 0 0;
+  color: var(--ag-term-text);
+  font:
+    12px ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
+}
+#ptWorkbench.ag-sim #ptCliForm input {
+  background-color: transparent !important;
+  min-height: 0;
+  font: inherit;
+}
+#ptWorkbench.ag-sim #ptCliForm button {
+  width: auto;
+  min-height: 0;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+}
+#ptWorkbench.ag-sim #ux14CliMore {
+  font-size: 11px;
+  color: var(--ag-term-muted);
+  margin: 4px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+#ptWorkbench.ag-sim #ux14CliMore > summary {
+  min-height: 0;
+  padding: 2px 0;
+  color: var(--ag-term-muted);
+  background: none;
+  font-weight: 500;
+}
+#ptWorkbench.ag-sim #ux14CliMore .pt-shortcuts button {
+  min-height: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.ag-sim-simpane {
+  overflow: auto;
+  font-size: 12px;
+}
+.ag-sim-simhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--ag-term-muted);
+  font-size: 11.5px;
+}
+#ptWorkbench.ag-sim .ag-sim-simpane .simulation-controls {
+  padding: 4px 0;
+  gap: 6px;
+}
+#ptWorkbench.ag-sim .ag-sim-simpane .simulation-controls button,
+#ptWorkbench.ag-sim .ag-sim-simpane .simulation-controls label {
+  min-height: 0;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+}
+#ptWorkbench.ag-sim #simulationModeBar button[aria-pressed='true'] {
+  outline: 0;
+}
+.ag-sim-timeline {
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  margin: 8px 0;
+  padding: 0;
+  overflow-x: auto;
+}
+.ag-sim-timeline[hidden] {
+  display: none;
+}
+.ag-sim-timeline li {
+  flex: 1 0 64px;
+  position: relative;
+  text-align: center;
+}
+.ag-sim-timeline li + li::before {
+  content: '';
+  position: absolute;
+  left: -50%;
+  right: 50%;
+  top: 7px;
+  height: 2px;
+  background: var(--ag-term-line);
+}
+#ptWorkbench .ag-sim-tick {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  min-height: 0;
+  padding: 0 2px;
+  background-color: transparent !important;
+  color: var(--ag-term-muted) !important;
+  font-size: 9.5px;
+}
+.ag-sim-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #5b6370;
+}
+.ag-sim-timeline li[aria-current='step'] .ag-sim-dot {
+  width: 16px;
+  height: 16px;
+  margin-top: -2px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(59, 108, 246, 0.35);
+}
+.ag-sim-timeline li[aria-current='step'] .ag-sim-tick {
+  color: #fff !important;
+}
+#ptWorkbench.ag-sim #simulationPanel {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--ag-term-text);
+}
+#ptWorkbench.ag-sim #simulationPanel > h3,
+#ptWorkbench.ag-sim #simulationPanel > p {
+  display: none;
+}
+#ptWorkbench.ag-sim #simulationPanel th,
+#ptWorkbench.ag-sim #simulationPanel td {
+  border-color: var(--ag-term-line);
+  padding: 3px 6px;
+}
+#ptWorkbench.ag-sim #simulationPanel td button {
+  min-height: 0;
+  padding: 1px 6px;
+}
+#ptWorkbench.ag-sim .simulation-columns {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+#ptWorkbench.ag-sim #simulationPanel summary,
+#ptWorkbench.ag-sim #simulationPanel caption {
+  color: var(--ag-term-muted);
+}
+/* ---- görev seç kartı */
+.ag-sim-catalog {
+  margin: 12px;
+  padding: 18px 22px;
+}
+.ag-sim-catalog-head h2 {
+  font-size: 15px;
+  margin: 0 0 2px;
+}
+.ag-sim-catalog-head p {
+  margin: 0 0 12px;
+}
+.ag-sim-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.ag-sim-catalog-grid > * {
+  min-width: 0;
+  margin: 0 !important;
+}
+.ag-sim-catalog #ux14LabModes {
+  margin: 0 0 12px;
+}
+.ag-sim-catalog #academyPanel,
+.ag-sim-catalog #labberLabsPanel,
+.ag-sim-catalog #sharedScenarioPanel,
+.ag-sim-catalog #labExperiments > .panel {
+  background: var(--panel) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 12px;
+  padding: 14px !important;
+  box-shadow: none;
+}
+.ag-sim-catalog #labberLabsPanel h3,
+.ag-sim-catalog #sharedScenarioPanel h3,
+.ag-sim-catalog #academyPanel h2 {
+  font-size: 14px;
+  margin: 0 0 6px;
+}
+.ag-sim-catalog #ux14LabMore {
+  margin-top: 14px;
+}
+/* ---- dar kaplar */
+@container agmain (max-width: 1180px) {
+  .ag-sim-body {
+    grid-template-columns: 230px minmax(0, 1fr) 260px;
+  }
+}
+@container agmain (max-width: 760px) {
+  #ptWorkbench.ag-sim {
+    height: auto;
+    min-height: 0;
+    grid-template-rows: auto auto auto;
+  }
+  .ag-sim-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ag-sim-stage {
+    min-height: 380px;
+  }
+  .ag-sim-dock {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Alt alta düzende terminal içeriğiyle büyümez; komut satırı yerinde kalır. */
+  #ptWorkbench.ag-sim #ptTerminal {
+    min-height: 140px;
+    max-height: 240px;
+  }
+  .ag-sim-termpane {
+    border-right: 0;
+    border-bottom: 1px solid var(--ag-term-line);
+    min-height: 260px;
+  }
+  .ag-sim-catalog-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ag-sim-head {
+    padding: 8px 12px;
+  }
+}
+@media (max-width: 760px) {
+  .ag-main > #area-lab.workspace.active {
+    margin: -12px;
+  }
+}
+@container agmain (max-width: 520px) {
+  .ag-sim-body {
+    padding: 8px 8px 0;
+  }
+  .ag-sim-dock,
+  .ag-sim-catalog {
+    margin: 8px;
+  }
+  .ag-sim-catalog {
+    padding: 12px;
+  }
+  .ag-sim-stage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto;
+  }
+  #ptWorkbench .ag-sim-palette {
+    grid-column: 1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin: 8px 12px 0;
+    justify-self: start;
+  }
+  .ag-sim-canvaswrap {
+    grid-column: 1;
+    grid-row: 2;
+    height: 340px;
+  }
+  .ag-sim-cable,
+  .ag-sim-stagefoot {
+    grid-column: 1;
+  }
+  .ag-sim-cable {
+    grid-row: 3;
+  }
+  .ag-sim-stagefoot {
+    grid-row: 4;
+  }
+  #ptWorkbench .ag-sim-cable select {
+    max-width: 100%;
+  }
+  .ag-sim-toolsep {
+    width: 1px;
+    height: auto;
+    margin: 4px 2px;
+  }
+}
+/* ---- tuval çizimi (taslak: açık düğüm kartları, gri kablo) */
+#ptWorkbench.ag-sim #ptCanvas {
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+#ptWorkbench.ag-sim .pt-edge {
+  stroke: #b9c0cb;
+  stroke-width: 2.5;
+}
+html:not([data-theme='light']) #ptWorkbench.ag-sim .pt-edge {
+  stroke: #5b6576;
+}
+#ptWorkbench.ag-sim .pt-edge.down {
+  stroke: var(--ag-bad);
+}
+#ptWorkbench.ag-sim .pt-edge-label {
+  fill: var(--muted);
+}
+#ptWorkbench.ag-sim .pt-port-label {
+  fill: var(--muted);
+  stroke: var(--ag-canvas);
+}
+#ptWorkbench.ag-sim .pt-node rect {
+  fill: var(--panel);
+  stroke: var(--line);
+  stroke-width: 1.4;
+}
+#ptWorkbench.ag-sim .pt-node.selected rect {
+  fill: var(--panel);
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+#ptWorkbench.ag-sim .pt-node text:first-of-type {
+  fill: var(--accent);
+}
+#ptWorkbench.ag-sim .pt-node .pt-name {
+  fill: var(--text);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+#ptWorkbench.ag-sim .pt-node .pt-ip {
+  fill: var(--muted);
+}
+/* gizli öğeler: [hidden] her zaman gizler (düğme biçimleri display verir) */
+#ptWorkbench [hidden],
+.ag-sim-catalog [hidden] {
+  display: none !important;
+}
+/* serbest çalışma rehberi (İlk Ağımı Kuruyorum) görev kartında */
+#ptWorkbench.ag-sim #aglabFirstNetworkGuide {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel2);
+  box-shadow: none;
+  font-size: 12px;
+}
+#ptWorkbench.ag-sim #aglabFirstNetworkGuide > summary {
+  font-weight: 700;
+  cursor: pointer;
+}
+#ptWorkbench.ag-sim #aglabFirstNetworkGuide button {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+#ptWorkbench.ag-sim #firstGuideSteps {
+  padding-left: 18px;
+}
+.ag-sim-catalog select,
+.ag-sim-catalog input {
+  max-width: 100%;
+}
+/* dar kaplar: katalogdaki uzun seçim kutuları ve satır içi esnek düzenler taşmaz */
+.ag-sim-catalog label {
+  max-width: 100%;
+}
+.ag-sim-catalog select,
+.ag-sim-catalog input:not([type='checkbox']):not([type='radio']) {
+  max-width: 100%;
+  min-width: 0;
+}
+.ag-sim-catalog #sharedScenarioPanel div {
+  min-width: 0 !important;
+  max-width: 100%;
+}
+.ag-sim-tabs,
+.ag-sim-termbar {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+@container agmain (max-width: 520px) {
+  .ag-sim-catalog label,
+  .ag-sim-catalog select,
+  .ag-sim-catalog input:not([type='checkbox']):not([type='radio']) {
+    display: block;
+    width: 100%;
+  }
+  .ag-sim-termtabs {
+    flex: 1 1 100%;
+  }
+  #ptWorkbench .ag-sim-palette {
+    max-width: calc(100% - 24px);
+  }
+}
+.ag-sim-simpane > * {
+  flex-shrink: 0;
+}
+/* Simülatör'de üst çubuk ile alttaki görev kartı arasında gidip gelen odak/kaydırma yumuşak
+   kaydırmayla gecikmesin ("Görev seç" kendi yumuşak kaydırmasını açıkça ister). */
+html:has(#area-lab.active) {
+  scroll-behavior: auto;
+}
+#agSimTask #academyReplacePrompt {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  font-size: 12px;
+}
+#agSimTask #academyReplacePrompt[hidden] {
+  display: none;
+}
+/* ---- kullanıcı testi düzeltmeleri (PR 2) */
+/* görev açıklaması daraltılabilir; hedefler üstte */
+.ag-sim-about {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.ag-sim-about > summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.ag-sim-task .ag-sim-goals {
+  margin-top: 8px;
+}
+/* hızlı show: uzun satırlar kaydırmalı satır kırmayla görünür */
+#ptWorkbench .ag-sim-showout {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* zaman çizelgesi ve olay ayrıntısı */
+.ag-sim-timeline {
+  flex: 0 0 auto;
+  padding: 2px 0 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.ag-sim-timeline li {
+  flex: 0 0 72px;
+}
+#ptWorkbench .ag-sim-tick span {
+  white-space: nowrap;
+  font-size: 10px;
+}
+.ag-sim-eventdetail {
+  margin: 0 0 6px;
+  font:
+    11.5px/1.55 ui-monospace,
+    Menlo,
+    Consolas,
+    monospace;
+  color: var(--ag-term-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ag-sim-eventdetail[hidden] {
+  display: none;
+}
+/* koyu terminal şeridinde istem ve yer tutucu okunur (açık temada da şerit koyu) */
+#ptWorkbench.ag-sim #ptPrompt {
+  color: #7ee2b8;
+}
+#ptWorkbench.ag-sim #ptCliInput::placeholder {
+  color: #9aa3b0;
+}
+/* Olaylar sekmesi: kapalıyken yeni iz geldi */
+#ptWorkbench .ag-sim-tabs button[data-new='true']::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+#ptWorkbench .ag-sim-dock .ag-sim-tick {
+  background-color: transparent !important;
+}
+.ag-sim-hintsteps {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+}
+.ag-sim-hintstep {
+  font-weight: 700;
+  color: var(--accent-text);
+}
+/* Düğüm ve bağlantı yazıları: küçük ölçekte karşı-ölçeklenir (main.js fitView). */
+#ptWorkbench.ag-sim .pt-node .pt-name {
+  font-size: var(--ag-name-fs, 12.5px);
+}
+#ptWorkbench.ag-sim .pt-node .pt-ip {
+  font-size: var(--ag-ip-fs, 10px);
+}
+#ptWorkbench.ag-sim .pt-edge-label,
+#ptWorkbench.ag-sim .pt-port-label {
+  font-size: var(--ag-label-fs, 9.5px);
+}
+.ag-sim-simidle {
+  margin: 10px 0 0;
+  color: var(--ag-term-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 46ch;
+}
+.ag-sim-simidle[hidden] {
+  display: none;
+}
+/* Terminal araç satırı tek satır: sekmeler kendi içinde kayar, seçim ve temizle sabit. */
+.ag-sim-termbar {
+  flex-wrap: nowrap;
+}
+.ag-sim-termtabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  scrollbar-width: thin;
+}
+#ptWorkbench .ag-sim-termbar select,
+#ptWorkbench .ag-sim-termbar button:not(.ag-sim-termtab) {
+  flex: 0 0 auto;
+}
+#ptWorkbench .ag-sim-termtab {
+  flex: 0 0 auto;
+}
+@container agmain (max-width: 520px) {
+  .ag-sim-termbar {
+    flex-wrap: wrap;
+  }
+}

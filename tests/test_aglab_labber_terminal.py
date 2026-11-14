@@ -17,7 +17,7 @@ import unittest
 
 from playwright.sync_api import sync_playwright
 
-from aglab_test_support import HTML, launch_chromium
+from aglab_test_support import HTML, launch_chromium, open_cable_tool
 
 
 class LabberTerminalTests(unittest.TestCase):
@@ -189,11 +189,13 @@ class LabberTerminalTests(unittest.TestCase):
             ".map((o) => [o.textContent.split(' ')[0], o.value])"
         )
         ids = dict(ids)
+        open_cable_tool(self.page)
         self.page.select_option("#ptSource", ids["SW1"])
         self.page.select_option("#ptTarget", ids["SW2"])
         self.page.click("#ptRemoveLink")
         self.assertFalse(self.goal())
         # yeniden bağla → kaydedilmiş yapılandırma yeni çalışma zamanında da geçerli
+        open_cable_tool(self.page)
         self.page.click("#ptMakeLink")
         self.device("SW1")
         out = self.type("show startup-config | include access vlan 10")

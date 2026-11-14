@@ -58,6 +58,7 @@ MODULES: dict[str, list[str]] = {
     "SIMULATION UI": ["simulator/simulation-ui.js"],
     "ACADEMY": [
         "academy/student-data.js",
+        "academy/solution-data.js",
         "academy/grading-verdict.js",
         "academy/vlan-health.js",
         "academy/routing-grading.js",

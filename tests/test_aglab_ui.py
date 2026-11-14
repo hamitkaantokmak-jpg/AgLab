@@ -47,6 +47,8 @@ with sync_playwright() as pw:
     expect(page.locator("#academySearchFind")).to_be_disabled()
     page.fill("#academySearch", "")
     expect(page.locator("#academySearchStatus")).to_contain_text("40 / 40")
+    # Arayüz PR 2: Paket Dedektifi inceleme panelinin "Olaylar" sekmesinde.
+    page.click("#agSimTab-events")
     expect(page.locator("#packetDetectiveEmptyGuide")).to_be_visible()
     page.select_option("#packetDetectiveViewMode", "simple")
     expect(page.locator("#packetDetectiveRaw")).to_be_hidden()

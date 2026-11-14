@@ -1,8 +1,14 @@
 """Validate the single offline release archive (Academy content, sources and build identity).
 
 Arayüz yenilemesi PR 1: öğrenci/öğretmen ayrımı kalktı; tek paket üretilir. Öğretmen çözümleri
-(`academy/teacher/`) ve kaynaklar (`academy/source/`) aynı ZIP'tedir. HTML'e yalnız öğrenci
-alanları gömülür; çözümlerle yapılan 100/100 kontrolleri testlerde kalır."""
+(`academy/teacher/`) ve kaynaklar (`academy/source/`) aynı ZIP'tedir; çözümlerle yapılan 100/100
+kontrolleri testlerde kalır.
+
+PR 2 (kullanıcı kararı): öğretmen çözümleri HTML'e gömülür. Eski "HTML'de öğretmen alanı yok"
+yasağı kaldırıldı: uygulama kendi kendine öğrenme içindir ve Sorun Çöz senaryolarının çözümleri
+zaten gömülüdür. Yerine: gömülü çözümler (`const academySolutions`) her labın öğretmen JSON'undaki
+`teacher_solution` ile birebir aynıdır; `target_topology` gömülmez; çözüm Simülatör'de yalnız
+"Çözümü göster" kilidi açılınca DOM'a eklenir (tests/test_aglab_sim_workspace.py)."""
 
 import hashlib, json, os, re, sys, zipfile
 
@@ -148,9 +154,15 @@ def verify_release_packages(package_path):
                 + " GENERATED\n"
             )
             assert generated in html, "Stale/missing embedded module: " + source
-        assert (
-            "teacher_solution" not in html and "target_topology" not in html
-        ), "Teacher fields embedded in HTML (solutions stay in academy/teacher/)"
+        # Çözümdeki `target_topology_file` adı kalır; hedef topolojinin kendisi gömülmez.
+        assert not re.search(
+            r'"target_topology"\s*:', html
+        ), "Teacher target topology embedded in HTML"
+        match = re.search(r"^const academySolutions = (.+);\r?$", html, re.MULTILINE)
+        assert match, "Embedded Academy solutions missing"
+        embedded_solutions = json.loads(match.group(1))
+        assert set(embedded_solutions) == ids, "Embedded solution inventory mismatch"
+        assert "aglab-solution-lock-v1" in html, "Solution lock missing"
         match = re.search(r"^const academyLabs = (.+);\r?$", html, re.MULTILINE)
         assert match, "Embedded Academy data missing"
         embedded = json.loads(match.group(1))
@@ -176,10 +188,14 @@ def verify_release_packages(package_path):
             assert solution == {
                 key: source[key] for key in ["id", "target_topology", "teacher_solution"]
             }, ("Teacher/source mismatch: " + lid)
+            assert embedded_solutions[lid] == solution["teacher_solution"], (
+                "HTML/teacher solution mismatch: " + lid
+            )
     return {
         "labs": 40,
         "source_hashes": 40,
         "single_package": True,
+        "embedded_solutions": 40,
         "documentation": True,
     }
 

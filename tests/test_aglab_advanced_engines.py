@@ -3,7 +3,7 @@
 import json, os, tempfile, sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from aglab_test_support import ROOT, launch_chromium, import_topology
+from aglab_test_support import ROOT, launch_chromium, import_topology, open_cable_tool
 
 with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     b = launch_chromium(pw)
@@ -26,6 +26,7 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     switches = [d for d in devices if d["type"] == "Switch"]
 
     def cable(a, b):
+        open_cable_tool(page)
         page.select_option("#ptSource", a)
         page.select_option("#ptTarget", b)
         page.click("#ptMakeLink")
@@ -84,6 +85,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     # Dedektifi'nden doğrulanır.
     failed = cli(pcs[0]["id"], ["ping 10.0.0.2"])
     assert "bytes from" not in failed and failed.count("timeout") == 5, failed
+    # Arayüz PR 2: Paket Dedektifi inceleme panelinin "Olaylar" sekmesinde.
+    page.click("#agSimTab-events")
     page.click("#packetDetectiveRefresh")
     # Early preflight diagnostics are explicitly derived, not invented wire events.
     assert "VLAN" in page.locator("#packetDetectiveDiagnosis").inner_text()

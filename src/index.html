@@ -20,6 +20,7 @@
 <style id="ux-v13-style">@@include src/styles/06-ux-v13-reader.css@@</style>
 <style id="ux-v14-style">@@include src/styles/07-ux-v14-lab-focus.css@@</style>
 <style id="agShellStyle">@@include src/styles/08-shell.css@@</style>
+<style id="agSimStyle">@@include src/styles/09-simulator.css@@</style>
 </head>
 <body>
 <div class="app ag-shell">
@@ -126,9 +127,8 @@
 </div></details>
 </section>
 <section class="workspace" id="area-lab">
-  <div class="lab-heading"><div><div class="eyebrow">SİMÜLATÖR</div><h2>Kendi ağını kur ve dene</h2><p>Bu alan bir eğitim simülasyonudur: ayarları değiştir, komut çalıştır ve paketin neden ulaşıp ulaşmadığını gözlemle. Gerçek donanıma veya internete bağlanmaz.</p></div></div>
   <section class="panel pt-workbench" id="ptWorkbench">
-    <div class="pt-head"><div><div class="eyebrow">INTERACTIVE NETWORK BUILDER</div><h3>Packet Tracer tarzı çalışma alanı</h3><p>Cihaz ekle, kablo bağla, cihazı seç ve CLI üzerinden yapılandır. Değişiklikler simülasyon ağına uygulanır; topolojiyi tarayıcıya kaydedebilir veya JSON olarak taşıyabilirsin.</p><p class="pt-import-note" style="margin-top:8px;padding:10px 12px;border:1px solid #52627b;border-radius:9px;background:#101c2e;color:#d3e2f6;font-size:12px;line-height:1.6"><b>Packet Tracer içe aktarma:</b> .pkt dosyasını önce <a href="convert_pkt_to_aglab.py" download style="color:#9dc8ff;text-decoration:underline">dönüştürücü betiği</a> ile AgLab JSON biçimine çevir, ardından <b>İçe aktar</b> ile oluşturulan .aglab.json dosyasını seç. Aktarımda desteklenmeyen cihazlar raporlanır; kaynak .pkt değiştirilmez.</p></div><div class="pt-head-actions"><button id="ptSave">Kaydet</button><button id="ptAudit" class="primary">Ağı denetle</button><button id="ptExport">Dışa aktar</button><button id="ptDeleteDevice">Seçili cihazı sil</button><button id="ptImport">İçe aktar (JSON)</button><input id="ptImportFile" type="file" accept="application/json,.json" hidden><button id="ptReset">Topolojiyi sıfırla</button><button class="primary" id="ptConnectMode">Kablo bağla</button></div></div>
+    <div class="pt-head"><div><div class="eyebrow">INTERACTIVE NETWORK BUILDER</div><h3>Packet Tracer tarzı çalışma alanı</h3><p>Cihaz ekle, kablo bağla, cihazı seç ve CLI üzerinden yapılandır. Değişiklikler simülasyon ağına uygulanır; topolojiyi tarayıcıya kaydedebilir veya JSON olarak taşıyabilirsin.</p><p class="pt-import-note" style="margin-top:8px;padding:10px 12px;border:1px solid #52627b;border-radius:9px;background:#101c2e;color:#d3e2f6;font-size:12px;line-height:1.6"><b>Packet Tracer içe aktarma:</b> .pkt dosyasını önce <a href="convert_pkt_to_aglab.py" download style="color:#9dc8ff;text-decoration:underline">dönüştürücü betiği</a> ile AgLab JSON biçimine çevir, ardından <b>İçe aktar</b> ile oluşturulan .aglab.json dosyasını seç. Aktarımda desteklenmeyen cihazlar raporlanır; kaynak .pkt değiştirilmez.</p></div><div class="pt-head-actions"><button id="ptSave">Kaydet</button><button id="ptAudit" class="primary">Ağı denetle</button><button id="ptExport">Dışa aktar</button><button id="ptDeleteDevice">Seçili cihazı sil</button><button id="ptImport">İçe aktar (JSON)</button><input id="ptImportFile" type="file" accept="application/json,.json" hidden><button id="ptReset">Topolojiyi sıfırla</button><button class="primary" id="ptConnectMode">Tuvalde iki cihaz seç</button></div></div>
     <section class="pt-quickstart" aria-labelledby="ptQuickTitle">
       <div class="pt-quick-copy"><div class="eyebrow">HIZLI BAŞLANGIÇ</div><h4 id="ptQuickTitle">İlk ağını 4 adımda kur</h4><p>Cihaz ekle → kablo bağla → CLI ile kontrol et → ağı denetle. Aşağıdaki kısayollar çalışma alanında ilgili işlemi açar.</p></div>
       <ol class="pt-quick-steps"><li><span>1</span><b>Cihaz ekle</b><small>PC, switch veya router</small></li><li><span>2</span><b>Bağlantı kur</b><small>Kaynak ve hedef seç</small></li><li><span>3</span><b>Komut çalıştır</b><small><code>help</code> veya <code>ping</code></small></li><li><span>4</span><b>Denetle</b><small>Hataları ve uyarıları gör</small></li></ol>
@@ -136,7 +136,7 @@
     </section>
     <div class="pt-toolbar">
       <div class="pt-addgroup"><span>Cihaz ekle</span><button data-pt-add="PC">＋ PC</button><button data-pt-add="Switch">＋ Switch</button><button data-pt-add="Router">＋ Router</button><button data-pt-add="Server">＋ Server</button></div>
-      <div class="pt-connectgroup"><label>Kaynak<select id="ptSource"></select></label><label>Hedef<select id="ptTarget"></select></label><button id="ptMakeLink">Kabloyu bağla</button><button type="button" id="ptRestoreLink" title="Seçilen iki cihaz arasındaki mevcut, pasif kabloyu yeniden etkinleştirir">Pasif kabloyu etkinleştir</button><button id="ptRemoveLink">Kabloyu sök</button></div>
+      <div class="pt-connectgroup"><label>Kaynak<select id="ptSource"></select></label><label>Hedef<select id="ptTarget"></select></label><button id="ptMakeLink">Bağla</button><button type="button" id="ptRestoreLink" title="Seçilen iki cihaz arasındaki mevcut, pasif kabloyu yeniden etkinleştirir">Pasif kabloyu etkinleştir</button><button id="ptRemoveLink">Kabloyu sök</button></div>
     </div>
     <details class="ux-extra-tools" id="uxLabScenarios"><summary><span><b>Hazır ağ arızası senaryoları</b><small>İleri düzey laboratuvar görevlerini aç</small></span></summary><div class="ux-extra-body">
 <section id="sharedScenarioPanel" aria-labelledby="sharedScenarioTitle" style="margin:12px 0;padding:14px;border:1px solid #3b5f79;border-radius:12px;background:linear-gradient(135deg,rgba(34,73,98,.35),rgba(20,30,44,.55));">
@@ -216,5 +216,6 @@
 <script id="ux-v12-code">@@include src/app/ux-v12.js@@</script>
 <script id="ux-v13-code">@@include src/app/ux-v13.js@@</script>
 <script id="ux-v14-code">@@include src/app/ux-v14.js@@</script>
+<script id="agSimWorkspace">@@include src/app/sim-workspace.js@@</script>
 </body>
 </html>

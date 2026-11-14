@@ -151,3 +151,10 @@ def ping_succeeded(output, target):
     if rates:
         return int(rates[-1]) >= 80
     return output.count("84 bytes from " + target) == 5
+
+
+def open_cable_tool(page):
+    """Arayüz PR 2: kablo işlemleri (kaynak/hedef, bağla, sök, tuvalde iki cihaz seç) Simülatör
+    paletindeki kablo aracının açtığı satırdadır; taslakta tuvalin üstünde araç çubuğu yok."""
+    if page.locator("#agSimCablePanel").is_hidden():
+        page.click("#agSimCableTool")
