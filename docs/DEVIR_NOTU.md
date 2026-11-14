@@ -18,8 +18,6 @@ Her adım ayrı PR, bir öncekinin dalı üstüne; birleştirilmez.
 | PR 2b Simülatör artıkları | #93, `claude/arayuz-2b-simulator` (taban `main`) | açık |
 | PR 3 Sorun Çöz | — | sırada (#93 dalından) |
 | PR 4 Müfredat haritası ve ders | — | sırada |
-| PR 3 Arıza senaryosu ekranı | — | sırada |
-| PR 4 Müfredat haritası ve ders ekranı | — | sırada |
 
 PR 1:
 - `src/index.html`: üst bar (`#agTop`: logo, `#areaTabs` dört bölüm, `#agSearch`, `#agTopTools`
