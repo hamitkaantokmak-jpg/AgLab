@@ -27,14 +27,14 @@
 .ux-lab-guide {
   margin: 10px 0 16px;
   padding: 12px 15px;
-  border: 1px solid #4f687b;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #14243a;
-  color: #d9e9fb;
+  background: var(--panel2);
+  color: var(--text);
   line-height: 1.65;
 }
 .ux-lab-guide strong {
-  color: #a7f4e3;
+  color: var(--text);
 }
 .ux-lab-guide .ux-guide-row {
   display: flex;
@@ -56,32 +56,32 @@
 #uxStudentMap button {
   min-height: 44px;
   padding: 8px 14px;
-  border: 1px solid #4f687b;
+  border: 1px solid var(--line);
   border-radius: 9px;
-  background: #17263b;
-  color: #e8f2fe;
+  background: var(--panel2);
+  color: var(--text);
 }
 #uxStudentMap button[aria-current='step'] {
-  background: #205d64;
-  border-color: #65dfca;
+  background: var(--accent-soft);
+  border-color: var(--text);
   font-weight: 700;
 }
 #uxStudentMap .ux-map-note {
   font-size: 12px;
-  color: #b8c9da;
+  color: var(--text);
   flex-basis: 100%;
 }
 .ux-trouble-steps {
   margin: 0 0 18px;
   padding: 12px 16px;
-  border: 1px solid #4e697d;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: #12263b;
+  background: var(--panel2);
   line-height: 1.65;
-  color: #e5f0fb;
+  color: var(--text);
 }
 .ux-trouble-steps b {
-  color: #88e6d2;
+  color: var(--text);
 }
 .ux-trouble-steps ol {
   display: flex;
