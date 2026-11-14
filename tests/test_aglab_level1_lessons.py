@@ -57,7 +57,7 @@ LESSONS = [
     ("acl", "acl", "acl.md", "acl-", "Wildcard ve sıra", "Sayaçlarla teşhis"),
     ("nat", "natpat", "nat-pat.md", "nat-", "PAT'ın üç parçası", "Tablo ve istatistikle teşhis"),
     ("ospf", "ospf", "ospf.md", "ospf-", "Komşuluk şartları", "Teşhis sırası"),
-    ("stp", "stp", "stp.md", "stp-", "Port rolleri", "RSTP ve koruma"),
+    ("stp", "stp", "stp.md", "stp-", "Port rolleri", "Döngü neden felakettir"),
     (
         "l2sec",
         "l2sec",
