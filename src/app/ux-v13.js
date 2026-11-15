@@ -28,7 +28,7 @@
   tip.className = 'ux13-tip';
   tip.textContent =
     'Her aşamada yalnızca o çalışmayı görürsün. İstediğin aşamaya üstteki düğmelerden geçebilirsin.';
-  sheet.before(tip);
+  (root.querySelector('.sf-layout') || sheet).before(tip);
   let expanded = false;
   const update = () => {
     root.classList.toggle('ux13-focused', !expanded);
@@ -43,6 +43,13 @@
     else sheet.focus({ preventScroll: true });
   });
   sheet.tabIndex = -1;
+  // Üstteki genel arama bu kutuya yazar: sonuçlar görünsün diye konu listesi açılır.
+  document.getElementById('sfSearch')?.addEventListener('input', (e) => {
+    if (!expanded && e.target.value.trim()) {
+      expanded = true;
+      update();
+    }
+  });
   list.addEventListener('click', (e) => {
     if (!e.target.closest('button')) return;
     expanded = false;

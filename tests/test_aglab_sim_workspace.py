@@ -31,6 +31,8 @@ TEXT_OUTSIDE_SCRIPTS = """(needle) => {
   for (let n = w.nextNode(); n; n = w.nextNode()) {
     const tag = n.parentElement && n.parentElement.tagName;
     if (tag === 'SCRIPT' || tag === 'STYLE') continue;
+    // Müfredat dersleri komutları öğretir; çözüm sızıntısı yalnız simülatör tarafında aranır.
+    if (n.parentElement.closest('#studentFlow')) continue;
     if (n.textContent.includes(needle)) return true;
   }
   return false;

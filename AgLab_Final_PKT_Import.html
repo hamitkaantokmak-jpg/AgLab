@@ -3203,9 +3203,7 @@ html[data-theme='light'] button {
 #studentFlow .ux13-stage {
   font-size: 14px;
   color: var(--muted);
-  padding: 7px 11px;
-  border-radius: 8px;
-  background: var(--accent-soft);
+  padding: 7px 2px;
 }
 #studentFlow .ux13-progress-details {
   border: 1px solid var(--line);
@@ -3273,6 +3271,23 @@ html[data-theme='light'] button {
   #studentFlow * {
     scroll-behavior: auto !important;
   }
+}
+
+/* Arayüz düzeltmeleri 1: liste kartları içeriği kadar uzun kalır, araç satırı hizalı. */
+#studentFlow .sf-list button {
+  flex-shrink: 0;
+}
+#studentFlow .sf-tools label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#studentFlow .sf-tools label[for='sfSearch'] {
+  flex: 1 1 260px;
+}
+#studentFlow .sf-tools label[for='sfSearch'] input {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 </style>
 <style id="ux-v14-style">/* v14: presentation-only laboratory focus layer. Existing simulation engine and IDs are unchanged. */
@@ -3580,13 +3595,13 @@ html[data-theme='light'] body {
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid #8b3c00;
+  outline: 3px solid var(--accent-text);
   outline-offset: 2px;
 }
 html[data-theme='dark'] input:focus-visible,
 html[data-theme='dark'] select:focus-visible,
 html[data-theme='dark'] textarea:focus-visible {
-  outline-color: #ffe08a;
+  outline-color: var(--accent-text);
 }
 .ag-search::placeholder {
   color: var(--muted);
@@ -5663,7 +5678,7 @@ html:not([data-theme='light']) {
     <button type="button" class="area-tab" data-area="lab">Simülatör</button>
     <button type="button" class="area-tab" data-area="troubleshoot">Sorun Çöz</button>
   </nav>
-  <input class="ag-search" id="agSearch" type="search" placeholder="Konu, komut, senaryo ara…" aria-label="Konu, komut, senaryo ara">
+  <input class="ag-search" id="agSearch" type="search" placeholder="Konu ara… (ör. OSPF, VLAN)" aria-label="Müfredatta konu ara">
   <div class="ag-top-tools" id="agTopTools"></div>
 </header>
 <nav class="ag-rail" id="agRail" aria-label="Kısayollar">
@@ -69657,6 +69672,14 @@ function workshopView(ids, cases) {
     sfSearch.value = search.value;
     sfSearch.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  search?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const first = document.querySelector('#sfList button');
+    if (first) {
+      e.preventDefault();
+      first.click();
+    }
+  });
   fromHash();
   window.aglabShell = { go, current, aliases: () => ({ ...ALIASES }) };
 })();
@@ -70450,7 +70473,13 @@ function workshopView(ids, cases) {
     },
     count: courses.length,
   };
-  choose('ip');
+  // İlk açılış: en son çalışılan konu, yoksa müfredatın ilk konusu. Açılış ziyaret sayılmaz.
+  const last = Object.entries(state.lessons)
+    .filter(([id, r]) => r.last && courses.some((c) => c.id === id))
+    .sort((a, b) => b[1].last - a[1].last)[0];
+  selected = last ? last[0] : courses[0].id;
+  list();
+  render();
 })();
 </script>
 <script id="ux-v12-code">(() => {
@@ -70534,7 +70563,7 @@ function workshopView(ids, cases) {
   tip.className = 'ux13-tip';
   tip.textContent =
     'Her aşamada yalnızca o çalışmayı görürsün. İstediğin aşamaya üstteki düğmelerden geçebilirsin.';
-  sheet.before(tip);
+  (root.querySelector('.sf-layout') || sheet).before(tip);
   let expanded = false;
   const update = () => {
     root.classList.toggle('ux13-focused', !expanded);
@@ -70549,6 +70578,13 @@ function workshopView(ids, cases) {
     else sheet.focus({ preventScroll: true });
   });
   sheet.tabIndex = -1;
+  // Üstteki genel arama bu kutuya yazar: sonuçlar görünsün diye konu listesi açılır.
+  document.getElementById('sfSearch')?.addEventListener('input', (e) => {
+    if (!expanded && e.target.value.trim()) {
+      expanded = true;
+      update();
+    }
+  });
   list.addEventListener('click', (e) => {
     if (!e.target.closest('button')) return;
     expanded = false;

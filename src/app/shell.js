@@ -102,6 +102,14 @@
     sfSearch.value = search.value;
     sfSearch.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  search?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const first = document.querySelector('#sfList button');
+    if (first) {
+      e.preventDefault();
+      first.click();
+    }
+  });
   fromHash();
   window.aglabShell = { go, current, aliases: () => ({ ...ALIASES }) };
 })();

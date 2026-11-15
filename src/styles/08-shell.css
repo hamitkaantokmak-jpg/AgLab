@@ -122,13 +122,13 @@ html[data-theme='light'] body {
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid #8b3c00;
+  outline: 3px solid var(--accent-text);
   outline-offset: 2px;
 }
 html[data-theme='dark'] input:focus-visible,
 html[data-theme='dark'] select:focus-visible,
 html[data-theme='dark'] textarea:focus-visible {
-  outline-color: #ffe08a;
+  outline-color: var(--accent-text);
 }
 .ag-search::placeholder {
   color: var(--muted);
