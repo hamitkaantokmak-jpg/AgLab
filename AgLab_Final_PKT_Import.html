@@ -71267,6 +71267,7 @@ function workshopView(ids, cases) {
     }
   };
   const catCards = {};
+  let labberList = null;
   let tasksReady = false; // konuya göre görev listesi kuruldu mu
   // Kart, eski panelin kendisidir (kimlik korunur: #academyPanel, #labberLabsPanel,
   // #sharedScenarioPanel); panelin kart dışında kalan uzun metinleri "Diğer araçlar"a taşınır.
@@ -71409,7 +71410,9 @@ function workshopView(ids, cases) {
       };
     }
     if (key === 'labber') {
-      const info = window.aglabLabberLabs?.list().find((l) => l.id === value);
+      // Liste sabittir; bir kez okunur (görev listesi her yenilemede motoru yoklamasın).
+      labberList ||= window.aglabLabberLabs?.list() || null;
+      const info = labberList?.find((l) => l.id === value);
       const done = !!readProgress('labber')[value]?.completed;
       return {
         name: info?.title || text,

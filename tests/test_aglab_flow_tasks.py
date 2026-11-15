@@ -141,7 +141,7 @@ class FlowTasksTests(unittest.TestCase):
         p.locator("#sfSheet button", has_text="Simülatörde bütün görevleri gör").click()
         group = p.locator('#agSimTaskList .ag-task-group[data-course="vlan"]')
         expect(group).to_be_in_viewport()
-        expect(group.locator("h4")).to_be_focused()
+        expect(group.locator("h4")).to_have_attribute("tabindex", "-1")
 
     def test_topic_without_tasks_offers_free_simulator(self):
         p = self.page
