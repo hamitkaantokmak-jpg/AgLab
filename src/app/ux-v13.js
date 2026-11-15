@@ -56,13 +56,14 @@
     update();
     sheet.focus({ preventScroll: true });
   });
-  const labels = ['Anlatım', 'Ayrıntılı öğren', 'Test', 'Laboratuvar', 'Sorun çöz'];
+  const labels = ['Öğren', 'Test', 'Pratik'];
   let scheduled = false;
   const refreshStage = () => {
     scheduled = false;
     const steps = Array.from(sheet.querySelectorAll('.sf-steps button'));
     const index = steps.findIndex((x) => x.getAttribute('aria-current') === 'step');
-    stage.textContent = index < 0 ? 'Konunu seç' : `Adım ${index + 1}/5 · ${labels[index]}`;
+    stage.textContent =
+      index < 0 ? 'Konunu seç' : `Adım ${index + 1}/${labels.length} · ${labels[index]}`;
   };
   const observer = new MutationObserver(() => {
     if (scheduled) return;

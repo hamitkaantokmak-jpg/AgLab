@@ -49,7 +49,7 @@ class DeviceManagementLessonUiTests(unittest.TestCase):
             )
             sheet = page.locator("#sfSheet")
             self.assertIn("running ve startup", sheet.text_content())
-            sheet.locator("button", has_text="Ayrıntılı öğren").evaluate("b => b.click()")
+            sheet.locator("button", has_text="1 · Öğren").evaluate("b => b.click()")
             page.wait_for_function(
                 "document.getElementById('sfSheet').textContent.includes('Dün çalışıyordu')"
             )
