@@ -92,7 +92,9 @@ class Fig:
         self.parts.append(s)
         return self
 
-    def text(self, x, y, s, size=13, tone="t", anchor="middle", bold=False, mono=False, italic=False):
+    def text(
+        self, x, y, s, size=13, tone="t", anchor="middle", bold=False, mono=False, italic=False
+    ):
         cls = "fg-t" + ("" if tone == "t" else f" fg-{tone}-x" if tone in TONES else " fg-m")
         if mono:
             cls += " fg-mono"
@@ -149,7 +151,9 @@ class Fig:
         cls = "fg-ln" if tone == "ln" else f"fg-{tone}-s"
         da = ' stroke-dasharray="7 6"' if dash else ""
         m = f' marker-end="url(#{self._marker(tone)})"' if arrow else ""
-        self.parts.append(f'<path d="{d}" class="{cls}" stroke-width="{width}" fill="none"{da}{m}/>')
+        self.parts.append(
+            f'<path d="{d}" class="{cls}" stroke-width="{width}" fill="none"{da}{m}/>'
+        )
         return self
 
     def _marker(self, tone):
@@ -169,18 +173,41 @@ class Fig:
         del cls
         return mid
 
-    def arrow(self, x1, y1, x2, y2, label="", tone="ln", width=2, dash=False, size=12, above=True, both=False):
+    def arrow(
+        self,
+        x1,
+        y1,
+        x2,
+        y2,
+        label="",
+        tone="ln",
+        width=2,
+        dash=False,
+        size=12,
+        above=True,
+        both=False,
+    ):
         self.line(x1, y1, x2, y2, tone, width, dash, arrow=not both, both=both)
         if label:
             mx, my = (x1 + x2) / 2, (y1 + y2) / 2
             if abs(y2 - y1) < 4:
-                self.text(mx, my - 8 if above else my + 18, label, size=size, tone="m" if tone == "ln" else tone)
+                self.text(
+                    mx,
+                    my - 8 if above else my + 18,
+                    label,
+                    size=size,
+                    tone="m" if tone == "ln" else tone,
+                )
             else:
-                self.text(mx + 8, my, label, size=size, anchor="start", tone="m" if tone == "ln" else tone)
+                self.text(
+                    mx + 8, my, label, size=size, anchor="start", tone="m" if tone == "ln" else tone
+                )
         return self
 
     def circle(self, x, y, r, tone="accent"):
-        self.parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r}" class="fg-{tone}" stroke-width="1.5"/>')
+        self.parts.append(
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r}" class="fg-{tone}" stroke-width="1.5"/>'
+        )
         return self
 
     def badge(self, x, y, n, tone="accent", r=12):
@@ -199,7 +226,15 @@ class Fig:
         if label:
             lx = x + 12 if label_pos.endswith("l") else x + w - 12
             ly = y + 18 if label_pos.startswith("t") else y + h - 10
-            self.text(lx, ly, label, size=12, tone=tone, anchor="start" if label_pos.endswith("l") else "end", bold=True)
+            self.text(
+                lx,
+                ly,
+                label,
+                size=12,
+                tone=tone,
+                anchor="start" if label_pos.endswith("l") else "end",
+                bold=True,
+            )
         return self
 
     # ------------------------------------------------------------------ ağ parçaları
@@ -235,35 +270,61 @@ class Fig:
         f = "fg-accent-f" if tone in ("card", "soft") else f"fg-{tone}-f"
         p = self.parts
         if kind in ("pc", "laptop"):
-            p.append(f'<rect x="{x - 9}" y="{y - 7}" width="18" height="12" rx="2" class="{s}" stroke-width="1.6"/>')
-            p.append(f'<line x1="{x - 5}" y1="{y + 8}" x2="{x + 5}" y2="{y + 8}" class="{s}" stroke-width="1.6"/>')
+            p.append(
+                f'<rect x="{x - 9}" y="{y - 7}" width="18" height="12" rx="2" class="{s}" stroke-width="1.6"/>'
+            )
+            p.append(
+                f'<line x1="{x - 5}" y1="{y + 8}" x2="{x + 5}" y2="{y + 8}" class="{s}" stroke-width="1.6"/>'
+            )
         elif kind in ("switch", "l3switch"):
-            p.append(f'<rect x="{x - 12}" y="{y - 6}" width="24" height="12" rx="2" class="{s}" stroke-width="1.6"/>')
+            p.append(
+                f'<rect x="{x - 12}" y="{y - 6}" width="24" height="12" rx="2" class="{s}" stroke-width="1.6"/>'
+            )
             for dx in (-6, 0, 6):
                 p.append(f'<rect x="{x + dx - 2}" y="{y - 1}" width="4" height="3" class="{f}"/>')
             if kind == "l3switch":
-                p.append(f'<text x="{x + 17}" y="{y + 4}" font-size="9" class="{f}" font-weight="700" style="font-family:system-ui">L3</text>')
+                p.append(
+                    f'<text x="{x + 17}" y="{y + 4}" font-size="9" class="{f}" font-weight="700" style="font-family:system-ui">L3</text>'
+                )
         elif kind == "router":
             p.append(f'<circle cx="{x}" cy="{y}" r="8" class="{s}" stroke-width="1.6"/>')
             p.append(f'<path d="M{x - 5} {y}h10M{x} {y - 5}v10" class="{s}" stroke-width="1.6"/>')
         elif kind == "server":
-            p.append(f'<rect x="{x - 7}" y="{y - 8}" width="14" height="16" rx="2" class="{s}" stroke-width="1.6"/>')
-            p.append(f'<path d="M{x - 7} {y - 2}h14M{x - 7} {y + 3}h14" class="{s}" stroke-width="1.3"/>')
+            p.append(
+                f'<rect x="{x - 7}" y="{y - 8}" width="14" height="16" rx="2" class="{s}" stroke-width="1.6"/>'
+            )
+            p.append(
+                f'<path d="M{x - 7} {y - 2}h14M{x - 7} {y + 3}h14" class="{s}" stroke-width="1.3"/>'
+            )
         elif kind == "printer":
-            p.append(f'<rect x="{x - 9}" y="{y - 3}" width="18" height="9" rx="2" class="{s}" stroke-width="1.6"/>')
-            p.append(f'<rect x="{x - 5}" y="{y - 8}" width="10" height="5" class="{s}" stroke-width="1.4"/>')
+            p.append(
+                f'<rect x="{x - 9}" y="{y - 3}" width="18" height="9" rx="2" class="{s}" stroke-width="1.6"/>'
+            )
+            p.append(
+                f'<rect x="{x - 5}" y="{y - 8}" width="10" height="5" class="{s}" stroke-width="1.4"/>'
+            )
         elif kind == "phone":
-            p.append(f'<rect x="{x - 5}" y="{y - 8}" width="10" height="16" rx="2.5" class="{s}" stroke-width="1.6"/>')
+            p.append(
+                f'<rect x="{x - 5}" y="{y - 8}" width="10" height="16" rx="2.5" class="{s}" stroke-width="1.6"/>'
+            )
         elif kind in ("ap", "wlc"):
-            p.append(f'<path d="M{x - 9} {y - 1}a12 12 0 0 1 18 0M{x - 5} {y + 3}a6 6 0 0 1 10 0" class="{s}" stroke-width="1.6"/>')
+            p.append(
+                f'<path d="M{x - 9} {y - 1}a12 12 0 0 1 18 0M{x - 5} {y + 3}a6 6 0 0 1 10 0" class="{s}" stroke-width="1.6"/>'
+            )
             p.append(f'<circle cx="{x}" cy="{y + 6}" r="2" class="{f}"/>')
         elif kind == "firewall":
-            p.append(f'<rect x="{x - 10}" y="{y - 7}" width="20" height="14" class="{s}" stroke-width="1.6"/>')
-            p.append(f'<path d="M{x - 10} {y}h20M{x - 3} {y - 7}v7M{x + 4} {y}v7" class="{s}" stroke-width="1.3"/>')
+            p.append(
+                f'<rect x="{x - 10}" y="{y - 7}" width="20" height="14" class="{s}" stroke-width="1.6"/>'
+            )
+            p.append(
+                f'<path d="M{x - 10} {y}h20M{x - 3} {y - 7}v7M{x + 4} {y}v7" class="{s}" stroke-width="1.3"/>'
+            )
         elif kind == "cloud":
             pass
 
-    def link(self, a, b, label="", la="", lb="", tone="ln", width=2.2, dash=False, blocked=False, size=11):
+    def link(
+        self, a, b, label="", la="", lb="", tone="ln", width=2.2, dash=False, blocked=False, size=11
+    ):
         """İki cihaz kartı arasında kablo; a/b `device` dönüşü. la/lb uç etiketleri (port adları)."""
         (x1, y1, w1, h1), (x2, y2, w2, h2) = a, b
         p1 = self._edge(x1, y1, w1, h1, x2, y2)
@@ -277,9 +338,13 @@ class Fig:
             nx, ny = 0, -1
         off = 10
         if la:
-            self.text(p1[0] + ux * 20 + nx * off, p1[1] + uy * 20 + ny * off + 4, la, size=size, tone="m")
+            self.text(
+                p1[0] + ux * 20 + nx * off, p1[1] + uy * 20 + ny * off + 4, la, size=size, tone="m"
+            )
         if lb:
-            self.text(p2[0] - ux * 20 + nx * off, p2[1] - uy * 20 + ny * off + 4, lb, size=size, tone="m")
+            self.text(
+                p2[0] - ux * 20 + nx * off, p2[1] - uy * 20 + ny * off + 4, lb, size=size, tone="m"
+            )
         if label:
             mx, my = (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2
             tw = text_width(label, size, True) + 12
@@ -324,7 +389,9 @@ class Fig:
         """Küçük paket/zarf rozeti; (x, y) merkez."""
         w = w or text_width(label, 11, True) + 26
         self.rect(x - w / 2, y - 11, w, 22, tone, r=5)
-        self.path(f"M{x - w / 2 + 6} {y - 6}l6 5l6 -5", tone=tone if tone in TONES else "ln", width=1.3)
+        self.path(
+            f"M{x - w / 2 + 6} {y - 6}l6 5l6 -5", tone=tone if tone in TONES else "ln", width=1.3
+        )
         self.text(x + 8, y + 4, label, size=11, bold=True)
         return self
 
@@ -342,7 +409,9 @@ class Fig:
             self.rect(x, ry, total, row_h, tones.get(i, "card"), r=0, width=1)
             cx = x
             for j, (cell, w) in enumerate(zip(row, widths)):
-                self.text(cx + 8, ry + row_h / 2 + 4, cell, size=size, anchor="start", mono=j in mono_cols)
+                self.text(
+                    cx + 8, ry + row_h / 2 + 4, cell, size=size, anchor="start", mono=j in mono_cols
+                )
                 cx += w
         return y + row_h * (len(rows) + 1)
 

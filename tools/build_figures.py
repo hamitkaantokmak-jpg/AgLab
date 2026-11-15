@@ -20,7 +20,9 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 
 def load(spec_path: Path) -> dict:
-    spec = importlib.util.spec_from_file_location("fig_" + spec_path.stem.replace("-", "_"), spec_path)
+    spec = importlib.util.spec_from_file_location(
+        "fig_" + spec_path.stem.replace("-", "_"), spec_path
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod.FIGURES
