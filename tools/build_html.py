@@ -97,6 +97,12 @@ def lessons_json() -> str:
     Metin <script type="application/json"> içine girer: "</" kaçışlanır."""
     data = {}
     base = ROOT / "docs" / "dersler"
+    courses = json.loads((ROOT / "src" / "data" / "courses.json").read_text(encoding="utf-8"))
+    for c in courses:
+        if c.get("doc") and not (base / (c["doc"] + ".md")).exists():
+            raise SystemExit(
+                f"courses.json: {c['id']} dersinin belgesi yok: docs/dersler/{c['doc']}.md"
+            )
     for md_path in sorted(base.glob("*.md")):
         md = md_path.read_text(encoding="utf-8")
         figs = {}
