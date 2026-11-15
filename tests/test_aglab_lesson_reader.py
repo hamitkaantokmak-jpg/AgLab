@@ -1,7 +1,7 @@
 """Ders okuyucu: docs/dersler/*.md derste şemalarıyla gösterilir (src/app/lesson-reader.js).
 
 - Şemalar tanımlarından güncel üretilmiş (tools/build_figures.py --check).
-- `doc` alanı olan her ders "Ayrıntılı öğren"de açılır; başvurulan her şema görünür, eksik yok.
+- `doc` alanı olan her ders "Öğren" adımında açılır; başvurulan her şema görünür, eksik yok.
 - Zenginleştirilmiş derslerde (0. Bir bakışta) arıza senaryosunun nedeni/çözümü ve sınav cevapları
   kapalı kutudadır (öğrenciye önceden verilmez); her derste en az 6 şema.
 - Metin kaçışlanır: Markdown'daki HTML etiketi sayfaya öğe olarak girmez.
@@ -100,7 +100,7 @@ class LessonReaderUiTests(unittest.TestCase):
             with self.subTest(c["id"]):
                 text = (ROOT / "docs/dersler" / (c["doc"] + ".md")).read_text(encoding="utf-8")
                 page.locator("#sfList button", has_text=c["title"]).first.evaluate("b => b.click()")
-                page.locator("#sfSheet button", has_text="Ayrıntılı öğren").first.evaluate(
+                page.locator("#sfSheet button", has_text="1 · Öğren").first.evaluate(
                     "b => b.click()"
                 )
                 r = page.evaluate("""() => ({

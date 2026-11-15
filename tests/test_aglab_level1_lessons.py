@@ -165,7 +165,7 @@ class LevelOneLessonUiTests(unittest.TestCase):
                 )
                 sheet = page.locator("#sfSheet")
                 self.assertIn(short_text, sheet.text_content())
-                sheet.locator("button", has_text="Ayrıntılı öğren").evaluate("b => b.click()")
+                sheet.locator("button", has_text="1 · Öğren").evaluate("b => b.click()")
                 page.wait_for_function(
                     "(t) => document.getElementById('sfSheet').textContent.includes(t)",
                     arg=detail_text,

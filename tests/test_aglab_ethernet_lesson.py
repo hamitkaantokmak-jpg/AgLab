@@ -71,7 +71,7 @@ class EthernetLessonUiTests(unittest.TestCase):
         )
         sheet = self.page.locator("#sfSheet")
         self.assertIn("Switch MAC öğrenir", sheet.text_content())
-        sheet.locator("button", has_text="Ayrıntılı öğren").evaluate("b => b.click()")
+        sheet.locator("button", has_text="1 · Öğren").evaluate("b => b.click()")
         self.page.wait_for_function(
             "document.getElementById('sfSheet').textContent.includes('aynı ağdayım ama ulaşamıyorum')"
         )

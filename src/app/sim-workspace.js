@@ -380,6 +380,8 @@
     }
   };
   const catCards = {};
+  let labberList = null;
+  let tasksReady = false; // konuya göre görev listesi kuruldu mu
   // Kart, eski panelin kendisidir (kimlik korunur: #academyPanel, #labberLabsPanel,
   // #sharedScenarioPanel); panelin kart dışında kalan uzun metinleri "Diğer araçlar"a taşınır.
   function catCard(key, panel, title, select, start, keep = []) {
@@ -521,7 +523,9 @@
       };
     }
     if (key === 'labber') {
-      const info = window.aglabLabberLabs?.list().find((l) => l.id === value);
+      // Liste sabittir; bir kez okunur (görev listesi her yenilemede motoru yoklamasın).
+      labberList ||= window.aglabLabberLabs?.list() || null;
+      const info = labberList?.find((l) => l.id === value);
       const done = !!readProgress('labber')[value]?.completed;
       return {
         name: info?.title || text,
@@ -604,12 +608,254 @@
           c.list.scrollTop = Math.max(0, top - c.list.clientHeight / 2);
       }
     }
+    if (tasksReady) renderTasks();
   }
   for (const id of ['academySearch', 'academyProgressFilter'])
     $(id)?.addEventListener(id === 'academySearch' ? 'input' : 'change', () =>
       renderCatalog('academy'),
     );
   document.addEventListener('aglab:academy-checked', () => renderCatalog('academy'));
+
+  // ---------------------------------------------------------------- konuya göre görevler
+  // Arayüz PR 2: üç kaynağın (Akademi · Labber · hazır senaryo) görevleri tek listede, müfredat
+  // konusuna göre gruplu (Konu #n sırası). Her satır: ad, tür (Kurulum / Arıza bul), yalnız
+  // başlanmışsa durum ve "Başlat". Başlat, kaynağın kendi seçim kutusunu ve başlat düğmesini
+  // kullanır; davranış eski kartlarla aynıdır. Eski kartlar "Kaynağa göre" altında kalır.
+  const COURSES = (() => {
+    try {
+      return JSON.parse($('sfCourseData')?.textContent || '[]');
+    } catch (e) {
+      return [];
+    }
+  })();
+  const LEVEL_LABEL = {
+    beginner: 'Seviye 1 · Şube',
+    intermediate: 'Seviye 2 · CCNA',
+    advanced: 'Seviye 3 · CCNP',
+  };
+  const SHARED_COURSE = {
+    phy: 'physical',
+    eth: 'ethernet',
+    vlan: 'vlan',
+    roas: 'intervlan',
+    stp: 'stp',
+    ec: 'etherchannel',
+    psec: 'l2sec',
+    cdp: 'discovery',
+    mgmt: 'devicemgmt',
+    ip: 'ip',
+    gw: 'routing',
+    diag: 'commands',
+    ospf: 'ospf',
+    fhrp: 'fhrp',
+    dhcp: 'dhcp',
+    dns: 'dns',
+    acl: 'acl',
+    nat: 'nat',
+    method: 'method',
+  };
+  const LABBER_COURSE = {
+    'vlan-temelleri': 'vlan',
+    'ariza-trunk': 'vlan',
+    'trunk-guvenligi': 'l2sec',
+    'kampus-vlan-trunk-stp': 'stp',
+    'stp-yuk-dengeleme': 'stp',
+    'bpdu-guard': 'stp',
+    'etherchannel-ariza': 'etherchannel',
+    'l3-statik-route': 'routing',
+    'yonetim-vlan': 'devicemgmt',
+    'ospf-tek-alan': 'ospf',
+    'ospf-ariza': 'ospf',
+    'routed-erisim-blogu': 'design',
+    'ospf-cok-alan': 'ospfadv',
+  };
+  function academyCourse(id) {
+    const n = Number(String(id).replace(/\D/g, ''));
+    if ([1, 6, 8, 21].includes(n)) return 'ethernet';
+    if ([3, 4, 5].includes(n)) return 'physical';
+    if (n === 7) return 'commands';
+    if (n === 10) return 'method';
+    if (n === 2 || n === 9 || (n >= 11 && n <= 20)) return 'ip';
+    if (n >= 22 && n <= 30) return 'vlan';
+    if (n >= 31 && n <= 40) return 'routing';
+    return '';
+  }
+  const FAULT_WORDS = /arıza|giderme|düzelt|teşhis|kesinti|kapalı|eksik|yanlış|bulma|hata/;
+  const SOURCES = {
+    academy: { select: 'academySelect', start: 'academyStart', label: 'Akademi' },
+    labber: { select: 'labberLabSelect', start: 'labberLabStart', label: 'Labber' },
+    shared: { select: 'sharedScenarioSelect', start: 'sharedScenarioLoad', label: 'Senaryo' },
+  };
+  function allTasks() {
+    const out = [];
+    for (const [kind, src] of Object.entries(SOURCES)) {
+      for (const o of $(src.select)?.options || []) {
+        const m = rowMeta(kind, o.value, o.textContent);
+        const course =
+          kind === 'academy'
+            ? academyCourse(o.value)
+            : kind === 'labber'
+              ? LABBER_COURSE[o.value] || ''
+              : SHARED_COURSE[topicOf(o.value)] || '';
+        const started = m.status && m.status !== 'başlanmadı';
+        out.push({
+          kind,
+          id: o.value,
+          name: m.name,
+          course: COURSES.some((c) => c.id === course) ? course : '',
+          type: kind === 'shared' || FAULT_WORDS.test(fold(m.name)) ? 'ariza' : 'kurulum',
+          status: started ? m.status : '',
+          done: !!m.done,
+        });
+      }
+    }
+    return out;
+  }
+  function startTask(kind, id) {
+    const src = SOURCES[kind];
+    const select = src && $(src.select);
+    if (!select) return false;
+    // Akademi kartı "Serbest" modda gizlidir; Akademi görevi başlatmak rehberli moda döner.
+    if (kind === 'academy' && $('ux14Guided')?.getAttribute('aria-pressed') === 'false')
+      $('ux14Guided').click();
+    select.value = id;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    $(src.start)?.click();
+    // Akademi, açık çalışmanın üzerine yazmadan önce onay ister; onay kutusu görünür olsun.
+    const prompt = $('academyReplacePrompt');
+    if (kind === 'academy' && prompt && !prompt.hidden && prompt.offsetParent) {
+      prompt.scrollIntoView({ block: 'center' });
+      prompt.querySelector('button')?.focus({ preventScroll: true });
+    } else work.scrollIntoView({ block: 'start' });
+    return true;
+  }
+  const tasksBox = make('section', {
+    class: 'ag-tasks',
+    id: 'agSimTasks',
+    'aria-labelledby': 'agSimTasksTitle',
+  });
+  const taskSearch = make('input', {
+    type: 'search',
+    id: 'agSimTaskSearch',
+    placeholder: 'Görev ya da konu ara',
+    'aria-label': 'Görevlerde ara',
+  });
+  const taskLevel = make('select', { id: 'agSimTaskLevel', 'aria-label': 'Seviye' });
+  taskLevel.append(make('option', { value: '', text: 'Bütün seviyeler' }));
+  for (const [v, t] of Object.entries(LEVEL_LABEL))
+    taskLevel.append(make('option', { value: v, text: t }));
+  const taskType = make('select', { id: 'agSimTaskType', 'aria-label': 'Görev türü' });
+  for (const [v, t] of [
+    ['', 'Bütün türler'],
+    ['kurulum', 'Kurulum'],
+    ['ariza', 'Arıza bul'],
+  ])
+    taskType.append(make('option', { value: v, text: t }));
+  const taskCount = make('span', { class: 'muted small', id: 'agSimTaskCount' });
+  const taskList = make('div', { class: 'ag-tasks-list', id: 'agSimTaskList' });
+  tasksBox.append(
+    make('h3', { id: 'agSimTasksTitle', text: 'Konuya göre görevler' }),
+    make('div', { class: 'ag-tasks-filter' }, taskSearch, taskLevel, taskType, taskCount),
+    taskList,
+  );
+  function renderTasks() {
+    const q = fold(taskSearch.value.trim()),
+      lv = taskLevel.value,
+      ty = taskType.value;
+    const tasks = allTasks();
+    const groups = [...COURSES.map((c) => ({ c, id: c.id })), { c: null, id: '' }];
+    let shown = 0;
+    const active = window.aglabSimWorkspace?.context?.();
+    taskList.replaceChildren(
+      ...groups
+        .map(({ c, id }) => {
+          const title = c ? 'Konu #' + c.num + ' · ' + c.title : 'Diğer';
+          const rows = tasks.filter(
+            (t) =>
+              t.course === id &&
+              (!lv || c?.level === lv) &&
+              (!ty || t.type === ty) &&
+              (!q || fold(title + ' ' + t.name + ' ' + t.id).includes(q)),
+          );
+          if (!rows.length) return null;
+          shown += rows.length;
+          const group = make(
+            'section',
+            { class: 'ag-task-group', 'data-course': id || 'other' },
+            make(
+              'h4',
+              { tabindex: '-1' },
+              make('span', { text: title }),
+              make('small', { class: 'muted', text: c ? LEVEL_LABEL[c.level] || '' : '' }),
+            ),
+          );
+          const ul = make('ul', { class: 'ag-task-rows' });
+          for (const t of rows) {
+            const isActive = active && active.kind === t.kind && active.id === t.id;
+            const start = make('button', {
+              type: 'button',
+              class: 'ag-btn ag-task-start',
+              text: isActive ? 'Açık' : 'Başlat',
+              'aria-label': 'Başlat: ' + t.name,
+            });
+            start.addEventListener('click', () => startTask(t.kind, t.id));
+            ul.append(
+              make(
+                'li',
+                {
+                  class: 'ag-task-row',
+                  'data-kind': t.kind,
+                  'data-value': t.id,
+                  'data-done': t.done ? 'true' : null,
+                },
+                make('span', { class: 'ag-task-name', text: t.name, title: t.name }),
+                make('span', {
+                  class: 'ag-task-type',
+                  'data-type': t.type,
+                  text: t.type === 'ariza' ? 'Arıza bul' : 'Kurulum',
+                }),
+                make('span', {
+                  class: 'ag-task-status',
+                  text: isActive ? 'açık' : t.status,
+                }),
+                start,
+              ),
+            );
+          }
+          group.append(ul);
+          return group;
+        })
+        .filter(Boolean),
+    );
+    if (!shown)
+      taskList.append(make('p', { class: 'muted', text: 'Bu süzgece uyan görev bulunamadı.' }));
+    taskCount.textContent = shown + ' görev';
+  }
+  for (const n of [taskSearch, taskLevel, taskType])
+    n.addEventListener(n === taskSearch ? 'input' : 'change', renderTasks);
+  // Kaynağa göre: eski üç kart (tam listeler, kaynak süzgeçleri) yeni listenin altında.
+  const sourceHead = make(
+    'div',
+    { class: 'ag-cat-sourcehead' },
+    make('h3', { text: 'Kaynağa göre' }),
+  );
+  if (modes) sourceHead.append(modes);
+  catalogGrid.before(tasksBox, sourceHead);
+  tasksReady = true;
+  function showTopic(courseId) {
+    taskSearch.value = '';
+    taskLevel.value = '';
+    taskType.value = '';
+    renderTasks();
+    const group = taskList.querySelector('[data-course="' + (courseId || 'other') + '"]');
+    (group || tasksBox).scrollIntoView({ block: 'start' });
+    group?.querySelector('h4')?.focus({ preventScroll: true });
+    return !!group;
+  }
+  const tasksFor = (courseId) =>
+    allTasks()
+      .filter((t) => t.course === courseId)
+      .map((t) => ({ ...t, start: () => startTask(t.kind, t.id) }));
 
   // ---------------------------------------------------------------- bağlam
   // Görev kartının bölümleri: her bağlamın kendi öğeleri tek kapta; yalnız etkin olan görünür.
@@ -1789,6 +2035,9 @@
     },
     tab: (key) => selectTab(key),
     refresh,
+    tasksFor,
+    showTopic,
+    startTask,
     wide: () => ({ ...widePref, applied: work.hasAttribute('data-wide') }),
   };
 })();

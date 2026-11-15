@@ -3289,6 +3289,64 @@ html[data-theme='light'] button {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* Arayüz PR 2: Öğren → Test → Pratik; listede seviye başlıkları; pratik görev listesi. */
+@media (max-width: 650px) {
+  #studentFlow .sf-sheet .sf-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+#studentFlow .sf-list .sf-level-head {
+  flex-shrink: 0;
+  margin: 8px 2px 0;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+#studentFlow .sf-list .sf-level-head:first-child {
+  margin-top: 0;
+}
+#studentFlow .sf-summary {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+#studentFlow .sf-summary > summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+#studentFlow .sf-tasks {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+#studentFlow .sf-tasks li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--line);
+}
+#studentFlow .sf-tasks small {
+  color: var(--muted);
+  white-space: nowrap;
+}
+#studentFlow .sf-tasks .sf-action {
+  min-height: 34px;
+  padding: 4px 12px;
+}
+@media (max-width: 650px) {
+  #studentFlow .sf-tasks li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  #studentFlow .sf-tasks .sf-task-name {
+    grid-column: 1 / -1;
+  }
+}
 </style>
 <style id="ux-v14-style">/* v14: presentation-only laboratory focus layer. Existing simulation engine and IDs are unchanged. */
 #ux14LabModes {
@@ -5447,6 +5505,127 @@ html.ag-wide .ag-main > #area-lab.workspace.active {
     display: none;
   }
 }
+
+/* Arayüz PR 2: konuya göre görevler (#agSimTasks) — tek liste, müfredat sırasında. */
+.ag-tasks {
+  margin: 4px 0 18px;
+}
+.ag-tasks > h3,
+.ag-cat-sourcehead > h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.ag-tasks-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+#area-lab .ag-tasks-filter input {
+  flex: 2 1 200px;
+  min-width: 0;
+}
+#area-lab .ag-tasks-filter select {
+  flex: 1 1 140px;
+}
+.ag-tasks-list {
+  max-height: 460px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.ag-task-group > h4 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 10px;
+  background: var(--panel2);
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.ag-task-group > h4 small {
+  font-weight: 600;
+  font-size: 11px;
+}
+.ag-task-group > h4:focus {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -2px;
+}
+.ag-task-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ag-task-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+}
+.ag-task-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ag-task-type {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  color: var(--accent-text);
+  white-space: nowrap;
+}
+.ag-task-type[data-type='ariza'] {
+  color: var(--text);
+}
+.ag-task-status {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ag-task-row[data-done='true'] .ag-task-status {
+  color: var(--ag-ok);
+  font-weight: 700;
+}
+#area-lab .ag-task-start {
+  min-height: 0;
+  width: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background-color: var(--ag-btn-strong) !important;
+  color: #fff !important;
+  border: 0;
+  border-radius: 7px;
+}
+.ag-cat-sourcehead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 640px) {
+  .ag-task-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .ag-task-name {
+    grid-column: 1 / -1;
+    white-space: normal;
+  }
+}
 </style>
 <style id="agLessonStyle">/* Ders okuyucu (src/app/lesson-reader.js) ve ders şemaları (tools/figures.py, --fig-* değişkenleri). */
 html[data-theme='light'] {
@@ -5693,7 +5872,7 @@ html:not([data-theme='light']) {
 
 <section id="studentFlow" aria-label="Tek müfredat ve öğrenci yolculuğu">
   <h2>Öğrenme yolun</h2>
-  <p class="sf-sub">Bir konu seç ve sırayla ilerle: <b>Öğren → Örnek → Test → Simülatör → Sorun Çöz.</b> Diğer araçlar gerektiğinde açılabilir.</p>
+  <p class="sf-sub">Bir konu seç ve sırayla ilerle: <b>Öğren → Test → Pratik.</b> Pratikte konunun simülatör görevleri ve kısa teşhis vakası var.</p>
   <div class="sf-metrics" aria-label="İlerleme özeti"><div class="sf-metric"><strong id="sfVisited">0</strong><span>Çalışılan konu</span></div><div class="sf-metric"><strong id="sfMastered">0</strong><span>70+ test puanı</span></div><div class="sf-metric"><strong id="sfProgress">0%</strong><span>Genel konu başarısı</span></div></div>
   <div class="sf-tools"><label for="sfLevel">Seviye <select id="sfLevel"><option value="all">Tüm seviyeler</option><option value="beginner">Seviye 1 · Şube</option><option value="intermediate">Seviye 2 · CCNA</option><option value="advanced">Seviye 3 · CCNP</option></select></label><label for="sfSearch">Konu ara <input id="sfSearch" type="search" placeholder="Ör. subnetting, SD-WAN, VLAN"></label></div>
   <div class="sf-layout"><nav id="sfList" class="sf-list" aria-label="Konu listesi"></nav><article id="sfSheet" class="sf-sheet" aria-live="polite"></article></div>
@@ -70084,7 +70263,13 @@ function workshopView(ids, cases) {
           (lv === 'all' || c.level === lv) &&
           (c.title + ' ' + c.short).toLocaleLowerCase('tr-TR').includes(q),
       )
-      .forEach((c) => {
+      .forEach((c, i, all) => {
+        // Seviye başlığı: liste müfredat sırasında (seviye, konu no), seviye değişince başlık.
+        if (i === 0 || all[i - 1].level !== c.level) {
+          const h = el('h4', LEVEL_NAME[c.level] || c.level);
+          h.className = 'sf-level-head';
+          box.append(h);
+        }
         let x = el('button');
         x.type = 'button';
         x.setAttribute('aria-current', String(c.id === selected));
@@ -70092,8 +70277,7 @@ function workshopView(ids, cases) {
           s = el(
             'small',
             (state.lessons[c.id]?.best >= 70 ? '✓ Tamamlandı · ' : '') +
-              (c.num ? 'Konu #' + c.num + ' · ' : '') +
-              (LEVEL_NAME[c.level] || c.level) +
+              (c.num ? 'Konu #' + c.num : '') +
               (c.kind === 'okuma' ? ' · okuma' : ''),
           );
         x.append(t, s);
@@ -70154,29 +70338,32 @@ function workshopView(ids, cases) {
     const steps = el('nav');
     steps.className = 'sf-steps';
     steps.setAttribute('aria-label', 'Öğrenme aşamaları');
-    ['1 · Anlatım', '2 · Ayrıntılı öğren', '3 · Test', '4 · Laboratuvar', '5 · Sorun çöz'].forEach(
-      (n, i) => {
-        const b = btn(n, () => {
-          phase = i;
-          render();
-        });
-        if (i === phase) b.setAttribute('aria-current', 'step');
-        steps.append(b);
-      },
-    );
+    ['1 · Öğren', '2 · Test', '3 · Pratik'].forEach((n, i) => {
+      const b = btn(n, () => {
+        phase = i;
+        render();
+      });
+      if (i === phase) b.setAttribute('aria-current', 'step');
+      steps.append(b);
+    });
     sheet.append(steps);
     if (phase === 0) {
-      textBlock(sheet, 'Bu konu neden önemli?', c.intro);
-      for (const part of c.sections || []) textBlock(sheet, part[0], part[1]);
-      sheet.append(title('Gerçek hayat örneği'), el('p', c.example || ''));
-      const note = el('div', 'Akılda tut: ' + (c.tip || ''));
-      note.className = 'sf-callout';
-      sheet.append(note);
-      if (c.extraBlock) sheet.append(el('p', typeof c.extraBlock === 'string' ? c.extraBlock : ''));
-    }
-    if (phase === 1) {
-      // Dersin tam hali (docs/dersler/<doc>.md, şemalarıyla) varsa o gösterilir.
-      if (c.doc && window.aglabLessonReader?.has(c.doc)) {
+      // Kısa özet (eski "Anlatım") daraltılmış; asıl ders tam metindir (docs/dersler/<doc>.md).
+      const hasDoc = c.doc && window.aglabLessonReader?.has(c.doc);
+      const summary = el('details');
+      summary.className = 'sf-summary';
+      summary.open = !hasDoc && !dd.length;
+      summary.append(el('summary', 'Kısa özet'));
+      textBlock(summary, 'Bu konu neden önemli?', c.intro);
+      for (const part of c.sections || []) textBlock(summary, part[0], part[1]);
+      if (c.example) summary.append(title('Gerçek hayat örneği'), el('p', c.example));
+      if (c.tip) {
+        const note = el('div', 'Akılda tut: ' + c.tip);
+        note.className = 'sf-callout';
+        summary.append(note);
+      }
+      sheet.append(summary);
+      if (hasDoc) {
         window.aglabLessonReader.show(sheet, c.doc);
       } else if (dd.length) {
         dd.forEach((d) => {
@@ -70190,10 +70377,7 @@ function workshopView(ids, cases) {
           if (d.flow?.length) {
             sheet.append(title('Trafik akışı'));
             const ol = el('ol');
-            d.flow.forEach((x) => {
-              let li = el('li', x);
-              ol.append(li);
-            });
+            d.flow.forEach((x) => ol.append(el('li', x)));
             sheet.append(ol);
           }
           if (d.cli) {
@@ -70202,26 +70386,11 @@ function workshopView(ids, cases) {
               el('pre', typeof d.cli === 'string' ? d.cli : JSON.stringify(d.cli, null, 2)),
             );
           }
-          if (d.pitfalls) {
-            textBlock(sheet, 'Sık yapılan hatalar', d.pitfalls);
-          }
+          if (d.pitfalls) textBlock(sheet, 'Sık yapılan hatalar', d.pitfalls);
         });
-      } else {
-        sheet.append(
-          el(
-            'p',
-            'Bu konu için ayrı uzun ders henüz hazırlanmamış. Temel anlatım ve açıklamalı test mevcut.',
-          ),
-        );
-        sheet.append(
-          btn('Temel anlatıma dön', () => {
-            phase = 0;
-            render();
-          }),
-        );
       }
     }
-    if (phase === 2) {
+    if (phase === 1) {
       if (sessionScore !== null) {
         const box = el(
           'div',
@@ -70245,105 +70414,7 @@ function workshopView(ids, cases) {
         );
       } else renderQuiz(sheet, c);
     }
-    if (phase === 3) {
-      const rr = rec();
-      sheet.append(title('Uygulamaya geç'));
-      const labMap = {
-        ip: 'AGL-001',
-        physical: 'AGL-003',
-        commands: 'AGL-003',
-        routing: 'AGL-002',
-        vlan: 'AGL-005',
-      };
-      const target = labMap[c.id];
-      sheet.append(
-        el(
-          'p',
-          target
-            ? 'Bu konu için doğrudan başlanabilen bir yönlendirmeli lab mevcut: ' + target + '.'
-            : 'Bu konuya özel otomatik puanlanan lab henüz yok. Simülatörü serbest çalışmada açıp öğrendiklerini dene.',
-        ),
-      );
-      sheet.append(
-        btn(
-          target ? 'Yönlendirmeli labı aç: ' + target : 'Simülatörü serbest çalışmada aç',
-          () => {
-            rr.labOpened = true;
-            save();
-            goArea('lab');
-            if (target) {
-              const select = $('academySelect');
-              if (select) {
-                select.value = target;
-                const b = $('academyStart');
-                if (b) {
-                  b.focus();
-                  b.scrollIntoView({ block: 'center' });
-                }
-              }
-            } else {
-              document.querySelector('[data-mode="free"]')?.click();
-            }
-            updateOverview();
-          },
-          'sf-primary',
-        ),
-      );
-      sheet.append(
-        el(
-          'p',
-          'Not: Laboratuvarı açmak başarı puanı vermez. Ağ görevini ayrıca tamamlayıp çözümünü kontrol etmelisin.',
-        ),
-      );
-    }
-    if (phase === 4) {
-      sheet.append(title('Sorun çözme pratiği'));
-      const scenario = dd[0]?.case;
-      if (scenario) {
-        sheet.append(el('p', scenario.symptom));
-        const box = el('div');
-        sheet.append(box);
-        scenario.choices.forEach((t, i) =>
-          box.append(
-            btn(
-              t,
-              () => {
-                if (box.dataset.done) return;
-                box.dataset.done = '1';
-                const feedback = el(
-                  'p',
-                  (i === scenario.answer ? '✓ Doğru teşhis. ' : '✗ Bu teşhis kanıtla uyuşmuyor. ') +
-                    scenario.why,
-                );
-                feedback.className = 'sf-result';
-                box.after(feedback);
-                rec().debugOpened = true;
-                save();
-                updateOverview();
-              },
-              'sf-choice',
-            ),
-          ),
-        );
-      } else
-        sheet.append(
-          el(
-            'p',
-            'Bu başlık için özel vaka henüz yok. Sorun Çöz alanındaki gerçek görevleri deneyebilirsin.',
-          ),
-        );
-      sheet.append(
-        btn(
-          'Sorun Çöz bölümünü aç',
-          () => {
-            rec().debugOpened = true;
-            save();
-            goArea('troubleshoot');
-          },
-          'sf-primary',
-        ),
-      );
-    }
+    if (phase === 2) renderPractice(sheet, c, dd);
     const bar = el('div');
     bar.className = 'sf-toolbar';
     if (phase > 0)
@@ -70353,7 +70424,7 @@ function workshopView(ids, cases) {
           render();
         }),
       );
-    if (phase < 4)
+    if (phase < 2)
       bar.append(
         btn(
           'Sonraki aşama →',
@@ -70366,6 +70437,105 @@ function workshopView(ids, cases) {
       );
     sheet.append(bar);
     updateOverview();
+  }
+  // Pratik: konunun simülatör görevleri (Simülatör > Görev seç > Konuya göre görevler ile aynı
+  // liste) ve varsa kısa teşhis vakası.
+  function renderPractice(sheet, c, dd) {
+    const rr = rec();
+    const ws = window.aglabSimWorkspace;
+    const tasks = ws?.tasksFor ? ws.tasksFor(c.id) : [];
+    sheet.append(title('Simülatörde uygula'));
+    if (tasks.length) {
+      sheet.append(
+        el(
+          'p',
+          'Bu konunun ' +
+            tasks.length +
+            ' görevi var. Başlat, görevi simülatörde açar; puan görevi tamamlayınca verilir.',
+        ),
+      );
+      const ul = el('ul');
+      ul.className = 'sf-tasks';
+      for (const t of tasks) {
+        const li = el('li');
+        li.dataset.kind = t.kind;
+        li.dataset.value = t.id;
+        const name = el('span', t.name);
+        name.className = 'sf-task-name';
+        const meta = el(
+          'small',
+          (t.type === 'ariza' ? 'Arıza bul' : 'Kurulum') + (t.status ? ' · ' + t.status : ''),
+        );
+        li.append(
+          name,
+          meta,
+          btn(
+            'Başlat',
+            () => {
+              rr.labOpened = true;
+              save();
+              goArea('lab');
+              t.start();
+              updateOverview();
+            },
+            'sf-primary',
+          ),
+        );
+        ul.append(li);
+      }
+      sheet.append(ul);
+    } else
+      sheet.append(
+        el(
+          'p',
+          'Bu konuya özel simülatör görevi henüz yok. Simülatörü serbest çalışmada açıp öğrendiklerini dene.',
+        ),
+      );
+    sheet.append(
+      btn(tasks.length ? 'Simülatörde bütün görevleri gör' : 'Simülatörü aç', () => {
+        rr.labOpened = true;
+        save();
+        goArea('lab');
+        if (tasks.length) ws?.showTopic?.(c.id);
+        updateOverview();
+      }),
+    );
+    const scenario = dd[0]?.case;
+    if (scenario) {
+      sheet.append(title('Kısa teşhis vakası'));
+      sheet.append(el('p', scenario.symptom));
+      const box = el('div');
+      sheet.append(box);
+      scenario.choices.forEach((t, i) =>
+        box.append(
+          btn(
+            t,
+            () => {
+              if (box.dataset.done) return;
+              box.dataset.done = '1';
+              const feedback = el(
+                'p',
+                (i === scenario.answer ? '✓ Doğru teşhis. ' : '✗ Bu teşhis kanıtla uyuşmuyor. ') +
+                  scenario.why,
+              );
+              feedback.className = 'sf-result';
+              box.after(feedback);
+              rec().debugOpened = true;
+              save();
+              updateOverview();
+            },
+            'sf-choice',
+          ),
+        ),
+      );
+    }
+    sheet.append(
+      btn('Sorun Çöz bölümünü aç', () => {
+        rec().debugOpened = true;
+        save();
+        goArea('troubleshoot');
+      }),
+    );
   }
   function renderQuiz(sheet, c) {
     const q = c.quiz || [];
@@ -70466,7 +70636,7 @@ function workshopView(ids, cases) {
     open: (id, stage = 0) => {
       if (courses.some((c) => c.id === id)) {
         choose(id);
-        phase = stage;
+        phase = Math.max(0, Math.min(2, Number(stage) || 0));
         render();
         document.getElementById('studentFlow').scrollIntoView({ block: 'start' });
       }
@@ -70591,13 +70761,14 @@ function workshopView(ids, cases) {
     update();
     sheet.focus({ preventScroll: true });
   });
-  const labels = ['Anlatım', 'Ayrıntılı öğren', 'Test', 'Laboratuvar', 'Sorun çöz'];
+  const labels = ['Öğren', 'Test', 'Pratik'];
   let scheduled = false;
   const refreshStage = () => {
     scheduled = false;
     const steps = Array.from(sheet.querySelectorAll('.sf-steps button'));
     const index = steps.findIndex((x) => x.getAttribute('aria-current') === 'step');
-    stage.textContent = index < 0 ? 'Konunu seç' : `Adım ${index + 1}/5 · ${labels[index]}`;
+    stage.textContent =
+      index < 0 ? 'Konunu seç' : `Adım ${index + 1}/${labels.length} · ${labels[index]}`;
   };
   const observer = new MutationObserver(() => {
     if (scheduled) return;
@@ -71096,6 +71267,8 @@ function workshopView(ids, cases) {
     }
   };
   const catCards = {};
+  let labberList = null;
+  let tasksReady = false; // konuya göre görev listesi kuruldu mu
   // Kart, eski panelin kendisidir (kimlik korunur: #academyPanel, #labberLabsPanel,
   // #sharedScenarioPanel); panelin kart dışında kalan uzun metinleri "Diğer araçlar"a taşınır.
   function catCard(key, panel, title, select, start, keep = []) {
@@ -71237,7 +71410,9 @@ function workshopView(ids, cases) {
       };
     }
     if (key === 'labber') {
-      const info = window.aglabLabberLabs?.list().find((l) => l.id === value);
+      // Liste sabittir; bir kez okunur (görev listesi her yenilemede motoru yoklamasın).
+      labberList ||= window.aglabLabberLabs?.list() || null;
+      const info = labberList?.find((l) => l.id === value);
       const done = !!readProgress('labber')[value]?.completed;
       return {
         name: info?.title || text,
@@ -71320,12 +71495,254 @@ function workshopView(ids, cases) {
           c.list.scrollTop = Math.max(0, top - c.list.clientHeight / 2);
       }
     }
+    if (tasksReady) renderTasks();
   }
   for (const id of ['academySearch', 'academyProgressFilter'])
     $(id)?.addEventListener(id === 'academySearch' ? 'input' : 'change', () =>
       renderCatalog('academy'),
     );
   document.addEventListener('aglab:academy-checked', () => renderCatalog('academy'));
+
+  // ---------------------------------------------------------------- konuya göre görevler
+  // Arayüz PR 2: üç kaynağın (Akademi · Labber · hazır senaryo) görevleri tek listede, müfredat
+  // konusuna göre gruplu (Konu #n sırası). Her satır: ad, tür (Kurulum / Arıza bul), yalnız
+  // başlanmışsa durum ve "Başlat". Başlat, kaynağın kendi seçim kutusunu ve başlat düğmesini
+  // kullanır; davranış eski kartlarla aynıdır. Eski kartlar "Kaynağa göre" altında kalır.
+  const COURSES = (() => {
+    try {
+      return JSON.parse($('sfCourseData')?.textContent || '[]');
+    } catch (e) {
+      return [];
+    }
+  })();
+  const LEVEL_LABEL = {
+    beginner: 'Seviye 1 · Şube',
+    intermediate: 'Seviye 2 · CCNA',
+    advanced: 'Seviye 3 · CCNP',
+  };
+  const SHARED_COURSE = {
+    phy: 'physical',
+    eth: 'ethernet',
+    vlan: 'vlan',
+    roas: 'intervlan',
+    stp: 'stp',
+    ec: 'etherchannel',
+    psec: 'l2sec',
+    cdp: 'discovery',
+    mgmt: 'devicemgmt',
+    ip: 'ip',
+    gw: 'routing',
+    diag: 'commands',
+    ospf: 'ospf',
+    fhrp: 'fhrp',
+    dhcp: 'dhcp',
+    dns: 'dns',
+    acl: 'acl',
+    nat: 'nat',
+    method: 'method',
+  };
+  const LABBER_COURSE = {
+    'vlan-temelleri': 'vlan',
+    'ariza-trunk': 'vlan',
+    'trunk-guvenligi': 'l2sec',
+    'kampus-vlan-trunk-stp': 'stp',
+    'stp-yuk-dengeleme': 'stp',
+    'bpdu-guard': 'stp',
+    'etherchannel-ariza': 'etherchannel',
+    'l3-statik-route': 'routing',
+    'yonetim-vlan': 'devicemgmt',
+    'ospf-tek-alan': 'ospf',
+    'ospf-ariza': 'ospf',
+    'routed-erisim-blogu': 'design',
+    'ospf-cok-alan': 'ospfadv',
+  };
+  function academyCourse(id) {
+    const n = Number(String(id).replace(/\D/g, ''));
+    if ([1, 6, 8, 21].includes(n)) return 'ethernet';
+    if ([3, 4, 5].includes(n)) return 'physical';
+    if (n === 7) return 'commands';
+    if (n === 10) return 'method';
+    if (n === 2 || n === 9 || (n >= 11 && n <= 20)) return 'ip';
+    if (n >= 22 && n <= 30) return 'vlan';
+    if (n >= 31 && n <= 40) return 'routing';
+    return '';
+  }
+  const FAULT_WORDS = /arıza|giderme|düzelt|teşhis|kesinti|kapalı|eksik|yanlış|bulma|hata/;
+  const SOURCES = {
+    academy: { select: 'academySelect', start: 'academyStart', label: 'Akademi' },
+    labber: { select: 'labberLabSelect', start: 'labberLabStart', label: 'Labber' },
+    shared: { select: 'sharedScenarioSelect', start: 'sharedScenarioLoad', label: 'Senaryo' },
+  };
+  function allTasks() {
+    const out = [];
+    for (const [kind, src] of Object.entries(SOURCES)) {
+      for (const o of $(src.select)?.options || []) {
+        const m = rowMeta(kind, o.value, o.textContent);
+        const course =
+          kind === 'academy'
+            ? academyCourse(o.value)
+            : kind === 'labber'
+              ? LABBER_COURSE[o.value] || ''
+              : SHARED_COURSE[topicOf(o.value)] || '';
+        const started = m.status && m.status !== 'başlanmadı';
+        out.push({
+          kind,
+          id: o.value,
+          name: m.name,
+          course: COURSES.some((c) => c.id === course) ? course : '',
+          type: kind === 'shared' || FAULT_WORDS.test(fold(m.name)) ? 'ariza' : 'kurulum',
+          status: started ? m.status : '',
+          done: !!m.done,
+        });
+      }
+    }
+    return out;
+  }
+  function startTask(kind, id) {
+    const src = SOURCES[kind];
+    const select = src && $(src.select);
+    if (!select) return false;
+    // Akademi kartı "Serbest" modda gizlidir; Akademi görevi başlatmak rehberli moda döner.
+    if (kind === 'academy' && $('ux14Guided')?.getAttribute('aria-pressed') === 'false')
+      $('ux14Guided').click();
+    select.value = id;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    $(src.start)?.click();
+    // Akademi, açık çalışmanın üzerine yazmadan önce onay ister; onay kutusu görünür olsun.
+    const prompt = $('academyReplacePrompt');
+    if (kind === 'academy' && prompt && !prompt.hidden && prompt.offsetParent) {
+      prompt.scrollIntoView({ block: 'center' });
+      prompt.querySelector('button')?.focus({ preventScroll: true });
+    } else work.scrollIntoView({ block: 'start' });
+    return true;
+  }
+  const tasksBox = make('section', {
+    class: 'ag-tasks',
+    id: 'agSimTasks',
+    'aria-labelledby': 'agSimTasksTitle',
+  });
+  const taskSearch = make('input', {
+    type: 'search',
+    id: 'agSimTaskSearch',
+    placeholder: 'Görev ya da konu ara',
+    'aria-label': 'Görevlerde ara',
+  });
+  const taskLevel = make('select', { id: 'agSimTaskLevel', 'aria-label': 'Seviye' });
+  taskLevel.append(make('option', { value: '', text: 'Bütün seviyeler' }));
+  for (const [v, t] of Object.entries(LEVEL_LABEL))
+    taskLevel.append(make('option', { value: v, text: t }));
+  const taskType = make('select', { id: 'agSimTaskType', 'aria-label': 'Görev türü' });
+  for (const [v, t] of [
+    ['', 'Bütün türler'],
+    ['kurulum', 'Kurulum'],
+    ['ariza', 'Arıza bul'],
+  ])
+    taskType.append(make('option', { value: v, text: t }));
+  const taskCount = make('span', { class: 'muted small', id: 'agSimTaskCount' });
+  const taskList = make('div', { class: 'ag-tasks-list', id: 'agSimTaskList' });
+  tasksBox.append(
+    make('h3', { id: 'agSimTasksTitle', text: 'Konuya göre görevler' }),
+    make('div', { class: 'ag-tasks-filter' }, taskSearch, taskLevel, taskType, taskCount),
+    taskList,
+  );
+  function renderTasks() {
+    const q = fold(taskSearch.value.trim()),
+      lv = taskLevel.value,
+      ty = taskType.value;
+    const tasks = allTasks();
+    const groups = [...COURSES.map((c) => ({ c, id: c.id })), { c: null, id: '' }];
+    let shown = 0;
+    const active = window.aglabSimWorkspace?.context?.();
+    taskList.replaceChildren(
+      ...groups
+        .map(({ c, id }) => {
+          const title = c ? 'Konu #' + c.num + ' · ' + c.title : 'Diğer';
+          const rows = tasks.filter(
+            (t) =>
+              t.course === id &&
+              (!lv || c?.level === lv) &&
+              (!ty || t.type === ty) &&
+              (!q || fold(title + ' ' + t.name + ' ' + t.id).includes(q)),
+          );
+          if (!rows.length) return null;
+          shown += rows.length;
+          const group = make(
+            'section',
+            { class: 'ag-task-group', 'data-course': id || 'other' },
+            make(
+              'h4',
+              { tabindex: '-1' },
+              make('span', { text: title }),
+              make('small', { class: 'muted', text: c ? LEVEL_LABEL[c.level] || '' : '' }),
+            ),
+          );
+          const ul = make('ul', { class: 'ag-task-rows' });
+          for (const t of rows) {
+            const isActive = active && active.kind === t.kind && active.id === t.id;
+            const start = make('button', {
+              type: 'button',
+              class: 'ag-btn ag-task-start',
+              text: isActive ? 'Açık' : 'Başlat',
+              'aria-label': 'Başlat: ' + t.name,
+            });
+            start.addEventListener('click', () => startTask(t.kind, t.id));
+            ul.append(
+              make(
+                'li',
+                {
+                  class: 'ag-task-row',
+                  'data-kind': t.kind,
+                  'data-value': t.id,
+                  'data-done': t.done ? 'true' : null,
+                },
+                make('span', { class: 'ag-task-name', text: t.name, title: t.name }),
+                make('span', {
+                  class: 'ag-task-type',
+                  'data-type': t.type,
+                  text: t.type === 'ariza' ? 'Arıza bul' : 'Kurulum',
+                }),
+                make('span', {
+                  class: 'ag-task-status',
+                  text: isActive ? 'açık' : t.status,
+                }),
+                start,
+              ),
+            );
+          }
+          group.append(ul);
+          return group;
+        })
+        .filter(Boolean),
+    );
+    if (!shown)
+      taskList.append(make('p', { class: 'muted', text: 'Bu süzgece uyan görev bulunamadı.' }));
+    taskCount.textContent = shown + ' görev';
+  }
+  for (const n of [taskSearch, taskLevel, taskType])
+    n.addEventListener(n === taskSearch ? 'input' : 'change', renderTasks);
+  // Kaynağa göre: eski üç kart (tam listeler, kaynak süzgeçleri) yeni listenin altında.
+  const sourceHead = make(
+    'div',
+    { class: 'ag-cat-sourcehead' },
+    make('h3', { text: 'Kaynağa göre' }),
+  );
+  if (modes) sourceHead.append(modes);
+  catalogGrid.before(tasksBox, sourceHead);
+  tasksReady = true;
+  function showTopic(courseId) {
+    taskSearch.value = '';
+    taskLevel.value = '';
+    taskType.value = '';
+    renderTasks();
+    const group = taskList.querySelector('[data-course="' + (courseId || 'other') + '"]');
+    (group || tasksBox).scrollIntoView({ block: 'start' });
+    group?.querySelector('h4')?.focus({ preventScroll: true });
+    return !!group;
+  }
+  const tasksFor = (courseId) =>
+    allTasks()
+      .filter((t) => t.course === courseId)
+      .map((t) => ({ ...t, start: () => startTask(t.kind, t.id) }));
 
   // ---------------------------------------------------------------- bağlam
   // Görev kartının bölümleri: her bağlamın kendi öğeleri tek kapta; yalnız etkin olan görünür.
@@ -72505,6 +72922,9 @@ function workshopView(ids, cases) {
     },
     tab: (key) => selectTab(key),
     refresh,
+    tasksFor,
+    showTopic,
+    startTask,
     wide: () => ({ ...widePref, applied: work.hasAttribute('data-wide') }),
   };
 })();

@@ -122,7 +122,13 @@
           (lv === 'all' || c.level === lv) &&
           (c.title + ' ' + c.short).toLocaleLowerCase('tr-TR').includes(q),
       )
-      .forEach((c) => {
+      .forEach((c, i, all) => {
+        // Seviye başlığı: liste müfredat sırasında (seviye, konu no), seviye değişince başlık.
+        if (i === 0 || all[i - 1].level !== c.level) {
+          const h = el('h4', LEVEL_NAME[c.level] || c.level);
+          h.className = 'sf-level-head';
+          box.append(h);
+        }
         let x = el('button');
         x.type = 'button';
         x.setAttribute('aria-current', String(c.id === selected));
@@ -130,8 +136,7 @@
           s = el(
             'small',
             (state.lessons[c.id]?.best >= 70 ? '✓ Tamamlandı · ' : '') +
-              (c.num ? 'Konu #' + c.num + ' · ' : '') +
-              (LEVEL_NAME[c.level] || c.level) +
+              (c.num ? 'Konu #' + c.num : '') +
               (c.kind === 'okuma' ? ' · okuma' : ''),
           );
         x.append(t, s);
@@ -192,29 +197,32 @@
     const steps = el('nav');
     steps.className = 'sf-steps';
     steps.setAttribute('aria-label', 'Öğrenme aşamaları');
-    ['1 · Anlatım', '2 · Ayrıntılı öğren', '3 · Test', '4 · Laboratuvar', '5 · Sorun çöz'].forEach(
-      (n, i) => {
-        const b = btn(n, () => {
-          phase = i;
-          render();
-        });
-        if (i === phase) b.setAttribute('aria-current', 'step');
-        steps.append(b);
-      },
-    );
+    ['1 · Öğren', '2 · Test', '3 · Pratik'].forEach((n, i) => {
+      const b = btn(n, () => {
+        phase = i;
+        render();
+      });
+      if (i === phase) b.setAttribute('aria-current', 'step');
+      steps.append(b);
+    });
     sheet.append(steps);
     if (phase === 0) {
-      textBlock(sheet, 'Bu konu neden önemli?', c.intro);
-      for (const part of c.sections || []) textBlock(sheet, part[0], part[1]);
-      sheet.append(title('Gerçek hayat örneği'), el('p', c.example || ''));
-      const note = el('div', 'Akılda tut: ' + (c.tip || ''));
-      note.className = 'sf-callout';
-      sheet.append(note);
-      if (c.extraBlock) sheet.append(el('p', typeof c.extraBlock === 'string' ? c.extraBlock : ''));
-    }
-    if (phase === 1) {
-      // Dersin tam hali (docs/dersler/<doc>.md, şemalarıyla) varsa o gösterilir.
-      if (c.doc && window.aglabLessonReader?.has(c.doc)) {
+      // Kısa özet (eski "Anlatım") daraltılmış; asıl ders tam metindir (docs/dersler/<doc>.md).
+      const hasDoc = c.doc && window.aglabLessonReader?.has(c.doc);
+      const summary = el('details');
+      summary.className = 'sf-summary';
+      summary.open = !hasDoc && !dd.length;
+      summary.append(el('summary', 'Kısa özet'));
+      textBlock(summary, 'Bu konu neden önemli?', c.intro);
+      for (const part of c.sections || []) textBlock(summary, part[0], part[1]);
+      if (c.example) summary.append(title('Gerçek hayat örneği'), el('p', c.example));
+      if (c.tip) {
+        const note = el('div', 'Akılda tut: ' + c.tip);
+        note.className = 'sf-callout';
+        summary.append(note);
+      }
+      sheet.append(summary);
+      if (hasDoc) {
         window.aglabLessonReader.show(sheet, c.doc);
       } else if (dd.length) {
         dd.forEach((d) => {
@@ -228,10 +236,7 @@
           if (d.flow?.length) {
             sheet.append(title('Trafik akışı'));
             const ol = el('ol');
-            d.flow.forEach((x) => {
-              let li = el('li', x);
-              ol.append(li);
-            });
+            d.flow.forEach((x) => ol.append(el('li', x)));
             sheet.append(ol);
           }
           if (d.cli) {
@@ -240,26 +245,11 @@
               el('pre', typeof d.cli === 'string' ? d.cli : JSON.stringify(d.cli, null, 2)),
             );
           }
-          if (d.pitfalls) {
-            textBlock(sheet, 'Sık yapılan hatalar', d.pitfalls);
-          }
+          if (d.pitfalls) textBlock(sheet, 'Sık yapılan hatalar', d.pitfalls);
         });
-      } else {
-        sheet.append(
-          el(
-            'p',
-            'Bu konu için ayrı uzun ders henüz hazırlanmamış. Temel anlatım ve açıklamalı test mevcut.',
-          ),
-        );
-        sheet.append(
-          btn('Temel anlatıma dön', () => {
-            phase = 0;
-            render();
-          }),
-        );
       }
     }
-    if (phase === 2) {
+    if (phase === 1) {
       if (sessionScore !== null) {
         const box = el(
           'div',
@@ -283,105 +273,7 @@
         );
       } else renderQuiz(sheet, c);
     }
-    if (phase === 3) {
-      const rr = rec();
-      sheet.append(title('Uygulamaya geç'));
-      const labMap = {
-        ip: 'AGL-001',
-        physical: 'AGL-003',
-        commands: 'AGL-003',
-        routing: 'AGL-002',
-        vlan: 'AGL-005',
-      };
-      const target = labMap[c.id];
-      sheet.append(
-        el(
-          'p',
-          target
-            ? 'Bu konu için doğrudan başlanabilen bir yönlendirmeli lab mevcut: ' + target + '.'
-            : 'Bu konuya özel otomatik puanlanan lab henüz yok. Simülatörü serbest çalışmada açıp öğrendiklerini dene.',
-        ),
-      );
-      sheet.append(
-        btn(
-          target ? 'Yönlendirmeli labı aç: ' + target : 'Simülatörü serbest çalışmada aç',
-          () => {
-            rr.labOpened = true;
-            save();
-            goArea('lab');
-            if (target) {
-              const select = $('academySelect');
-              if (select) {
-                select.value = target;
-                const b = $('academyStart');
-                if (b) {
-                  b.focus();
-                  b.scrollIntoView({ block: 'center' });
-                }
-              }
-            } else {
-              document.querySelector('[data-mode="free"]')?.click();
-            }
-            updateOverview();
-          },
-          'sf-primary',
-        ),
-      );
-      sheet.append(
-        el(
-          'p',
-          'Not: Laboratuvarı açmak başarı puanı vermez. Ağ görevini ayrıca tamamlayıp çözümünü kontrol etmelisin.',
-        ),
-      );
-    }
-    if (phase === 4) {
-      sheet.append(title('Sorun çözme pratiği'));
-      const scenario = dd[0]?.case;
-      if (scenario) {
-        sheet.append(el('p', scenario.symptom));
-        const box = el('div');
-        sheet.append(box);
-        scenario.choices.forEach((t, i) =>
-          box.append(
-            btn(
-              t,
-              () => {
-                if (box.dataset.done) return;
-                box.dataset.done = '1';
-                const feedback = el(
-                  'p',
-                  (i === scenario.answer ? '✓ Doğru teşhis. ' : '✗ Bu teşhis kanıtla uyuşmuyor. ') +
-                    scenario.why,
-                );
-                feedback.className = 'sf-result';
-                box.after(feedback);
-                rec().debugOpened = true;
-                save();
-                updateOverview();
-              },
-              'sf-choice',
-            ),
-          ),
-        );
-      } else
-        sheet.append(
-          el(
-            'p',
-            'Bu başlık için özel vaka henüz yok. Sorun Çöz alanındaki gerçek görevleri deneyebilirsin.',
-          ),
-        );
-      sheet.append(
-        btn(
-          'Sorun Çöz bölümünü aç',
-          () => {
-            rec().debugOpened = true;
-            save();
-            goArea('troubleshoot');
-          },
-          'sf-primary',
-        ),
-      );
-    }
+    if (phase === 2) renderPractice(sheet, c, dd);
     const bar = el('div');
     bar.className = 'sf-toolbar';
     if (phase > 0)
@@ -391,7 +283,7 @@
           render();
         }),
       );
-    if (phase < 4)
+    if (phase < 2)
       bar.append(
         btn(
           'Sonraki aşama →',
@@ -404,6 +296,105 @@
       );
     sheet.append(bar);
     updateOverview();
+  }
+  // Pratik: konunun simülatör görevleri (Simülatör > Görev seç > Konuya göre görevler ile aynı
+  // liste) ve varsa kısa teşhis vakası.
+  function renderPractice(sheet, c, dd) {
+    const rr = rec();
+    const ws = window.aglabSimWorkspace;
+    const tasks = ws?.tasksFor ? ws.tasksFor(c.id) : [];
+    sheet.append(title('Simülatörde uygula'));
+    if (tasks.length) {
+      sheet.append(
+        el(
+          'p',
+          'Bu konunun ' +
+            tasks.length +
+            ' görevi var. Başlat, görevi simülatörde açar; puan görevi tamamlayınca verilir.',
+        ),
+      );
+      const ul = el('ul');
+      ul.className = 'sf-tasks';
+      for (const t of tasks) {
+        const li = el('li');
+        li.dataset.kind = t.kind;
+        li.dataset.value = t.id;
+        const name = el('span', t.name);
+        name.className = 'sf-task-name';
+        const meta = el(
+          'small',
+          (t.type === 'ariza' ? 'Arıza bul' : 'Kurulum') + (t.status ? ' · ' + t.status : ''),
+        );
+        li.append(
+          name,
+          meta,
+          btn(
+            'Başlat',
+            () => {
+              rr.labOpened = true;
+              save();
+              goArea('lab');
+              t.start();
+              updateOverview();
+            },
+            'sf-primary',
+          ),
+        );
+        ul.append(li);
+      }
+      sheet.append(ul);
+    } else
+      sheet.append(
+        el(
+          'p',
+          'Bu konuya özel simülatör görevi henüz yok. Simülatörü serbest çalışmada açıp öğrendiklerini dene.',
+        ),
+      );
+    sheet.append(
+      btn(tasks.length ? 'Simülatörde bütün görevleri gör' : 'Simülatörü aç', () => {
+        rr.labOpened = true;
+        save();
+        goArea('lab');
+        if (tasks.length) ws?.showTopic?.(c.id);
+        updateOverview();
+      }),
+    );
+    const scenario = dd[0]?.case;
+    if (scenario) {
+      sheet.append(title('Kısa teşhis vakası'));
+      sheet.append(el('p', scenario.symptom));
+      const box = el('div');
+      sheet.append(box);
+      scenario.choices.forEach((t, i) =>
+        box.append(
+          btn(
+            t,
+            () => {
+              if (box.dataset.done) return;
+              box.dataset.done = '1';
+              const feedback = el(
+                'p',
+                (i === scenario.answer ? '✓ Doğru teşhis. ' : '✗ Bu teşhis kanıtla uyuşmuyor. ') +
+                  scenario.why,
+              );
+              feedback.className = 'sf-result';
+              box.after(feedback);
+              rec().debugOpened = true;
+              save();
+              updateOverview();
+            },
+            'sf-choice',
+          ),
+        ),
+      );
+    }
+    sheet.append(
+      btn('Sorun Çöz bölümünü aç', () => {
+        rec().debugOpened = true;
+        save();
+        goArea('troubleshoot');
+      }),
+    );
   }
   function renderQuiz(sheet, c) {
     const q = c.quiz || [];
@@ -504,7 +495,7 @@
     open: (id, stage = 0) => {
       if (courses.some((c) => c.id === id)) {
         choose(id);
-        phase = stage;
+        phase = Math.max(0, Math.min(2, Number(stage) || 0));
         render();
         document.getElementById('studentFlow').scrollIntoView({ block: 'start' });
       }
