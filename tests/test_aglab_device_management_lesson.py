@@ -17,7 +17,8 @@ DETAILS = json.loads((ROOT / "src/data/course-details.json").read_text(encoding=
 class DeviceManagementLessonDataTests(unittest.TestCase):
     def test_course_and_detail_are_well_formed(self):
         ids = [c["id"] for c in COURSES]
-        self.assertEqual(ids.index("devicemgmt"), ids.index("commands") + 1)
+        # Müfredat sırası: Konu #11 Cihaz yönetimi, #12 CDP/LLDP (docs/MUFREDAT.md).
+        self.assertEqual(ids.index("discovery"), ids.index("devicemgmt") + 1)
         self.assertEqual(len(ids), len(set(ids)))
         course = COURSES[ids.index("devicemgmt")]
         self.assertEqual(len(course["quiz"]), 10)
@@ -50,7 +51,7 @@ class DeviceManagementLessonUiTests(unittest.TestCase):
             self.assertIn("running ve startup", sheet.text_content())
             sheet.locator("button", has_text="Ayrıntılı öğren").evaluate("b => b.click()")
             page.wait_for_function(
-                "document.getElementById('sfSheet').textContent.includes('dün çalışıyordu')"
+                "document.getElementById('sfSheet').textContent.includes('Dün çalışıyordu')"
             )
             self.assertIn("Save? [yes/no]: no", sheet.text_content())
             browser.close()

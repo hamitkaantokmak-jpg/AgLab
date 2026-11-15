@@ -1,28 +1,53 @@
 # AğLab Konu #10: DNS
 
-> Uygulamadaki `dns` dersi bu belgeye göre yeniden yazıldı. Senaryolar Sorun Çöz'de `dns-*`
-> kimlikleriyle Labber'da çalışır. Pratik türü: Motor + okuma (kayıt türleri ve önbellek okuma).
+> Uygulamadaki `dns` dersi bu belgeye göre yazıldı. Senaryolar Sorun Çöz'de `dns-*` kimlikleriyle
+> Labber'da çalışır. Pratik türü: Motor + okuma (kayıt türleri ve önbellek okuma). Şemalar:
+> `docs/dersler/gorseller/dns.py`.
 
-Bu konu bittiğinde öğrenci "internet yok" şikâyetini iki soruya ayırır: adresle ulaşılabiliyor mu, adla ulaşılabiliyor mu? `nslookup` çıktısından sorunun DNS sunucusuna ulaşamamak mı, sunucunun yanıt vermemesi mi, yoksa kaydın olmaması mı olduğunu okur. İstemcinin DNS ayarının nereden geldiğini (elle ya da DHCP) bulur ve düzeltir. Seviye 1, süre yaklaşık 55 dakika (ders 12, lab 15, senaryolar 20, sınav 8).
+Bu konu bittiğinde öğrenci "internet yok" şikâyetini iki soruya ayırır: adresle ulaşılabiliyor mu, adla ulaşılabiliyor mu? `nslookup` çıktısından sorunun DNS sunucusuna ulaşamamak mı, sunucunun yanıt vermemesi mi, yoksa kaydın olmaması mı olduğunu okur. İstemcinin DNS ayarının nereden geldiğini (elle ya da DHCP) bulur ve düzeltir. Seviye 1, süre yaklaşık 60 dakika (ders 15, lab 15, senaryolar 20, sınav 10).
+
+## 0. Bir bakışta
+
+- **DNS**, ağın telefon rehberidir: kullanıcının bildiği adı (`erp`) ağın kullandığı adrese (`192.168.100.20`) çevirir.
+- İstemci ayarındaki **DNS sunucusuna** sorar (çoğunlukla **UDP 53**). DNS adresi ya **DHCP'den** ya **elle** gelir.
+- DNS sunucusu genelde başka ağdadır: sorgunun gidebilmesi için **gateway** de doğru olmalıdır.
+- `nslookup`'ın üç sonucu vardır: **yanıt**, **Non-existent domain** (sunucu "ad yok" dedi), **timed out** (hiç yanıt yok).
+- Yanıtlar **TTL** süresince önbellekte saklanır; sunucuda yapılan düzeltme istemciye hemen yansımaz.
+
+> **Akılda kalsın:** Önce iki testi ayır: adresle ping gidiyor mu, adla gidiyor mu? Adresle gidip adla gitmiyorsa kabloya, switch'e, gateway'e dokunma; sorun DNS'te.
+
+![DNS: ağın telefon rehberi](gorseller/dns/g1.svg)
 
 ## 1. Neden önemli
 
 Kullanıcı "ERP açılmıyor" ya da "internet yok" dediğinde çoğu zaman ağ çalışıyordur; çalışmayan şey isimden adrese çeviridir. DNS bozulduğunda her şey bozulmuş gibi görünür, çünkü kullanıcı hiçbir sisteme adresle değil adla girer.
 
-Bu yüzden ilk iş iki testi ayırmaktır. Adresle ping gidiyor ama adla açılmıyorsa sorun DNS'tedir; kabloyu, switch'i, gateway'i kurcalamaya gerek yoktur. Adresle de gitmiyorsa sorun DNS'ten öncedir.
+Bu yüzden ilk iş iki testi ayırmaktır. Adresle ping gidiyor ama adla açılmıyorsa sorun DNS'tedir. Adresle de gitmiyorsa sorun DNS'ten öncedir.
 
 ## 2. Kavram
 
-**DNS**, `erp.sube.local` gibi bir adı `192.168.100.20` gibi bir adrese çevirir. İstemci, ayarındaki **DNS sunucusuna** sorar. Sorgu çoğunlukla **UDP 53** ile gider; büyük yanıtlarda ve sunucular arası bölge aktarımında TCP 53 kullanılır.
+### 2.1 Rehber: adı numaraya çevirmek
 
-İstemcinin DNS sunucusu iki yerden gelir:
+> **Benzetme:** Arkadaşını aramak istiyorsun; adını biliyorsun ama numarasını ezbere bilmiyorsun. Rehbere bakarsın, numarayı bulursun, aramayı numarayla yaparsın. Rehber kaybolursa arkadaşın hâlâ oradadır ama ulaşamazsın. DNS çökünce sunucular da yerindedir; yalnız kullanıcı onları adıyla bulamaz.
 
-- **DHCP'den:** Havuzdaki `dns-server` satırı (Konu #9). Yanlışsa bütün bir ağ etkilenir.
-- **Elle:** Bilgisayara tek tek yazılır. Yanlışsa yalnız o bilgisayar etkilenir.
+DNS, `erp.sube.local` gibi bir adı `192.168.100.20` gibi bir adrese çevirir. Sorgu çoğunlukla **UDP 53** ile gider; büyük yanıtlarda ve sunucular arası bölge aktarımında **TCP 53** kullanılır. Ad çözüldükten sonra asıl bağlantı **adresle** kurulur.
+
+![Sorgunun yolu: ad sorulur, adres döner, bağlantı adresle kurulur](gorseller/dns/g2.svg)
+
+### 2.2 İstemcinin DNS ayarı nereden gelir?
+
+- **DHCP'den:** havuzdaki `dns-server` satırı (Konu #9). Yanlışsa **bütün bir ağ** etkilenir.
+- **Elle:** bilgisayara tek tek yazılır. Yanlışsa **yalnız o bilgisayar** etkilenir.
 
 DNS sunucusu genellikle kullanıcılarla **aynı ağda değildir**; sunucu odasındadır. Bu yüzden sorgunun oraya gidebilmesi için istemcinin **gateway'i** de doğru olmalıdır. Gateway'i olmayan bir bilgisayar doğru DNS adresi yazılı olsa bile isim çözemez.
 
-**Kayıt türleri** (okuma):
+### 2.3 İki test
+
+![Adresle mi, adla mı: üç durum](gorseller/dns/g3.svg)
+
+### 2.4 Kayıt türleri
+
+> **Simülatörde kısmen:** AğLab'ın DNS sunucusu cihaz adlarını A kaydı gibi çözer; diğer türler okuma konusudur.
 
 | Tür | Ne döndürür | Örnek |
 | --- | --- | --- |
@@ -32,9 +57,15 @@ DNS sunucusu genellikle kullanıcılarla **aynı ağda değildir**; sunucu odas�
 | MX | E-posta sunucusu | `sube.local → posta.sube.local` |
 | PTR | Adresten ad (ters sorgu) | `192.168.100.20 → erp` |
 
-**Önbellek ve TTL:** Her yanıt, ne kadar süre saklanabileceğini söyleyen bir TTL ile gelir. İstemci yanıtı bu süre boyunca önbellekte tutar ve tekrar sormaz. Sunucudaki bir kaydı düzeltmek, istemcilerin önbelleğini hemen değiştirmez. Windows'ta önbelleği `ipconfig /displaydns` gösterir, `ipconfig /flushdns` boşaltır.
+![Kayıt türleri](gorseller/dns/g5.svg)
 
-*(Etkileşimli şema: PC-11 → R1 → sunucu odasındaki SRV'ye UDP 53 sorgusu, yanıt geri.)*
+### 2.5 Önbellek ve TTL
+
+> **Benzetme:** Sık aradığın bir numarayı rehbere bakmadan aklında tutarsın. Arkadaşın numarasını değiştirirse sen eski numarayı aramaya devam edersin, ta ki unutana ya da yeniden sorana kadar.
+
+Her yanıt, ne kadar süre saklanabileceğini söyleyen bir **TTL** ile gelir. İstemci yanıtı bu süre boyunca **önbellekte** tutar ve tekrar sormaz. Sunucudaki bir kaydı düzeltmek, istemcilerin önbelleğini hemen değiştirmez. Windows'ta önbelleği `ipconfig /displaydns` gösterir, `ipconfig /flushdns` boşaltır.
+
+![Önbellek: düzeltme TTL dolana kadar yansımaz](gorseller/dns/g6.svg)
 
 ## 3. Çıktı okuma
 
@@ -54,6 +85,8 @@ Address:  192.168.100.20
 - **Server / Address (üst kısım):** Sorulan DNS sunucusu. Beklediğin sunucu değilse istemcinin ayarı yanlıştır.
 - **Server: UnKnown** bir arıza değildir. nslookup, DNS sunucusunun kendi adını da ters sorguyla (PTR) bulmaya çalışır; o kayıt yoksa "UnKnown" yazar. Yanıtın geri kalanı doğrudur.
 - **Name / Address (alt kısım):** Asıl cevap.
+
+![nslookup'ın üç sonucu](gorseller/dns/g4.svg)
 
 ### Kayıt yok: Non-existent domain
 
@@ -107,7 +140,7 @@ Topoloji Konu #9'un bitmiş ağıdır: R1, iki kat, sunucu odasında DHCP ve DNS
 6. **DNS ayarını sil.** PC-11'de `ip dns 0.0.0.0`, sonra `nslookup ERP`: "Default servers are not available". Doğru adresi `ip dns 192.168.100.10` ile geri yaz. *Neden:* Bu üçüncü hata türü: istemcinin sorabileceği bir sunucu yok.
 7. **Sonuçları tabloya yaz.** Üç çıktıyı (yanıt, NXDOMAIN, timed out) ve her birinin olası nedenini bir kenara not et; senaryolarda bu tabloyu kullanacaksın.
 
-**Lab'ın otomatik değerlendirmesi:** `q.dnsLookup('PC-11', 'erp').ok`; `q.ping('PC-11', '192.168.100.20').ok`.
+> **Benzetme:** 5. adım, rehber görevlisinin işe gelip telefonu açmamasına benzer: bina açık (ping gidiyor), ama soruya cevap veren yok (servis kapalı).
 
 ## 5. Sık hatalar
 
@@ -119,97 +152,144 @@ Topoloji Konu #9'un bitmiş ağıdır: R1, iki kat, sunucu odasında DHCP ve DNS
 | E4 | Sorgu sunucuya ulaşmıyor (gateway yok, yol kopuk, UDP 53 engelli) | DNS adresi doğru yazılı ama isim çözülmüyor | nslookup timed out; DNS sunucusuna ping yok; gateway boş ya da yanlış | Önce IP bağlantısını düzelt (Konu #8, #19) |
 | E5 | Kayıt yok ya da eski | Tek bir ad çözülmüyor ya da eski adrese gidiyor | nslookup Non-existent domain; ya da yanıt eski adres (önbellek, TTL) | Kaydı ekle/düzelt; istemcide `ipconfig /flushdns` |
 
-E1 ile E2'yi ayıran şey etki alanıdır: tek bilgisayar mı, bütün ağ mı? E3 ile E4'ü ayıran şey DNS sunucusuna ping'dir. E5, sunucunun yanıt vermesiyle diğerlerinden ayrılır.
+> **Akılda kalsın:** E1 ile E2'yi ayıran şey etki alanıdır: tek bilgisayar mı, bütün ağ mı? E3 ile E4'ü ayıran şey DNS sunucusuna ping'dir. E5, sunucunun yanıt vermesiyle diğerlerinden ayrılır.
+
+![DNS teşhis haritası](gorseller/dns/g7.svg)
 
 ## 6. Arıza senaryoları
 
 > **Uygulamada:** S1–S5 Sorun Çöz'de `dns-wrong-server-pc`, `dns-pool-wrong-server`,
 > `dns-service-down`, `dns-no-gateway`, `dns-two-faults` kimlikleriyle Labber'da çalışır.
-> Hedefler `dnsLookup` ile yazıldı: istemci `erp` adını kendi DNS sunucusuna sorup yanıt
-> almalı. (Ad küçük harfle yazılır; DNS büyük/küçük harf ayırmaz, uygulama ise büyük harfli
-> cihaz adlarını cihaz kimliğine çevirir.)
+> Hedefler `dnsLookup` ile yazıldı: istemci `erp` adını kendi DNS sunucusuna sorup yanıt almalı.
+> Önce kendin çöz; neden ve çözüm kapalı kutularda.
 
 ### S1 · Başlangıç · Yalnız benim bilgisayarım ERP'yi adıyla açamıyor (E1)
 
-- **Başlangıç:** PC-11'e elle DNS 192.168.100.11 yazılmış.
 - **Belirti:** PC-11'in kullanıcısı ERP'ye adıyla giremiyor, adresle giriyor; yan masada sorun yok.
-- **İpuçları:** (1) Adresle gidiyor, adla gitmiyor: isim çözümleme bozuk. (2) Ayarı sağlam bir bilgisayarla karşılaştır: `show ip`, DNS satırı. (3) nslookup hangi sunucuyu soruyor? Doğrusunu `ip dns` ile yaz.
-- **Çözüm:** PC-11 → `ip dns 192.168.100.10`
-- **Hedefler:** `q.dnsLookup('PC-11', 'erp').ok`; `q.ping('PC-11', '192.168.100.20').ok`
+- **Hedef:** PC-11 `erp` adını çözüyor; PC-11 → ERP başarılı.
+
+<details><summary>Neden ve çözüm</summary>
+
+PC-11'e elle DNS 192.168.100.11 yazılmış. Çözüm: PC-11 → `ip dns 192.168.100.10`.
+
+</details>
 
 ### S2 · Başlangıç · 1. katta hiçbir isim çözülmüyor (E2)
 
-- **Başlangıç:** KAT1 havuzunda `dns-server 192.168.100.11`.
 - **Belirti:** 1. katta hiçbir sistem adıyla açılmıyor; adresle çalışıyor. 2. kat sorunsuz.
-- **İpuçları:** (1) Bütün kat aynı ayarı DHCP'den alıyor; ortak kaynağa bak. (2) 1. ve 2. kattan birer PC'nin DNS satırını karşılaştır. (3) Havuzu düzelt, istemcide `ip dhcp`.
-- **Çözüm:** R1 → `ip dhcp pool KAT1` → `dns-server 192.168.100.10`; PC-11 → `ip dhcp`
-- **Hedefler:** `q.dhcpLease('PC-11').server === 'R1'`; `q.dnsLookup('PC-11', 'erp').ok`
+- **Hedef:** PC-11 adresini R1'den alıyor ve `erp` adını çözüyor.
+
+<details><summary>Neden ve çözüm</summary>
+
+KAT1 havuzunda `dns-server 192.168.100.11`. Çözüm: R1 → `ip dhcp pool KAT1` → `dns-server 192.168.100.10`; PC-11 → `ip dhcp`.
+
+</details>
 
 ### S3 · Orta · Sabahtan beri hiçbir yerde isim çözülmüyor (E3)
 
-- **Başlangıç:** SRV'de DNS servisi kapalı.
 - **Belirti:** İki katta da isimler çözülmüyor; adresle her şey çalışıyor, SRV'ye ping gidiyor.
-- **İpuçları:** (1) Sunucuya ping gidiyorsa sunucu ayakta; ya servis? (2) nslookup "Non-existent domain" mi diyor, timed out mu? (3) SRV'de `show services`.
-- **Çözüm:** SRV → `service dns on`
-- **Hedefler:** `q.dnsLookup('PC-21', 'erp').ok`; `q.dnsLookup('PC-11', 'erp').ok`
+- **Hedef:** PC-21 ve PC-11 `erp` adını çözüyor.
+
+<details><summary>Neden ve çözüm</summary>
+
+SRV'de DNS servisi kapalı (nslookup timed out, ping başarılı). Çözüm: SRV → `service dns on`.
+
+</details>
 
 ### S4 · Orta · Yeni bilgisayarda DNS doğru ama isim çözülmüyor (E4)
 
-- **Başlangıç:** PC-12'ye elle 192.168.10.12/24 ve DNS 192.168.100.10 yazılmış, gateway boş.
 - **Belirti:** Yeni PC yan masadaki PC-11'e ulaşıyor ama hiçbir sistem adıyla açılmıyor. Kuran kişi "DNS'i doğru yazdım" diyor.
-- **İpuçları:** (1) DNS sunucusu hangi ağda? Sorgu oraya gidebiliyor mu? (2) nslookup timed out mu? DNS sunucusuna ping at. (3) `show ip`: GATEWAY.
-- **Çözüm:** PC-12 → `ip 192.168.10.12 255.255.255.0 192.168.10.1`
-- **Hedefler:** `q.dnsLookup('PC-12', 'erp').ok`; `q.ping('PC-12', '192.168.100.20').ok`
+- **Hedef:** PC-12 `erp` adını çözüyor; PC-12 → ERP başarılı.
+
+<details><summary>Neden ve çözüm</summary>
+
+PC-12'ye elle 192.168.10.12/24 ve DNS 192.168.100.10 yazılmış ama gateway boş; sorgu sunucu odasına gidemiyor. Çözüm: PC-12 → `ip 192.168.10.12 255.255.255.0 192.168.10.1`.
+
+</details>
 
 ### S5 · İleri · Hiçbir yerde isim yok, düzeltince yalnız 2. kat geldi (E3 + E2)
 
-- **Başlangıç:** S3 ve S2 birlikte.
 - **Belirti:** İki katta da isimler çözülmüyor. Gece hem SRV güncellendi hem havuz düzenlendi.
-- **İpuçları:** (1) Önce iki katın ortak kaynağına bak. (2) Servis açılınca hâlâ çözemeyen kat kaldı mı? (3) O katın DNS ayarını nereden aldığını düşün.
-- **Çözüm:** SRV → `service dns on`; R1 → havuzda `dns-server 192.168.100.10`; PC-11 → `ip dhcp`
-- **Hedefler:** `q.dnsLookup('PC-21', 'erp').ok`; `q.dnsLookup('PC-11', 'erp').ok`; `q.dhcpLease('PC-11').server === 'R1'`
+- **Hedef:** iki kat da `erp` adını çözüyor; PC-11 adresini R1'den alıyor.
+
+<details><summary>Neden ve çözüm</summary>
+
+S3 ve S2 birlikte: servis kapalı **ve** KAT1 havuzunda yanlış DNS. Çözüm: SRV → `service dns on`; R1 → havuzda `dns-server 192.168.100.10`; PC-11 → `ip dhcp`.
+
+</details>
 
 ## 7. Kısa sınav
 
-1. `ping 192.168.100.20` başarılı, `nslookup ERP` "timed out". Sorun hangi katmanda?
-   - A) Kablo
-   - B) İsim çözümleme: DNS sunucusuna ulaşılamıyor ya da servis yanıt vermiyor
-   - C) Gateway
-   - D) ERP sunucusu kapalı
+**1.** `ping 192.168.100.20` başarılı, `nslookup erp` "timed out". Sorun hangi katmanda?
 
-   **Cevap: B.** Adresle erişim var; DNS yolu ayrıca incelenir.
-2. `nslookup` "Non-existent domain" diyor. Bu ne anlama gelir?
-   - A) DNS sunucusuna ulaşılamıyor
-   - B) Sunucu yanıt verdi ama bu ad için kayıt yok
-   - C) Gateway yanlış
-   - D) DNS servisi kapalı
+<details><summary>Cevap</summary>
 
-   **Cevap: B.** Ağ ve sunucu sağlam; ad yanlış ya da kayıt eksik.
-3. nslookup çıktısında "Server: UnKnown" yazıyor ama ad doğru çözülüyor. Ne yapmalı?
-   - A) DNS sunucusunu değiştirmek
-   - B) Hiçbir şey; sunucunun kendi adresi için ters (PTR) kaydı yok
-   - C) Önbelleği temizlemek
-   - D) Gateway'i düzeltmek
+İsim çözümleme: DNS sunucusuna ulaşılamıyor ya da servis yanıt vermiyor. Adresle erişim var.
 
-   **Cevap: B.** Bu bir arıza değildir.
-4. Yalnız 1. kattaki bilgisayarlar isim çözemiyor; hepsinin DNS satırı 192.168.100.11. Nereye bakılır?
-   - A) Her bilgisayara tek tek
-   - B) 1. katın DHCP havuzundaki `dns-server` satırına
-   - C) DNS sunucusunun kayıtlarına
-   - D) Switch'e
+</details>
 
-   **Cevap: B.** Bütün bir ağ aynı yanlış ayarı taşıyorsa kaynak DHCP'dir.
-5. DNS kaydı düzeltildi ama bir bilgisayar hâlâ eski adrese gidiyor. Neden?
-   - A) Kayıt kaydedilmedi
-   - B) İstemci eski yanıtı TTL süresince önbellekte tutuyor
-   - C) Gateway yanlış
-   - D) DNS UDP kullandığı için
+**2.** `nslookup` "Non-existent domain" diyor. Anlamı?
 
-   **Cevap: B.** `ipconfig /flushdns` önbelleği boşaltır.
+<details><summary>Cevap</summary>
 
-## 8. Doğrulama notları
+Sunucu yanıt verdi ama bu ad için kayıt yok. Ağ ve sunucu sağlam; ad yanlış ya da kayıt eksik.
 
-Kaynaklar: RFC 1034/1035 (DNS kavramları ve kayıt türleri), Microsoft nslookup belgeleri; CCNA 200-301 sınav konuları (4.3 DNS'in işlevi). Eski `dns` dersi Kavram ve kayıt türleri için kaynak oldu; metin yeniden yazıldı. Recursive/authoritative ayrımı Seviye 1'den çıkarıldı (CCNA'da #23'te anılabilir).
+</details>
+
+**3.** nslookup çıktısında "Server: UnKnown" yazıyor ama ad doğru çözülüyor. Ne yapmalı?
+
+<details><summary>Cevap</summary>
+
+Hiçbir şey: sunucunun kendi adresi için ters (PTR) kaydı yok. Arıza değildir.
+
+</details>
+
+**4.** Yalnız 1. kattaki bilgisayarlar isim çözemiyor; hepsinin DNS satırı 192.168.100.11. Nereye bakılır?
+
+<details><summary>Cevap</summary>
+
+1. katın DHCP havuzundaki `dns-server` satırına. Bütün bir ağ aynı yanlış ayarı taşıyorsa kaynak DHCP'dir.
+
+</details>
+
+**5.** DNS kaydı düzeltildi ama bir bilgisayar hâlâ eski adrese gidiyor. Neden?
+
+<details><summary>Cevap</summary>
+
+İstemci eski yanıtı TTL süresince önbellekte tutuyor. `ipconfig /flushdns` önbelleği boşaltır.
+
+</details>
+
+**6.** DNS doğru yazılı, nslookup timed out, DNS sunucusuna ping de gitmiyor. Önce neye bakarsın?
+
+<details><summary>Cevap</summary>
+
+IP bağlantısına: gateway, yol, filtre. Sorun DNS'ten önce.
+
+</details>
+
+## 8. Özet kartı
+
+| Komut | Ne işe yarar |
+| --- | --- |
+| `nslookup <ad>` | Adı DNS sunucusuna sorar; sorulan sunucuyu da gösterir |
+| `ping <adres>` | Adresle erişimi ayrıca dener |
+| `show ip` (VPCS), `ipconfig /all` (Windows) | İstemcinin DNS ayarı |
+| `ip dns <adres>` (VPCS) | DNS sunucusunu elle yazar |
+| `ipconfig /flushdns` / `/displaydns` (Windows) | Önbelleği boşaltır / gösterir |
+| `show services`, `service dns on` (AğLab sunucu) | DNS servisinin durumu |
+
+**Unutma:**
+
+1. Önce adresle, sonra adla dene.
+2. NXDOMAIN = sunucu cevap verdi, ad yok; timed out = cevap yok.
+3. Tek PC → elle ayar; bütün kat → DHCP havuzu.
+4. DNS doğru ama gateway yoksa sorgu gitmez.
+5. Düzeltmeden sonra önbelleği unutma.
+
+## 9. Doğrulama notları
+
+Kaynaklar: INET CCNA 200-301 v1.1 (DNS'in işlevi, kayıt türleri); RFC 1034/1035 (DNS kavramları ve kayıt türleri), Microsoft nslookup belgeleri; CCNA 200-301 sınav konuları (4.3 DNS'in işlevi). Eski `dns` dersi Kavram ve kayıt türleri için kaynak oldu; metin yeniden yazıldı. Recursive/authoritative ayrımı Seviye 1'den çıkarıldı (CCNA'da #23'te anılabilir).
 
 **Kontrol edilen iddialar**
 
@@ -220,6 +300,8 @@ Kaynaklar: RFC 1034/1035 (DNS kavramları ve kayıt türleri), Microsoft nslooku
 | "Server: UnKnown", nslookup'ın DNS sunucusunun kendi adresini ters sorguyla bulamamasıdır | Doğru (DNS sunucusu için PTR kaydı yok) |
 | Yanıtlar TTL süresince önbellekte tutulur; `ipconfig /flushdns` Windows önbelleğini boşaltır | Doğru |
 | "Non-existent domain" sunucunun NXDOMAIN yanıtıdır; "timed out" yanıt gelmediğidir | Doğru |
+
+Lab'ın otomatik değerlendirmesi: `q.dnsLookup('PC-11', 'erp').ok`; `q.ping('PC-11', '192.168.100.20').ok`.
 
 **Motor gereksinimleri** (Labber'da denendi)
 

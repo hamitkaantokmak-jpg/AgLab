@@ -36,7 +36,7 @@ class BuildTests(unittest.TestCase):
             self.assertRaises(ValueError, build_release_manifest, ROOT)
 
     def _copy_sources(self, folder):
-        for name in ["src", "tools", "simulator", "academy"]:
+        for name in ["src", "tools", "simulator", "academy", "docs/dersler"]:
             shutil.copytree(ROOT / name, folder / name)
 
     def test_build_is_independent_of_previous_html(self):

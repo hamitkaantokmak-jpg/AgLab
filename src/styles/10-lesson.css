@@ -1,0 +1,219 @@
+/* Ders okuyucu (src/app/lesson-reader.js) ve ders şemaları (tools/figures.py, --fig-* değişkenleri). */
+html[data-theme='light'] {
+  --fig-card: #ffffff;
+  --fig-soft: #f2f4f7;
+  --fig-line: #c9d1dc;
+  --fig-line-strong: #8a94a3;
+  --fig-text: #1f2430;
+  --fig-muted: #59606c;
+  --fig-accent: #3b6cf6;
+  --fig-accent-soft: #e5ecff;
+  --fig-ok: #1f9d6b;
+  --fig-ok-soft: #dff5ea;
+  --fig-err: #d64545;
+  --fig-err-soft: #fde4e4;
+  --fig-warn: #c98a12;
+  --fig-warn-soft: #fdf0d5;
+  --fig-v1: #2f6fe0;
+  --fig-v1-soft: #e3edff;
+  --fig-v2: #1d9a5b;
+  --fig-v2-soft: #dcf4e6;
+  --fig-v3: #d9731a;
+  --fig-v3-soft: #fde9d7;
+  --fig-v4: #8a4fd0;
+  --fig-v4-soft: #efe3fb;
+}
+html:not([data-theme='light']) {
+  --fig-card: #1f2530;
+  --fig-soft: #262d39;
+  --fig-line: #3a4352;
+  --fig-line-strong: #7c8798;
+  --fig-text: #e8ebf1;
+  --fig-muted: #a7afbc;
+  --fig-accent: #7d9dff;
+  --fig-accent-soft: #24304d;
+  --fig-ok: #4cc58e;
+  --fig-ok-soft: #173a2c;
+  --fig-err: #f07575;
+  --fig-err-soft: #42222a;
+  --fig-warn: #e8b64c;
+  --fig-warn-soft: #3d3220;
+  --fig-v1: #7ea6ff;
+  --fig-v1-soft: #1f2d4d;
+  --fig-v2: #59cf8f;
+  --fig-v2-soft: #193627;
+  --fig-v3: #f4a25a;
+  --fig-v3-soft: #3e2b1c;
+  --fig-v4: #c39bf2;
+  --fig-v4-soft: #33264a;
+}
+
+#studentFlow .lr {
+  line-height: 1.7;
+  font-size: 15.5px;
+  max-width: 920px;
+}
+#studentFlow .lr h3 {
+  margin: 34px 0 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 1.3rem;
+  scroll-margin-top: 80px;
+}
+#studentFlow .lr h4 {
+  margin: 22px 0 6px;
+  font-size: 1.08rem;
+  scroll-margin-top: 80px;
+}
+#studentFlow .lr h5 {
+  margin: 16px 0 4px;
+  font-size: 1rem;
+}
+#studentFlow .lr p {
+  margin: 8px 0;
+}
+#studentFlow .lr ul,
+#studentFlow .lr ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+#studentFlow .lr li {
+  margin: 4px 0;
+}
+#studentFlow .lr code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+#studentFlow .lr pre.lr-code {
+  background: #151a22;
+  color: #dfe6f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font:
+    13.5px/1.55 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  white-space: pre;
+}
+#studentFlow .lr pre.lr-code code {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+#studentFlow .lr-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 18px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel2);
+}
+#studentFlow .lr-toc a {
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  text-decoration: none;
+}
+#studentFlow .lr-toc a:hover,
+#studentFlow .lr-toc a:focus-visible {
+  border-color: var(--accent);
+}
+#studentFlow .lr-fig {
+  margin: 18px 0 22px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  text-align: center;
+}
+#studentFlow .lr-fig svg {
+  max-width: 100%;
+  height: auto;
+}
+#studentFlow .lr-fig figcaption {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+#studentFlow .lr-table {
+  overflow-x: auto;
+  margin: 12px 0;
+}
+#studentFlow .lr-table table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+}
+#studentFlow .lr-table th,
+#studentFlow .lr-table td {
+  border: 1px solid var(--line);
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+#studentFlow .lr-table th {
+  background: var(--panel2);
+  white-space: nowrap;
+}
+#studentFlow .lr-callout {
+  margin: 14px 0;
+  padding: 10px 14px;
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-soft);
+}
+#studentFlow .lr-callout.lr-warn {
+  border-left-color: var(--fig-warn);
+  background: var(--fig-warn-soft);
+}
+#studentFlow .lr-callout.lr-analogy {
+  border-left-color: var(--fig-v4);
+  background: var(--fig-v4-soft);
+}
+#studentFlow .lr-callout.lr-key {
+  border-left-color: var(--fig-ok);
+  background: var(--fig-ok-soft);
+}
+#studentFlow .lr-callout.lr-field {
+  border-left-color: var(--fig-v3);
+  background: var(--fig-v3-soft);
+}
+#studentFlow .lr-callout.lr-muted {
+  border-left-color: var(--line);
+  background: var(--panel2);
+}
+#studentFlow .lr-callout p:first-child {
+  margin-top: 2px;
+}
+#studentFlow .lr-callout p:last-child {
+  margin-bottom: 2px;
+}
+#studentFlow .lr-details {
+  margin: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: var(--panel);
+}
+#studentFlow .lr-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+#studentFlow .lr hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 22px 0;
+}

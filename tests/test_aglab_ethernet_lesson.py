@@ -20,7 +20,8 @@ class EthernetLessonDataTests(unittest.TestCase):
     def test_course_follows_physical_and_has_detail(self):
         ids = [c["id"] for c in COURSES]
         self.assertIn("ethernet", ids)
-        self.assertEqual(ids.index("ethernet"), ids.index("physical") + 1)
+        # Müfredat sırası: Konu #3 Ethernet, #4 Fiziksel bağlantı (docs/MUFREDAT.md).
+        self.assertEqual(ids.index("physical"), ids.index("ethernet") + 1)
         self.assertEqual(len(ids), len(set(ids)))
         self.assertIn("ethernet", {d["id"] for d in DETAILS})
 

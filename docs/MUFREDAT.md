@@ -69,16 +69,16 @@ CCNA v2.0 beş alana sahip: Ağ altyapısı ve bağlantı %25, Switching ve ağ 
 | 14 | EtherChannel (LACP) | Switching | Motor | Labber'da ve AğLab modelinde var (#80). Detaylı ders ve 5 senaryo var (`docs/dersler/etherchannel.md`, `ec-*`) | P1 |
 | 15 | OSPFv2 tek alan | IP routing | Motor + Gerçek Lab | Labber'da var (komşuluk, DR/BDR, SPF, maliyet; modelde yalnız network/router-id). Detaylı ders ve 5 senaryo var (`docs/dersler/ospf.md`, `ospf-*`) | P1 |
 | 16 | IPv6 adresleme, SLAAC, NDP, statik rota | Altyapı / routing | Motor | Labber'da yok. Okuma dersi var (`docs/dersler/ipv6.md`); senaryolar motor desteğiyle | P1 |
-| 17 | OSPFv3 (IPv6) | IP routing | Gerçek Lab önce, sonra motor | Yok | P2 |
+| 17 | OSPFv3 (IPv6) | IP routing | Gerçek Lab önce, sonra motor | Yok. Okuma dersi var (`docs/dersler/ospfv3.md`, `ospfv3`; 7 şema, 4 kâğıt üstü vaka) | P2 |
 | 18 | FHRP: HSRP/VRRP durum okuma | IP routing | Motor | Labber'da var (HSRP v1, VRRP v2; #82). Detaylı ders ve 5 senaryo var (`docs/dersler/fhrp.md`, `fhrp-*`) | P1 |
 | 19 | ACL (standart, genişletilmiş) | Güvenlik | Motor | Labber'da var (L5-c). Detaylı ders ve 5 senaryo var (`docs/dersler/acl.md`, `acl-*`) | P1 |
 | 20 | NAT/PAT | Servisler | Motor | Labber'da var (L5-d; modelde yalnız PAT). Detaylı ders ve 5 senaryo var (`docs/dersler/nat-pat.md`, `nat-*`) | P1 |
 | 21 | L2 güvenlik: port security, DHCP snooping, DAI, storm control, RA guard | Switching / güvenlik | Motor | Port security var (dinamik adres sayımı hatalı); diğerleri yok. Detaylı ders ve 5 senaryo var (`docs/dersler/l2-guvenlik.md`, `psec-*`) | P1 |
-| 22 | Cihaz erişim güvenliği: SSH, AAA, SFTP/SCP | Güvenlik | Motor + okuma | Yok | P2 |
-| 23 | Ağ servisleri: DNS kayıt türleri, NTP, Syslog, SNMP | Servisler / operasyon | Okuma + motor (Syslog) | Kısmi | P2 |
+| 22 | Cihaz erişim güvenliği: SSH, AAA, SFTP/SCP | Güvenlik | Motor + okuma | Yok. Okuma dersi var (`docs/dersler/erisim-guvenligi.md`, `aaa`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 23 | Ağ servisleri: DNS kayıt türleri, NTP, Syslog, SNMP | Servisler / operasyon | Okuma + motor (Syslog) | Kısmi. Okuma dersi var (`docs/dersler/ag-servisleri.md`, `services`; 7 şema, 4 kâğıt üstü vaka) | P2 |
 | 24 | Teşhis araçları: extended ping, traceroute, paket yakalama | Operasyon | Motor | Labber'da var (ping, extended ping, `source`, traceroute; Paket Dedektifi). Detaylı ders ve 5 senaryo var (`docs/dersler/teshis-araclari.md`, `diag-*`) | P1 |
-| 25 | Kablosuz ağ temelleri | Altyapı | Okuma | Yok (motor kapsamı dışı) | P2 |
-| 26 | Otomasyon ve yapay zekâ: IaC, Ansible, ajan tabanlı yapay zekâ, prompt seçimi | Yapay zekâ ve operasyon | Okuma | Yok | P2 |
+| 25 | Kablosuz ağ temelleri | Altyapı | Okuma | Yok (motor kapsamı dışı). Okuma dersi var (`docs/dersler/kablosuz.md`, `wireless`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 26 | Otomasyon ve yapay zekâ: IaC, Ansible, ajan tabanlı yapay zekâ, prompt seçimi | Yapay zekâ ve operasyon | Okuma | Yok. Okuma dersi var (`docs/dersler/otomasyon.md`, `automation`; 7 şema, 4 kâğıt üstü vaka) | P2 |
 
 ## Seviye 3 — CCNP Enterprise (+23 konu)
 
@@ -88,33 +88,33 @@ CCNP Enterprise, ENCOR (350-401) ve bir uzmanlık sınavından oluşur; burada u
 
 | # | Konu | Pratik | Motor / Gerçek Lab durumu | Öncelik |
 | --- | --- | --- | --- | --- |
-| 27 | Kampüs ve kurumsal tasarım (hiyerarşik model, yüksek erişilebilirlik) | Okuma | — | P2 |
-| 28 | L2/L3 iletim mekanizmaları (CEF, FIB, adjacency) | Okuma + motor (Paket Dedektifi) | Kısmi | P2 |
-| 29 | İleri STP: MST, RSTP ayarı | Motor | Yok | P2 |
-| 30 | İleri EtherChannel sorun giderme | Motor | 14. konuya bağlı | P2 |
-| 31 | OSPF çok alan, LSA ve alan türleri | Gerçek Lab + motor | FRR destekler; motor yok | P2 |
-| 32 | eBGP ve yol seçimi | Gerçek Lab | FRR destekler; motorda basit eBGP var | P2 |
-| 33 | VRF ve GRE tünelleri | Gerçek Lab | FRR/Linux destekler; motor yok | P2 |
-| 34 | IPsec site-to-site | Okuma | Yok | P3 |
-| 35 | VXLAN, LISP, SD-Access, SD-WAN mimarileri | Okuma | Kapsam dışı | P3 |
-| 36 | QoS uygulaması (sınıflandırma, işaretleme, kuyruk) | Okuma | Yok | P3 |
-| 37 | Ağ izleme: IP SLA, SPAN, NetFlow, Syslog, debug | Okuma + motor | Paket Dedektifi kısmen karşılar | P2 |
-| 38 | Altyapı güvenliği: CoPP, 802.1X, cihaz erişim ACL'leri | Okuma + motor | ACL'ye bağlı | P3 |
-| 39 | Otomasyon: Python, NETCONF/RESTCONF, YANG, REST API | Gerçek Lab (sandbox) | Yok; ileride Automation Studio | P3 |
+| 27 | Kampüs ve kurumsal tasarım (hiyerarşik model, yüksek erişilebilirlik) | Okuma | —. Okuma dersi var (`docs/dersler/kampus-tasarim.md`, `design`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 28 | L2/L3 iletim mekanizmaları (CEF, FIB, adjacency) | Okuma + motor (Paket Dedektifi) | Kısmi. Okuma dersi var (`docs/dersler/iletim-mekanizmalari.md`, `forwarding`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 29 | İleri STP: MST, RSTP ayarı | Motor | Yok. Okuma dersi var (`docs/dersler/mst.md`, `mst`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 30 | İleri EtherChannel sorun giderme | Motor | 14. konuya bağlı. Ayrı ders yok: #14 (bayraklar, üye tutarlılığı) ve #29 kapsar | P2 |
+| 31 | OSPF çok alan, LSA ve alan türleri | Gerçek Lab + motor | FRR destekler; motor yok. Okuma dersi var (`docs/dersler/ospf-ileri.md`, `ospfadv`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 32 | eBGP ve yol seçimi | Gerçek Lab | FRR destekler; motorda basit eBGP var. Okuma dersi var (`docs/dersler/bgp.md`, `bgp`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 33 | VRF ve GRE tünelleri | Gerçek Lab | FRR/Linux destekler; motor yok. Okuma dersi var (`docs/dersler/vrf-gre.md`, `vrfgre`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 34 | IPsec site-to-site | Okuma | Yok. Okuma dersi var (`docs/dersler/ipsec.md`, `ipsec`; 7 şema, 4 kâğıt üstü vaka) | P3 |
+| 35 | VXLAN, LISP, SD-Access, SD-WAN mimarileri | Okuma | Kapsam dışı. Okuma dersi var (`docs/dersler/sdwan-sda.md`, `sdwan`; 7 şema, 4 kâğıt üstü vaka) | P3 |
+| 36 | QoS uygulaması (sınıflandırma, işaretleme, kuyruk) | Okuma | Yok. Okuma dersi var (`docs/dersler/qos.md`, `qos`; 7 şema, 4 kâğıt üstü vaka) | P3 |
+| 37 | Ağ izleme: IP SLA, SPAN, NetFlow, Syslog, debug | Okuma + motor | Paket Dedektifi kısmen karşılar. Okuma dersi var (`docs/dersler/ag-izleme.md`, `telemetry`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 38 | Altyapı güvenliği: CoPP, 802.1X, cihaz erişim ACL'leri | Okuma + motor | ACL'ye bağlı. Okuma dersi var (`docs/dersler/altyapi-guvenligi.md`, `dot1x`; 7 şema, 4 kâğıt üstü vaka) | P3 |
+| 39 | Otomasyon: Python, NETCONF/RESTCONF, YANG, REST API | Gerçek Lab (sandbox) | Yok; ileride Automation Studio. Okuma dersi var (`docs/dersler/programlanabilirlik.md`, `programmability`; 7 şema, 4 kâğıt üstü vaka) | P3 |
 | 40 | Kablosuz (sürüm teyidine bağlı) | Okuma | Kapsam dışı | P3 |
 
-Kaynak karşılaştırmasıyla eklenen: **#49 Multicast** (IGMP, PIM, RP kavramları) — Okuma + Gerçek Lab (FRR pimd), P3.
+Kaynak karşılaştırmasıyla eklenen: **#49 Multicast** (IGMP, PIM, RP kavramları) — Okuma + Gerçek Lab (FRR pimd), P3. Okuma dersi var (`docs/dersler/multicast.md`, `multicast`; 7 şema, 4 kâğıt üstü vaka).
 
 ### ENARSI
 
 | # | Konu | Pratik | Motor / Gerçek Lab durumu | Öncelik |
 | --- | --- | --- | --- | --- |
-| 41 | EIGRP (named mode, metrik, stub; ENCOR v1.0'da da var) | Okuma, ileride motor | Motor yok; FRR desteği sınırlı | P3 |
-| 42 | İleri OSPF sorun giderme | Gerçek Lab | FRR destekler | P2 |
-| 43 | İleri BGP: iBGP, attribute'lar, route-map | Gerçek Lab | FRR destekler | P2 |
-| 44 | Redistribution ve rota filtreleme (prefix-list, route-map) | Gerçek Lab | FRR destekler | P2 |
-| 45 | PBR ve VRF-lite | Gerçek Lab | FRR destekler | P2 |
-| 46 | DMVPN | Okuma | Yok | P3 |
+| 41 | EIGRP (named mode, metrik, stub; ENCOR v1.0'da da var) | Okuma, ileride motor | Motor yok; FRR desteği sınırlı. Okuma dersi var (`docs/dersler/eigrp.md`, `eigrp`; 7 şema, 4 kâğıt üstü vaka) | P3 |
+| 42 | İleri OSPF sorun giderme | Gerçek Lab | FRR destekler. Temeli #31'de (çok alan sorun giderme senaryoları); ayrı ders Gerçek Lab ile | P2 |
+| 43 | İleri BGP: iBGP, attribute'lar, route-map | Gerçek Lab | FRR destekler. Temeli #32'de (LP, Weight, prepend, route-map); iBGP ve ileri özellikler Gerçek Lab ile | P2 |
+| 44 | Redistribution ve rota filtreleme (prefix-list, route-map) | Gerçek Lab | FRR destekler. Okuma dersi var (`docs/dersler/redistribution.md`, `redistribution`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 45 | PBR ve VRF-lite | Gerçek Lab | FRR destekler. VRF-lite #33'te; PBR yazılacak | P2 |
+| 46 | DMVPN | Okuma | Yok. #34'te kısaca anılıyor; ayrı ders yazılacak | P3 |
 | 47 | IPv6 ileri ve first-hop security | Motor + okuma | 16. konuya bağlı | P3 |
 | 48 | Altyapı servisleri sorun giderme: DHCP, NTP, SNMP, Syslog, IP SLA | Motor + okuma | DHCP var; diğerleri yok | P2 |
 
@@ -184,6 +184,10 @@ Mevcut 40 Akademi labı ve 17 arıza senaryosu da aynı numaralarla etiketlenip 
 3. **Mevcut lab ve senaryoların eşlenmesi:** 40 Akademi labı ve 17 senaryo konu numaralarıyla etiketlenir; boş kalan konular listelenir.
 4. **Seviye 2 (CCNA v2.0):** Faz B–D motor işleriyle birlikte; motoru hazır olmayan konular önce okuma + sınav olarak yayınlanır, pratik geldikçe eklenir.
 5. **Seviye 3 (CCNP):** Faz E (Gerçek Lab) hazır olunca routing ağırlıklı konular; okuma konuları her an yazılabilir.
+
+**Durum (15 Kasım 2026):** Seviye 1'in 12 konusu ve Seviye 2'nin 14 konusu uygulamada; her biri `docs/dersler/` altında 7 şemalı ayrıntılı derse sahip (simülatörde çalışmayanlar "okuma dersi" etiketli). Seviye 3'te 15 okuma dersi yazıldı (#27–29, #31–39, #41, #44, #49). Henüz ayrı dersi olmayanlar: #30 (#14 ve #29 kapsıyor), #40, #42, #43, #45 (PBR), #46, #47, #48. Okuma dersleri simülatör desteği gelince pratiğe çevrilir: her dersin "Motor gereksinimleri" bölümü ne gerektiğini yazar.
+
+**Ders yapısı (bütün ayrıntılı dersler):** 0 Bir bakışta · 1 Neden önemli · 2 Kavram (benzetme → teknik → şema → dikkat) · 3 Çıktı okuma · 4 Yönlendirmeli lab · 5 Sık hatalar · 6 Arıza senaryoları (neden/çözüm kapalı kutuda) · 7 Kısa sınav (cevaplar kapalı) · 8 Özet kartı · 9 Doğrulama notları. Şemalar `docs/dersler/gorseller/<konu>.py` tanımlarından `tools/build_figures.py` ile üretilir; uygulama bunları "Ayrıntılı öğren" adımında gösterir.
 
 **Açık sorular**
 

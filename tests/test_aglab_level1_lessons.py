@@ -21,13 +21,20 @@ FLOW = (ROOT / "src/app/student-flow.js").read_text(encoding="utf-8")
 # (kurs kimliği, ayrıntı kimliği, belge, senaryo öneki, kısa kartta, ayrıntıda)
 # Senaryo öneki None: okuma dersi (senaryoları motor ya da AğLab modeli hazır olunca eklenecek).
 LESSONS = [
-    ("discovery", "discovery", "cdp-lldp.md", "cdp-", "LLDP", "çizimi olmayan ağı çıkarmak"),
-    ("dhcp", "dhcp", "dhcp.md", "dhcp-", "169.254", "adres nereden gelir"),
-    ("dns", "dns", "dns.md", "dns-", "nslookup", "isim yok"),
-    ("routing", "routing", "gateway-statik-routing.md", "gw-", "floating static", "nasıl döner"),
-    ("ip", "ipv4", "ip-adresleme.md", "ip-", "Hızlı hesap", "kim benim ağımda"),
-    ("physical", "physical", "fiziksel-baglanti.md", "phy-", "İki uç kuralı", "port ne diyor"),
-    ("method", "method", "sorun-giderme-yontemi.md", "method-", "Üç yaklaşım", "tek değişiklik"),
+    ("discovery", "discovery", "cdp-lldp.md", "cdp-", "LLDP", "Bilinmeyen ağı çizmek"),
+    ("dhcp", "dhcp", "dhcp.md", "dhcp-", "169.254", "başka binadaki resepsiyon"),
+    ("dns", "dns", "dns.md", "dns-", "nslookup", "İki test"),
+    ("routing", "routing", "gateway-statik-routing.md", "gw-", "floating static", "Gidiş ve dönüş"),
+    ("ip", "ipv4", "ip-adresleme.md", "ip-", "Hızlı hesap", "Kısa yol: blok büyüklüğü"),
+    ("physical", "physical", "fiziksel-baglanti.md", "phy-", "İki uç kuralı", "İki uç kuralı"),
+    (
+        "method",
+        "method",
+        "sorun-giderme-yontemi.md",
+        "method-",
+        "Üç yaklaşım",
+        "Tek değişiklik yap",
+    ),
     ("vlan", "vlan", "vlan-trunk.md", "vlan-", "Okuma sırası", "Sahada: DTP ve VTP"),
     (
         "intervlan",
@@ -50,7 +57,7 @@ LESSONS = [
     ("acl", "acl", "acl.md", "acl-", "Wildcard ve sıra", "Sayaçlarla teşhis"),
     ("nat", "natpat", "nat-pat.md", "nat-", "PAT'ın üç parçası", "Tablo ve istatistikle teşhis"),
     ("ospf", "ospf", "ospf.md", "ospf-", "Komşuluk şartları", "Teşhis sırası"),
-    ("stp", "stp", "stp.md", "stp-", "Port rolleri", "RSTP ve koruma"),
+    ("stp", "stp", "stp.md", "stp-", "Port rolleri", "Döngü neden felakettir"),
     (
         "l2sec",
         "l2sec",
@@ -66,7 +73,7 @@ LESSONS = [
         "etherchannel.md",
         "ec-",
         "Mod çiftleri",
-        "Bayraklarla teşhis",
+        "Mod çiftleri",
     ),
     ("fhrp", "fhrp", "fhrp.md", "fhrp-", "Sanal gateway", "Tek gateway sorunu"),
     ("ipv6", "ipv6", "ipv6.md", None, "NDP ve SLAAC", "Router'da IPv6"),
@@ -79,7 +86,7 @@ PARTS = [
     "## 5. Sık hatalar",
     "## 6. Arıza senaryoları",
     "## 7. Kısa sınav",
-    "## 8. Doğrulama notları",
+    "Doğrulama notları",
 ]
 
 
