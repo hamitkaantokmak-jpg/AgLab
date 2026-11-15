@@ -33,9 +33,7 @@
 #studentFlow .ux13-stage {
   font-size: 14px;
   color: var(--muted);
-  padding: 7px 11px;
-  border-radius: 8px;
-  background: var(--accent-soft);
+  padding: 7px 2px;
 }
 #studentFlow .ux13-progress-details {
   border: 1px solid var(--line);
@@ -103,4 +101,21 @@
   #studentFlow * {
     scroll-behavior: auto !important;
   }
+}
+
+/* Arayüz düzeltmeleri 1: liste kartları içeriği kadar uzun kalır, araç satırı hizalı. */
+#studentFlow .sf-list button {
+  flex-shrink: 0;
+}
+#studentFlow .sf-tools label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#studentFlow .sf-tools label[for='sfSearch'] {
+  flex: 1 1 260px;
+}
+#studentFlow .sf-tools label[for='sfSearch'] input {
+  flex: 1 1 auto;
+  min-width: 0;
 }

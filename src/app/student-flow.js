@@ -511,5 +511,11 @@
     },
     count: courses.length,
   };
-  choose('ip');
+  // İlk açılış: en son çalışılan konu, yoksa müfredatın ilk konusu. Açılış ziyaret sayılmaz.
+  const last = Object.entries(state.lessons)
+    .filter(([id, r]) => r.last && courses.some((c) => c.id === id))
+    .sort((a, b) => b[1].last - a[1].last)[0];
+  selected = last ? last[0] : courses[0].id;
+  list();
+  render();
 })();
