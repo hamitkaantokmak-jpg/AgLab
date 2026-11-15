@@ -119,6 +119,7 @@ const TROUBLESHOOT_TASKS = [
   { id: 'ospf', title: 'OSPF komşuluğu kurulamıyor', topic: 'OSPF', target: 'ospf-area' },
   {
     id: 'bgp',
+    course: 'bgp',
     title: 'BGP komşuluğu kurulu ama prefix ilan edilmiyor',
     topic: 'Routing · BGP',
     concept: {
@@ -193,12 +194,23 @@ function persistConceptProgress(id) {
       localStorage.setItem('aglab-passed-final', JSON.stringify([...ids, id]));
   } catch (e) {}
 }
+// Arayüz PR 3: senaryonun bağlı olduğu ders (müfredat konusu) satırda görünür.
+function lessonTag(s) {
+  const c = s.target
+    ? window.aglabSimWorkspace?.courseOf?.('shared', s.target)
+    : s.course
+      ? window.aglabSimWorkspace?.courseOf?.('course', s.course)
+      : null;
+  return c
+    ? `<span class="scenario-lesson" data-course="${c.id}">Ders: Konu #${c.num} · ${c.title}</span>`
+    : '';
+}
 function renderList() {
   const done = troubleshootPassed();
   $('countText').textContent = TROUBLESHOOT_TASKS.length + ' görev';
   $('scenarioList').innerHTML = TROUBLESHOOT_TASKS.map(
     (s, i) =>
-      `<button class="scenario ${i === cur ? 'selected' : ''} ${done.has(s.id) ? 'done' : ''}" data-s="${i}"><span class="snum">${done.has(s.id) ? '✓' : String(i + 1).padStart(2, '0')}</span><span><strong>${s.title}</strong><small>${s.topic} · ${s.target ? 'Labber' : CONCEPT_BADGE}</small></span></button>`,
+      `<button class="scenario ${i === cur ? 'selected' : ''} ${done.has(s.id) ? 'done' : ''}" data-s="${i}"><span class="snum">${done.has(s.id) ? '✓' : String(i + 1).padStart(2, '0')}</span><span><strong>${s.title}</strong><small>${s.topic} · ${s.target ? 'Labber' : CONCEPT_BADGE}</small>${lessonTag(s)}</span></button>`,
   ).join('');
   const n = TROUBLESHOOT_TASKS.filter((t) => done.has(t.id)).length;
   $('progressText').textContent = `${n} / ${TROUBLESHOOT_TASKS.length} senaryo tamamlandı`;
@@ -253,6 +265,8 @@ $('scenarioList').addEventListener('click', (e) => {
 $('mission').innerHTML =
   '<div class="mission-top"><span class="tag">LABBER MOTORU</span></div><h3>Bir arıza görevi seç</h3><p>Her görev Simülatör’de gerçek bir topolojide açılır: belirtiyi cihaz terminallerinden araştır, düzelt ve başarıyı gerçek ping ile doğrula. Kavramsal alıştırmalar motor kullanmaz ve öyle etiketlidir.</p>';
 renderList();
+// Ders etiketleri simülatör çalışma alanı yüklenince (sonraki betik) eklenir.
+document.addEventListener('DOMContentLoaded', renderList);
 // Labber'da tamamlanan karşılıklar listeye yansısın
 document.addEventListener('click', (e) => {
   if (e.target.closest?.('[data-area="troubleshoot"]')) renderList();

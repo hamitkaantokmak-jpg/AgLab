@@ -852,6 +852,19 @@
     group?.querySelector('h4')?.focus({ preventScroll: true });
     return !!group;
   }
+  // Görevin bağlı olduğu müfredat konusu ({id, num, title}) ya da null.
+  function courseOf(kind, id) {
+    const cid =
+      kind === 'course'
+        ? id
+        : kind === 'academy'
+          ? academyCourse(id)
+          : kind === 'labber'
+            ? LABBER_COURSE[id]
+            : SHARED_COURSE[topicOf(id)];
+    const c = COURSES.find((x) => x.id === cid);
+    return c ? { id: c.id, num: c.num, title: c.title } : null;
+  }
   const tasksFor = (courseId) =>
     allTasks()
       .filter((t) => t.course === courseId)
@@ -2036,6 +2049,7 @@
     tab: (key) => selectTab(key),
     refresh,
     tasksFor,
+    courseOf,
     showTopic,
     startTask,
     wide: () => ({ ...widePref, applied: work.hasAttribute('data-wide') }),

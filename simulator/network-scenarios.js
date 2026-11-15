@@ -398,7 +398,10 @@ if (oldDisclosure) oldDisclosure.remove();
 const sharedBridge = document.createElement('button');
 sharedBridge.type = 'button';
 sharedBridge.id = 'sharedScenarioTroubleLink';
-sharedBridge.textContent = 'Ortak motor senaryolarına geç';
+sharedBridge.className = 'trouble-shared-link';
+// Arayüz PR 3: ne yaptığını söyleyen ad (simülatördeki hazır senaryo listesine gider).
+sharedBridge.textContent =
+  'Simülatördeki ' + $p('sharedScenarioSelect').options.length + ' hazır arıza senaryosu →';
 sharedBridge.onclick = () => {
   showArea('lab');
   sharedPanel.scrollIntoView({ block: 'start' });

@@ -322,3 +322,119 @@ html[data-theme='light'] .tag {
   border-color: transparent;
   color: var(--accent-text);
 }
+
+/* Arayüz PR 3: Gelişmiş — denetim kutusu temaya uyar; dosya seçiciler Türkçe. */
+.ag-audit-panel {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel2);
+}
+.ag-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+label.sf-action:focus-within {
+  outline: 3px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.ag-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.ag-file-input:focus-visible + .ag-file .ag-file-pick {
+  outline: 3px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.ag-file-name {
+  color: var(--muted);
+  font-size: 13px;
+}
+/* Sorun Çöz: simülatördeki hazır senaryolara giden bağlantı ve senaryonun dersi. */
+.trouble-shared-link {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 8px;
+  text-align: left;
+}
+.scenario .scenario-lesson {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+/* Arayüz PR 3: telefonda üst alan küçülür, ders başlığı daha erken görünür.
+   - Tema düğmesi yalnız simge (etiket aria-label'da).
+   - Kısayol çubuğu ayrı satır kaplamaz: üst sekmelerle aynı olan düğmeler gizlenir,
+     Ders (📘) ve Gelişmiş (⚙) üst satırda, tema düğmesinin solunda kalır.
+   - Öğrenme yolunda açıklama ve ipucu satırları gizlenir. */
+@media (max-width: 760px) {
+  .ag-shell {
+    position: relative;
+  }
+  .ag-top-tools .aglab-theme-toggle .tt-label {
+    display: none;
+  }
+  .ag-top-tools .aglab-theme-toggle {
+    min-width: 40px;
+    padding-inline: 10px;
+  }
+  .ag-top {
+    padding-right: 12px;
+  }
+  .ag-brand {
+    padding-right: 96px;
+  }
+  .ag-rail {
+    /* Izgara alanı değil kabın kendisi konum kutusu olsun. */
+    grid-row: auto;
+    grid-column: auto;
+    position: absolute;
+    top: 8px;
+    right: 64px;
+    z-index: 5;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    overflow: visible;
+  }
+  .ag-rail button[data-rail='learn'],
+  .ag-rail button[data-rail='lab'],
+  .ag-rail button[data-rail='troubleshoot'] {
+    display: none;
+  }
+  .ag-rail button {
+    width: 36px;
+    height: 36px;
+  }
+  .ag-main {
+    grid-row: 2;
+  }
+  .ag-top .ag-search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  #studentFlow > h2 {
+    font-size: 22px;
+    margin-bottom: 4px;
+  }
+  #studentFlow > .sf-sub,
+  #studentFlow .ux13-tip {
+    display: none;
+  }
+}

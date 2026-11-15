@@ -304,7 +304,7 @@ button:disabled {
 }
 .mission p {
   margin: 0;
-  color: #bdc9dd;
+  color: var(--muted);
   max-width: 850px;
 }
 .difficulty {
@@ -3853,6 +3853,122 @@ html[data-theme='light'] .tag {
   border-color: transparent;
   color: var(--accent-text);
 }
+
+/* Arayüz PR 3: Gelişmiş — denetim kutusu temaya uyar; dosya seçiciler Türkçe. */
+.ag-audit-panel {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel2);
+}
+.ag-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+label.sf-action:focus-within {
+  outline: 3px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.ag-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.ag-file-input:focus-visible + .ag-file .ag-file-pick {
+  outline: 3px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.ag-file-name {
+  color: var(--muted);
+  font-size: 13px;
+}
+/* Sorun Çöz: simülatördeki hazır senaryolara giden bağlantı ve senaryonun dersi. */
+.trouble-shared-link {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 8px;
+  text-align: left;
+}
+.scenario .scenario-lesson {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+/* Arayüz PR 3: telefonda üst alan küçülür, ders başlığı daha erken görünür.
+   - Tema düğmesi yalnız simge (etiket aria-label'da).
+   - Kısayol çubuğu ayrı satır kaplamaz: üst sekmelerle aynı olan düğmeler gizlenir,
+     Ders (📘) ve Gelişmiş (⚙) üst satırda, tema düğmesinin solunda kalır.
+   - Öğrenme yolunda açıklama ve ipucu satırları gizlenir. */
+@media (max-width: 760px) {
+  .ag-shell {
+    position: relative;
+  }
+  .ag-top-tools .aglab-theme-toggle .tt-label {
+    display: none;
+  }
+  .ag-top-tools .aglab-theme-toggle {
+    min-width: 40px;
+    padding-inline: 10px;
+  }
+  .ag-top {
+    padding-right: 12px;
+  }
+  .ag-brand {
+    padding-right: 96px;
+  }
+  .ag-rail {
+    /* Izgara alanı değil kabın kendisi konum kutusu olsun. */
+    grid-row: auto;
+    grid-column: auto;
+    position: absolute;
+    top: 8px;
+    right: 64px;
+    z-index: 5;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    overflow: visible;
+  }
+  .ag-rail button[data-rail='learn'],
+  .ag-rail button[data-rail='lab'],
+  .ag-rail button[data-rail='troubleshoot'] {
+    display: none;
+  }
+  .ag-rail button {
+    width: 36px;
+    height: 36px;
+  }
+  .ag-main {
+    grid-row: 2;
+  }
+  .ag-top .ag-search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  #studentFlow > h2 {
+    font-size: 22px;
+    margin-bottom: 4px;
+  }
+  #studentFlow > .sf-sub,
+  #studentFlow .ux13-tip {
+    display: none;
+  }
+}
 </style>
 <style id="agSimStyle">/* Arayüz yenilemesi PR 2: Simülatör çalışma alanı (docs/arayuz/dolu-3.png). Üst çubuk,
    görev / tuval / inceleme sütunları, altta koyu terminal + Simulation Mode şeridi.
@@ -5876,7 +5992,7 @@ html:not([data-theme='light']) {
   <div class="sf-metrics" aria-label="İlerleme özeti"><div class="sf-metric"><strong id="sfVisited">0</strong><span>Çalışılan konu</span></div><div class="sf-metric"><strong id="sfMastered">0</strong><span>70+ test puanı</span></div><div class="sf-metric"><strong id="sfProgress">0%</strong><span>Genel konu başarısı</span></div></div>
   <div class="sf-tools"><label for="sfLevel">Seviye <select id="sfLevel"><option value="all">Tüm seviyeler</option><option value="beginner">Seviye 1 · Şube</option><option value="intermediate">Seviye 2 · CCNA</option><option value="advanced">Seviye 3 · CCNP</option></select></label><label for="sfSearch">Konu ara <input id="sfSearch" type="search" placeholder="Ör. subnetting, SD-WAN, VLAN"></label></div>
   <div class="sf-layout"><nav id="sfList" class="sf-list" aria-label="Konu listesi"></nav><article id="sfSheet" class="sf-sheet" aria-live="polite"></article></div>
-  <details><summary>İlerlememi yedekle veya geri yükle</summary><p class="sf-sub">Bu dosyanın eğitim verileri bu tarayıcıda yerel olarak tutulur. Cihazlar arası eşitleme veya kimlik doğrulama yapılmaz.</p><div class="sf-toolbar"><button id="sfExport" class="sf-action">JSON yedeğini indir</button><label class="sf-action" for="sfImport">JSON yedeğini yükle <input id="sfImport" type="file" accept="application/json,.json" style="max-width:100%;display:block"></label><button id="sfReset" class="sf-action">İlerlememi sıfırla</button></div><p id="sfStorage" role="status"></p></details>
+  <details><summary>İlerlememi yedekle veya geri yükle</summary><p class="sf-sub">Bu dosyanın eğitim verileri bu tarayıcıda yerel olarak tutulur. Cihazlar arası eşitleme veya kimlik doğrulama yapılmaz.</p><div class="sf-toolbar"><button id="sfExport" class="sf-action">JSON yedeğini indir</button><label class="sf-action" for="sfImport">JSON yedeğini yükle <input id="sfImport" type="file" accept="application/json,.json"></label><button id="sfReset" class="sf-action">İlerlememi sıfırla</button></div><p id="sfStorage" role="status"></p></details>
   <details><summary>7 kurumsal ağ atölyesi ve önceki kayıtlarım</summary><p class="sf-sub">Kurumsal atölyedeki mevcut senaryolar ayrı bir eğitim aracı olarak korunmuştur. Atölyenin yerel kayıtları bu birleşik ilerleme sayacına otomatik dahil edilmez.</p><button id="sfLoadWorkshop" class="sf-action">Kurumsal atölyeyi aç</button><iframe id="sfWorkshop" title="AğLab kurumsal ağ eğitim atölyesi" sandbox="allow-scripts allow-same-origin allow-downloads" style="width:100%;min-height:710px;border:1px solid #4c6378;border-radius:9px;margin-top:12px" hidden></iframe></details>
 </section>
 
@@ -6014,7 +6130,7 @@ html:not([data-theme='light']) {
   <div class="ag-page-head card"><div class="muted small">Gelişmiş</div><h1 id="advancedTitle">Gelişmiş</h1>
   <p class="muted">Geliştirici ve bakım araçları. Öğrenme yolunda gerekmez.</p></div>
   <div class="card ag-advanced-body">
-      <div id="regressionAuditPanel" style="margin-top:10px;padding:12px;border:1px solid #3b5277;border-radius:10px;background:rgba(15,23,42,.45)">
+      <div id="regressionAuditPanel" class="ag-audit-panel">
         <div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><div><b style="font-size:13px">Ortak senaryo regresyon denetimi</b><div style="font-size:11px;color:var(--muted,#a9b7c8);margin-top:3px">Senaryo tanımları ve temel başlangıç koşulları için yerel statik kontrol. Gerçek paket/CLI uçtan uca testi yerine geçmez.</div></div><button type="button" id="runRegressionAudit" class="primary">Kontrolleri çalıştır</button></div>
         <div id="regressionAuditSummary" role="status" aria-live="polite" style="margin-top:9px;font-size:12px;color:var(--muted,#a9b7c8)">Denetim henüz çalıştırılmadı.</div><div id="regressionAuditResults" style="display:grid;gap:5px;margin-top:8px"></div>
       </div>
@@ -16688,6 +16804,7 @@ const TROUBLESHOOT_TASKS = [
   { id: 'ospf', title: 'OSPF komşuluğu kurulamıyor', topic: 'OSPF', target: 'ospf-area' },
   {
     id: 'bgp',
+    course: 'bgp',
     title: 'BGP komşuluğu kurulu ama prefix ilan edilmiyor',
     topic: 'Routing · BGP',
     concept: {
@@ -16762,12 +16879,23 @@ function persistConceptProgress(id) {
       localStorage.setItem('aglab-passed-final', JSON.stringify([...ids, id]));
   } catch (e) {}
 }
+// Arayüz PR 3: senaryonun bağlı olduğu ders (müfredat konusu) satırda görünür.
+function lessonTag(s) {
+  const c = s.target
+    ? window.aglabSimWorkspace?.courseOf?.('shared', s.target)
+    : s.course
+      ? window.aglabSimWorkspace?.courseOf?.('course', s.course)
+      : null;
+  return c
+    ? `<span class="scenario-lesson" data-course="${c.id}">Ders: Konu #${c.num} · ${c.title}</span>`
+    : '';
+}
 function renderList() {
   const done = troubleshootPassed();
   $('countText').textContent = TROUBLESHOOT_TASKS.length + ' görev';
   $('scenarioList').innerHTML = TROUBLESHOOT_TASKS.map(
     (s, i) =>
-      `<button class="scenario ${i === cur ? 'selected' : ''} ${done.has(s.id) ? 'done' : ''}" data-s="${i}"><span class="snum">${done.has(s.id) ? '✓' : String(i + 1).padStart(2, '0')}</span><span><strong>${s.title}</strong><small>${s.topic} · ${s.target ? 'Labber' : CONCEPT_BADGE}</small></span></button>`,
+      `<button class="scenario ${i === cur ? 'selected' : ''} ${done.has(s.id) ? 'done' : ''}" data-s="${i}"><span class="snum">${done.has(s.id) ? '✓' : String(i + 1).padStart(2, '0')}</span><span><strong>${s.title}</strong><small>${s.topic} · ${s.target ? 'Labber' : CONCEPT_BADGE}</small>${lessonTag(s)}</span></button>`,
   ).join('');
   const n = TROUBLESHOOT_TASKS.filter((t) => done.has(t.id)).length;
   $('progressText').textContent = `${n} / ${TROUBLESHOOT_TASKS.length} senaryo tamamlandı`;
@@ -16822,6 +16950,8 @@ $('scenarioList').addEventListener('click', (e) => {
 $('mission').innerHTML =
   '<div class="mission-top"><span class="tag">LABBER MOTORU</span></div><h3>Bir arıza görevi seç</h3><p>Her görev Simülatör’de gerçek bir topolojide açılır: belirtiyi cihaz terminallerinden araştır, düzelt ve başarıyı gerçek ping ile doğrula. Kavramsal alıştırmalar motor kullanmaz ve öyle etiketlidir.</p>';
 renderList();
+// Ders etiketleri simülatör çalışma alanı yüklenince (sonraki betik) eklenir.
+document.addEventListener('DOMContentLoaded', renderList);
 // Labber'da tamamlanan karşılıklar listeye yansısın
 document.addEventListener('click', (e) => {
   if (e.target.closest?.('[data-area="troubleshoot"]')) renderList();
@@ -66352,7 +66482,10 @@ if (oldDisclosure) oldDisclosure.remove();
 const sharedBridge = document.createElement('button');
 sharedBridge.type = 'button';
 sharedBridge.id = 'sharedScenarioTroubleLink';
-sharedBridge.textContent = 'Ortak motor senaryolarına geç';
+sharedBridge.className = 'trouble-shared-link';
+// Arayüz PR 3: ne yaptığını söyleyen ad (simülatördeki hazır senaryo listesine gider).
+sharedBridge.textContent =
+  'Simülatördeki ' + $p('sharedScenarioSelect').options.length + ' hazır arıza senaryosu →';
 sharedBridge.onclick = () => {
   showArea('lab');
   sharedPanel.scrollIntoView({ block: 'start' });
@@ -69707,7 +69840,13 @@ function workshopView(ids, cases) {
   function apply(t) {
     root.dataset.theme = t;
     const label = t === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç';
-    btn.textContent = (t === 'light' ? '☾ ' : '☀ ') + label;
+    // Telefonda yalnız simge görünür (etiket aria-label'da); metin aynı kalır.
+    const icon = document.createElement('span'),
+      text = document.createElement('span');
+    icon.textContent = t === 'light' ? '☾ ' : '☀ ';
+    text.className = 'tt-label';
+    text.textContent = label;
+    btn.replaceChildren(icon, text);
     btn.setAttribute('aria-label', label);
     btn.removeAttribute('aria-pressed');
   }
@@ -69859,6 +69998,43 @@ function workshopView(ids, cases) {
       first.click();
     }
   });
+  // Arayüz PR 3: görünür dosya seçicileri Türkçe (tarayıcının "Choose File / No file chosen"
+  // metni yerine). Asıl girdi yerinde kalır (etiket, set_input_files, form davranışı aynı);
+  // görünmez olur, düğme onu açar, dosya adı yanında yazılır.
+  function turkishFileInputs() {
+    for (const input of document.querySelectorAll('input[type="file"]:not([hidden])')) {
+      // Etiketi zaten düğme olan girdi (ör. "JSON yedeğini yükle"): yalnız girdi gizlenir.
+      if (input.closest('label.sf-action')) {
+        input.classList.add('ag-file-input');
+        continue;
+      }
+      if (input.dataset.agFile) continue;
+      input.dataset.agFile = '1';
+      // Klavye ve ekran okuyucu asıl girdiyi kullanır (sekme sırası aynı); görünen düğme fare
+      // içindir ve girdinin odağını gösterir.
+      input.classList.add('ag-file-input');
+      const pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'ag-file-pick';
+      pick.textContent = 'Dosya seç';
+      pick.tabIndex = -1;
+      pick.setAttribute('aria-hidden', 'true');
+      const name = document.createElement('span');
+      name.className = 'ag-file-name';
+      name.textContent = 'Dosya seçilmedi';
+      pick.addEventListener('click', () => input.click());
+      input.addEventListener('change', () => {
+        name.textContent = input.files?.[0]?.name || 'Dosya seçilmedi';
+      });
+      const box = document.createElement('span');
+      box.className = 'ag-file';
+      input.after(box);
+      box.append(pick, name);
+    }
+  }
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', turkishFileInputs);
+  else turkishFileInputs();
   fromHash();
   window.aglabShell = { go, current, aliases: () => ({ ...ALIASES }) };
 })();
@@ -71739,6 +71915,19 @@ function workshopView(ids, cases) {
     group?.querySelector('h4')?.focus({ preventScroll: true });
     return !!group;
   }
+  // Görevin bağlı olduğu müfredat konusu ({id, num, title}) ya da null.
+  function courseOf(kind, id) {
+    const cid =
+      kind === 'course'
+        ? id
+        : kind === 'academy'
+          ? academyCourse(id)
+          : kind === 'labber'
+            ? LABBER_COURSE[id]
+            : SHARED_COURSE[topicOf(id)];
+    const c = COURSES.find((x) => x.id === cid);
+    return c ? { id: c.id, num: c.num, title: c.title } : null;
+  }
   const tasksFor = (courseId) =>
     allTasks()
       .filter((t) => t.course === courseId)
@@ -72923,6 +73112,7 @@ function workshopView(ids, cases) {
     tab: (key) => selectTab(key),
     refresh,
     tasksFor,
+    courseOf,
     showTopic,
     startTask,
     wide: () => ({ ...widePref, applied: work.hasAttribute('data-wide') }),

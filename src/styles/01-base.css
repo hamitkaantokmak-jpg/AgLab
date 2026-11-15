@@ -298,7 +298,7 @@ button:disabled {
 }
 .mission p {
   margin: 0;
-  color: #bdc9dd;
+  color: var(--muted);
   max-width: 850px;
 }
 .difficulty {
