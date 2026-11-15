@@ -110,6 +110,43 @@
       first.click();
     }
   });
+  // Arayüz PR 3: görünür dosya seçicileri Türkçe (tarayıcının "Choose File / No file chosen"
+  // metni yerine). Asıl girdi yerinde kalır (etiket, set_input_files, form davranışı aynı);
+  // görünmez olur, düğme onu açar, dosya adı yanında yazılır.
+  function turkishFileInputs() {
+    for (const input of document.querySelectorAll('input[type="file"]:not([hidden])')) {
+      // Etiketi zaten düğme olan girdi (ör. "JSON yedeğini yükle"): yalnız girdi gizlenir.
+      if (input.closest('label.sf-action')) {
+        input.classList.add('ag-file-input');
+        continue;
+      }
+      if (input.dataset.agFile) continue;
+      input.dataset.agFile = '1';
+      // Klavye ve ekran okuyucu asıl girdiyi kullanır (sekme sırası aynı); görünen düğme fare
+      // içindir ve girdinin odağını gösterir.
+      input.classList.add('ag-file-input');
+      const pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'ag-file-pick';
+      pick.textContent = 'Dosya seç';
+      pick.tabIndex = -1;
+      pick.setAttribute('aria-hidden', 'true');
+      const name = document.createElement('span');
+      name.className = 'ag-file-name';
+      name.textContent = 'Dosya seçilmedi';
+      pick.addEventListener('click', () => input.click());
+      input.addEventListener('change', () => {
+        name.textContent = input.files?.[0]?.name || 'Dosya seçilmedi';
+      });
+      const box = document.createElement('span');
+      box.className = 'ag-file';
+      input.after(box);
+      box.append(pick, name);
+    }
+  }
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', turkishFileInputs);
+  else turkishFileInputs();
   fromHash();
   window.aglabShell = { go, current, aliases: () => ({ ...ALIASES }) };
 })();

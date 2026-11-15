@@ -8,7 +8,13 @@
   function apply(t) {
     root.dataset.theme = t;
     const label = t === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç';
-    btn.textContent = (t === 'light' ? '☾ ' : '☀ ') + label;
+    // Telefonda yalnız simge görünür (etiket aria-label'da); metin aynı kalır.
+    const icon = document.createElement('span'),
+      text = document.createElement('span');
+    icon.textContent = t === 'light' ? '☾ ' : '☀ ';
+    text.className = 'tt-label';
+    text.textContent = label;
+    btn.replaceChildren(icon, text);
     btn.setAttribute('aria-label', label);
     btn.removeAttribute('aria-pressed');
   }
