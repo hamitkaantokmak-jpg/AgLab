@@ -113,7 +113,7 @@ Kökün kendisinde Root ID altında **"This bridge is the root"** yazar ve büt�
 | Kök kim? | Root ID'deki Address; switch'lerin `show spanning-tree` Bridge ID'siyle eşleştir |
 | Kök doğru yerde mi? | Her VLAN için ayrı bak; tasarımdaki kökle karşılaştır |
 | Hangi yol bloklu? | Role Altn/Sts BLK satırları |
-| Öncelik nereden geliyor? | `show running-config | include spanning-tree` |
+| Öncelik nereden geliyor? | `show running-config \| include spanning-tree` |
 
 ## 4. Yönlendirmeli lab
 

@@ -125,7 +125,7 @@ username destek password 7 0822455D0A16   ← type 7: çözülebilir
 
 | Soru | Komut |
 | --- | --- |
-| Hangi vty satırlarında ne açık? | `show running-config | section line vty` |
+| Hangi vty satırlarında ne açık? | `show running-config \| section line vty` |
 | SSH sürümü? | `show ip ssh` |
 | Parola tahmini koruması? | `show login` |
 | Kim bağlı? | `show users`, `show ssh` |

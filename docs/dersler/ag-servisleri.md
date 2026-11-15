@@ -119,7 +119,7 @@ Syslog logging: enabled
 | --- | --- |
 | Saat senkron mu, kaynağı ne? | `show ntp status`, `show ntp associations`, `show clock detail` |
 | Hangi kayıt nereye, hangi seviyeden? | `show logging` |
-| SNMP topluluk ve hedefler? | `show running-config | include snmp`, `show snmp` |
+| SNMP topluluk ve hedefler? | `show running-config \| include snmp`, `show snmp` |
 
 ## 4. Yönlendirmeli lab
 

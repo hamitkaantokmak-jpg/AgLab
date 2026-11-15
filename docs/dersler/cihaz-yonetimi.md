@@ -109,7 +109,7 @@ Vlan99                 192.168.99.2    YES manual up                    up
 | --- | --- |
 | Kaydedilmemiş değişiklik var mı? | `show running-config` ile `show startup-config` karşılaştır |
 | Yönetim adresi hangi SVI'da, açık mı? | `show ip interface brief` |
-| Başka ağdan yönetim mümkün mü? | `show running-config | include default-gateway` |
+| Başka ağdan yönetim mümkün mü? | `show running-config \| include default-gateway` |
 | SSH açık mı? | `show ip ssh` |
 
 ## 4. Yönlendirmeli lab

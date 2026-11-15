@@ -262,7 +262,7 @@ Karşı switch'in kendisi: kapalı mı (güç), uplink portu kapalı mı? Karş�
 | `shutdown` / `no shutdown` | Portu kapatır / açar |
 | `description <metin>` | Portu belgeler (Name sütunu) |
 | `clear counters` | Sayaçları sıfırlar; sonra artışı izle (gerçek cihazda) |
-| `device power on|off` (AğLab) | Cihazın gücünü değiştirir |
+| `device power on\|off` (AğLab) | Cihazın gücünü değiştirir |
 
 **Unutma:**
 

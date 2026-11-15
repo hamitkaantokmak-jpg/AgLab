@@ -259,7 +259,7 @@ Neden giderilmedi: portta eski PC'nin MAC'i statik ya da sticky olarak duruyor. 
 | `switchport port-security` | Port security'yi aç |
 | `switchport port-security maximum n` | İzinli MAC sayısı |
 | `switchport port-security mac-address <mac>` / `sticky` | Güvenli adres |
-| `switchport port-security violation shutdown|restrict|protect` | İhlal modu |
+| `switchport port-security violation shutdown\|restrict\|protect` | İhlal modu |
 | `show port-security interface <if>` | Durum, son MAC, ihlal sayacı |
 | `show interfaces status err-disabled` | Kapanan portlar |
 | `ip dhcp snooping`, `ip arp inspection vlan n` | Snooping ve DAI |

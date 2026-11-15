@@ -55,6 +55,14 @@ class LessonDocTests(unittest.TestCase):
                 text = (ROOT / "docs/dersler" / (c["doc"] + ".md")).read_text(encoding="utf-8")
                 for rel in FIG.findall(text):
                     self.assertTrue((ROOT / "docs/dersler" / rel).exists(), rel)
+                # Tablo hücresindeki kod içinde | kaçışlanmalı (\|), yoksa hücre bölünür.
+                fenced = False
+                for line in text.splitlines():
+                    if line.startswith("```"):
+                        fenced = not fenced
+                    if not fenced and line.startswith("|"):
+                        for code in re.findall(r"`[^`]*`", line):
+                            self.assertNotRegex(code, r"(?<!\\)\|", line)
                 if enriched(c["doc"]):
                     self.assertGreaterEqual(len(FIG.findall(text)), 6, "en az 6 şema")
                     for part in (

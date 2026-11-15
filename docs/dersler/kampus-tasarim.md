@@ -108,7 +108,7 @@ O*E2  0.0.0.0/0 [110/1] via 10.0.1.1, 00:12:44, TenGigabitEthernet1/1/1
 | STP kökleri nerede? | `show spanning-tree root` |
 | Gateway'ler (FHRP) nerede? | `show standby brief`, `show vrrp brief` |
 | Yukarıya kaç yol var? | `show ip route`, `show etherchannel summary` |
-| Yukarı bağlantı ne kadar dolu? | `show interfaces <if> | include rate` |
+| Yukarı bağlantı ne kadar dolu? | `show interfaces <if> \| include rate` |
 
 ## 4. Yönlendirmeli lab
 

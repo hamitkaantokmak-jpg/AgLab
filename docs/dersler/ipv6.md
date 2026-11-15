@@ -101,7 +101,7 @@ FE80::FF:FE00:5                             0 0200.0000.0005  REACH Gi0/0
 | Soru | Komut |
 | --- | --- |
 | Arayüzde hangi adresler var? | `show ipv6 interface brief` |
-| Router yönlendiriyor ve RA gönderiyor mu? | `show running-config | include unicast-routing`; `show ipv6 interface g0/0` |
+| Router yönlendiriyor ve RA gönderiyor mu? | `show running-config \| include unicast-routing`; `show ipv6 interface g0/0` |
 | Hedefe rota var mı? | `show ipv6 route` |
 | Komşunun MAC'i çözülmüş mü? | `show ipv6 neighbors` |
 

@@ -102,9 +102,9 @@ ABR2#show ip ospf neighbor
 | Soru | Komut |
 | --- | --- |
 | ABR/ASBR'ler nerede? | `show ip ospf border-routers` |
-| Hangi LSA'lar var? | `show ip ospf database [router|network|summary|external|nssa-external]` |
+| Hangi LSA'lar var? | `show ip ospf database [router\|network\|summary\|external\|nssa-external]` |
 | Alan türü? | `show ip ospf` |
-| Özetler? | `show ip ospf | section range`, `show ip route | include Null0` |
+| Özetler? | `show ip ospf \| section range`, `show ip route \| include Null0` |
 
 ## 4. Yönlendirmeli lab
 

@@ -256,7 +256,7 @@ Paket o satıra ulaşmıyor: ya üstteki bir satır onu yakalıyor (sayacı arta
 | `ip access-list extended AD` | İsimli genişletilmiş liste |
 | `permit tcp <kaynak> <wc> host <hedef> eq www` | Port bazlı satır |
 | `access-list 10 permit <ağ> <wildcard>` | Numaralı standart liste |
-| `ip access-group AD in|out` | Arayüze uygula |
+| `ip access-group AD in\|out` | Arayüze uygula |
 | `no 10`, `15 permit …` | Satır sil / araya ekle |
 | `show access-lists`, `clear access-list counters` | Sayaçlar |
 | `show ip interface <if>` | Hangi liste, hangi yönde |

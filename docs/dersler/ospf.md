@@ -108,7 +108,7 @@ Routing entry for 192.168.20.0/24
 | --- | --- |
 | Komşu var mı, hangi durumda? | `show ip ospf neighbor` |
 | Hangi arayüzler OSPF'te, hangi alanda? | `show ip ospf interface brief` |
-| Hangi network satırları, router ID ne? | `show ip protocols` ya da `show running-config | section router ospf` |
+| Hangi network satırları, router ID ne? | `show ip protocols` ya da `show running-config \| section router ospf` |
 | Ağ öğreniliyor mu, hangi kaynaktan? | `show ip route ospf`, `show ip route <ağ>` |
 
 ## 4. Yönlendirmeli lab
