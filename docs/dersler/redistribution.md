@@ -83,11 +83,11 @@ route-map E2O permit 30
 ```
 R-O#show ip route 10.2.0.0
 Routing entry for 10.2.0.0/16
-  Known via "ospf 1", distance 110, metric 20, type extern 2, forward metric 2
+  Known via "ospf 1", distance 110, metric 50, type extern 2, forward metric 2
   Redistributing via ospf 1
   Last update from 10.0.1.1 on GigabitEthernet0/0
   Route tag 90
-                                        ← EIGRP'den aktarılmış (E2, metrik 20 değil 50 olmalıydı?) etiket 90
+                                        ← EIGRP'den aktarılmış: E2, metrik 50 ve etiket 90 route-map'in set satırlarından
 
 ASBR-1#show ip eigrp topology 10.1.0.0/16
   Composite metric is (28160/0), route is External
