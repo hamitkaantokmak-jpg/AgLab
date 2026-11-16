@@ -1578,6 +1578,395 @@ var AgLabSim = (() => {
     return out.sort((a, b) => a.vlan - b.vlan || a.mac.localeCompare(b.mac));
   }
 
+  // src/sim/ospf.ts
+  function computeState(topo, cfgs, pcs, errdis, hw) {
+    const d = derive(topo, cfgs, pcs, errdis, hw);
+    d.ospf = computeOspf(d);
+    d.dups = duplicateIps(d);
+    return d;
+  }
+  function recomputeOspf(d) {
+    d.ospf = {};
+    d.ospf = computeOspf(d);
+  }
+  function ospfExternalsFromTable(d, dev) {
+    const o = d.cfgs[dev]?.ospf;
+    return !!o && (!!o.defaultOriginate && !o.defaultOriginate.always || !!o.redistribute?.static);
+  }
+  var ridInt = (r) => ipToInt(r) ?? 0;
+  function candidateRid(d, dev) {
+    const c = d.cfgs[dev].ospf;
+    if (c?.routerId) return c.routerId;
+    const ifs = l3Ifs(d, dev);
+    const pick = (list) => list.length ? list.map((i) => i.ip).sort((a, b) => ridInt(b) - ridInt(a))[0] : null;
+    return pick(ifs.filter((i) => i.kind === "loop")) ?? pick(ifs);
+  }
+  function ospfRunning(d, dev) {
+    const def = d.topo.devices[dev];
+    const c = d.cfgs[dev];
+    return def?.kind === "switch" && !!(def.l3 || def.router) && !!c?.ipRouting && !!c.ospf && !d.hw.off.has(dev);
+  }
+  function configuredL3(cfg, sw) {
+    const out = [];
+    for (const [v, s] of Object.entries(cfg.svis)) if (s.ip) out.push({ name: "Vlan" + v, ip: s.ip, l3: s.l3 ?? {} });
+    for (const p of sw.ports) {
+      const c = cfg.ifaces[p];
+      if (c.routed && c.ip) out.push({ name: p, ip: c.ip, l3: c.l3 ?? {} });
+    }
+    for (const [n, l] of Object.entries(cfg.loopbacks ?? {})) if (l.ip) out.push({ name: "Loopback" + n, ip: l.ip, l3: l.l3 ?? {} });
+    return out;
+  }
+  function areaFor(o, ip2, l3) {
+    if (l3.ospfArea && l3.ospfArea.pid === o.pid) return l3.ospfArea.area;
+    const a = ipToInt(ip2);
+    let best = null;
+    for (const n of o.networks) {
+      const wc = ipToInt(n.wildcard);
+      const care = ~wc >>> 0;
+      if ((a & care) >>> 0 !== (ipToInt(n.addr) & care) >>> 0) continue;
+      const bits = popcount(wc);
+      if (!best || bits < best.bits) best = { bits, area: n.area };
+    }
+    return best?.area ?? null;
+  }
+  function popcount(n) {
+    let c = 0;
+    for (let x = n >>> 0; x; x >>>= 1) c += x & 1;
+    return c;
+  }
+  function isPassive(o, name) {
+    return o.passiveDefault ? !o.passive.includes(name) : o.passive.includes(name);
+  }
+  var isStub = (o, area) => !!o.stubs[String(area)];
+  function computeOspf(d) {
+    const out = {};
+    const devs = d.topo.switches.filter((s) => ospfRunning(d, s.id));
+    for (const sw of devs) {
+      const cfg = d.cfgs[sw.id];
+      const o = cfg.ospf;
+      const rid = o.activeRid ?? null;
+      const up = new Map(l3Ifs(d, sw.id).map((i) => [i.name, i]));
+      const ifs = [];
+      for (const c of configuredL3(cfg, sw)) {
+        const area = areaFor(o, c.ip.addr, c.l3);
+        if (area === null) continue;
+        const isLoop = c.name.startsWith("Loopback");
+        const net = c.l3.ospfNet ?? (isLoop ? "loopback" : "broadcast");
+        const hello = c.l3.ospfHello ?? 10;
+        const bw = ifBandwidth(c.name, c.l3.bandwidth);
+        const l3 = up.get(c.name) ?? null;
+        ifs.push({
+          dev: sw.id,
+          name: c.name,
+          ip: c.ip.addr,
+          prefix: maskToPrefix(c.ip.mask),
+          area,
+          cost: c.l3.ospfCost ?? Math.max(1, Math.floor(o.refBw * 1e3 / bw)),
+          hello,
+          dead: c.l3.ospfDead ?? hello * 4,
+          prio: c.l3.ospfPrio ?? 1,
+          net: isLoop && net === "broadcast" ? "loopback" : net,
+          passive: isPassive(o, c.name),
+          mtu: c.l3.mtu ?? 1500,
+          up: !!l3 && !!rid,
+          role: "DOWN",
+          dr: null,
+          bdr: null,
+          l3
+        });
+      }
+      const areas = [...new Set(ifs.filter((i) => i.up).map((i) => i.area))].sort((a, b) => a - b);
+      out[sw.id] = { pid: o.pid, rid, ifs, nbrs: [], routes: [], areas, abr: areas.includes(0) && areas.length > 1, asbr: false, mismatches: [] };
+    }
+    const talkers = Object.values(out).flatMap((s) => s.ifs.filter((i) => i.up && !i.passive && i.net !== "loopback" && i.l3?.node));
+    const domCache = /* @__PURE__ */ new Map();
+    const domOf = (i) => {
+      const key = `${i.dev}|${i.name}`;
+      let s = domCache.get(key);
+      if (!s) {
+        s = /* @__PURE__ */ new Set([...l2Domain(d, i.l3.node).nodes.keys()]);
+        domCache.set(key, s);
+      }
+      return s;
+    };
+    const nk4 = (i) => `${i.l3.node.dev}|${i.l3.node.vlan}`;
+    const peersOf = /* @__PURE__ */ new Map();
+    const compat = /* @__PURE__ */ new Map();
+    for (const a of talkers) {
+      const dom = domOf(a);
+      const peers = talkers.filter((b) => b.dev !== a.dev && dom.has(nk4(b)));
+      peersOf.set(a, peers);
+      const ok = [];
+      for (const b of peers) {
+        const kind = mismatch(d, out, a, b);
+        if (kind) out[a.dev].mismatches.push({ dev: a.dev, ifname: a.name, peerIp: b.ip, peerDev: b.dev, kind });
+        else ok.push(b);
+      }
+      compat.set(a, ok);
+    }
+    for (const a of talkers) {
+      if (a.net === "point-to-point") {
+        a.role = "P2P";
+        continue;
+      }
+      const cands = [a, ...compat.get(a)].filter((x) => x.net === "broadcast" && x.prio > 0);
+      cands.sort((x, y) => y.prio - x.prio || ridInt(out[y.dev].rid) - ridInt(out[x.dev].rid));
+      const dr = cands[0];
+      const bdr = cands[1];
+      a.dr = dr ? { rid: out[dr.dev].rid, ip: dr.ip } : null;
+      a.bdr = bdr ? { rid: out[bdr.dev].rid, ip: bdr.ip } : null;
+      a.role = dr === a ? "DR" : bdr === a ? "BDR" : "DROTHER";
+    }
+    for (const s of Object.values(out)) {
+      for (const i of s.ifs) {
+        if (!i.up) i.role = "DOWN";
+        else if (i.net === "loopback") i.role = "LOOP";
+        else if (i.role === "DOWN") i.role = i.net === "point-to-point" ? "P2P" : "DR";
+      }
+    }
+    for (const a of talkers) {
+      for (const b of compat.get(a)) {
+        const bothP2p = a.net === "point-to-point" && b.net === "point-to-point";
+        const sameType = a.net === b.net;
+        let state;
+        let role2 = "-";
+        if (bothP2p || !sameType) state = "FULL";
+        else {
+          role2 = a.dr?.ip === b.ip ? "DR" : a.bdr?.ip === b.ip ? "BDR" : "DROTHER";
+          const adj = a.role === "DR" || a.role === "BDR" || role2 === "DR" || role2 === "BDR";
+          state = adj ? "FULL" : "2WAY";
+        }
+        if (state === "FULL" && a.mtu !== b.mtu) state = "EXSTART";
+        out[a.dev].nbrs.push({
+          rid: out[b.dev].rid,
+          prio: b.prio,
+          state,
+          role: role2,
+          ip: b.ip,
+          ifname: a.name,
+          peerDev: b.dev,
+          peerIf: b.name,
+          spf: state === "FULL" && sameType
+        });
+      }
+    }
+    const ifsIn = (dev, area) => out[dev].ifs.filter((i) => i.up && i.area === area);
+    const devsIn = (area) => Object.keys(out).filter((dev) => out[dev].areas.includes(area));
+    const allAreas = [...new Set(Object.values(out).flatMap((s) => s.areas))];
+    const edges = /* @__PURE__ */ new Map();
+    const ekey = (dev, area) => `${dev}#${area}`;
+    for (const area of allAreas) {
+      for (const dev of devsIn(area)) {
+        const list = [];
+        for (const a of ifsIn(dev, area)) {
+          if (!talkers.includes(a)) continue;
+          const full = out[dev].nbrs.filter((n) => n.ifname === a.name && n.spf);
+          if (a.net === "point-to-point") {
+            for (const n of full) list.push({ to: n.peerDev, cost: a.cost, path: { nh: n.ip, ifname: a.name } });
+            continue;
+          }
+          if (!a.dr) continue;
+          const amAttached = a.role === "DR" ? full.length > 0 : full.some((n) => n.ip === a.dr.ip);
+          if (!amAttached) continue;
+          for (const b of peersOf.get(a)) {
+            if (b.area !== area || !compat.get(a).includes(b) || b.net !== "broadcast") continue;
+            const bFull = out[b.dev].nbrs.filter((n) => n.ifname === b.name && n.spf);
+            const bAttached = b.role === "DR" ? bFull.length > 0 : bFull.some((n) => n.ip === a.dr.ip);
+            if (bAttached) list.push({ to: b.dev, cost: a.cost, path: { nh: b.ip, ifname: a.name } });
+          }
+        }
+        edges.set(ekey(dev, area), list);
+      }
+    }
+    const spf = (root, area) => {
+      const dist2 = /* @__PURE__ */ new Map([[root, { cost: 0, paths: [] }]]);
+      const done = /* @__PURE__ */ new Set();
+      for (; ; ) {
+        let cur = null;
+        for (const [k, v] of dist2) if (!done.has(k) && (cur === null || v.cost < dist2.get(cur).cost)) cur = k;
+        if (cur === null) break;
+        done.add(cur);
+        const base3 = dist2.get(cur);
+        for (const e of edges.get(ekey(cur, area)) ?? []) {
+          if (done.has(e.to)) continue;
+          const cost = base3.cost + e.cost;
+          const paths = cur === root ? [e.path] : base3.paths;
+          const prev = dist2.get(e.to);
+          if (!prev || cost < prev.cost) dist2.set(e.to, { cost, paths: [...paths] });
+          else if (cost === prev.cost) prev.paths = mergePaths(prev.paths, paths);
+        }
+      }
+      return dist2;
+    };
+    const pkey = (net, prefix) => `${net}/${prefix}`;
+    const asbrKey = (dev) => `asbr:${dev}`;
+    const externals = /* @__PURE__ */ new Map();
+    for (const dev of Object.keys(out)) {
+      const o = d.cfgs[dev].ospf;
+      if (!out[dev].rid) continue;
+      const list = [];
+      const table = o.defaultOriginate || o.redistribute ? routeTable(d, dev) : [];
+      if (o.defaultOriginate && (o.defaultOriginate.always || table.some((e) => e.prefix === 0 && e.code === "S"))) list.push({ net: "0.0.0.0", prefix: 0, metric: 1 });
+      const ospfIfs = new Set(out[dev].ifs.map((i) => i.name));
+      for (const src of ["static", "connected"]) {
+        const rd = o.redistribute?.[src];
+        if (!rd) continue;
+        for (const e of table) {
+          if (e.prefix === 0 || (src === "static" ? e.code !== "S" : e.code !== "C" || ospfIfs.has(e.ifname))) continue;
+          if (!rd.subnets && e.prefix !== classfulPrefix(e.net)) continue;
+          if (!list.some((x) => x.net === e.net && x.prefix === e.prefix)) list.push({ net: e.net, prefix: e.prefix, metric: rd.metric ?? 20 });
+        }
+      }
+      if (!list.length) continue;
+      out[dev].asbr = true;
+      externals.set(dev, list);
+    }
+    const dist = {};
+    const intra = {};
+    for (const dev of Object.keys(out)) {
+      dist[dev] = {};
+      intra[dev] = {};
+      for (const area of out[dev].areas) {
+        const dm = spf(dev, area);
+        dist[dev][area] = dm;
+        const pm = /* @__PURE__ */ new Map();
+        for (const [x, r] of dm) {
+          for (const i of ifsIn(x, area)) {
+            const host = i.net === "loopback";
+            const net = host ? i.ip : networkOf(i.ip, i.prefix);
+            const prefix = host ? 32 : i.prefix;
+            addReach(pm, pkey(net, prefix), { cost: r.cost + i.cost, paths: r.paths });
+          }
+          if (out[x].asbr) addReach(pm, asbrKey(x), { cost: r.cost, paths: r.paths });
+        }
+        intra[dev][area] = pm;
+      }
+    }
+    const stubCfg = (dev, area) => d.cfgs[dev].ospf.stubs[String(area)];
+    const summariesInto = (abr, area, backboneInter) => {
+      const m = /* @__PURE__ */ new Map();
+      const stub = stubCfg(abr, area);
+      if (stub) m.set(pkey("0.0.0.0", 0), 1);
+      if (stub?.noSummary) return m;
+      const put = (k, c) => {
+        if (stub && k.startsWith("asbr:")) return;
+        if (k === pkey("0.0.0.0", 0)) return;
+        if (!m.has(k) || m.get(k) > c) m.set(k, c);
+      };
+      for (const y of out[abr].areas) {
+        if (y === area) continue;
+        for (const [k, r] of intra[abr][y]) put(k, r.cost);
+      }
+      if (area !== 0 && backboneInter) for (const [k, r] of backboneInter) put(k, r.cost);
+      return m;
+    };
+    const abrs = (area) => devsIn(area).filter((x) => out[x].abr);
+    const interBB = {};
+    for (const dev of devsIn(0)) {
+      const m = /* @__PURE__ */ new Map();
+      for (const b of abrs(0)) {
+        if (b === dev) continue;
+        const rb = dist[dev][0].get(b);
+        if (!rb) continue;
+        for (const [k, c] of summariesInto(b, 0, null)) addReach(m, k, { cost: rb.cost + c, paths: rb.paths });
+      }
+      interBB[dev] = m;
+    }
+    const interNB = {};
+    for (const dev of Object.keys(out)) {
+      if (out[dev].abr) continue;
+      const m = /* @__PURE__ */ new Map();
+      for (const area of out[dev].areas) {
+        if (area === 0) continue;
+        for (const b of abrs(area)) {
+          const rb = dist[dev][area].get(b);
+          if (!rb) continue;
+          for (const [k, c] of summariesInto(b, area, interBB[b] ?? null)) addReach(m, k, { cost: rb.cost + c, paths: rb.paths });
+        }
+      }
+      interNB[dev] = m;
+    }
+    for (const dev of Object.keys(out)) {
+      const s = out[dev];
+      if (!s.rid) continue;
+      const connected = new Set(l3Ifs(d, dev).map((i) => pkey(networkOf(i.ip, i.prefix), i.prefix)));
+      const best = /* @__PURE__ */ new Map();
+      for (const area of s.areas) {
+        for (const [k, r] of intra[dev][area]) {
+          if (k.startsWith("asbr:") || !r.paths.length) continue;
+          upsert(best, k, "O", r);
+        }
+      }
+      const inter = /* @__PURE__ */ new Map();
+      for (const [k, r] of interBB[dev] ?? []) addReach(inter, k, r);
+      for (const [k, r] of interNB[dev] ?? []) addReach(inter, k, r);
+      for (const [k, r] of inter) {
+        if (k.startsWith("asbr:") || !r.paths.length) continue;
+        if (best.get(k)?.code === "O") continue;
+        upsert(best, k, "O IA", r);
+      }
+      const inNonStub = s.areas.some((a) => !stubCfg(dev, a));
+      const ext = /* @__PURE__ */ new Map();
+      if (inNonStub) {
+        for (const [asbr, list] of externals) {
+          if (asbr === dev) continue;
+          let toAsbr;
+          for (const area of s.areas) {
+            if (stubCfg(dev, area)) continue;
+            const r = intra[dev][area].get(asbrKey(asbr));
+            if (r && (!toAsbr || r.cost < toAsbr.cost)) toAsbr = r;
+          }
+          if (!toAsbr) toAsbr = inter.get(asbrKey(asbr));
+          if (!toAsbr || !toAsbr.paths.length) continue;
+          for (const e of list) {
+            const k = pkey(e.net, e.prefix);
+            const prev = ext.get(k);
+            if (!prev || e.metric < prev.metric || e.metric === prev.metric && toAsbr.cost < prev.fwd)
+              ext.set(k, { metric: e.metric, fwd: toAsbr.cost, paths: [...toAsbr.paths] });
+            else if (e.metric === prev.metric && toAsbr.cost === prev.fwd) prev.paths = mergePaths(prev.paths, toAsbr.paths);
+          }
+        }
+      }
+      for (const [k, e] of ext) if (!best.has(k)) best.set(k, { code: "O E2", r: { cost: e.metric, paths: e.paths } });
+      for (const [k, { code, r }] of best) {
+        if (connected.has(k)) continue;
+        const [net, p] = k.split("/");
+        s.routes.push({ code, net, prefix: Number(p), metric: r.cost, paths: r.paths });
+      }
+      s.routes.sort((a, b) => ridInt(a.net) - ridInt(b.net) || a.prefix - b.prefix);
+    }
+    return out;
+  }
+  function mismatch(d, out, a, b) {
+    if (a.prefix !== b.prefix || !sameSubnet(a.ip, b.ip, a.prefix)) return "subnet";
+    if (a.area !== b.area) return "area";
+    if (a.hello !== b.hello) return "hello";
+    if (a.dead !== b.dead) return "dead";
+    if (isStub(d.cfgs[a.dev].ospf, a.area) !== isStub(d.cfgs[b.dev].ospf, b.area)) return "stub";
+    if (out[a.dev].rid === out[b.dev].rid) return "rid";
+    return null;
+  }
+  function mergePaths(a, b) {
+    const m = [...a];
+    for (const p of b) if (!m.some((x) => x.nh === p.nh && x.ifname === p.ifname)) m.push(p);
+    return m.sort((x, y) => ridInt(x.nh) - ridInt(y.nh));
+  }
+  function addReach(m, k, r) {
+    const prev = m.get(k);
+    if (!prev || r.cost < prev.cost) m.set(k, { cost: r.cost, paths: [...r.paths] });
+    else if (r.cost === prev.cost) prev.paths = mergePaths(prev.paths, r.paths);
+  }
+  function upsert(best, k, code, r) {
+    const prev = best.get(k);
+    if (prev && prev.code === "O" && code !== "O") return;
+    if (!prev || prev.code !== code || r.cost < prev.r.cost) best.set(k, { code, r: { cost: r.cost, paths: [...r.paths] } });
+    else if (r.cost === prev.r.cost) prev.r.paths = mergePaths(prev.r.paths, r.paths);
+  }
+  function classfulPrefix(net) {
+    const first = Number(net.split(".")[0]);
+    return first < 128 ? 8 : first < 192 ? 16 : first < 224 ? 24 : 32;
+  }
+
   // src/sim/track.ts
   function lineProtocolUp(d, dev, ifname) {
     if (d.hw.off.has(dev)) return false;
@@ -1634,6 +2023,10 @@ var AgLabSim = (() => {
     }
     const state = { sla, objects };
     d.track = state;
+    const ospfStale = devs.some(
+      (dev) => ospfExternalsFromTable(d, dev) && d.cfgs[dev].routes.some((r) => r.track !== void 0 && !objects[dev]?.[String(r.track)]?.up)
+    );
+    if (ospfStale) recomputeOspf(d);
     for (const dev of devs)
       for (const [n, r] of Object.entries(sla[dev])) {
         if (!r.scheduled || r.ok) continue;
@@ -5734,387 +6127,6 @@ var AgLabSim = (() => {
       return [...out, ""];
     }
   };
-
-  // src/sim/ospf.ts
-  function computeState(topo, cfgs, pcs, errdis, hw) {
-    const d = derive(topo, cfgs, pcs, errdis, hw);
-    d.ospf = computeOspf(d);
-    d.dups = duplicateIps(d);
-    return d;
-  }
-  var ridInt = (r) => ipToInt(r) ?? 0;
-  function candidateRid(d, dev) {
-    const c = d.cfgs[dev].ospf;
-    if (c?.routerId) return c.routerId;
-    const ifs = l3Ifs(d, dev);
-    const pick = (list) => list.length ? list.map((i) => i.ip).sort((a, b) => ridInt(b) - ridInt(a))[0] : null;
-    return pick(ifs.filter((i) => i.kind === "loop")) ?? pick(ifs);
-  }
-  function ospfRunning(d, dev) {
-    const def = d.topo.devices[dev];
-    const c = d.cfgs[dev];
-    return def?.kind === "switch" && !!(def.l3 || def.router) && !!c?.ipRouting && !!c.ospf && !d.hw.off.has(dev);
-  }
-  function configuredL3(cfg, sw) {
-    const out = [];
-    for (const [v, s] of Object.entries(cfg.svis)) if (s.ip) out.push({ name: "Vlan" + v, ip: s.ip, l3: s.l3 ?? {} });
-    for (const p of sw.ports) {
-      const c = cfg.ifaces[p];
-      if (c.routed && c.ip) out.push({ name: p, ip: c.ip, l3: c.l3 ?? {} });
-    }
-    for (const [n, l] of Object.entries(cfg.loopbacks ?? {})) if (l.ip) out.push({ name: "Loopback" + n, ip: l.ip, l3: l.l3 ?? {} });
-    return out;
-  }
-  function areaFor(o, ip2, l3) {
-    if (l3.ospfArea && l3.ospfArea.pid === o.pid) return l3.ospfArea.area;
-    const a = ipToInt(ip2);
-    let best = null;
-    for (const n of o.networks) {
-      const wc = ipToInt(n.wildcard);
-      const care = ~wc >>> 0;
-      if ((a & care) >>> 0 !== (ipToInt(n.addr) & care) >>> 0) continue;
-      const bits = popcount(wc);
-      if (!best || bits < best.bits) best = { bits, area: n.area };
-    }
-    return best?.area ?? null;
-  }
-  function popcount(n) {
-    let c = 0;
-    for (let x = n >>> 0; x; x >>>= 1) c += x & 1;
-    return c;
-  }
-  function isPassive(o, name) {
-    return o.passiveDefault ? !o.passive.includes(name) : o.passive.includes(name);
-  }
-  var isStub = (o, area) => !!o.stubs[String(area)];
-  function computeOspf(d) {
-    const out = {};
-    const devs = d.topo.switches.filter((s) => ospfRunning(d, s.id));
-    for (const sw of devs) {
-      const cfg = d.cfgs[sw.id];
-      const o = cfg.ospf;
-      const rid = o.activeRid ?? null;
-      const up = new Map(l3Ifs(d, sw.id).map((i) => [i.name, i]));
-      const ifs = [];
-      for (const c of configuredL3(cfg, sw)) {
-        const area = areaFor(o, c.ip.addr, c.l3);
-        if (area === null) continue;
-        const isLoop = c.name.startsWith("Loopback");
-        const net = c.l3.ospfNet ?? (isLoop ? "loopback" : "broadcast");
-        const hello = c.l3.ospfHello ?? 10;
-        const bw = ifBandwidth(c.name, c.l3.bandwidth);
-        const l3 = up.get(c.name) ?? null;
-        ifs.push({
-          dev: sw.id,
-          name: c.name,
-          ip: c.ip.addr,
-          prefix: maskToPrefix(c.ip.mask),
-          area,
-          cost: c.l3.ospfCost ?? Math.max(1, Math.floor(o.refBw * 1e3 / bw)),
-          hello,
-          dead: c.l3.ospfDead ?? hello * 4,
-          prio: c.l3.ospfPrio ?? 1,
-          net: isLoop && net === "broadcast" ? "loopback" : net,
-          passive: isPassive(o, c.name),
-          mtu: c.l3.mtu ?? 1500,
-          up: !!l3 && !!rid,
-          role: "DOWN",
-          dr: null,
-          bdr: null,
-          l3
-        });
-      }
-      const areas = [...new Set(ifs.filter((i) => i.up).map((i) => i.area))].sort((a, b) => a - b);
-      out[sw.id] = { pid: o.pid, rid, ifs, nbrs: [], routes: [], areas, abr: areas.includes(0) && areas.length > 1, asbr: false, mismatches: [] };
-    }
-    const talkers = Object.values(out).flatMap((s) => s.ifs.filter((i) => i.up && !i.passive && i.net !== "loopback" && i.l3?.node));
-    const domCache = /* @__PURE__ */ new Map();
-    const domOf = (i) => {
-      const key = `${i.dev}|${i.name}`;
-      let s = domCache.get(key);
-      if (!s) {
-        s = /* @__PURE__ */ new Set([...l2Domain(d, i.l3.node).nodes.keys()]);
-        domCache.set(key, s);
-      }
-      return s;
-    };
-    const nk4 = (i) => `${i.l3.node.dev}|${i.l3.node.vlan}`;
-    const peersOf = /* @__PURE__ */ new Map();
-    const compat = /* @__PURE__ */ new Map();
-    for (const a of talkers) {
-      const dom = domOf(a);
-      const peers = talkers.filter((b) => b.dev !== a.dev && dom.has(nk4(b)));
-      peersOf.set(a, peers);
-      const ok = [];
-      for (const b of peers) {
-        const kind = mismatch(d, out, a, b);
-        if (kind) out[a.dev].mismatches.push({ dev: a.dev, ifname: a.name, peerIp: b.ip, peerDev: b.dev, kind });
-        else ok.push(b);
-      }
-      compat.set(a, ok);
-    }
-    for (const a of talkers) {
-      if (a.net === "point-to-point") {
-        a.role = "P2P";
-        continue;
-      }
-      const cands = [a, ...compat.get(a)].filter((x) => x.net === "broadcast" && x.prio > 0);
-      cands.sort((x, y) => y.prio - x.prio || ridInt(out[y.dev].rid) - ridInt(out[x.dev].rid));
-      const dr = cands[0];
-      const bdr = cands[1];
-      a.dr = dr ? { rid: out[dr.dev].rid, ip: dr.ip } : null;
-      a.bdr = bdr ? { rid: out[bdr.dev].rid, ip: bdr.ip } : null;
-      a.role = dr === a ? "DR" : bdr === a ? "BDR" : "DROTHER";
-    }
-    for (const s of Object.values(out)) {
-      for (const i of s.ifs) {
-        if (!i.up) i.role = "DOWN";
-        else if (i.net === "loopback") i.role = "LOOP";
-        else if (i.role === "DOWN") i.role = i.net === "point-to-point" ? "P2P" : "DR";
-      }
-    }
-    for (const a of talkers) {
-      for (const b of compat.get(a)) {
-        const bothP2p = a.net === "point-to-point" && b.net === "point-to-point";
-        const sameType = a.net === b.net;
-        let state;
-        let role2 = "-";
-        if (bothP2p || !sameType) state = "FULL";
-        else {
-          role2 = a.dr?.ip === b.ip ? "DR" : a.bdr?.ip === b.ip ? "BDR" : "DROTHER";
-          const adj = a.role === "DR" || a.role === "BDR" || role2 === "DR" || role2 === "BDR";
-          state = adj ? "FULL" : "2WAY";
-        }
-        if (state === "FULL" && a.mtu !== b.mtu) state = "EXSTART";
-        out[a.dev].nbrs.push({
-          rid: out[b.dev].rid,
-          prio: b.prio,
-          state,
-          role: role2,
-          ip: b.ip,
-          ifname: a.name,
-          peerDev: b.dev,
-          peerIf: b.name,
-          spf: state === "FULL" && sameType
-        });
-      }
-    }
-    const ifsIn = (dev, area) => out[dev].ifs.filter((i) => i.up && i.area === area);
-    const devsIn = (area) => Object.keys(out).filter((dev) => out[dev].areas.includes(area));
-    const allAreas = [...new Set(Object.values(out).flatMap((s) => s.areas))];
-    const edges = /* @__PURE__ */ new Map();
-    const ekey = (dev, area) => `${dev}#${area}`;
-    for (const area of allAreas) {
-      for (const dev of devsIn(area)) {
-        const list = [];
-        for (const a of ifsIn(dev, area)) {
-          if (!talkers.includes(a)) continue;
-          const full = out[dev].nbrs.filter((n) => n.ifname === a.name && n.spf);
-          if (a.net === "point-to-point") {
-            for (const n of full) list.push({ to: n.peerDev, cost: a.cost, path: { nh: n.ip, ifname: a.name } });
-            continue;
-          }
-          if (!a.dr) continue;
-          const amAttached = a.role === "DR" ? full.length > 0 : full.some((n) => n.ip === a.dr.ip);
-          if (!amAttached) continue;
-          for (const b of peersOf.get(a)) {
-            if (b.area !== area || !compat.get(a).includes(b) || b.net !== "broadcast") continue;
-            const bFull = out[b.dev].nbrs.filter((n) => n.ifname === b.name && n.spf);
-            const bAttached = b.role === "DR" ? bFull.length > 0 : bFull.some((n) => n.ip === a.dr.ip);
-            if (bAttached) list.push({ to: b.dev, cost: a.cost, path: { nh: b.ip, ifname: a.name } });
-          }
-        }
-        edges.set(ekey(dev, area), list);
-      }
-    }
-    const spf = (root, area) => {
-      const dist2 = /* @__PURE__ */ new Map([[root, { cost: 0, paths: [] }]]);
-      const done = /* @__PURE__ */ new Set();
-      for (; ; ) {
-        let cur = null;
-        for (const [k, v] of dist2) if (!done.has(k) && (cur === null || v.cost < dist2.get(cur).cost)) cur = k;
-        if (cur === null) break;
-        done.add(cur);
-        const base3 = dist2.get(cur);
-        for (const e of edges.get(ekey(cur, area)) ?? []) {
-          if (done.has(e.to)) continue;
-          const cost = base3.cost + e.cost;
-          const paths = cur === root ? [e.path] : base3.paths;
-          const prev = dist2.get(e.to);
-          if (!prev || cost < prev.cost) dist2.set(e.to, { cost, paths: [...paths] });
-          else if (cost === prev.cost) prev.paths = mergePaths(prev.paths, paths);
-        }
-      }
-      return dist2;
-    };
-    const pkey = (net, prefix) => `${net}/${prefix}`;
-    const asbrKey = (dev) => `asbr:${dev}`;
-    const externals = /* @__PURE__ */ new Map();
-    for (const dev of Object.keys(out)) {
-      const o = d.cfgs[dev].ospf;
-      if (!out[dev].rid) continue;
-      const list = [];
-      const table = o.defaultOriginate || o.redistribute ? routeTable(d, dev) : [];
-      if (o.defaultOriginate && (o.defaultOriginate.always || table.some((e) => e.prefix === 0 && e.code === "S"))) list.push({ net: "0.0.0.0", prefix: 0, metric: 1 });
-      const ospfIfs = new Set(out[dev].ifs.map((i) => i.name));
-      for (const src of ["static", "connected"]) {
-        const rd = o.redistribute?.[src];
-        if (!rd) continue;
-        for (const e of table) {
-          if (e.prefix === 0 || (src === "static" ? e.code !== "S" : e.code !== "C" || ospfIfs.has(e.ifname))) continue;
-          if (!rd.subnets && e.prefix !== classfulPrefix(e.net)) continue;
-          if (!list.some((x) => x.net === e.net && x.prefix === e.prefix)) list.push({ net: e.net, prefix: e.prefix, metric: rd.metric ?? 20 });
-        }
-      }
-      if (!list.length) continue;
-      out[dev].asbr = true;
-      externals.set(dev, list);
-    }
-    const dist = {};
-    const intra = {};
-    for (const dev of Object.keys(out)) {
-      dist[dev] = {};
-      intra[dev] = {};
-      for (const area of out[dev].areas) {
-        const dm = spf(dev, area);
-        dist[dev][area] = dm;
-        const pm = /* @__PURE__ */ new Map();
-        for (const [x, r] of dm) {
-          for (const i of ifsIn(x, area)) {
-            const host = i.net === "loopback";
-            const net = host ? i.ip : networkOf(i.ip, i.prefix);
-            const prefix = host ? 32 : i.prefix;
-            addReach(pm, pkey(net, prefix), { cost: r.cost + i.cost, paths: r.paths });
-          }
-          if (out[x].asbr) addReach(pm, asbrKey(x), { cost: r.cost, paths: r.paths });
-        }
-        intra[dev][area] = pm;
-      }
-    }
-    const stubCfg = (dev, area) => d.cfgs[dev].ospf.stubs[String(area)];
-    const summariesInto = (abr, area, backboneInter) => {
-      const m = /* @__PURE__ */ new Map();
-      const stub = stubCfg(abr, area);
-      if (stub) m.set(pkey("0.0.0.0", 0), 1);
-      if (stub?.noSummary) return m;
-      const put = (k, c) => {
-        if (stub && k.startsWith("asbr:")) return;
-        if (k === pkey("0.0.0.0", 0)) return;
-        if (!m.has(k) || m.get(k) > c) m.set(k, c);
-      };
-      for (const y of out[abr].areas) {
-        if (y === area) continue;
-        for (const [k, r] of intra[abr][y]) put(k, r.cost);
-      }
-      if (area !== 0 && backboneInter) for (const [k, r] of backboneInter) put(k, r.cost);
-      return m;
-    };
-    const abrs = (area) => devsIn(area).filter((x) => out[x].abr);
-    const interBB = {};
-    for (const dev of devsIn(0)) {
-      const m = /* @__PURE__ */ new Map();
-      for (const b of abrs(0)) {
-        if (b === dev) continue;
-        const rb = dist[dev][0].get(b);
-        if (!rb) continue;
-        for (const [k, c] of summariesInto(b, 0, null)) addReach(m, k, { cost: rb.cost + c, paths: rb.paths });
-      }
-      interBB[dev] = m;
-    }
-    const interNB = {};
-    for (const dev of Object.keys(out)) {
-      if (out[dev].abr) continue;
-      const m = /* @__PURE__ */ new Map();
-      for (const area of out[dev].areas) {
-        if (area === 0) continue;
-        for (const b of abrs(area)) {
-          const rb = dist[dev][area].get(b);
-          if (!rb) continue;
-          for (const [k, c] of summariesInto(b, area, interBB[b] ?? null)) addReach(m, k, { cost: rb.cost + c, paths: rb.paths });
-        }
-      }
-      interNB[dev] = m;
-    }
-    for (const dev of Object.keys(out)) {
-      const s = out[dev];
-      if (!s.rid) continue;
-      const connected = new Set(l3Ifs(d, dev).map((i) => pkey(networkOf(i.ip, i.prefix), i.prefix)));
-      const best = /* @__PURE__ */ new Map();
-      for (const area of s.areas) {
-        for (const [k, r] of intra[dev][area]) {
-          if (k.startsWith("asbr:") || !r.paths.length) continue;
-          upsert(best, k, "O", r);
-        }
-      }
-      const inter = /* @__PURE__ */ new Map();
-      for (const [k, r] of interBB[dev] ?? []) addReach(inter, k, r);
-      for (const [k, r] of interNB[dev] ?? []) addReach(inter, k, r);
-      for (const [k, r] of inter) {
-        if (k.startsWith("asbr:") || !r.paths.length) continue;
-        if (best.get(k)?.code === "O") continue;
-        upsert(best, k, "O IA", r);
-      }
-      const inNonStub = s.areas.some((a) => !stubCfg(dev, a));
-      const ext = /* @__PURE__ */ new Map();
-      if (inNonStub) {
-        for (const [asbr, list] of externals) {
-          if (asbr === dev) continue;
-          let toAsbr;
-          for (const area of s.areas) {
-            if (stubCfg(dev, area)) continue;
-            const r = intra[dev][area].get(asbrKey(asbr));
-            if (r && (!toAsbr || r.cost < toAsbr.cost)) toAsbr = r;
-          }
-          if (!toAsbr) toAsbr = inter.get(asbrKey(asbr));
-          if (!toAsbr || !toAsbr.paths.length) continue;
-          for (const e of list) {
-            const k = pkey(e.net, e.prefix);
-            const prev = ext.get(k);
-            if (!prev || e.metric < prev.metric || e.metric === prev.metric && toAsbr.cost < prev.fwd)
-              ext.set(k, { metric: e.metric, fwd: toAsbr.cost, paths: [...toAsbr.paths] });
-            else if (e.metric === prev.metric && toAsbr.cost === prev.fwd) prev.paths = mergePaths(prev.paths, toAsbr.paths);
-          }
-        }
-      }
-      for (const [k, e] of ext) if (!best.has(k)) best.set(k, { code: "O E2", r: { cost: e.metric, paths: e.paths } });
-      for (const [k, { code, r }] of best) {
-        if (connected.has(k)) continue;
-        const [net, p] = k.split("/");
-        s.routes.push({ code, net, prefix: Number(p), metric: r.cost, paths: r.paths });
-      }
-      s.routes.sort((a, b) => ridInt(a.net) - ridInt(b.net) || a.prefix - b.prefix);
-    }
-    return out;
-  }
-  function mismatch(d, out, a, b) {
-    if (a.prefix !== b.prefix || !sameSubnet(a.ip, b.ip, a.prefix)) return "subnet";
-    if (a.area !== b.area) return "area";
-    if (a.hello !== b.hello) return "hello";
-    if (a.dead !== b.dead) return "dead";
-    if (isStub(d.cfgs[a.dev].ospf, a.area) !== isStub(d.cfgs[b.dev].ospf, b.area)) return "stub";
-    if (out[a.dev].rid === out[b.dev].rid) return "rid";
-    return null;
-  }
-  function mergePaths(a, b) {
-    const m = [...a];
-    for (const p of b) if (!m.some((x) => x.nh === p.nh && x.ifname === p.ifname)) m.push(p);
-    return m.sort((x, y) => ridInt(x.nh) - ridInt(y.nh));
-  }
-  function addReach(m, k, r) {
-    const prev = m.get(k);
-    if (!prev || r.cost < prev.cost) m.set(k, { cost: r.cost, paths: [...r.paths] });
-    else if (r.cost === prev.cost) prev.paths = mergePaths(prev.paths, r.paths);
-  }
-  function upsert(best, k, code, r) {
-    const prev = best.get(k);
-    if (prev && prev.code === "O" && code !== "O") return;
-    if (!prev || prev.code !== code || r.cost < prev.r.cost) best.set(k, { code, r: { cost: r.cost, paths: [...r.paths] } });
-    else if (r.cost === prev.r.cost) prev.r.paths = mergePaths(prev.r.paths, r.paths);
-  }
-  function classfulPrefix(net) {
-    const first = Number(net.split(".")[0]);
-    return first < 128 ? 8 : first < 192 ? 16 : first < 224 ? 24 : 32;
-  }
 
   // src/sim/query.ts
   var OSPF_AD2 = 110;

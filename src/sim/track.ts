@@ -13,14 +13,18 @@
 //   (b) zamanlanmış her SLA bu tabloyla yoklanır (router'dan hedefe ping modeli; source-interface
 //       verilmişse kaynak adres o arayüzün adresi, çıkış yine rota tablosuyla seçilir),
 //   (c) nesne durumları belirlenir,
-//   (d) Derived.track yazılır: Down nesneye bağlı rotalar tablodan çıkar. Başarısız yoklama bu
-//       tabloyla bir kez daha denenir; şimdi (yedek yoldan) başarılı oluyorsa gerçek IOS'ta
+//   (d) Derived.track yazılır: Down nesneye bağlı rotalar tablodan çıkar. Böyle bir rota OSPF dış
+//       rotasını tablodan okuyan bir ASBR'deyse (default-information originate `always`'siz,
+//       redistribute static) OSPF bir kez yeniden hesaplanır: duyuru çekilir, komşular başka
+//       ASBR'nin duyurusuna geçer. SLA'lar yeniden yoklanmaz, nesne durumları değişmez.
+//       Başarısız yoklama bu (OSPF'i güncel) tabloyla bir kez daha denenir; şimdi (yedek yoldan) başarılı oluyorsa gerçek IOS'ta
 //       nesne Up/Down arasında gidip gelir (dalgalanma). Model rotayı kapalı tutar ve nesnede
 //       `flapping` işaretini saklar (show track'te görünür). Yoklama hedefine birincil hattan
 //       giden bir host rotası (/32, track'siz) varsa yoklama yedek yola düşmez, dalgalanma olmaz.
 
 import type { Derived } from './engine'
 import { l3Ifs, ping } from './net'
+import { ospfExternalsFromTable, recomputeOspf } from './ospf'
 import { pk } from './topology'
 import type { IpSlaConfig } from './types'
 
@@ -118,6 +122,18 @@ export function computeTrack(d: Derived): TrackState {
   // (d): Down nesnelere bağlı rotalar çıkar; başarısız yoklama yeni tabloyla bir kez daha
   const state: TrackState = { sla, objects }
   d.track = state
+  // (d1) OSPF dış rotaları (default-information originate, redistribute static) rota
+  // tablosundan okunur ve ilk OSPF hesabında track'li rotalar kurulu sayılmıştı. Down nesneye
+  // bağlı bir rota, dış rotası tabloya bağlı bir ASBR'deyse OSPF bir kez yeniden hesaplanır
+  // (komşularda O*E2 / O E2 kalkar; başka ASBR'nin duyurusu devreye girer). SLA'lar yeniden
+  // yoklanmaz ve nesne durumları değişmez: döngü yok. Değişmeyen durumlarda ek hesap yapılmaz.
+  const ospfStale = devs.some(
+    (dev) =>
+      ospfExternalsFromTable(d, dev) &&
+      d.cfgs[dev]!.routes.some((r) => r.track !== undefined && !objects[dev]?.[String(r.track)]?.up),
+  )
+  if (ospfStale) recomputeOspf(d)
+  // (d2) dalgalanma yoklaması: Down rotalar çıkmış (ve gerekirse OSPF yeniden hesaplanmış) tabloyla
   for (const dev of devs)
     for (const [n, r] of Object.entries(sla[dev]!)) {
       if (!r.scheduled || r.ok) continue

@@ -227,3 +227,116 @@ describe('IP SLA + track + statik rota', () => {
     expect(q(rt).ipSla('R1', 2).configured).toBe(true)
   })
 })
+
+/**
+ * OSPF + track: iki ASBR. R1 (birincil) internete ISP switch'i üzerinden, R2 (yedek) doğrudan
+ * bağlı; iç router R3 OSPF ile ikisinden varsayılan rota öğrenir. R3–R2 maliyeti yüksek: E2
+ * eşitliğinde R1 seçilir. NET internet router'ı, WEB 8.8.8.8.
+ */
+function ospfLab(extra: Record<string, string> = {}): LabDef {
+  const lines = (dev: string, base: string[]) => [...base, ...(extra[dev] ? extra[dev]!.split('\n') : [])].join('\n')
+  return {
+    id: 'ospf-track', title: '', summary: '', level: 'İleri', tags: [], brief: [], objectives: [], solution: {}, view: { w: 1, h: 1 },
+    devices: [
+      { id: 'ISP', kind: 'switch', model: 'WS-C2960-24TT-L', mac: '5254.0090.0000', ports: ports('Fa0/1-24', 'Gi0/1-2'), x: 0, y: 0 },
+      router('R1', 1), router('R2', 2), router('R3', 3), router('NET', 4), pc('H3', 3), pc('WEB', 4),
+    ],
+    links: [
+      { a: ['H3', 'eth0'], b: ['R3', 'GigabitEthernet0/0'] },
+      { a: ['R3', 'GigabitEthernet0/1'], b: ['R1', 'GigabitEthernet0/0'] },
+      { a: ['R3', 'GigabitEthernet0/2'], b: ['R2', 'GigabitEthernet0/0'] },
+      { a: ['R1', 'GigabitEthernet0/1'], b: ['ISP', 'FastEthernet0/1'] },
+      { a: ['ISP', 'FastEthernet0/2'], b: ['NET', 'GigabitEthernet0/1'] },
+      { a: ['R2', 'GigabitEthernet0/1'], b: ['NET', 'GigabitEthernet0/2'] },
+      { a: ['NET', 'GigabitEthernet0/0'], b: ['WEB', 'eth0'] },
+    ],
+    initialConfig: {
+      R3: [
+        'interface g0/0', 'ip address 192.168.3.1 255.255.255.0', 'no shutdown',
+        'interface g0/1', 'ip address 10.0.13.2 255.255.255.252', 'no shutdown',
+        'interface g0/2', 'ip address 10.0.23.2 255.255.255.252', 'ip ospf cost 100', 'no shutdown',
+        'router ospf 1', 'router-id 3.3.3.3', 'network 10.0.0.0 0.255.255.255 area 0', 'network 192.168.3.0 0.0.0.255 area 0',
+      ].join('\n'),
+      R1: lines('R1', [
+        'interface g0/0', 'ip address 10.0.13.1 255.255.255.252', 'no shutdown',
+        'interface g0/1', 'ip address 203.0.113.1 255.255.255.252', 'no shutdown',
+        'exit',
+        'ip sla 1', 'icmp-echo 203.0.113.2 source-interface g0/1', 'exit',
+        'ip sla schedule 1 life forever start-time now',
+        'track 1 ip sla 1 reachability', 'exit',
+        'ip route 0.0.0.0 0.0.0.0 203.0.113.2 track 1',
+        'router ospf 1', 'router-id 1.1.1.1', 'network 10.0.0.0 0.255.255.255 area 0',
+      ]),
+      R2: [
+        'interface g0/0', 'ip address 10.0.23.1 255.255.255.252', 'ip ospf cost 100', 'no shutdown',
+        'interface g0/1', 'ip address 198.51.100.1 255.255.255.252', 'no shutdown',
+        'exit', 'ip route 0.0.0.0 0.0.0.0 198.51.100.2',
+        'router ospf 1', 'router-id 2.2.2.2', 'network 10.0.0.0 0.255.255.255 area 0', 'default-information originate',
+      ].join('\n'),
+      NET: [
+        'interface g0/0', 'ip address 8.8.8.1 255.255.255.0', 'no shutdown',
+        'interface g0/1', 'ip address 203.0.113.2 255.255.255.252', 'no shutdown',
+        'interface g0/2', 'ip address 198.51.100.2 255.255.255.252', 'no shutdown',
+        'exit', 'ip route 192.168.3.0 255.255.255.0 203.0.113.1', 'ip route 192.168.3.0 255.255.255.0 198.51.100.1 250',
+      ].join('\n'),
+    },
+    initialPcs: { H3: { ip: '192.168.3.10', prefix: 24, gw: '192.168.3.1' }, WEB: { ip: '8.8.8.8', prefix: 24, gw: '8.8.8.1' } },
+  }
+}
+
+/** ISP–NET kablosu kopar: R1 Gi0/1 up/up kalır, R1'in SLA'sı Down olur. */
+const cutR1Uplink = (rt: LabRuntime, up = false) => rt.setLink('ISP', 'FastEthernet0/2', up)
+const r3Default = (rt: LabRuntime) => {
+  const e = rt.query().route('R3', '0.0.0.0', 0)
+  return e ? `${e.code} ${(e.paths ?? [{ nh: e.nh }]).map((p) => p.nh).join(',')}` : null
+}
+const h3Web = (rt: LabRuntime) => (createSession(rt, 'H3') as VpcsSession).exec('ping 8.8.8.8').join('\n')
+
+describe('OSPF dış rotaları track\'e uyar', () => {
+  it('default-information originate: R1 track Down → R3 varsayılanı R2\'ye geçer; Up → R1\'e döner', () => {
+    const rt = createLab(ospfLab({ R1: 'default-information originate' }))
+    expect(q(rt).track('R1', 1).up).toBe(true)
+    expect(r3Default(rt)).toBe('O E2 10.0.13.1')
+    expect(h3Web(rt)).toMatch(/bytes from 8\.8\.8\.8/)
+    expect(run(rt, 'R1', 'show ip ospf')).toContain('It is an autonomous system boundary router')
+    cutR1Uplink(rt)
+    expect(q(rt).track('R1', 1).up).toBe(false)
+    expect(r3Default(rt)).toBe('O E2 10.0.23.1')
+    expect(run(rt, 'R3', 'show ip route')).toContain('O*E2  0.0.0.0/0 [110/1] via 10.0.23.1')
+    expect(run(rt, 'R3', 'show ip route')).not.toContain('via 10.0.13.1, 00:')
+    // R1 artık ASBR değil: varsayılanı R2'den öğrenir
+    expect(run(rt, 'R1', 'show ip ospf')).not.toContain('autonomous system boundary router')
+    expect(rt.query().route('R1', '0.0.0.0', 0)?.code).toBe('O E2')
+    expect(h3Web(rt)).toMatch(/bytes from 8\.8\.8\.8/)
+    cutR1Uplink(rt, true)
+    expect(q(rt).track('R1', 1).up).toBe(true)
+    expect(r3Default(rt)).toBe('O E2 10.0.13.1')
+    expect(run(rt, 'R1', 'show ip ospf')).toContain('It is an autonomous system boundary router')
+    expect(h3Web(rt)).toMatch(/bytes from 8\.8\.8\.8/)
+  })
+
+  it('redistribute static subnets: track Down → R3\'te O E2 yok; Up → geri gelir', () => {
+    const rt = createLab(ospfLab({ R1: 'exit\nip route 172.16.0.0 255.255.0.0 203.0.113.2 track 1\nrouter ospf 1\nredistribute static subnets' }))
+    expect(rt.query().route('R3', '172.16.0.0', 16)?.code).toBe('O E2')
+    expect(run(rt, 'R3', 'show ip route')).toContain('O E2     172.16.0.0/16 [110/20] via 10.0.13.1')
+    cutR1Uplink(rt)
+    expect(rt.query().route('R3', '172.16.0.0', 16)).toBeUndefined()
+    expect(run(rt, 'R3', 'show ip route')).not.toContain('172.16.0.0')
+    cutR1Uplink(rt, true)
+    expect(rt.query().route('R3', '172.16.0.0', 16)?.code).toBe('O E2')
+  })
+
+  it('default-information originate always: track Down olsa da duyuru sürer', () => {
+    const rt = createLab(ospfLab({ R1: 'default-information originate always' }))
+    cutR1Uplink(rt)
+    expect(q(rt).track('R1', 1).up).toBe(false)
+    expect(r3Default(rt)).toBe('O E2 10.0.13.1')
+    expect(run(rt, 'R1', 'show ip ospf')).toContain('It is an autonomous system boundary router')
+  })
+
+  it('track\'siz statik + default-information originate: kopuk hatta da duyuru sürer (track olmadan IOS da çekmez)', () => {
+    const rt = createLab(ospfLab({ R1: 'exit\nno ip route 0.0.0.0 0.0.0.0 203.0.113.2\nip route 0.0.0.0 0.0.0.0 203.0.113.2\nrouter ospf 1\ndefault-information originate' }))
+    cutR1Uplink(rt)
+    expect(r3Default(rt)).toBe('O E2 10.0.13.1')
+  })
+})
