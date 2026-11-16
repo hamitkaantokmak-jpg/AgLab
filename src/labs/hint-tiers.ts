@@ -348,4 +348,26 @@ export const HINT_TIERS: Record<string, Record<string, [string, string]>> = {
       'Her alan varsayılan rotayla bir sonraki adıma, ASBR de dış ağa gider.',
     ],
   },
+  'ospf-sorun-ileri': {
+    nettype: [
+      'R1, R2’yi FULL görüyor ama tablosunda OSPF rotası yok. İki uçta arayüz ayarlarından biri farklı mı?',
+      'Bir uç bağlantıyı noktadan noktaya, diğeri yayın ağı sayarsa komşuluk kurulur ama iki router bağı farklı anlatır; SPF bağı kullanmaz.',
+    ],
+    rid: [
+      'R2 ile R3 birbirini hiç görmüyor; ikisinin OSPF kimliklerine bak.',
+      'Her OSPF router’ının kimliği benzersiz olmalı; kimlik değişince süreç yeniden başlamadan yeni kimlik kullanılmaz.',
+    ],
+    dr: [
+      'R3–R4 komşuluğu hangi durumda kalıyor? Segmentte DR ve BDR kim?',
+      'Yayın segmentinde FULL komşuluk DR/BDR ile kurulur; önceliği 0 olan router DR olamaz. Kimse aday değilse DR seçilmez.',
+    ],
+    route: [
+      'R1’in tablosunda uzak LAN var mı? Yoksa zincirin hangi halkasında rota kayboluyor?',
+      'Rota, LSA’lar her bağlantıda FULL komşuluklarla taşınıp SPF hesabına girince oluşur.',
+    ],
+    e2e: [
+      'PC1’den PC4’e paket hangi atlamalardan geçiyor, nerede duruyor?',
+      'Gidiş ve dönüş için iki uçta da rota gerekir; üç bağlantı düzelince ikisi de olur.',
+    ],
+  },
 }
