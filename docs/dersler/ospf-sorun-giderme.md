@@ -148,9 +148,9 @@ R4#show ip route 10.9.9.9
 | Komşu hangi durumda? | `show ip ospf neighbor` |
 | Arayüzün alanı, ağ tipi, zamanlayıcıları? | `show ip ospf interface [arayüz]` |
 | Hello neden reddediliyor? | `debug ip ospf hello` (kısa süre) |
-| DBD neden ilerlemiyor? | `debug ip ospf adj`, `show interfaces … | include MTU` |
+| DBD neden ilerlemiyor? | `debug ip ospf adj`, `show interfaces … \| include MTU` |
 | LSA geldi mi? | `show ip ospf database <tip> <önek>` |
-| Filtre var mı? | `show ip protocols` (distribute-list), `show run | section ospf` |
+| Filtre var mı? | `show ip protocols` (distribute-list), `show run \| section ospf` |
 
 ## 4. Yönlendirmeli lab
 
