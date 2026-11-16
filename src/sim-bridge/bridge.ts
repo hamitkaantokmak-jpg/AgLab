@@ -1081,6 +1081,8 @@ export function toAglab(
     if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail('Loopback')
     if (cfg.ospf) fail('OSPF')
     if (cfg.routes.length) fail('statik rota')
+    if (Object.keys(cfg.tracks ?? {}).length) fail('track (izlenen nesne; switch üzerinde desteklenmiyor)')
+    if (Object.keys(cfg.ipSla ?? {}).length) fail('IP SLA (desteklenmiyor)')
     if (cfg.ipRouting) fail('ip routing')
     if (cfg.stpMode !== 'pvst') fail('spanning-tree mode ' + cfg.stpMode)
     if (cfg.bpduguardDefault) fail('spanning-tree portfast bpduguard default')
@@ -1208,9 +1210,18 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
     if (!physName) fail(`${canon} (izlenen arayüz)`)
     return physName + (dot < 0 ? '' : canon.slice(dot))
   }
+  // IP SLA, ip sla nesnesi ve track'e bağlı statik rota AğLab modelinde yok: sessizce
+  // düşürülmez, raporlanır.
+  for (const r of cfg.routes)
+    if (r.track !== undefined) fail(`track ${r.track}'e bağlı statik rota ${r.net} ${r.mask} ${r.nh} (desteklenmiyor)`)
+  for (const [n, t] of Object.entries(cfg.tracks ?? {})) {
+    if (t.sla !== undefined) fail(`track ${n} ip sla ${t.sla} (desteklenmiyor)`)
+    if (t.delayUp !== undefined || t.delayDown !== undefined) fail(`track ${n} delay (desteklenmiyor)`)
+  }
+  for (const n of Object.keys(cfg.ipSla ?? {})) fail(`IP SLA ${n} (desteklenmiyor)`)
   {
     const ids = Object.keys(cfg.tracks ?? {}).map(Number).sort((a, b) => a - b)
-    const list = ids.map((n) => ({ id: n, interface: aglabIf(cfg.tracks![String(n)]!.iface) }))
+    const list = ids.map((n) => ({ id: n, interface: aglabIf(cfg.tracks![String(n)]!.iface!) }))
     const same = (orig.tracks as Record<string, unknown>[] | undefined)?.length === list.length &&
       list.every((t, i) => {
         const o = (orig.tracks as Record<string, unknown>[])[i]!

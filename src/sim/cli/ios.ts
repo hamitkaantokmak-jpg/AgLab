@@ -1,10 +1,11 @@
 // IOS-like CLI session for one switch.
 
 import * as fhrp from '../fhrp'
+import * as tracking from '../track'
 import { defaultSvi, defaultSwitchConfig, defaultVlanName, pickL2, RESERVED_VLANS } from '../config'
 import { arpMac, deliver, l3Ifs, ping, traceProbe } from '../net'
 import type { LabRuntime } from '../runtime'
-import type { ChannelMode, DhcpPool, FhrpTrack, HsrpGroup, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
+import type { ChannelMode, DhcpPool, FhrpTrack, HsrpGroup, IpSlaConfig, TrackConfig, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { canonIf, clone, ifNum, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
@@ -13,7 +14,10 @@ import * as psec from '../portsec'
 import * as acl from '../acl'
 import * as nat from '../nat'
 
-export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl' | 'track'
+/** IP SLA işlem numarası (IOS: 1-2147483647) */
+const SLA = '<1-2147483647:Entry number>'
+
+export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl' | 'track' | 'ipsla' | 'ipslaEcho'
 
 type P = Pattern<IosSession>
 type Out = string[] | void
@@ -81,7 +85,14 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show standby brief', run: (x) => fhrp.showStandbyBrief(x.rt.derived, x.dev) },
     { p: 'show vrrp', run: (x) => fhrp.showVrrp(x.rt.derived, x.dev) },
     { p: 'show vrrp brief', run: (x) => fhrp.showVrrpBrief(x.rt.derived, x.dev) },
-    { p: 'show track', run: (x) => fhrp.showTrack(x.rt.derived, x.dev) },
+    { p: 'show track', run: (x) => tracking.showTrack(x.rt.derived, x.dev) },
+    { p: 'show track <1-1000:Tracked object>', run: (x, a) => tracking.showTrack(x.rt.derived, x.dev, Number(a[2])) },
+    // IP SLA (icmp-echo)
+    { p: 'show ip sla statistics', run: (x) => tracking.showIpSlaStatistics(x.rt.derived, x.dev) },
+    { p: `show ip sla statistics ${SLA}`, run: (x, a) => tracking.showIpSlaStatistics(x.rt.derived, x.dev, Number(a[4])) },
+    { p: 'show ip sla configuration', run: (x) => tracking.showIpSlaConfiguration(x.rt.derived, x.dev) },
+    { p: `show ip sla configuration ${SLA}`, run: (x, a) => tracking.showIpSlaConfiguration(x.rt.derived, x.dev, Number(a[4])) },
+    { p: 'show ip sla summary', run: (x) => tracking.showIpSlaSummary(x.rt.derived, x.dev) },
     { p: 'show ip interface <if>', run: (x, a) => show.showIpInterface(x.rt, x.dev, x.resolveL3(a[3]!, a[4]!, 3)) },
     { p: 'show port-security address', run: (x) => psec.showPortSecurityAddress(x.rt, x.dev) },
     { p: 'show port-security interface <if>', run: (x, a) => psec.showPortSecurityInterface(x.rt, x.dev, x.physName(a[3]!, a[4]!, 3)), ifTypes: ['FastEthernet', 'GigabitEthernet'] },
@@ -174,6 +185,32 @@ const commonSub: P[] = [
   { p: 'do <LINE:Exec Command>', run: (x, a) => x.doCmd(a[1]!) },
 ]
 
+// IP SLA alt kipleri: `(config-ip-sla)` tür seçimi, `(config-ip-sla-echo)` icmp-echo ayarları
+const ipSlaPatterns: P[] = [
+  ...commonSub,
+  { p: 'icmp-echo <A.B.C.D:Destination IP address or hostname>', run: (x, a) => x.slaEcho({ target: a[1]! }) },
+  {
+    p: 'icmp-echo <A.B.C.D:Destination IP address or hostname> source-interface <if>',
+    run: (x, a) => x.slaEcho({ target: a[1]!, srcIf: x.resolveL3(a[3]!, a[4]!, 3) }),
+  },
+  { p: 'icmp-echo <A.B.C.D:Destination IP address or hostname> source-ip <A.B.C.D:Source Address>', run: (x, a) => x.slaEcho({ target: a[1]!, srcIp: a[3]! }) },
+]
+const ipSlaEchoPatterns: P[] = [
+  ...commonSub,
+  { p: 'frequency <1-604800:Frequency in seconds (default 60)>', run: (x, a) => x.slaSet((s) => void (s.frequency = Number(a[1]))) },
+  { p: 'no frequency', run: (x) => x.slaSet((s) => void delete s.frequency) },
+]
+// `(config-track)`: gecikme saklanır ve show'da yazılır; zaman modellenmez
+const D = '<0-180:Seconds>'
+const trackPatterns: P[] = [
+  ...commonSub,
+  { p: `delay down ${D} up ${D}`, run: (x, a) => x.trackDelay({ down: Number(a[2]), up: Number(a[4]) }) },
+  { p: `delay up ${D} down ${D}`, run: (x, a) => x.trackDelay({ up: Number(a[2]), down: Number(a[4]) }) },
+  { p: `delay down ${D}`, run: (x, a) => x.trackDelay({ down: Number(a[2]) }) },
+  { p: `delay up ${D}`, run: (x, a) => x.trackDelay({ up: Number(a[2]) }) },
+  { p: 'no delay', run: (x) => x.trackDelay(null) },
+]
+
 const configPatterns = (def: SwitchDef): P[] => {
   const p: P[] = [
     ...commonSub,
@@ -185,8 +222,11 @@ const configPatterns = (def: SwitchDef): P[] => {
       },
     },
     { p: 'vlan <vlist:ISL VLAN IDs 1-4094>', run: (x, a) => x.enterVlan(a[1]!) },
-    // FHRP: izlenen nesne (yalnız arayüz line-protocol'ü modellenir)
-    { p: 'track <1-1000:Tracked object> interface <if> line-protocol', run: (x, a) => x.trackObject(Number(a[1]), x.resolveL3(a[3]!, a[4]!, 3)) },
+    // izlenen nesne: arayüz line-protocol'ü ya da IP SLA işlemi (track.ts)
+    { p: 'track <1-1000:Tracked object> interface <if> line-protocol', run: (x, a) => x.trackObject(Number(a[1]), { iface: x.resolveL3(a[3]!, a[4]!, 3) }) },
+    { p: `track <1-1000:Tracked object> ip sla ${SLA}`, run: (x, a) => x.trackObject(Number(a[1]), { sla: Number(a[4]), kind: 'state' }) },
+    { p: `track <1-1000:Tracked object> ip sla ${SLA} reachability`, run: (x, a) => x.trackObject(Number(a[1]), { sla: Number(a[4]), kind: 'reachability' }) },
+    { p: `track <1-1000:Tracked object> ip sla ${SLA} state`, run: (x, a) => x.trackObject(Number(a[1]), { sla: Number(a[4]), kind: 'state' }) },
     { p: 'no track <1-1000:Tracked object>', run: (x, a) => void delete x.cfg.tracks?.[a[2]!] },
     { p: 'no vlan <vlist:ISL VLAN IDs 1-4094>', run: (x, a) => x.deleteVlan(a[2]!) },
     { p: 'interface <if>', run: (x, a) => x.enterIf(a[1]!, a[2]!) },
@@ -260,6 +300,27 @@ const configPatterns = (def: SwitchDef): P[] => {
         p: 'ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router\'s address> <1-255:Distance metric for this route>',
         run: (x, a) => x.addRoute(a[2]!, a[3]!, a[4]!, Number(a[5])),
       },
+      {
+        p: 'ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router\'s address> track <1-1000:Tracked object number>',
+        run: (x, a) => x.addRoute(a[2]!, a[3]!, a[4]!, 1, Number(a[6])),
+      },
+      {
+        p: 'ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router\'s address> <1-255:Distance metric for this route> track <1-1000:Tracked object number>',
+        run: (x, a) => x.addRoute(a[2]!, a[3]!, a[4]!, Number(a[5]), Number(a[7])),
+      },
+      {
+        p: 'no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router\'s address> track <1-1000:Tracked object number>',
+        run: (x, a) => x.removeRoute(a[3]!, a[4]!, a[5]!),
+      },
+      {
+        p: 'no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router\'s address> <1-255:Distance metric for this route> track <1-1000:Tracked object number>',
+        run: (x, a) => x.removeRoute(a[3]!, a[4]!, a[5]!),
+      },
+      // IP SLA (yalnız icmp-echo; zamanlama yalnız `life forever start-time now`)
+      { p: `ip sla ${SLA}`, run: (x, a) => x.enterSla(Number(a[2])) },
+      { p: `no ip sla ${SLA}`, run: (x, a) => x.deleteSla(Number(a[3])) },
+      { p: `ip sla schedule ${SLA} life forever start-time now`, run: (x, a) => x.scheduleSla(Number(a[3]), true) },
+      { p: `no ip sla schedule ${SLA}`, run: (x, a) => x.scheduleSla(Number(a[4]), false) },
       {
         p: 'no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask>',
         run: (x, a) => x.removeRoute(a[3]!, a[4]!, null),
@@ -652,8 +713,10 @@ function tries(def: SwitchDef) {
       router: buildTrie(routerPatterns),
       dhcp: buildTrie(dhcpPoolPatterns),
       acl: buildTrie(aclPatterns),
-      // FHRP: `track N interface … line-protocol` alt kipi (gecikme vb. modellenmez)
-      track: buildTrie(commonSub),
+      // `track N …` alt kipi (delay saklanır; zaman modellenmez)
+      track: buildTrie(trackPatterns),
+      ipsla: buildTrie(ipSlaPatterns),
+      ipslaEcho: buildTrie(ipSlaEchoPatterns),
     }
     trieCache.set(def, t)
   }
@@ -671,6 +734,9 @@ export class IosSession {
   aclName = ''
   /** L5-b: pool under `ip dhcp pool <name>` */
   pool = ''
+  /** `(config-track)` / `(config-ip-sla…)` altında düzenlenen nesne / işlem */
+  trackNo = 0
+  slaNo = 0
   history: string[] = []
   private pending: { prompt: string; fn: (line: string) => Out } | null = null
   private starts: number[] = []
@@ -707,13 +773,17 @@ export class IosSession {
         return h + '(dhcp-config)#'
       case 'track':
         return h + '(config-track)#'
+      case 'ipsla':
+        return h + '(config-ip-sla)#'
+      case 'ipslaEcho':
+        return h + '(config-ip-sla-echo)#'
       case 'acl':
         return h + (this.cfg.acls?.[this.aclName]?.type === 'extended' ? '(config-ext-nacl)#' : '(config-std-nacl)#')
     }
   }
 
   get inConfig() {
-    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track'
+    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho'
   }
 
   private trie(): TrieNode<IosSession> {
@@ -762,7 +832,7 @@ export class IosSession {
   private run(cmd: string): string[] {
     let r = parse(this.trie(), cmd)
     // in a sub-mode, a global config command drops back to config mode (as IOS does)
-    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track') && r.err !== 'empty') {
+    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho') && r.err !== 'empty') {
       const g = parse(tries(this.def).config, cmd)
       if (g.ok) {
         this.mode = 'config'
@@ -1104,9 +1174,67 @@ export class IosSession {
   /** An L3 interface name for show commands (physical, subinterface, SVI, loopback). */
   // ---- FHRP ----
 
-  trackObject(n: number, iface: string): Out {
-    ;(this.cfg.tracks ??= {})[String(n)] = { iface }
+  /** `track N interface … line-protocol` | `track N ip sla …`: tür değiştirilemez (önce `no track N`). */
+  trackObject(n: number, obj: TrackConfig): Out {
+    const tracks = (this.cfg.tracks ??= {})
+    const cur = tracks[String(n)]
+    const typeOf = (t: TrackConfig) => (t.sla !== undefined ? 'ip sla' : 'interface')
+    if (cur && typeOf(cur) !== typeOf(obj)) return [`% Tracked object ${n} is already configured as a different type; remove it first (no track ${n})`]
+    // gecikme ayarı korunur (aynı nesne yeniden girildi)
+    tracks[String(n)] = { ...obj, ...(cur?.delayUp !== undefined ? { delayUp: cur.delayUp } : {}), ...(cur?.delayDown !== undefined ? { delayDown: cur.delayDown } : {}) }
+    this.trackNo = n
     this.mode = 'track'
+  }
+
+  trackDelay(delay: { up?: number; down?: number } | null): Out {
+    const t = this.cfg.tracks?.[String(this.trackNo)]
+    if (!t) return
+    if (delay === null) {
+      delete t.delayUp
+      delete t.delayDown
+      return
+    }
+    if (delay.up !== undefined) t.delayUp = delay.up
+    if (delay.down !== undefined) t.delayDown = delay.down
+  }
+
+  // ---- IP SLA ----
+
+  /** `ip sla N`: çalışan (zamanlanmış) işlem değiştirilemez (IOS: silip yeniden kurulur). */
+  enterSla(n: number): Out {
+    const cur = this.cfg.ipSla?.[String(n)]
+    if (cur?.scheduled)
+      return ['%Entry already running and cannot be modified', '(only can delete (no) and start over)', '(check to see if the probe has finished exiting)']
+    ;(this.cfg.ipSla ??= {})[String(n)] ??= {}
+    this.slaNo = n
+    this.mode = cur?.icmp ? 'ipslaEcho' : 'ipsla'
+  }
+
+  slaEcho(icmp: NonNullable<IpSlaConfig['icmp']>): Out {
+    const s = this.cfg.ipSla?.[String(this.slaNo)]
+    if (!s) return
+    s.icmp = icmp
+    this.mode = 'ipslaEcho'
+  }
+
+  slaSet(fn: (s: IpSlaConfig) => void): Out {
+    const s = this.cfg.ipSla?.[String(this.slaNo)]
+    if (s) fn(s)
+  }
+
+  deleteSla(n: number): Out {
+    if (!this.cfg.ipSla?.[String(n)]) return
+    delete this.cfg.ipSla[String(n)]
+    if (!Object.keys(this.cfg.ipSla).length) delete this.cfg.ipSla
+  }
+
+  /** `ip sla schedule N life forever start-time now` / `no ip sla schedule N` */
+  scheduleSla(n: number, on: boolean): Out {
+    const s = this.cfg.ipSla?.[String(n)]
+    if (!s) return on ? [`%IP SLAs operation ${n} does not exist`] : undefined
+    if (on && !s.icmp) return [`%IP SLAs operation ${n} has no operation type configured`]
+    if (on) s.scheduled = true
+    else delete s.scheduled
   }
 
   /** Apply to group `n` of HSRP/VRRP on the interface; empty groups are removed (as IOS). */
@@ -1534,17 +1662,20 @@ export class IosSession {
     })
   }
 
-  addRoute(net: string, mask: string, nh: string, ad = 1): Out {
+  addRoute(net: string, mask: string, nh: string, ad = 1, track?: number): Out {
     const len = maskToPrefix(mask)
     if (len === null) return ['%Inconsistent address and mask']
     if (networkOf(net, len) !== net) return ['%Inconsistent address and mask']
     if (nh === '0.0.0.0' || this.ipIfs().some(([, ip]) => ip.addr === nh)) return ['%Invalid next hop address (it\'s this router)']
     // IOS: the same prefix + next hop again replaces the distance; a new next hop adds a route
+    // (yeniden girilen satır `track`'i de değiştirir: track yazılmadıysa kalkar)
     const same = this.cfg.routes.find((r) => r.net === net && r.mask === mask && r.nh === nh)
     if (same) {
       if (ad === 1) delete same.ad
       else same.ad = ad
-    } else this.cfg.routes.push(ad === 1 ? { net, mask, nh } : { net, mask, nh, ad })
+      if (track === undefined) delete same.track
+      else same.track = track
+    } else this.cfg.routes.push({ net, mask, nh, ...(ad === 1 ? {} : { ad }), ...(track === undefined ? {} : { track }) })
   }
 
   /** `no ip route net mask [nh [ad]]`: without a next hop every route to the prefix goes. */

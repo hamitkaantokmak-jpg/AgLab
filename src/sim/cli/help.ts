@@ -1,5 +1,23 @@
 // IOS-style help strings for keywords (shown by '?').
 export const HELP: Record<string, string> = {
+  // IP SLA ve nesne izleme
+  sla: 'IP Service Level Agreement',
+  'icmp-echo': 'ICMP Echo Operation',
+  schedule: 'IP SLA operation scheduling',
+  life: 'Length of time to execute in seconds',
+  forever: 'continue running forever',
+  'start-time': 'When to start this entry',
+  now: 'Start now',
+  reachability: 'Reachability',
+  state: 'Return code state',
+  delay: 'Tracking delay',
+  up: 'Delay up change notification',
+  down: 'Delay down change notification',
+  frequency: 'Frequency of an operation',
+  'source-interface': 'Source Interface (ingress icmp packet interface)',
+  'source-ip': 'Source Address',
+  statistics: 'IP SLA statistics',
+  configuration: 'IP SLA configuration',
   // FHRP
   standby: 'HSRP interface configuration commands',
   vrrp: 'VRRP Interface configuration commands',

@@ -1,5 +1,6 @@
 // Lab runtime: owns configs, recomputes derived state, emits syslog on state changes.
 
+import { computeTrack, type TrackState } from './track'
 import { computeFhrp, memberId, type FhrpState } from './fhrp'
 import type { ConfigLine } from './config-text'
 import type { NatEntry } from './nat'
@@ -268,9 +269,28 @@ export class LabRuntime {
     }
     d.natTable = this.natTable
     d.arpCache = this.arp
+    // IP SLA + izlenen nesneler (FHRP'den önce: HSRP track'leri nesne durumunu kullanır)
+    this.trackChanges(computeTrack(d))
     d.fhrp = computeFhrp(d, this.fhrpActive)
     this.fhrpLog(d.fhrp)
     return d
+  }
+
+  /** İzlenen nesne durum değişikliği sayaçları ('dev|n' → son durum, değişim sayısı). */
+  private trackHist = new Map<string, { up: boolean; changes: number }>()
+  private trackChanges(t: TrackState) {
+    const seen = new Set<string>()
+    for (const [dev, objs] of Object.entries(t.objects))
+      for (const [n, o] of Object.entries(objs)) {
+        const k = dev + '|' + n
+        seen.add(k)
+        // nesne Down başlar (IOS): ilk Up bir değişikliktir
+        const prev = this.trackHist.get(k) ?? { up: false, changes: 0 }
+        const changes = prev.changes + (prev.up !== o.up ? 1 : 0)
+        this.trackHist.set(k, { up: o.up, changes })
+        o.changes = changes
+      }
+    for (const k of [...this.trackHist.keys()]) if (!seen.has(k)) this.trackHist.delete(k)
   }
 
   /** FHRP state changes (IOS 15 biçimi; ara Speak/Learn durumları modellenmez). */
