@@ -190,6 +190,9 @@ köprü kullanılmadan doğrudan Labber'da kurulur; terminal Labber oturumudur, 
 | `bpdu-guard` | BPDU Guard, err-disable ve otomatik kurtarma | Orta | 5/5 | 6 | ENCOR, STP, PortFast, BPDU Guard, err-disable | **Labber** — LabDef doğrudan |
 | `ospf-ariza` | OSPF arıza giderme: komşuluk şartları ve metrik ayarı | İleri | 5/5 | 6 | ENCOR, OSPF, Arıza giderme, Hello/Dead, MTU, Reference bandwidth | **Labber** — LabDef doğrudan |
 | `ospf-cok-alan` | Çok alanlı OSPF: ABR, ASBR, varsayılan rota, totally stubby area | İleri | 6/5 | 5 | ENCOR, OSPF, Multi-area, ABR/ASBR, Stub area, Default route | **Labber** — LabDef doğrudan |
+| `ospf-alan-ariza` | Çok alanlı OSPF arıza giderme: stub bayrağı ve omurgasız ABR | İleri | 6/5 | 5 | ENCOR, OSPF, Multi-area, Stub area, ABR, Arıza giderme | **Labber** — LabDef doğrudan |
+| `ospf-sorun-ileri` | İleri OSPF sorun giderme: ağ tipi, çift router-id ve DR seçimi | İleri | 6/5 | 5 | ENARSI, OSPF, Arıza giderme, Ağ tipi, Router-id, DR/BDR | **Labber** — LabDef doğrudan |
+| `ospf-dagitim` | Redistribution: statik ve bağlı ağları OSPF'e aktarmak | İleri | 7/6 | 5 | ENARSI, OSPF, Redistribution, ASBR, E2, subnets | **Labber** — LabDef doğrudan |
 
 ## Motor kullanmayan eski içerik (L6)
 
@@ -261,8 +264,8 @@ gerekçesiyle gösterilir (terminal ve değerlendirme açık hata verir).
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
 | Ortak senaryolar | 116 | 0 | 116 |
-| Labber labları | 13 | 0 | 13 |
-| Toplam | 169 | 0 | 169 |
+| Labber labları | 16 | 0 | 16 |
+| Toplam | 172 | 0 | 172 |
 
 | Simüle edilememe gerekçesi | İçerik sayısı |
 |---|---|
