@@ -63,7 +63,7 @@ const INFO = /^% Access VLAN does not exist\. Creating vlan \d+$/
 const isError = (out: string[]) => out.some((l) => ERR.test(l.trim()) && !INFO.test(l.trim()))
 
 /** Kip açan satırlar: reddedilirse alt satırları önceki kipte çalıştırılmaz. */
-const MODE_LINE = /^(interface|router|line|ip\s+access-list|ip\s+dhcp\s+pool|vlan\s+\d|controller|class-map|policy-map|key\s+chain|crypto)\b/i
+const MODE_LINE = /^(interface|router|line|ip\s+access-list|ip\s+dhcp\s+pool|ip\s+sla\s+\d|track\s+\d|vlan\s+\d|controller|class-map|policy-map|key\s+chain|crypto)\b/i
 
 function harmless(cmd: string): string | null {
   for (const [re, why] of HARMLESS) if (re.test(cmd)) return why

@@ -251,6 +251,32 @@ export interface StaticRoute {
   nh: string
   /** administrative distance (`ip route … <1-255>`); undefined = 1 */
   ad?: number
+  /** `ip route … track <n>`: kurulur yalnız izlenen nesne Up iken */
+  track?: number
+}
+
+/** IP SLA işlemi (`ip sla <n>`); yalnız icmp-echo modellenir. */
+export interface IpSlaConfig {
+  /** `icmp-echo <hedef> [source-interface <if> | source-ip <ip>]` (tür girilmeden boş) */
+  icmp?: { target: string; srcIf?: string; srcIp?: string }
+  /** `frequency <s>` (saklanır; zaman modellenmez) */
+  frequency?: number
+  /** `ip sla schedule <n> life forever start-time now` */
+  scheduled?: boolean
+}
+
+/**
+ * İzlenen nesne (`track <n> …`): arayüz line-protocol'ü ya da bir IP SLA işlemi.
+ * `delay` saklanır ve show'da yazılır; zaman modellenmez.
+ */
+export interface TrackConfig {
+  /** `track <n> interface <if> line-protocol` (kanonik arayüz adı) */
+  iface?: string
+  /** `track <n> ip sla <sla> [reachability | state]` */
+  sla?: number
+  kind?: 'reachability' | 'state'
+  delayUp?: number
+  delayDown?: number
 }
 
 export interface SwitchConfig {
@@ -291,8 +317,10 @@ export interface SwitchConfig {
   dhcpPools?: Record<string, DhcpPool>
   /** L5-b: `ip dhcp excluded-address low [high]` */
   dhcpExcluded?: { lo: string; hi: string }[]
-  /** FHRP: `track <n> interface <if> line-protocol` (object number → canonical interface) */
-  tracks?: Record<string, { iface: string }>
+  /** izlenen nesneler: `track <n> interface <if> line-protocol` | `track <n> ip sla <sla> …` */
+  tracks?: Record<string, TrackConfig>
+  /** IP SLA işlemleri (`ip sla <n>`) */
+  ipSla?: Record<string, IpSlaConfig>
 }
 
 export interface PcConfig {

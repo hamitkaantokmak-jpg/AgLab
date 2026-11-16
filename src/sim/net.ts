@@ -235,7 +235,10 @@ export function routeTable(d: Derived, dev: string): RouteEntry[] {
   const connected = out.filter((e) => e.code === 'C' && ifs.find((i) => i.name === e.ifname)?.node)
   const statics: Candidate[] = d.cfgs[dev]!.routes.flatMap((r, idx) => {
     const prefix = maskToPrefix(r.mask)
-    return prefix === null ? [] : [{ code: 'S' as const, net: r.net, prefix, ad: r.ad ?? 1, idx, nh: r.nh, ifname: '' }]
+    if (prefix === null) return []
+    // `ip route … track N`: nesne Down iken kurulmaz (track.ts; ilk aşamada d.track yok: kurulu)
+    if (r.track !== undefined && d.track && !d.track.objects[dev]?.[String(r.track)]?.up) return []
+    return [{ code: 'S' as const, net: r.net, prefix, ad: r.ad ?? 1, idx, nh: r.nh, ifname: '' }]
   })
   const ospf: Candidate[] = (d.ospf[dev]?.routes ?? [])
     .filter((r) => r.paths.length)

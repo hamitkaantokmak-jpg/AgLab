@@ -6,6 +6,7 @@ import { dnsLookup, isApipa, type DnsResult } from './dhcp'
 import { macTable, ping, pcNode, routeTable, type MacEntry, type PingResult, type RouteEntry } from './net'
 import type { DhcpBinding, SwitchConfig } from './types'
 import { pk } from './topology'
+import { objectUp } from './track'
 import { canonIf, ipToInt, normalizeMac, prefixMaskInt } from './util'
 
 const OSPF_AD = 110
@@ -95,6 +96,23 @@ export class LabQuery {
   /** FULL adjacency between two routers (seen from both ends). */
   ospfAdjacent(a: string, b: string): boolean {
     return this.ospfFull(a).some((n) => n.peerDev === b) && this.ospfFull(b).some((n) => n.peerDev === a)
+  }
+
+  /**
+   * IP SLA işlemi: yapılandırıldı mı, zamanlandı mı, son yoklama başarılı mı; `flapping`:
+   * nesne Down iken yoklama yedek yoldan başarılı (gerçek IOS'ta dalgalanır; track.ts).
+   */
+  ipSla(dev: string, n: number): { configured: boolean; scheduled: boolean; ok: boolean; flapping: boolean } {
+    const c = this.d.cfgs[dev]?.ipSla?.[String(n)]
+    const r = this.d.track?.sla[dev]?.[String(n)]
+    return { configured: !!c, scheduled: !!c?.scheduled, ok: !!c && !!r?.ok, flapping: !!c && !!r?.flapping }
+  }
+
+  /** İzlenen nesne: Up mı ve türü ('interface' | 'ip sla'; tanımsızsa null ve Down). */
+  track(dev: string, n: number): { up: boolean; type: 'interface' | 'ip sla' | null } {
+    const t = this.d.cfgs[dev]?.tracks?.[String(n)]
+    if (!t) return { up: false, type: null }
+    return { up: objectUp(this.d, dev, n), type: t.sla !== undefined ? 'ip sla' : 'interface' }
   }
 
   /** Installed routing table (C/L/S/O...). */

@@ -127,6 +127,11 @@ export interface Derived {
   arpCache?: Set<string>
   /** FHRP: HSRP/VRRP members and elected Active/Master (filled by the runtime; see fhrp.ts) */
   fhrp?: import('./fhrp').FhrpState
+  /**
+   * IP SLA sonuçları ve izlenen nesne durumları (runtime doldurur; track.ts). Yokken (ilk
+   * hesap aşaması) track'li statik rotaların hepsi kurulu sayılır.
+   */
+  track?: import('./track').TrackState
 }
 
 const protoOf = (m: ChannelMode): 'LACP' | 'PAgP' | '-' =>

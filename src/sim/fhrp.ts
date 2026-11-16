@@ -15,6 +15,7 @@
 import type { Derived } from './engine'
 import { l2Domain, l3Ifs, type L3If, type Node } from './net'
 import { pk } from './topology'
+import { lineProtocolUp, objectUp } from './track'
 import type { FhrpTrack, L3Opts } from './types'
 import { ipToInt, shortIf } from './util'
 
@@ -85,24 +86,13 @@ function l3Configs(d: Derived, dev: string): [string, L3Opts | undefined][] {
   return out
 }
 
-/** Line protocol of an interface (IOS `track … line-protocol`). */
-export function lineProtocolUp(d: Derived, dev: string, ifname: string): boolean {
-  if (d.hw.off.has(dev)) return false
-  const cfg = d.cfgs[dev]
-  if (!cfg) return false
-  if (ifname.startsWith('Vlan')) return !!d.svis[dev]?.find((s) => 'Vlan' + s.vlan === ifname)?.up
-  if (ifname.includes('.')) {
-    const si = cfg.subifs?.[ifname]
-    return !!si && !si.shutdown && !!d.lportByName[pk(dev, si.parent)]?.active
-  }
-  return !!d.lportByName[pk(dev, ifname)]?.active
-}
-
 function trackStates(d: Derived, dev: string, tracks: FhrpTrack[] | undefined): FhrpTrackState[] {
   return (tracks ?? []).map((t) => {
-    const iface = t.obj !== undefined ? (d.cfgs[dev]?.tracks?.[String(t.obj)]?.iface ?? null) : (t.iface ?? null)
-    // an object that is not configured is down (IOS: tracked object does not exist)
-    return { ...(t.obj !== undefined ? { obj: t.obj } : {}), iface, decrement: t.decrement ?? 10, up: !!iface && lineProtocolUp(d, dev, iface) }
+    // nesne: arayüz line-protocol'ü ya da IP SLA (track.ts); tanımsız nesne Down (IOS)
+    if (t.obj !== undefined)
+      return { obj: t.obj, iface: d.cfgs[dev]?.tracks?.[String(t.obj)]?.iface ?? null, decrement: t.decrement ?? 10, up: objectUp(d, dev, t.obj) }
+    const iface = t.iface ?? null
+    return { iface, decrement: t.decrement ?? 10, up: !!iface && lineProtocolUp(d, dev, iface) }
   })
 }
 
@@ -279,23 +269,6 @@ export function showVrrp(d: Derived, dev: string): string[] {
     )
     o.push('  Master Advertisement interval is 1.000 sec')
     o.push(`  Master Down interval is ${(downMs(m.priority) / 1000).toFixed(3)} sec`)
-  }
-  return o
-}
-
-/** `show track` (line-protocol objects). */
-export function showTrack(d: Derived, dev: string): string[] {
-  const o: string[] = []
-  const tracks = d.cfgs[dev]?.tracks ?? {}
-  for (const n of Object.keys(tracks).map(Number).sort((a, b) => a - b)) {
-    const iface = tracks[String(n)]!.iface
-    const up = lineProtocolUp(d, dev, iface)
-    o.push(`Track ${n}`, `  Interface ${iface} line-protocol`, `  Line protocol is ${up ? 'Up' : 'Down'}`)
-    const users = (d.fhrp?.members ?? []).filter((m) => m.dev === dev && m.tracks.some((t) => t.obj === n))
-    if (users.length) {
-      o.push('Tracked by:')
-      for (const m of users) o.push(`  HSRP ${m.ifname} ${m.group}`)
-    }
   }
   return o
 }

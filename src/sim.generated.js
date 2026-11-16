@@ -1296,7 +1296,9 @@ var AgLabSim = (() => {
     const connected = out.filter((e) => e.code === "C" && ifs.find((i) => i.name === e.ifname)?.node);
     const statics = d.cfgs[dev].routes.flatMap((r, idx) => {
       const prefix = maskToPrefix(r.mask);
-      return prefix === null ? [] : [{ code: "S", net: r.net, prefix, ad: r.ad ?? 1, idx, nh: r.nh, ifname: "" }];
+      if (prefix === null) return [];
+      if (r.track !== void 0 && d.track && !d.track.objects[dev]?.[String(r.track)]?.up) return [];
+      return [{ code: "S", net: r.net, prefix, ad: r.ad ?? 1, idx, nh: r.nh, ifname: "" }];
     });
     const ospf2 = (d.ospf[dev]?.routes ?? []).filter((r) => r.paths.length).map((r) => ({ code: r.code, net: r.net, prefix: r.prefix, ad: OSPF_AD, nh: r.paths[0].nh, ifname: r.paths[0].ifname, metric: r.metric, paths: r.paths }));
     const lookupFor = (dst, seen) => {
@@ -1576,6 +1578,567 @@ var AgLabSim = (() => {
     return out.sort((a, b) => a.vlan - b.vlan || a.mac.localeCompare(b.mac));
   }
 
+  // src/sim/ospf.ts
+  function computeState(topo, cfgs, pcs, errdis, hw) {
+    const d = derive(topo, cfgs, pcs, errdis, hw);
+    d.ospf = computeOspf(d);
+    d.dups = duplicateIps(d);
+    return d;
+  }
+  function recomputeOspf(d) {
+    d.ospf = {};
+    d.ospf = computeOspf(d);
+  }
+  function ospfExternalsFromTable(d, dev) {
+    const o = d.cfgs[dev]?.ospf;
+    return !!o && (!!o.defaultOriginate && !o.defaultOriginate.always || !!o.redistribute?.static);
+  }
+  var ridInt = (r) => ipToInt(r) ?? 0;
+  function candidateRid(d, dev) {
+    const c = d.cfgs[dev].ospf;
+    if (c?.routerId) return c.routerId;
+    const ifs = l3Ifs(d, dev);
+    const pick = (list) => list.length ? list.map((i) => i.ip).sort((a, b) => ridInt(b) - ridInt(a))[0] : null;
+    return pick(ifs.filter((i) => i.kind === "loop")) ?? pick(ifs);
+  }
+  function ospfRunning(d, dev) {
+    const def = d.topo.devices[dev];
+    const c = d.cfgs[dev];
+    return def?.kind === "switch" && !!(def.l3 || def.router) && !!c?.ipRouting && !!c.ospf && !d.hw.off.has(dev);
+  }
+  function configuredL3(cfg, sw) {
+    const out = [];
+    for (const [v, s] of Object.entries(cfg.svis)) if (s.ip) out.push({ name: "Vlan" + v, ip: s.ip, l3: s.l3 ?? {} });
+    for (const p of sw.ports) {
+      const c = cfg.ifaces[p];
+      if (c.routed && c.ip) out.push({ name: p, ip: c.ip, l3: c.l3 ?? {} });
+    }
+    for (const [n, l] of Object.entries(cfg.loopbacks ?? {})) if (l.ip) out.push({ name: "Loopback" + n, ip: l.ip, l3: l.l3 ?? {} });
+    return out;
+  }
+  function areaFor(o, ip2, l3) {
+    if (l3.ospfArea && l3.ospfArea.pid === o.pid) return l3.ospfArea.area;
+    const a = ipToInt(ip2);
+    let best = null;
+    for (const n of o.networks) {
+      const wc = ipToInt(n.wildcard);
+      const care = ~wc >>> 0;
+      if ((a & care) >>> 0 !== (ipToInt(n.addr) & care) >>> 0) continue;
+      const bits = popcount(wc);
+      if (!best || bits < best.bits) best = { bits, area: n.area };
+    }
+    return best?.area ?? null;
+  }
+  function popcount(n) {
+    let c = 0;
+    for (let x = n >>> 0; x; x >>>= 1) c += x & 1;
+    return c;
+  }
+  function isPassive(o, name) {
+    return o.passiveDefault ? !o.passive.includes(name) : o.passive.includes(name);
+  }
+  var isStub = (o, area) => !!o.stubs[String(area)];
+  function computeOspf(d) {
+    const out = {};
+    const devs = d.topo.switches.filter((s) => ospfRunning(d, s.id));
+    for (const sw of devs) {
+      const cfg = d.cfgs[sw.id];
+      const o = cfg.ospf;
+      const rid = o.activeRid ?? null;
+      const up = new Map(l3Ifs(d, sw.id).map((i) => [i.name, i]));
+      const ifs = [];
+      for (const c of configuredL3(cfg, sw)) {
+        const area = areaFor(o, c.ip.addr, c.l3);
+        if (area === null) continue;
+        const isLoop = c.name.startsWith("Loopback");
+        const net = c.l3.ospfNet ?? (isLoop ? "loopback" : "broadcast");
+        const hello = c.l3.ospfHello ?? 10;
+        const bw = ifBandwidth(c.name, c.l3.bandwidth);
+        const l3 = up.get(c.name) ?? null;
+        ifs.push({
+          dev: sw.id,
+          name: c.name,
+          ip: c.ip.addr,
+          prefix: maskToPrefix(c.ip.mask),
+          area,
+          cost: c.l3.ospfCost ?? Math.max(1, Math.floor(o.refBw * 1e3 / bw)),
+          hello,
+          dead: c.l3.ospfDead ?? hello * 4,
+          prio: c.l3.ospfPrio ?? 1,
+          net: isLoop && net === "broadcast" ? "loopback" : net,
+          passive: isPassive(o, c.name),
+          mtu: c.l3.mtu ?? 1500,
+          up: !!l3 && !!rid,
+          role: "DOWN",
+          dr: null,
+          bdr: null,
+          l3
+        });
+      }
+      const areas = [...new Set(ifs.filter((i) => i.up).map((i) => i.area))].sort((a, b) => a - b);
+      out[sw.id] = { pid: o.pid, rid, ifs, nbrs: [], routes: [], areas, abr: areas.includes(0) && areas.length > 1, asbr: false, mismatches: [] };
+    }
+    const talkers = Object.values(out).flatMap((s) => s.ifs.filter((i) => i.up && !i.passive && i.net !== "loopback" && i.l3?.node));
+    const domCache = /* @__PURE__ */ new Map();
+    const domOf = (i) => {
+      const key = `${i.dev}|${i.name}`;
+      let s = domCache.get(key);
+      if (!s) {
+        s = /* @__PURE__ */ new Set([...l2Domain(d, i.l3.node).nodes.keys()]);
+        domCache.set(key, s);
+      }
+      return s;
+    };
+    const nk4 = (i) => `${i.l3.node.dev}|${i.l3.node.vlan}`;
+    const peersOf = /* @__PURE__ */ new Map();
+    const compat = /* @__PURE__ */ new Map();
+    for (const a of talkers) {
+      const dom = domOf(a);
+      const peers = talkers.filter((b) => b.dev !== a.dev && dom.has(nk4(b)));
+      peersOf.set(a, peers);
+      const ok = [];
+      for (const b of peers) {
+        const kind = mismatch(d, out, a, b);
+        if (kind) out[a.dev].mismatches.push({ dev: a.dev, ifname: a.name, peerIp: b.ip, peerDev: b.dev, kind });
+        else ok.push(b);
+      }
+      compat.set(a, ok);
+    }
+    for (const a of talkers) {
+      if (a.net === "point-to-point") {
+        a.role = "P2P";
+        continue;
+      }
+      const cands = [a, ...compat.get(a)].filter((x) => x.net === "broadcast" && x.prio > 0);
+      cands.sort((x, y) => y.prio - x.prio || ridInt(out[y.dev].rid) - ridInt(out[x.dev].rid));
+      const dr = cands[0];
+      const bdr = cands[1];
+      a.dr = dr ? { rid: out[dr.dev].rid, ip: dr.ip } : null;
+      a.bdr = bdr ? { rid: out[bdr.dev].rid, ip: bdr.ip } : null;
+      a.role = dr === a ? "DR" : bdr === a ? "BDR" : "DROTHER";
+    }
+    for (const s of Object.values(out)) {
+      for (const i of s.ifs) {
+        if (!i.up) i.role = "DOWN";
+        else if (i.net === "loopback") i.role = "LOOP";
+        else if (i.role === "DOWN") i.role = i.net === "point-to-point" ? "P2P" : "DR";
+      }
+    }
+    for (const a of talkers) {
+      for (const b of compat.get(a)) {
+        const bothP2p = a.net === "point-to-point" && b.net === "point-to-point";
+        const sameType = a.net === b.net;
+        let state;
+        let role2 = "-";
+        if (bothP2p || !sameType) state = "FULL";
+        else {
+          role2 = a.dr?.ip === b.ip ? "DR" : a.bdr?.ip === b.ip ? "BDR" : "DROTHER";
+          const adj = a.role === "DR" || a.role === "BDR" || role2 === "DR" || role2 === "BDR";
+          state = adj ? "FULL" : "2WAY";
+        }
+        if (state === "FULL" && a.mtu !== b.mtu) state = "EXSTART";
+        out[a.dev].nbrs.push({
+          rid: out[b.dev].rid,
+          prio: b.prio,
+          state,
+          role: role2,
+          ip: b.ip,
+          ifname: a.name,
+          peerDev: b.dev,
+          peerIf: b.name,
+          spf: state === "FULL" && sameType
+        });
+      }
+    }
+    const ifsIn = (dev, area) => out[dev].ifs.filter((i) => i.up && i.area === area);
+    const devsIn = (area) => Object.keys(out).filter((dev) => out[dev].areas.includes(area));
+    const allAreas = [...new Set(Object.values(out).flatMap((s) => s.areas))];
+    const edges = /* @__PURE__ */ new Map();
+    const ekey = (dev, area) => `${dev}#${area}`;
+    for (const area of allAreas) {
+      for (const dev of devsIn(area)) {
+        const list = [];
+        for (const a of ifsIn(dev, area)) {
+          if (!talkers.includes(a)) continue;
+          const full = out[dev].nbrs.filter((n) => n.ifname === a.name && n.spf);
+          if (a.net === "point-to-point") {
+            for (const n of full) list.push({ to: n.peerDev, cost: a.cost, path: { nh: n.ip, ifname: a.name } });
+            continue;
+          }
+          if (!a.dr) continue;
+          const amAttached = a.role === "DR" ? full.length > 0 : full.some((n) => n.ip === a.dr.ip);
+          if (!amAttached) continue;
+          for (const b of peersOf.get(a)) {
+            if (b.area !== area || !compat.get(a).includes(b) || b.net !== "broadcast") continue;
+            const bFull = out[b.dev].nbrs.filter((n) => n.ifname === b.name && n.spf);
+            const bAttached = b.role === "DR" ? bFull.length > 0 : bFull.some((n) => n.ip === a.dr.ip);
+            if (bAttached) list.push({ to: b.dev, cost: a.cost, path: { nh: b.ip, ifname: a.name } });
+          }
+        }
+        edges.set(ekey(dev, area), list);
+      }
+    }
+    const spf = (root, area) => {
+      const dist2 = /* @__PURE__ */ new Map([[root, { cost: 0, paths: [] }]]);
+      const done = /* @__PURE__ */ new Set();
+      for (; ; ) {
+        let cur = null;
+        for (const [k, v] of dist2) if (!done.has(k) && (cur === null || v.cost < dist2.get(cur).cost)) cur = k;
+        if (cur === null) break;
+        done.add(cur);
+        const base3 = dist2.get(cur);
+        for (const e of edges.get(ekey(cur, area)) ?? []) {
+          if (done.has(e.to)) continue;
+          const cost = base3.cost + e.cost;
+          const paths = cur === root ? [e.path] : base3.paths;
+          const prev = dist2.get(e.to);
+          if (!prev || cost < prev.cost) dist2.set(e.to, { cost, paths: [...paths] });
+          else if (cost === prev.cost) prev.paths = mergePaths(prev.paths, paths);
+        }
+      }
+      return dist2;
+    };
+    const pkey = (net, prefix) => `${net}/${prefix}`;
+    const asbrKey = (dev) => `asbr:${dev}`;
+    const externals = /* @__PURE__ */ new Map();
+    for (const dev of Object.keys(out)) {
+      const o = d.cfgs[dev].ospf;
+      if (!out[dev].rid) continue;
+      const list = [];
+      const table = o.defaultOriginate || o.redistribute ? routeTable(d, dev) : [];
+      if (o.defaultOriginate && (o.defaultOriginate.always || table.some((e) => e.prefix === 0 && e.code === "S"))) list.push({ net: "0.0.0.0", prefix: 0, metric: 1 });
+      const ospfIfs = new Set(out[dev].ifs.map((i) => i.name));
+      for (const src of ["static", "connected"]) {
+        const rd = o.redistribute?.[src];
+        if (!rd) continue;
+        for (const e of table) {
+          if (e.prefix === 0 || (src === "static" ? e.code !== "S" : e.code !== "C" || ospfIfs.has(e.ifname))) continue;
+          if (!rd.subnets && e.prefix !== classfulPrefix(e.net)) continue;
+          if (!list.some((x) => x.net === e.net && x.prefix === e.prefix)) list.push({ net: e.net, prefix: e.prefix, metric: rd.metric ?? 20 });
+        }
+      }
+      if (!list.length) continue;
+      out[dev].asbr = true;
+      externals.set(dev, list);
+    }
+    const dist = {};
+    const intra = {};
+    for (const dev of Object.keys(out)) {
+      dist[dev] = {};
+      intra[dev] = {};
+      for (const area of out[dev].areas) {
+        const dm = spf(dev, area);
+        dist[dev][area] = dm;
+        const pm = /* @__PURE__ */ new Map();
+        for (const [x, r] of dm) {
+          for (const i of ifsIn(x, area)) {
+            const host = i.net === "loopback";
+            const net = host ? i.ip : networkOf(i.ip, i.prefix);
+            const prefix = host ? 32 : i.prefix;
+            addReach(pm, pkey(net, prefix), { cost: r.cost + i.cost, paths: r.paths });
+          }
+          if (out[x].asbr) addReach(pm, asbrKey(x), { cost: r.cost, paths: r.paths });
+        }
+        intra[dev][area] = pm;
+      }
+    }
+    const stubCfg = (dev, area) => d.cfgs[dev].ospf.stubs[String(area)];
+    const summariesInto = (abr, area, backboneInter) => {
+      const m = /* @__PURE__ */ new Map();
+      const stub = stubCfg(abr, area);
+      if (stub) m.set(pkey("0.0.0.0", 0), 1);
+      if (stub?.noSummary) return m;
+      const put = (k, c) => {
+        if (stub && k.startsWith("asbr:")) return;
+        if (k === pkey("0.0.0.0", 0)) return;
+        if (!m.has(k) || m.get(k) > c) m.set(k, c);
+      };
+      for (const y of out[abr].areas) {
+        if (y === area) continue;
+        for (const [k, r] of intra[abr][y]) put(k, r.cost);
+      }
+      if (area !== 0 && backboneInter) for (const [k, r] of backboneInter) put(k, r.cost);
+      return m;
+    };
+    const abrs = (area) => devsIn(area).filter((x) => out[x].abr);
+    const interBB = {};
+    for (const dev of devsIn(0)) {
+      const m = /* @__PURE__ */ new Map();
+      for (const b of abrs(0)) {
+        if (b === dev) continue;
+        const rb = dist[dev][0].get(b);
+        if (!rb) continue;
+        for (const [k, c] of summariesInto(b, 0, null)) addReach(m, k, { cost: rb.cost + c, paths: rb.paths });
+      }
+      interBB[dev] = m;
+    }
+    const interNB = {};
+    for (const dev of Object.keys(out)) {
+      if (out[dev].abr) continue;
+      const m = /* @__PURE__ */ new Map();
+      for (const area of out[dev].areas) {
+        if (area === 0) continue;
+        for (const b of abrs(area)) {
+          const rb = dist[dev][area].get(b);
+          if (!rb) continue;
+          for (const [k, c] of summariesInto(b, area, interBB[b] ?? null)) addReach(m, k, { cost: rb.cost + c, paths: rb.paths });
+        }
+      }
+      interNB[dev] = m;
+    }
+    for (const dev of Object.keys(out)) {
+      const s = out[dev];
+      if (!s.rid) continue;
+      const connected = new Set(l3Ifs(d, dev).map((i) => pkey(networkOf(i.ip, i.prefix), i.prefix)));
+      const best = /* @__PURE__ */ new Map();
+      for (const area of s.areas) {
+        for (const [k, r] of intra[dev][area]) {
+          if (k.startsWith("asbr:") || !r.paths.length) continue;
+          upsert(best, k, "O", r);
+        }
+      }
+      const inter = /* @__PURE__ */ new Map();
+      for (const [k, r] of interBB[dev] ?? []) addReach(inter, k, r);
+      for (const [k, r] of interNB[dev] ?? []) addReach(inter, k, r);
+      for (const [k, r] of inter) {
+        if (k.startsWith("asbr:") || !r.paths.length) continue;
+        if (best.get(k)?.code === "O") continue;
+        upsert(best, k, "O IA", r);
+      }
+      const inNonStub = s.areas.some((a) => !stubCfg(dev, a));
+      const ext = /* @__PURE__ */ new Map();
+      if (inNonStub) {
+        for (const [asbr, list] of externals) {
+          if (asbr === dev) continue;
+          let toAsbr;
+          for (const area of s.areas) {
+            if (stubCfg(dev, area)) continue;
+            const r = intra[dev][area].get(asbrKey(asbr));
+            if (r && (!toAsbr || r.cost < toAsbr.cost)) toAsbr = r;
+          }
+          if (!toAsbr) toAsbr = inter.get(asbrKey(asbr));
+          if (!toAsbr || !toAsbr.paths.length) continue;
+          for (const e of list) {
+            const k = pkey(e.net, e.prefix);
+            const prev = ext.get(k);
+            if (!prev || e.metric < prev.metric || e.metric === prev.metric && toAsbr.cost < prev.fwd)
+              ext.set(k, { metric: e.metric, fwd: toAsbr.cost, paths: [...toAsbr.paths] });
+            else if (e.metric === prev.metric && toAsbr.cost === prev.fwd) prev.paths = mergePaths(prev.paths, toAsbr.paths);
+          }
+        }
+      }
+      for (const [k, e] of ext) if (!best.has(k)) best.set(k, { code: "O E2", r: { cost: e.metric, paths: e.paths } });
+      for (const [k, { code, r }] of best) {
+        if (connected.has(k)) continue;
+        const [net, p] = k.split("/");
+        s.routes.push({ code, net, prefix: Number(p), metric: r.cost, paths: r.paths });
+      }
+      s.routes.sort((a, b) => ridInt(a.net) - ridInt(b.net) || a.prefix - b.prefix);
+    }
+    return out;
+  }
+  function mismatch(d, out, a, b) {
+    if (a.prefix !== b.prefix || !sameSubnet(a.ip, b.ip, a.prefix)) return "subnet";
+    if (a.area !== b.area) return "area";
+    if (a.hello !== b.hello) return "hello";
+    if (a.dead !== b.dead) return "dead";
+    if (isStub(d.cfgs[a.dev].ospf, a.area) !== isStub(d.cfgs[b.dev].ospf, b.area)) return "stub";
+    if (out[a.dev].rid === out[b.dev].rid) return "rid";
+    return null;
+  }
+  function mergePaths(a, b) {
+    const m = [...a];
+    for (const p of b) if (!m.some((x) => x.nh === p.nh && x.ifname === p.ifname)) m.push(p);
+    return m.sort((x, y) => ridInt(x.nh) - ridInt(y.nh));
+  }
+  function addReach(m, k, r) {
+    const prev = m.get(k);
+    if (!prev || r.cost < prev.cost) m.set(k, { cost: r.cost, paths: [...r.paths] });
+    else if (r.cost === prev.cost) prev.paths = mergePaths(prev.paths, r.paths);
+  }
+  function upsert(best, k, code, r) {
+    const prev = best.get(k);
+    if (prev && prev.code === "O" && code !== "O") return;
+    if (!prev || prev.code !== code || r.cost < prev.r.cost) best.set(k, { code, r: { cost: r.cost, paths: [...r.paths] } });
+    else if (r.cost === prev.r.cost) prev.r.paths = mergePaths(prev.r.paths, r.paths);
+  }
+  function classfulPrefix(net) {
+    const first = Number(net.split(".")[0]);
+    return first < 128 ? 8 : first < 192 ? 16 : first < 224 ? 24 : 32;
+  }
+
+  // src/sim/track.ts
+  function lineProtocolUp(d, dev, ifname) {
+    if (d.hw.off.has(dev)) return false;
+    const cfg = d.cfgs[dev];
+    if (!cfg) return false;
+    if (ifname.startsWith("Vlan")) return !!d.svis[dev]?.find((s) => "Vlan" + s.vlan === ifname)?.up;
+    if (ifname.includes(".")) {
+      const si = cfg.subifs?.[ifname];
+      return !!si && !si.shutdown && !!d.lportByName[pk(dev, si.parent)]?.active;
+    }
+    return !!d.lportByName[pk(dev, ifname)]?.active;
+  }
+  function probe(d, dev, sla) {
+    const icmp = sla.icmp;
+    if (!icmp) return { ok: false, code: "Unknown" };
+    if (d.hw.off.has(dev)) return { ok: false, code: "No connection" };
+    const ifs = l3Ifs(d, dev);
+    let src;
+    if (icmp.srcIf) {
+      const i = ifs.find((x) => x.name === icmp.srcIf);
+      if (!i) return { ok: false, code: "No connection" };
+      src = i.ip;
+    } else if (icmp.srcIp) {
+      if (!ifs.some((x) => x.ip === icmp.srcIp)) return { ok: false, code: "No connection" };
+      src = icmp.srcIp;
+    }
+    const r = ping(d, dev, icmp.target, src ? { src } : {});
+    if (r.ok) return { ok: true, code: "OK" };
+    return { ok: false, code: r.reason === "noroute" || r.reason === "noip" ? "No connection" : "Timeout" };
+  }
+  function computeTrack(d) {
+    d.track = void 0;
+    const sla = {};
+    const objects = {};
+    const devs = d.topo.switches.map((s) => s.id).filter((id) => {
+      const c = d.cfgs[id];
+      return !!c && (Object.keys(c.ipSla ?? {}).length || Object.keys(c.tracks ?? {}).length);
+    });
+    for (const dev of devs) {
+      const out = {};
+      for (const [n, s] of Object.entries(d.cfgs[dev].ipSla ?? {})) {
+        const r = s.scheduled ? probe(d, dev, s) : { ok: false, code: "Unknown" };
+        out[n] = { scheduled: !!s.scheduled, ok: r.ok, code: r.code, rtt: r.ok ? 1 : null, flapping: false };
+      }
+      sla[dev] = out;
+    }
+    for (const dev of devs) {
+      const out = {};
+      for (const [n, t] of Object.entries(d.cfgs[dev].tracks ?? {})) {
+        if (t.sla !== void 0) out[n] = { type: "ip sla", up: !!sla[dev]?.[String(t.sla)]?.ok, flapping: false, changes: 0 };
+        else out[n] = { type: "interface", up: !!t.iface && lineProtocolUp(d, dev, t.iface), flapping: false, changes: 0 };
+      }
+      objects[dev] = out;
+    }
+    const state = { sla, objects };
+    d.track = state;
+    const ospfStale = devs.some(
+      (dev) => ospfExternalsFromTable(d, dev) && d.cfgs[dev].routes.some((r) => r.track !== void 0 && !objects[dev]?.[String(r.track)]?.up)
+    );
+    if (ospfStale) recomputeOspf(d);
+    for (const dev of devs)
+      for (const [n, r] of Object.entries(sla[dev])) {
+        if (!r.scheduled || r.ok) continue;
+        if (!probe(d, dev, d.cfgs[dev].ipSla[n]).ok) continue;
+        r.flapping = true;
+        for (const [on, t] of Object.entries(d.cfgs[dev].tracks ?? {})) if (t.sla === Number(n)) objects[dev][on].flapping = true;
+      }
+    return state;
+  }
+  function objectUp(d, dev, n) {
+    const s = d.track?.objects[dev]?.[String(n)];
+    if (s) return s.up;
+    const t = d.cfgs[dev]?.tracks?.[String(n)];
+    return !!t?.iface && lineProtocolUp(d, dev, t.iface);
+  }
+  var plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  function showTrack(d, dev, only) {
+    const o = [];
+    const cfg = d.cfgs[dev];
+    const tracks = cfg?.tracks ?? {};
+    const ids = Object.keys(tracks).map(Number).sort((a, b) => a - b);
+    for (const n of ids) {
+      if (only !== void 0 && n !== only) continue;
+      const t = tracks[String(n)];
+      const st = d.track?.objects[dev]?.[String(n)];
+      const up = st ? st.up : objectUp(d, dev, n);
+      o.push(`Track ${n}`);
+      if (t.sla !== void 0) {
+        const kind = t.kind ?? "state";
+        const r = d.track?.sla[dev]?.[String(t.sla)];
+        o.push(`  IP SLA ${t.sla} ${kind}`);
+        o.push(`  ${kind === "reachability" ? "Reachability" : "State"} is ${up ? "Up" : "Down"}`);
+        if (st?.flapping) o.push("  Tracking is flapping: the probe succeeds only through the alternate route while this object is Down");
+        o.push(`    ${plural(st?.changes ?? 0, "change")}, last change 00:00:00`);
+        if (t.delayUp !== void 0 || t.delayDown !== void 0)
+          o.push(`  Delay up ${t.delayUp ?? 0} secs, down ${t.delayDown ?? 0} secs`);
+        o.push(`  Latest operation return code: ${r?.code ?? "Unknown"}`);
+        if (r?.rtt !== null && r?.rtt !== void 0) o.push(`  Latest RTT (millisecs) ${r.rtt}`);
+      } else {
+        o.push(`  Interface ${t.iface} line-protocol`, `  Line protocol is ${up ? "Up" : "Down"}`);
+        if (st) o.push(`    ${plural(st.changes, "change")}, last change 00:00:00`);
+        if (t.delayUp !== void 0 || t.delayDown !== void 0)
+          o.push(`  Delay up ${t.delayUp ?? 0} secs, down ${t.delayDown ?? 0} secs`);
+      }
+      const hsrp = (d.fhrp?.members ?? []).filter((m) => m.dev === dev && m.tracks.some((x) => x.obj === n));
+      const routing = (cfg?.routes ?? []).some((r) => r.track === n);
+      if (hsrp.length || routing) {
+        o.push("Tracked by:");
+        if (routing) o.push("  Static IP Routing 0");
+        for (const m of hsrp) o.push(`  HSRP ${m.ifname} ${m.group}`);
+      }
+    }
+    return o;
+  }
+  var slaIds = (d, dev, only) => Object.keys(d.cfgs[dev]?.ipSla ?? {}).map(Number).sort((a, b) => a - b).filter((n) => only === void 0 || n === only);
+  function showIpSlaStatistics(d, dev, only) {
+    const o = ["IPSLAs Latest Operation Statistics", ""];
+    for (const n of slaIds(d, dev, only)) {
+      const s = d.cfgs[dev].ipSla[String(n)];
+      const r = d.track?.sla[dev]?.[String(n)];
+      o.push(`IPSLA operation id: ${n}`);
+      if (!s.scheduled || !r) {
+        o.push("        Latest RTT: Unknown", "Latest operation return code: Unknown", "Number of successes: Unknown", "Number of failures: Unknown", "Operation time to live: 0", "");
+        continue;
+      }
+      o.push(`        Latest RTT: ${r.ok ? r.rtt + " milliseconds" : "NoConnection/Busy/Timeout"}`);
+      o.push("Latest operation start time: 00:00:00 UTC");
+      o.push(`Latest operation return code: ${r.code}`);
+      o.push(`Number of successes: ${r.ok ? 1 : 0}`, `Number of failures: ${r.ok ? 0 : 1}`, "Operation time to live: Forever", "");
+    }
+    return o;
+  }
+  function showIpSlaConfiguration(d, dev, only) {
+    const o = ["IP SLAs Infrastructure Engine-III"];
+    for (const n of slaIds(d, dev, only)) {
+      const s = d.cfgs[dev].ipSla[String(n)];
+      o.push(`Entry number: ${n}`, "Owner: ", "Tag: ", "Operation timeout (milliseconds): 5000");
+      if (s.icmp) {
+        o.push("Type of operation to perform: icmp-echo");
+        if (s.icmp.srcIf) o.push(`Target address/Source interface: ${s.icmp.target}/${s.icmp.srcIf}`);
+        else o.push(`Target address/Source address: ${s.icmp.target}/${s.icmp.srcIp ?? "0.0.0.0"}`);
+        o.push("Type Of Service parameter: 0x0", "Request size (ARR data portion): 28", "Verify data: No", "Vrf Name: ");
+      } else o.push("Type of operation to perform: not configured");
+      o.push("Schedule:");
+      o.push(`   Operation frequency (seconds): ${s.frequency ?? 60}  (not considered if randomly scheduled)`);
+      o.push(`   Next Scheduled Start Time: ${s.scheduled ? "Start Time already passed" : "Pending trigger"}`);
+      o.push("   Group Scheduled : FALSE", "   Randomly Scheduled : FALSE", `   Life (seconds): ${s.scheduled ? "Forever" : "3600"}`);
+      o.push("");
+    }
+    return o;
+  }
+  function showIpSlaSummary(d, dev) {
+    const o = [
+      "IPSLAs Latest Operation Summary",
+      "Codes: * active, ^ inactive, ~ pending",
+      "",
+      "ID           Type        Destination       Stats       Return      Last",
+      "                                           (ms)        Code        Run ",
+      "-----------------------------------------------------------------------"
+    ];
+    const pad2 = (s, n) => String(s).padEnd(n);
+    for (const n of slaIds(d, dev)) {
+      const s = d.cfgs[dev].ipSla[String(n)];
+      const r = d.track?.sla[dev]?.[String(n)];
+      const on = !!s.scheduled && !!r;
+      o.push(
+        pad2((on ? "*" : "~") + n, 13) + pad2(s.icmp ? "icmp-echo" : "-", 12) + pad2(s.icmp?.target ?? "-", 18) + pad2(on && r.ok ? "RTT=" + r.rtt : "-", 12) + pad2(on ? r.code : "Unknown", 12) + (on ? "0 seconds ago" : "-")
+      );
+    }
+    return o;
+  }
+
   // src/sim/fhrp.ts
   var memberId = (m) => `${m.proto}|${m.dev}|${m.ifname}|${m.group}`;
   var hsrpMac = (group) => "0000.0c07.ac" + group.toString(16).padStart(2, "0");
@@ -1590,21 +2153,12 @@ var AgLabSim = (() => {
     for (const [v, s] of Object.entries(cfg.svis)) out.push(["Vlan" + v, s.l3]);
     return out;
   }
-  function lineProtocolUp(d, dev, ifname) {
-    if (d.hw.off.has(dev)) return false;
-    const cfg = d.cfgs[dev];
-    if (!cfg) return false;
-    if (ifname.startsWith("Vlan")) return !!d.svis[dev]?.find((s) => "Vlan" + s.vlan === ifname)?.up;
-    if (ifname.includes(".")) {
-      const si = cfg.subifs?.[ifname];
-      return !!si && !si.shutdown && !!d.lportByName[pk(dev, si.parent)]?.active;
-    }
-    return !!d.lportByName[pk(dev, ifname)]?.active;
-  }
   function trackStates(d, dev, tracks) {
     return (tracks ?? []).map((t) => {
-      const iface = t.obj !== void 0 ? d.cfgs[dev]?.tracks?.[String(t.obj)]?.iface ?? null : t.iface ?? null;
-      return { ...t.obj !== void 0 ? { obj: t.obj } : {}, iface, decrement: t.decrement ?? 10, up: !!iface && lineProtocolUp(d, dev, iface) };
+      if (t.obj !== void 0)
+        return { obj: t.obj, iface: d.cfgs[dev]?.tracks?.[String(t.obj)]?.iface ?? null, decrement: t.decrement ?? 10, up: objectUp(d, dev, t.obj) };
+      const iface = t.iface ?? null;
+      return { iface, decrement: t.decrement ?? 10, up: !!iface && lineProtocolUp(d, dev, iface) };
     });
   }
   function domainKey(d, node) {
@@ -1759,24 +2313,27 @@ var AgLabSim = (() => {
     }
     return o;
   }
-  function showTrack(d, dev) {
-    const o = [];
-    const tracks = d.cfgs[dev]?.tracks ?? {};
-    for (const n of Object.keys(tracks).map(Number).sort((a, b) => a - b)) {
-      const iface = tracks[String(n)].iface;
-      const up = lineProtocolUp(d, dev, iface);
-      o.push(`Track ${n}`, `  Interface ${iface} line-protocol`, `  Line protocol is ${up ? "Up" : "Down"}`);
-      const users = (d.fhrp?.members ?? []).filter((m) => m.dev === dev && m.tracks.some((t) => t.obj === n));
-      if (users.length) {
-        o.push("Tracked by:");
-        for (const m of users) o.push(`  HSRP ${m.ifname} ${m.group}`);
-      }
-    }
-    return o;
-  }
 
   // src/sim/cli/help.ts
   var HELP = {
+    // IP SLA ve nesne izleme
+    sla: "IP Service Level Agreement",
+    "icmp-echo": "ICMP Echo Operation",
+    schedule: "IP SLA operation scheduling",
+    life: "Length of time to execute in seconds",
+    forever: "continue running forever",
+    "start-time": "When to start this entry",
+    now: "Start now",
+    reachability: "Reachability",
+    state: "Return code state",
+    delay: "Tracking delay",
+    up: "Delay up change notification",
+    down: "Delay down change notification",
+    frequency: "Frequency of an operation",
+    "source-interface": "Source Interface (ingress icmp packet interface)",
+    "source-ip": "Source Address",
+    statistics: "IP SLA statistics",
+    configuration: "IP SLA configuration",
     // FHRP
     standby: "HSRP interface configuration commands",
     vrrp: "VRRP Interface configuration commands",
@@ -2342,9 +2899,28 @@ var AgLabSim = (() => {
   }
   function trackLines(c) {
     const ids = Object.keys(c.tracks ?? {}).map(Number).sort((a, b) => a - b);
-    return ids.flatMap((n) => ["track " + n + " interface " + c.tracks[String(n)].iface + " line-protocol", "!"]);
+    return ids.flatMap((n) => {
+      const t = c.tracks[String(n)];
+      const head = t.sla !== void 0 ? `track ${n} ip sla ${t.sla} ${t.kind ?? "state"}` : `track ${n} interface ${t.iface} line-protocol`;
+      const delay = t.delayUp === void 0 && t.delayDown === void 0 ? [] : [" delay" + (t.delayDown !== void 0 ? " down " + t.delayDown : "") + (t.delayUp !== void 0 ? " up " + t.delayUp : "")];
+      return [head, ...delay, "!"];
+    });
   }
-  var routeLine = (r) => `ip route ${r.net} ${r.mask} ${r.nh}` + (r.ad && r.ad !== 1 ? " " + r.ad : "");
+  function ipSlaLines(c) {
+    const ids = Object.keys(c.ipSla ?? {}).map(Number).sort((a, b) => a - b);
+    if (!ids.length) return [];
+    const o = [];
+    for (const n of ids) {
+      const s = c.ipSla[String(n)];
+      o.push("ip sla " + n);
+      if (s.icmp)
+        o.push(" icmp-echo " + s.icmp.target + (s.icmp.srcIf ? " source-interface " + s.icmp.srcIf : s.icmp.srcIp ? " source-ip " + s.icmp.srcIp : ""));
+      if (s.icmp && s.frequency !== void 0) o.push(" frequency " + s.frequency);
+      if (s.scheduled) o.push(`ip sla schedule ${n} life forever start-time now`);
+    }
+    return ["!", ...o];
+  }
+  var routeLine = (r) => `ip route ${r.net} ${r.mask} ${r.nh}` + (r.ad && r.ad !== 1 ? " " + r.ad : "") + (r.track !== void 0 ? " track " + r.track : "");
   function discoveryGlobalLines(c) {
     const o = [];
     if (c.cdpRun === false) o.push("!", "no cdp run");
@@ -2392,6 +2968,7 @@ var AgLabSim = (() => {
     o.push("ip forward-protocol nd", "no ip http server", "!");
     o.push(...natConfigLines(c));
     for (const r of c.routes) o.push(routeLine(r));
+    o.push(...ipSlaLines(c));
     o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), "!", "line con 0", "line aux 0", "line vty 0 4", " login", "!", "end");
     return o;
   }
@@ -2491,6 +3068,7 @@ var AgLabSim = (() => {
     if (c.defaultGateway) o.push("ip default-gateway " + c.defaultGateway);
     o.push("ip forward-protocol nd", "no ip http server", "!");
     for (const r of c.routes) o.push(routeLine(r));
+    o.push(...ipSlaLines(c));
     o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), "!", "line con 0", "line vty 0 4", " login", "line vty 5 15", " login", "!", "end");
     return o;
   }
@@ -3289,6 +3867,7 @@ var AgLabSim = (() => {
   }
 
   // src/sim/cli/ios.ts
+  var SLA = "<1-2147483647:Entry number>";
   var CliError = class {
     constructor(lines) {
       this.lines = lines;
@@ -3353,6 +3932,13 @@ var AgLabSim = (() => {
       { p: "show vrrp", run: (x) => showVrrp(x.rt.derived, x.dev) },
       { p: "show vrrp brief", run: (x) => showVrrpBrief(x.rt.derived, x.dev) },
       { p: "show track", run: (x) => showTrack(x.rt.derived, x.dev) },
+      { p: "show track <1-1000:Tracked object>", run: (x, a) => showTrack(x.rt.derived, x.dev, Number(a[2])) },
+      // IP SLA (icmp-echo)
+      { p: "show ip sla statistics", run: (x) => showIpSlaStatistics(x.rt.derived, x.dev) },
+      { p: `show ip sla statistics ${SLA}`, run: (x, a) => showIpSlaStatistics(x.rt.derived, x.dev, Number(a[4])) },
+      { p: "show ip sla configuration", run: (x) => showIpSlaConfiguration(x.rt.derived, x.dev) },
+      { p: `show ip sla configuration ${SLA}`, run: (x, a) => showIpSlaConfiguration(x.rt.derived, x.dev, Number(a[4])) },
+      { p: "show ip sla summary", run: (x) => showIpSlaSummary(x.rt.derived, x.dev) },
       { p: "show ip interface <if>", run: (x, a) => showIpInterface(x.rt, x.dev, x.resolveL3(a[3], a[4], 3)) },
       { p: "show port-security address", run: (x) => showPortSecurityAddress(x.rt, x.dev) },
       { p: "show port-security interface <if>", run: (x, a) => showPortSecurityInterface(x.rt, x.dev, x.physName(a[3], a[4], 3)), ifTypes: ["FastEthernet", "GigabitEthernet"] },
@@ -3443,6 +4029,29 @@ var AgLabSim = (() => {
     { p: "end", run: (x) => x.end() },
     { p: "do <LINE:Exec Command>", run: (x, a) => x.doCmd(a[1]) }
   ];
+  var ipSlaPatterns = [
+    ...commonSub,
+    { p: "icmp-echo <A.B.C.D:Destination IP address or hostname>", run: (x, a) => x.slaEcho({ target: a[1] }) },
+    {
+      p: "icmp-echo <A.B.C.D:Destination IP address or hostname> source-interface <if>",
+      run: (x, a) => x.slaEcho({ target: a[1], srcIf: x.resolveL3(a[3], a[4], 3) })
+    },
+    { p: "icmp-echo <A.B.C.D:Destination IP address or hostname> source-ip <A.B.C.D:Source Address>", run: (x, a) => x.slaEcho({ target: a[1], srcIp: a[3] }) }
+  ];
+  var ipSlaEchoPatterns = [
+    ...commonSub,
+    { p: "frequency <1-604800:Frequency in seconds (default 60)>", run: (x, a) => x.slaSet((s) => void (s.frequency = Number(a[1]))) },
+    { p: "no frequency", run: (x) => x.slaSet((s) => void delete s.frequency) }
+  ];
+  var D = "<0-180:Seconds>";
+  var trackPatterns = [
+    ...commonSub,
+    { p: `delay down ${D} up ${D}`, run: (x, a) => x.trackDelay({ down: Number(a[2]), up: Number(a[4]) }) },
+    { p: `delay up ${D} down ${D}`, run: (x, a) => x.trackDelay({ up: Number(a[2]), down: Number(a[4]) }) },
+    { p: `delay down ${D}`, run: (x, a) => x.trackDelay({ down: Number(a[2]) }) },
+    { p: `delay up ${D}`, run: (x, a) => x.trackDelay({ up: Number(a[2]) }) },
+    { p: "no delay", run: (x) => x.trackDelay(null) }
+  ];
   var configPatterns = (def) => {
     const p = [
       ...commonSub,
@@ -3454,8 +4063,11 @@ var AgLabSim = (() => {
         }
       },
       { p: "vlan <vlist:ISL VLAN IDs 1-4094>", run: (x, a) => x.enterVlan(a[1]) },
-      // FHRP: izlenen nesne (yalnız arayüz line-protocol'ü modellenir)
-      { p: "track <1-1000:Tracked object> interface <if> line-protocol", run: (x, a) => x.trackObject(Number(a[1]), x.resolveL3(a[3], a[4], 3)) },
+      // izlenen nesne: arayüz line-protocol'ü ya da IP SLA işlemi (track.ts)
+      { p: "track <1-1000:Tracked object> interface <if> line-protocol", run: (x, a) => x.trackObject(Number(a[1]), { iface: x.resolveL3(a[3], a[4], 3) }) },
+      { p: `track <1-1000:Tracked object> ip sla ${SLA}`, run: (x, a) => x.trackObject(Number(a[1]), { sla: Number(a[4]), kind: "state" }) },
+      { p: `track <1-1000:Tracked object> ip sla ${SLA} reachability`, run: (x, a) => x.trackObject(Number(a[1]), { sla: Number(a[4]), kind: "reachability" }) },
+      { p: `track <1-1000:Tracked object> ip sla ${SLA} state`, run: (x, a) => x.trackObject(Number(a[1]), { sla: Number(a[4]), kind: "state" }) },
       { p: "no track <1-1000:Tracked object>", run: (x, a) => void delete x.cfg.tracks?.[a[2]] },
       { p: "no vlan <vlist:ISL VLAN IDs 1-4094>", run: (x, a) => x.deleteVlan(a[2]) },
       { p: "interface <if>", run: (x, a) => x.enterIf(a[1], a[2]) },
@@ -3530,6 +4142,27 @@ var AgLabSim = (() => {
           p: "ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router's address> <1-255:Distance metric for this route>",
           run: (x, a) => x.addRoute(a[2], a[3], a[4], Number(a[5]))
         },
+        {
+          p: "ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router's address> track <1-1000:Tracked object number>",
+          run: (x, a) => x.addRoute(a[2], a[3], a[4], 1, Number(a[6]))
+        },
+        {
+          p: "ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router's address> <1-255:Distance metric for this route> track <1-1000:Tracked object number>",
+          run: (x, a) => x.addRoute(a[2], a[3], a[4], Number(a[5]), Number(a[7]))
+        },
+        {
+          p: "no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router's address> track <1-1000:Tracked object number>",
+          run: (x, a) => x.removeRoute(a[3], a[4], a[5])
+        },
+        {
+          p: "no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router's address> <1-255:Distance metric for this route> track <1-1000:Tracked object number>",
+          run: (x, a) => x.removeRoute(a[3], a[4], a[5])
+        },
+        // IP SLA (yalnız icmp-echo; zamanlama yalnız `life forever start-time now`)
+        { p: `ip sla ${SLA}`, run: (x, a) => x.enterSla(Number(a[2])) },
+        { p: `no ip sla ${SLA}`, run: (x, a) => x.deleteSla(Number(a[3])) },
+        { p: `ip sla schedule ${SLA} life forever start-time now`, run: (x, a) => x.scheduleSla(Number(a[3]), true) },
+        { p: `no ip sla schedule ${SLA}`, run: (x, a) => x.scheduleSla(Number(a[4]), false) },
         {
           p: "no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask>",
           run: (x, a) => x.removeRoute(a[3], a[4], null)
@@ -3892,8 +4525,10 @@ var AgLabSim = (() => {
         router: buildTrie(routerPatterns),
         dhcp: buildTrie(dhcpPoolPatterns),
         acl: buildTrie(aclPatterns),
-        // FHRP: `track N interface … line-protocol` alt kipi (gecikme vb. modellenmez)
-        track: buildTrie(commonSub)
+        // `track N …` alt kipi (delay saklanır; zaman modellenmez)
+        track: buildTrie(trackPatterns),
+        ipsla: buildTrie(ipSlaPatterns),
+        ipslaEcho: buildTrie(ipSlaEchoPatterns)
       };
       trieCache.set(def, t);
     }
@@ -3911,6 +4546,9 @@ var AgLabSim = (() => {
       __publicField(this, "aclName", "");
       /** L5-b: pool under `ip dhcp pool <name>` */
       __publicField(this, "pool", "");
+      /** `(config-track)` / `(config-ip-sla…)` altında düzenlenen nesne / işlem */
+      __publicField(this, "trackNo", 0);
+      __publicField(this, "slaNo", 0);
       __publicField(this, "history", []);
       __publicField(this, "pending", null);
       __publicField(this, "starts", []);
@@ -3941,12 +4579,16 @@ var AgLabSim = (() => {
           return h + "(dhcp-config)#";
         case "track":
           return h + "(config-track)#";
+        case "ipsla":
+          return h + "(config-ip-sla)#";
+        case "ipslaEcho":
+          return h + "(config-ip-sla-echo)#";
         case "acl":
           return h + (this.cfg.acls?.[this.aclName]?.type === "extended" ? "(config-ext-nacl)#" : "(config-std-nacl)#");
       }
     }
     get inConfig() {
-      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track";
+      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho";
     }
     trie() {
       const t = tries(this.def);
@@ -3989,7 +4631,7 @@ var AgLabSim = (() => {
     }
     run(cmd) {
       let r = parse(this.trie(), cmd);
-      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track") && r.err !== "empty") {
+      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho") && r.err !== "empty") {
         const g = parse(tries(this.def).config, cmd);
         if (g.ok) {
           this.mode = "config";
@@ -4290,11 +4932,61 @@ var AgLabSim = (() => {
     }
     /** An L3 interface name for show commands (physical, subinterface, SVI, loopback). */
     // ---- FHRP ----
-    trackObject(n, iface) {
+    /** `track N interface … line-protocol` | `track N ip sla …`: tür değiştirilemez (önce `no track N`). */
+    trackObject(n, obj) {
       var _a;
-      ;
-      ((_a = this.cfg).tracks ?? (_a.tracks = {}))[String(n)] = { iface };
+      const tracks = (_a = this.cfg).tracks ?? (_a.tracks = {});
+      const cur = tracks[String(n)];
+      const typeOf = (t) => t.sla !== void 0 ? "ip sla" : "interface";
+      if (cur && typeOf(cur) !== typeOf(obj)) return [`% Tracked object ${n} is already configured as a different type; remove it first (no track ${n})`];
+      tracks[String(n)] = { ...obj, ...cur?.delayUp !== void 0 ? { delayUp: cur.delayUp } : {}, ...cur?.delayDown !== void 0 ? { delayDown: cur.delayDown } : {} };
+      this.trackNo = n;
       this.mode = "track";
+    }
+    trackDelay(delay) {
+      const t = this.cfg.tracks?.[String(this.trackNo)];
+      if (!t) return;
+      if (delay === null) {
+        delete t.delayUp;
+        delete t.delayDown;
+        return;
+      }
+      if (delay.up !== void 0) t.delayUp = delay.up;
+      if (delay.down !== void 0) t.delayDown = delay.down;
+    }
+    // ---- IP SLA ----
+    /** `ip sla N`: çalışan (zamanlanmış) işlem değiştirilemez (IOS: silip yeniden kurulur). */
+    enterSla(n) {
+      var _a, _b, _c;
+      const cur = this.cfg.ipSla?.[String(n)];
+      if (cur?.scheduled)
+        return ["%Entry already running and cannot be modified", "(only can delete (no) and start over)", "(check to see if the probe has finished exiting)"];
+      (_b = (_a = this.cfg).ipSla ?? (_a.ipSla = {}))[_c = String(n)] ?? (_b[_c] = {});
+      this.slaNo = n;
+      this.mode = cur?.icmp ? "ipslaEcho" : "ipsla";
+    }
+    slaEcho(icmp) {
+      const s = this.cfg.ipSla?.[String(this.slaNo)];
+      if (!s) return;
+      s.icmp = icmp;
+      this.mode = "ipslaEcho";
+    }
+    slaSet(fn) {
+      const s = this.cfg.ipSla?.[String(this.slaNo)];
+      if (s) fn(s);
+    }
+    deleteSla(n) {
+      if (!this.cfg.ipSla?.[String(n)]) return;
+      delete this.cfg.ipSla[String(n)];
+      if (!Object.keys(this.cfg.ipSla).length) delete this.cfg.ipSla;
+    }
+    /** `ip sla schedule N life forever start-time now` / `no ip sla schedule N` */
+    scheduleSla(n, on) {
+      const s = this.cfg.ipSla?.[String(n)];
+      if (!s) return on ? [`%IP SLAs operation ${n} does not exist`] : void 0;
+      if (on && !s.icmp) return [`%IP SLAs operation ${n} has no operation type configured`];
+      if (on) s.scheduled = true;
+      else delete s.scheduled;
     }
     /** Apply to group `n` of HSRP/VRRP on the interface; empty groups are removed (as IOS). */
     fhrp(proto, n, fn, create = true) {
@@ -4677,7 +5369,7 @@ var AgLabSim = (() => {
         return [];
       });
     }
-    addRoute(net, mask, nh, ad = 1) {
+    addRoute(net, mask, nh, ad = 1, track) {
       const len = maskToPrefix(mask);
       if (len === null) return ["%Inconsistent address and mask"];
       if (networkOf(net, len) !== net) return ["%Inconsistent address and mask"];
@@ -4686,7 +5378,9 @@ var AgLabSim = (() => {
       if (same) {
         if (ad === 1) delete same.ad;
         else same.ad = ad;
-      } else this.cfg.routes.push(ad === 1 ? { net, mask, nh } : { net, mask, nh, ad });
+        if (track === void 0) delete same.track;
+        else same.track = track;
+      } else this.cfg.routes.push({ net, mask, nh, ...ad === 1 ? {} : { ad }, ...track === void 0 ? {} : { track } });
     }
     /** `no ip route net mask [nh [ad]]`: without a next hop every route to the prefix goes. */
     removeRoute(net, mask, nh) {
@@ -4997,7 +5691,7 @@ var AgLabSim = (() => {
   var ERR = /^(%|Command rejected)/;
   var INFO = /^% Access VLAN does not exist\. Creating vlan \d+$/;
   var isError = (out) => out.some((l) => ERR.test(l.trim()) && !INFO.test(l.trim()));
-  var MODE_LINE = /^(interface|router|line|ip\s+access-list|ip\s+dhcp\s+pool|vlan\s+\d|controller|class-map|policy-map|key\s+chain|crypto)\b/i;
+  var MODE_LINE = /^(interface|router|line|ip\s+access-list|ip\s+dhcp\s+pool|ip\s+sla\s+\d|track\s+\d|vlan\s+\d|controller|class-map|policy-map|key\s+chain|crypto)\b/i;
   function harmless(cmd) {
     for (const [re, why] of HARMLESS) if (re.test(cmd)) return why;
     return null;
@@ -5434,387 +6128,6 @@ var AgLabSim = (() => {
     }
   };
 
-  // src/sim/ospf.ts
-  function computeState(topo, cfgs, pcs, errdis, hw) {
-    const d = derive(topo, cfgs, pcs, errdis, hw);
-    d.ospf = computeOspf(d);
-    d.dups = duplicateIps(d);
-    return d;
-  }
-  var ridInt = (r) => ipToInt(r) ?? 0;
-  function candidateRid(d, dev) {
-    const c = d.cfgs[dev].ospf;
-    if (c?.routerId) return c.routerId;
-    const ifs = l3Ifs(d, dev);
-    const pick = (list) => list.length ? list.map((i) => i.ip).sort((a, b) => ridInt(b) - ridInt(a))[0] : null;
-    return pick(ifs.filter((i) => i.kind === "loop")) ?? pick(ifs);
-  }
-  function ospfRunning(d, dev) {
-    const def = d.topo.devices[dev];
-    const c = d.cfgs[dev];
-    return def?.kind === "switch" && !!(def.l3 || def.router) && !!c?.ipRouting && !!c.ospf && !d.hw.off.has(dev);
-  }
-  function configuredL3(cfg, sw) {
-    const out = [];
-    for (const [v, s] of Object.entries(cfg.svis)) if (s.ip) out.push({ name: "Vlan" + v, ip: s.ip, l3: s.l3 ?? {} });
-    for (const p of sw.ports) {
-      const c = cfg.ifaces[p];
-      if (c.routed && c.ip) out.push({ name: p, ip: c.ip, l3: c.l3 ?? {} });
-    }
-    for (const [n, l] of Object.entries(cfg.loopbacks ?? {})) if (l.ip) out.push({ name: "Loopback" + n, ip: l.ip, l3: l.l3 ?? {} });
-    return out;
-  }
-  function areaFor(o, ip2, l3) {
-    if (l3.ospfArea && l3.ospfArea.pid === o.pid) return l3.ospfArea.area;
-    const a = ipToInt(ip2);
-    let best = null;
-    for (const n of o.networks) {
-      const wc = ipToInt(n.wildcard);
-      const care = ~wc >>> 0;
-      if ((a & care) >>> 0 !== (ipToInt(n.addr) & care) >>> 0) continue;
-      const bits = popcount(wc);
-      if (!best || bits < best.bits) best = { bits, area: n.area };
-    }
-    return best?.area ?? null;
-  }
-  function popcount(n) {
-    let c = 0;
-    for (let x = n >>> 0; x; x >>>= 1) c += x & 1;
-    return c;
-  }
-  function isPassive(o, name) {
-    return o.passiveDefault ? !o.passive.includes(name) : o.passive.includes(name);
-  }
-  var isStub = (o, area) => !!o.stubs[String(area)];
-  function computeOspf(d) {
-    const out = {};
-    const devs = d.topo.switches.filter((s) => ospfRunning(d, s.id));
-    for (const sw of devs) {
-      const cfg = d.cfgs[sw.id];
-      const o = cfg.ospf;
-      const rid = o.activeRid ?? null;
-      const up = new Map(l3Ifs(d, sw.id).map((i) => [i.name, i]));
-      const ifs = [];
-      for (const c of configuredL3(cfg, sw)) {
-        const area = areaFor(o, c.ip.addr, c.l3);
-        if (area === null) continue;
-        const isLoop = c.name.startsWith("Loopback");
-        const net = c.l3.ospfNet ?? (isLoop ? "loopback" : "broadcast");
-        const hello = c.l3.ospfHello ?? 10;
-        const bw = ifBandwidth(c.name, c.l3.bandwidth);
-        const l3 = up.get(c.name) ?? null;
-        ifs.push({
-          dev: sw.id,
-          name: c.name,
-          ip: c.ip.addr,
-          prefix: maskToPrefix(c.ip.mask),
-          area,
-          cost: c.l3.ospfCost ?? Math.max(1, Math.floor(o.refBw * 1e3 / bw)),
-          hello,
-          dead: c.l3.ospfDead ?? hello * 4,
-          prio: c.l3.ospfPrio ?? 1,
-          net: isLoop && net === "broadcast" ? "loopback" : net,
-          passive: isPassive(o, c.name),
-          mtu: c.l3.mtu ?? 1500,
-          up: !!l3 && !!rid,
-          role: "DOWN",
-          dr: null,
-          bdr: null,
-          l3
-        });
-      }
-      const areas = [...new Set(ifs.filter((i) => i.up).map((i) => i.area))].sort((a, b) => a - b);
-      out[sw.id] = { pid: o.pid, rid, ifs, nbrs: [], routes: [], areas, abr: areas.includes(0) && areas.length > 1, asbr: false, mismatches: [] };
-    }
-    const talkers = Object.values(out).flatMap((s) => s.ifs.filter((i) => i.up && !i.passive && i.net !== "loopback" && i.l3?.node));
-    const domCache = /* @__PURE__ */ new Map();
-    const domOf = (i) => {
-      const key = `${i.dev}|${i.name}`;
-      let s = domCache.get(key);
-      if (!s) {
-        s = /* @__PURE__ */ new Set([...l2Domain(d, i.l3.node).nodes.keys()]);
-        domCache.set(key, s);
-      }
-      return s;
-    };
-    const nk4 = (i) => `${i.l3.node.dev}|${i.l3.node.vlan}`;
-    const peersOf = /* @__PURE__ */ new Map();
-    const compat = /* @__PURE__ */ new Map();
-    for (const a of talkers) {
-      const dom = domOf(a);
-      const peers = talkers.filter((b) => b.dev !== a.dev && dom.has(nk4(b)));
-      peersOf.set(a, peers);
-      const ok = [];
-      for (const b of peers) {
-        const kind = mismatch(d, out, a, b);
-        if (kind) out[a.dev].mismatches.push({ dev: a.dev, ifname: a.name, peerIp: b.ip, peerDev: b.dev, kind });
-        else ok.push(b);
-      }
-      compat.set(a, ok);
-    }
-    for (const a of talkers) {
-      if (a.net === "point-to-point") {
-        a.role = "P2P";
-        continue;
-      }
-      const cands = [a, ...compat.get(a)].filter((x) => x.net === "broadcast" && x.prio > 0);
-      cands.sort((x, y) => y.prio - x.prio || ridInt(out[y.dev].rid) - ridInt(out[x.dev].rid));
-      const dr = cands[0];
-      const bdr = cands[1];
-      a.dr = dr ? { rid: out[dr.dev].rid, ip: dr.ip } : null;
-      a.bdr = bdr ? { rid: out[bdr.dev].rid, ip: bdr.ip } : null;
-      a.role = dr === a ? "DR" : bdr === a ? "BDR" : "DROTHER";
-    }
-    for (const s of Object.values(out)) {
-      for (const i of s.ifs) {
-        if (!i.up) i.role = "DOWN";
-        else if (i.net === "loopback") i.role = "LOOP";
-        else if (i.role === "DOWN") i.role = i.net === "point-to-point" ? "P2P" : "DR";
-      }
-    }
-    for (const a of talkers) {
-      for (const b of compat.get(a)) {
-        const bothP2p = a.net === "point-to-point" && b.net === "point-to-point";
-        const sameType = a.net === b.net;
-        let state;
-        let role2 = "-";
-        if (bothP2p || !sameType) state = "FULL";
-        else {
-          role2 = a.dr?.ip === b.ip ? "DR" : a.bdr?.ip === b.ip ? "BDR" : "DROTHER";
-          const adj = a.role === "DR" || a.role === "BDR" || role2 === "DR" || role2 === "BDR";
-          state = adj ? "FULL" : "2WAY";
-        }
-        if (state === "FULL" && a.mtu !== b.mtu) state = "EXSTART";
-        out[a.dev].nbrs.push({
-          rid: out[b.dev].rid,
-          prio: b.prio,
-          state,
-          role: role2,
-          ip: b.ip,
-          ifname: a.name,
-          peerDev: b.dev,
-          peerIf: b.name,
-          spf: state === "FULL" && sameType
-        });
-      }
-    }
-    const ifsIn = (dev, area) => out[dev].ifs.filter((i) => i.up && i.area === area);
-    const devsIn = (area) => Object.keys(out).filter((dev) => out[dev].areas.includes(area));
-    const allAreas = [...new Set(Object.values(out).flatMap((s) => s.areas))];
-    const edges = /* @__PURE__ */ new Map();
-    const ekey = (dev, area) => `${dev}#${area}`;
-    for (const area of allAreas) {
-      for (const dev of devsIn(area)) {
-        const list = [];
-        for (const a of ifsIn(dev, area)) {
-          if (!talkers.includes(a)) continue;
-          const full = out[dev].nbrs.filter((n) => n.ifname === a.name && n.spf);
-          if (a.net === "point-to-point") {
-            for (const n of full) list.push({ to: n.peerDev, cost: a.cost, path: { nh: n.ip, ifname: a.name } });
-            continue;
-          }
-          if (!a.dr) continue;
-          const amAttached = a.role === "DR" ? full.length > 0 : full.some((n) => n.ip === a.dr.ip);
-          if (!amAttached) continue;
-          for (const b of peersOf.get(a)) {
-            if (b.area !== area || !compat.get(a).includes(b) || b.net !== "broadcast") continue;
-            const bFull = out[b.dev].nbrs.filter((n) => n.ifname === b.name && n.spf);
-            const bAttached = b.role === "DR" ? bFull.length > 0 : bFull.some((n) => n.ip === a.dr.ip);
-            if (bAttached) list.push({ to: b.dev, cost: a.cost, path: { nh: b.ip, ifname: a.name } });
-          }
-        }
-        edges.set(ekey(dev, area), list);
-      }
-    }
-    const spf = (root, area) => {
-      const dist2 = /* @__PURE__ */ new Map([[root, { cost: 0, paths: [] }]]);
-      const done = /* @__PURE__ */ new Set();
-      for (; ; ) {
-        let cur = null;
-        for (const [k, v] of dist2) if (!done.has(k) && (cur === null || v.cost < dist2.get(cur).cost)) cur = k;
-        if (cur === null) break;
-        done.add(cur);
-        const base3 = dist2.get(cur);
-        for (const e of edges.get(ekey(cur, area)) ?? []) {
-          if (done.has(e.to)) continue;
-          const cost = base3.cost + e.cost;
-          const paths = cur === root ? [e.path] : base3.paths;
-          const prev = dist2.get(e.to);
-          if (!prev || cost < prev.cost) dist2.set(e.to, { cost, paths: [...paths] });
-          else if (cost === prev.cost) prev.paths = mergePaths(prev.paths, paths);
-        }
-      }
-      return dist2;
-    };
-    const pkey = (net, prefix) => `${net}/${prefix}`;
-    const asbrKey = (dev) => `asbr:${dev}`;
-    const externals = /* @__PURE__ */ new Map();
-    for (const dev of Object.keys(out)) {
-      const o = d.cfgs[dev].ospf;
-      if (!out[dev].rid) continue;
-      const list = [];
-      const table = o.defaultOriginate || o.redistribute ? routeTable(d, dev) : [];
-      if (o.defaultOriginate && (o.defaultOriginate.always || table.some((e) => e.prefix === 0 && e.code === "S"))) list.push({ net: "0.0.0.0", prefix: 0, metric: 1 });
-      const ospfIfs = new Set(out[dev].ifs.map((i) => i.name));
-      for (const src of ["static", "connected"]) {
-        const rd = o.redistribute?.[src];
-        if (!rd) continue;
-        for (const e of table) {
-          if (e.prefix === 0 || (src === "static" ? e.code !== "S" : e.code !== "C" || ospfIfs.has(e.ifname))) continue;
-          if (!rd.subnets && e.prefix !== classfulPrefix(e.net)) continue;
-          if (!list.some((x) => x.net === e.net && x.prefix === e.prefix)) list.push({ net: e.net, prefix: e.prefix, metric: rd.metric ?? 20 });
-        }
-      }
-      if (!list.length) continue;
-      out[dev].asbr = true;
-      externals.set(dev, list);
-    }
-    const dist = {};
-    const intra = {};
-    for (const dev of Object.keys(out)) {
-      dist[dev] = {};
-      intra[dev] = {};
-      for (const area of out[dev].areas) {
-        const dm = spf(dev, area);
-        dist[dev][area] = dm;
-        const pm = /* @__PURE__ */ new Map();
-        for (const [x, r] of dm) {
-          for (const i of ifsIn(x, area)) {
-            const host = i.net === "loopback";
-            const net = host ? i.ip : networkOf(i.ip, i.prefix);
-            const prefix = host ? 32 : i.prefix;
-            addReach(pm, pkey(net, prefix), { cost: r.cost + i.cost, paths: r.paths });
-          }
-          if (out[x].asbr) addReach(pm, asbrKey(x), { cost: r.cost, paths: r.paths });
-        }
-        intra[dev][area] = pm;
-      }
-    }
-    const stubCfg = (dev, area) => d.cfgs[dev].ospf.stubs[String(area)];
-    const summariesInto = (abr, area, backboneInter) => {
-      const m = /* @__PURE__ */ new Map();
-      const stub = stubCfg(abr, area);
-      if (stub) m.set(pkey("0.0.0.0", 0), 1);
-      if (stub?.noSummary) return m;
-      const put = (k, c) => {
-        if (stub && k.startsWith("asbr:")) return;
-        if (k === pkey("0.0.0.0", 0)) return;
-        if (!m.has(k) || m.get(k) > c) m.set(k, c);
-      };
-      for (const y of out[abr].areas) {
-        if (y === area) continue;
-        for (const [k, r] of intra[abr][y]) put(k, r.cost);
-      }
-      if (area !== 0 && backboneInter) for (const [k, r] of backboneInter) put(k, r.cost);
-      return m;
-    };
-    const abrs = (area) => devsIn(area).filter((x) => out[x].abr);
-    const interBB = {};
-    for (const dev of devsIn(0)) {
-      const m = /* @__PURE__ */ new Map();
-      for (const b of abrs(0)) {
-        if (b === dev) continue;
-        const rb = dist[dev][0].get(b);
-        if (!rb) continue;
-        for (const [k, c] of summariesInto(b, 0, null)) addReach(m, k, { cost: rb.cost + c, paths: rb.paths });
-      }
-      interBB[dev] = m;
-    }
-    const interNB = {};
-    for (const dev of Object.keys(out)) {
-      if (out[dev].abr) continue;
-      const m = /* @__PURE__ */ new Map();
-      for (const area of out[dev].areas) {
-        if (area === 0) continue;
-        for (const b of abrs(area)) {
-          const rb = dist[dev][area].get(b);
-          if (!rb) continue;
-          for (const [k, c] of summariesInto(b, area, interBB[b] ?? null)) addReach(m, k, { cost: rb.cost + c, paths: rb.paths });
-        }
-      }
-      interNB[dev] = m;
-    }
-    for (const dev of Object.keys(out)) {
-      const s = out[dev];
-      if (!s.rid) continue;
-      const connected = new Set(l3Ifs(d, dev).map((i) => pkey(networkOf(i.ip, i.prefix), i.prefix)));
-      const best = /* @__PURE__ */ new Map();
-      for (const area of s.areas) {
-        for (const [k, r] of intra[dev][area]) {
-          if (k.startsWith("asbr:") || !r.paths.length) continue;
-          upsert(best, k, "O", r);
-        }
-      }
-      const inter = /* @__PURE__ */ new Map();
-      for (const [k, r] of interBB[dev] ?? []) addReach(inter, k, r);
-      for (const [k, r] of interNB[dev] ?? []) addReach(inter, k, r);
-      for (const [k, r] of inter) {
-        if (k.startsWith("asbr:") || !r.paths.length) continue;
-        if (best.get(k)?.code === "O") continue;
-        upsert(best, k, "O IA", r);
-      }
-      const inNonStub = s.areas.some((a) => !stubCfg(dev, a));
-      const ext = /* @__PURE__ */ new Map();
-      if (inNonStub) {
-        for (const [asbr, list] of externals) {
-          if (asbr === dev) continue;
-          let toAsbr;
-          for (const area of s.areas) {
-            if (stubCfg(dev, area)) continue;
-            const r = intra[dev][area].get(asbrKey(asbr));
-            if (r && (!toAsbr || r.cost < toAsbr.cost)) toAsbr = r;
-          }
-          if (!toAsbr) toAsbr = inter.get(asbrKey(asbr));
-          if (!toAsbr || !toAsbr.paths.length) continue;
-          for (const e of list) {
-            const k = pkey(e.net, e.prefix);
-            const prev = ext.get(k);
-            if (!prev || e.metric < prev.metric || e.metric === prev.metric && toAsbr.cost < prev.fwd)
-              ext.set(k, { metric: e.metric, fwd: toAsbr.cost, paths: [...toAsbr.paths] });
-            else if (e.metric === prev.metric && toAsbr.cost === prev.fwd) prev.paths = mergePaths(prev.paths, toAsbr.paths);
-          }
-        }
-      }
-      for (const [k, e] of ext) if (!best.has(k)) best.set(k, { code: "O E2", r: { cost: e.metric, paths: e.paths } });
-      for (const [k, { code, r }] of best) {
-        if (connected.has(k)) continue;
-        const [net, p] = k.split("/");
-        s.routes.push({ code, net, prefix: Number(p), metric: r.cost, paths: r.paths });
-      }
-      s.routes.sort((a, b) => ridInt(a.net) - ridInt(b.net) || a.prefix - b.prefix);
-    }
-    return out;
-  }
-  function mismatch(d, out, a, b) {
-    if (a.prefix !== b.prefix || !sameSubnet(a.ip, b.ip, a.prefix)) return "subnet";
-    if (a.area !== b.area) return "area";
-    if (a.hello !== b.hello) return "hello";
-    if (a.dead !== b.dead) return "dead";
-    if (isStub(d.cfgs[a.dev].ospf, a.area) !== isStub(d.cfgs[b.dev].ospf, b.area)) return "stub";
-    if (out[a.dev].rid === out[b.dev].rid) return "rid";
-    return null;
-  }
-  function mergePaths(a, b) {
-    const m = [...a];
-    for (const p of b) if (!m.some((x) => x.nh === p.nh && x.ifname === p.ifname)) m.push(p);
-    return m.sort((x, y) => ridInt(x.nh) - ridInt(y.nh));
-  }
-  function addReach(m, k, r) {
-    const prev = m.get(k);
-    if (!prev || r.cost < prev.cost) m.set(k, { cost: r.cost, paths: [...r.paths] });
-    else if (r.cost === prev.cost) prev.paths = mergePaths(prev.paths, r.paths);
-  }
-  function upsert(best, k, code, r) {
-    const prev = best.get(k);
-    if (prev && prev.code === "O" && code !== "O") return;
-    if (!prev || prev.code !== code || r.cost < prev.r.cost) best.set(k, { code, r: { cost: r.cost, paths: [...r.paths] } });
-    else if (r.cost === prev.r.cost) prev.r.paths = mergePaths(prev.r.paths, r.paths);
-  }
-  function classfulPrefix(net) {
-    const first = Number(net.split(".")[0]);
-    return first < 128 ? 8 : first < 192 ? 16 : first < 224 ? 24 : 32;
-  }
-
   // src/sim/query.ts
   var OSPF_AD2 = 110;
   var LabQuery = class {
@@ -5878,6 +6191,21 @@ var AgLabSim = (() => {
     /** FULL adjacency between two routers (seen from both ends). */
     ospfAdjacent(a, b) {
       return this.ospfFull(a).some((n) => n.peerDev === b) && this.ospfFull(b).some((n) => n.peerDev === a);
+    }
+    /**
+     * IP SLA işlemi: yapılandırıldı mı, zamanlandı mı, son yoklama başarılı mı; `flapping`:
+     * nesne Down iken yoklama yedek yoldan başarılı (gerçek IOS'ta dalgalanır; track.ts).
+     */
+    ipSla(dev, n) {
+      const c = this.d.cfgs[dev]?.ipSla?.[String(n)];
+      const r = this.d.track?.sla[dev]?.[String(n)];
+      return { configured: !!c, scheduled: !!c?.scheduled, ok: !!c && !!r?.ok, flapping: !!c && !!r?.flapping };
+    }
+    /** İzlenen nesne: Up mı ve türü ('interface' | 'ip sla'; tanımsızsa null ve Down). */
+    track(dev, n) {
+      const t = this.d.cfgs[dev]?.tracks?.[String(n)];
+      if (!t) return { up: false, type: null };
+      return { up: objectUp(this.d, dev, n), type: t.sla !== void 0 ? "ip sla" : "interface" };
     }
     /** Installed routing table (C/L/S/O...). */
     routes(dev) {
@@ -6104,6 +6432,8 @@ var AgLabSim = (() => {
       __publicField(this, "seq", 0);
       __publicField(this, "t0", Date.now());
       __publicField(this, "listeners", /* @__PURE__ */ new Set());
+      /** İzlenen nesne durum değişikliği sayaçları ('dev|n' → son durum, değişim sayısı). */
+      __publicField(this, "trackHist", /* @__PURE__ */ new Map());
       /** FHRP state changes (IOS 15 biçimi; ara Speak/Learn durumları modellenmez). */
       __publicField(this, "fhrpQuiet", false);
       /**
@@ -6231,9 +6561,23 @@ var AgLabSim = (() => {
       }
       d.natTable = this.natTable;
       d.arpCache = this.arp;
+      this.trackChanges(computeTrack(d));
       d.fhrp = computeFhrp(d, this.fhrpActive);
       this.fhrpLog(d.fhrp);
       return d;
+    }
+    trackChanges(t) {
+      const seen = /* @__PURE__ */ new Set();
+      for (const [dev, objs] of Object.entries(t.objects))
+        for (const [n, o] of Object.entries(objs)) {
+          const k = dev + "|" + n;
+          seen.add(k);
+          const prev = this.trackHist.get(k) ?? { up: false, changes: 0 };
+          const changes = prev.changes + (prev.up !== o.up ? 1 : 0);
+          this.trackHist.set(k, { up: o.up, changes });
+          o.changes = changes;
+        }
+      for (const k of [...this.trackHist.keys()]) if (!seen.has(k)) this.trackHist.delete(k);
     }
     fhrpLog(f) {
       const now = /* @__PURE__ */ new Map();
@@ -10428,6 +10772,8 @@ write memory`
       if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail("Loopback");
       if (cfg.ospf) fail("OSPF");
       if (cfg.routes.length) fail("statik rota");
+      if (Object.keys(cfg.tracks ?? {}).length) fail("track (izlenen nesne; switch üzerinde desteklenmiyor)");
+      if (Object.keys(cfg.ipSla ?? {}).length) fail("IP SLA (desteklenmiyor)");
       if (cfg.ipRouting) fail("ip routing");
       if (cfg.stpMode !== "pvst") fail("spanning-tree mode " + cfg.stpMode);
       if (cfg.bpduguardDefault) fail("spanning-tree portfast bpduguard default");
@@ -10534,6 +10880,13 @@ write memory`
       if (!physName) fail(`${canon} (izlenen arayüz)`);
       return physName + (dot < 0 ? "" : canon.slice(dot));
     };
+    for (const r of cfg.routes)
+      if (r.track !== void 0) fail(`track ${r.track}'e bağlı statik rota ${r.net} ${r.mask} ${r.nh} (desteklenmiyor)`);
+    for (const [n, t] of Object.entries(cfg.tracks ?? {})) {
+      if (t.sla !== void 0) fail(`track ${n} ip sla ${t.sla} (desteklenmiyor)`);
+      if (t.delayUp !== void 0 || t.delayDown !== void 0) fail(`track ${n} delay (desteklenmiyor)`);
+    }
+    for (const n of Object.keys(cfg.ipSla ?? {})) fail(`IP SLA ${n} (desteklenmiyor)`);
     {
       const ids = Object.keys(cfg.tracks ?? {}).map(Number).sort((a, b) => a - b);
       const list2 = ids.map((n) => ({ id: n, interface: aglabIf(cfg.tracks[String(n)].iface) }));

@@ -76,14 +76,39 @@ function fhrpLines(o: L3Opts | undefined): string[] {
   return out
 }
 
-/** FHRP: `track N interface <if> line-protocol` objects (global). */
+/** İzlenen nesneler (global): `track N interface <if> line-protocol` | `track N ip sla S <tür>`. */
 function trackLines(c: SwitchConfig): string[] {
   const ids = Object.keys(c.tracks ?? {}).map(Number).sort((a, b) => a - b)
-  return ids.flatMap((n) => ['track ' + n + ' interface ' + c.tracks![String(n)]!.iface + ' line-protocol', '!'])
+  return ids.flatMap((n) => {
+    const t = c.tracks![String(n)]!
+    const head = t.sla !== undefined ? `track ${n} ip sla ${t.sla} ${t.kind ?? 'state'}` : `track ${n} interface ${t.iface} line-protocol`
+    const delay =
+      t.delayUp === undefined && t.delayDown === undefined
+        ? []
+        : [' delay' + (t.delayDown !== undefined ? ' down ' + t.delayDown : '') + (t.delayUp !== undefined ? ' up ' + t.delayUp : '')]
+    return [head, ...delay, '!']
+  })
+}
+
+/** IP SLA işlemleri ve zamanlamaları (IOS: rotalardan sonra). */
+function ipSlaLines(c: SwitchConfig): string[] {
+  const ids = Object.keys(c.ipSla ?? {}).map(Number).sort((a, b) => a - b)
+  if (!ids.length) return []
+  const o: string[] = []
+  for (const n of ids) {
+    const s = c.ipSla![String(n)]!
+    o.push('ip sla ' + n)
+    if (s.icmp)
+      o.push(' icmp-echo ' + s.icmp.target + (s.icmp.srcIf ? ' source-interface ' + s.icmp.srcIf : s.icmp.srcIp ? ' source-ip ' + s.icmp.srcIp : ''))
+    if (s.icmp && s.frequency !== undefined) o.push(' frequency ' + s.frequency)
+    if (s.scheduled) o.push(`ip sla schedule ${n} life forever start-time now`)
+  }
+  return ['!', ...o]
 }
 
 /** `ip route` line; the distance is shown only when it is not the default 1. */
-const routeLine = (r: SwitchConfig['routes'][number]) => `ip route ${r.net} ${r.mask} ${r.nh}` + (r.ad && r.ad !== 1 ? ' ' + r.ad : '')
+const routeLine = (r: SwitchConfig['routes'][number]) =>
+  `ip route ${r.net} ${r.mask} ${r.nh}` + (r.ad && r.ad !== 1 ? ' ' + r.ad : '') + (r.track !== undefined ? ' track ' + r.track : '')
 
 /** L5-f: CDP/LLDP lines differing from the IOS defaults (CDP on, LLDP off). */
 function discoveryGlobalLines(c: SwitchConfig): string[] {
@@ -135,6 +160,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   o.push('ip forward-protocol nd', 'no ip http server', '!')
   o.push(...natConfigLines(c))
   for (const r of c.routes) o.push(routeLine(r))
+  o.push(...ipSlaLines(c))
   o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), '!', 'line con 0', 'line aux 0', 'line vty 0 4', ' login', '!', 'end')
   return o
 }
@@ -243,6 +269,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   if (c.defaultGateway) o.push('ip default-gateway ' + c.defaultGateway)
   o.push('ip forward-protocol nd', 'no ip http server', '!')
   for (const r of c.routes) o.push(routeLine(r))
+  o.push(...ipSlaLines(c))
   o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), '!', 'line con 0', 'line vty 0 4', ' login', 'line vty 5 15', ' login', '!', 'end')
   return o
 }

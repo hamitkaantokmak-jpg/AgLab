@@ -96,6 +96,24 @@ export function computeState(
   return d
 }
 
+/**
+ * OSPF'i yeniden hesaplar (track.ts): dış rotalar (default-information originate,
+ * redistribute static) rota tablosundan okunur; ilk hesapta `d.track` yoktur ve track'li statik
+ * rotalar kurulu sayılır. Down nesneye bağlı rota tablodan çıkınca duyuru da çekilmeli; bu yüzden
+ * nesne durumları yazıldıktan sonra bir kez daha hesaplanır. İlk hesaptaki gibi önceki OSPF
+ * rotaları tabloya karışmasın diye boş durumdan başlanır.
+ */
+export function recomputeOspf(d: Derived): void {
+  d.ospf = {}
+  d.ospf = computeOspf(d)
+}
+
+/** Bu router'ın OSPF dış duyurusu rota tablosuna bağlı mı (`always`'siz default ya da redistribute static). */
+export function ospfExternalsFromTable(d: Derived, dev: string): boolean {
+  const o = d.cfgs[dev]?.ospf
+  return !!o && ((!!o.defaultOriginate && !o.defaultOriginate.always) || !!o.redistribute?.static)
+}
+
 const ridInt = (r: string) => ipToInt(r) ?? 0
 
 /** Router ID IOS would pick now: highest up loopback, else highest up interface address. */

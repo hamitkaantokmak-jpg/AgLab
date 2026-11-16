@@ -152,6 +152,20 @@ describe('köprü: Router (L4)', () => {
     }
   })
 
+  it('IP SLA, ip sla track\'i ve track\'li statik rota AğLab\'a dönüşte raporlanır (sessiz kayıp yok)', () => {
+    const t = routed()
+    for (const [script, msg] of [
+      ['ip sla 1\nicmp-echo 10.0.12.2', /IP SLA 1 .*desteklenmiyor/],
+      ['ip sla 1\nicmp-echo 10.0.12.2\nexit\ntrack 2 ip sla 1 reachability', /track 2 ip sla .*desteklenmiyor/],
+      ['ip route 10.9.9.0 255.255.255.0 10.0.12.2 track 3', /track 3'e bağlı statik rota .*desteklenmiyor/],
+    ] as const) {
+      const rt = createRuntime(toLabber(t))
+      runScript(rt, 'r1', 'configure terminal\n' + script + '\nend')
+      expect(() => toAglab(rt, t), script).toThrow(BridgeError)
+      expect(() => toAglab(rt, t), script).toThrow(msg)
+    }
+  })
+
   it('kayıtsız router portu açık sayılır (eski motor: enabled !== false)', () => {
     const t = routed()
     delete t.devices[2]!.interfaces!['g0/0']
