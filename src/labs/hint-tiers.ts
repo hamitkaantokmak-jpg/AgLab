@@ -348,6 +348,28 @@ export const HINT_TIERS: Record<string, Record<string, [string, string]>> = {
       'Her alan varsayılan rotayla bir sonraki adıma, ASBR de dış ağa gider.',
     ],
   },
+  'ospf-alan-ariza': {
+    stubflag: [
+      'R1 ile R2 birbirini komşu listesinde görüyor mu? İkisinin alan 1 için ayarlarını karşılaştır.',
+      'Bir alanın stub olup olmadığı hello paketinde taşınır; bir alanda bütün router’lar aynı bayrağı taşımalıdır.',
+    ],
+    backbone: [
+      'R2 hangi alanlara bağlı? Kendini alan sınır router’ı olarak görüyor mu?',
+      'Alanlar arası trafik omurga (area 0) üzerinden geçer; ABR’nin bir ayağı mutlaka area 0’da olmalıdır.',
+    ],
+    interarea: [
+      'R4’ün tablosunda şube LAN’ı var mı, hangi rota türüyle?',
+      'Başka alandan gelen ağlar omurgaya bağlı ABR’nin ürettiği özet LSA ile gelir ve O IA olarak görünür.',
+    ],
+    tstub: [
+      'R1’in tablosunda hangi OSPF rota türleri var? Varsayılan rota dışında alanlar arası rota kaldı mı?',
+      'Totally stubby alana ABR yalnız varsayılan rotayı verir; alanlar arası özetleri de kesmek ABR’nin işidir.',
+    ],
+    e2e: [
+      'PC1’den PC4’e paket hangi atlamalardan geçiyor?',
+      'Şube varsayılan rotayla ABR’ye, ABR omurga üzerinden merkeze gider; dönüş O IA rotasıyla gelir.',
+    ],
+  },
   'ospf-sorun-ileri': {
     nettype: [
       'R1, R2’yi FULL görüyor ama tablosunda OSPF rotası yok. İki uçta arayüz ayarlarından biri farklı mı?',
