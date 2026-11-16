@@ -101,7 +101,7 @@ CCNP Enterprise, ENCOR (350-401) ve bir uzmanlık sınavından oluşur; burada u
 | 37 | Ağ izleme: IP SLA, SPAN, NetFlow, Syslog, debug | Okuma + motor | Paket Dedektifi kısmen karşılar. Okuma dersi var (`docs/dersler/ag-izleme.md`, `telemetry`; 7 şema, 4 kâğıt üstü vaka) | P2 |
 | 38 | Altyapı güvenliği: CoPP, 802.1X, cihaz erişim ACL'leri | Okuma + motor | ACL'ye bağlı. Okuma dersi var (`docs/dersler/altyapi-guvenligi.md`, `dot1x`; 7 şema, 4 kâğıt üstü vaka) | P3 |
 | 39 | Otomasyon: Python, NETCONF/RESTCONF, YANG, REST API | Gerçek Lab (sandbox) | Yok; ileride Automation Studio. Okuma dersi var (`docs/dersler/programlanabilirlik.md`, `programmability`; 7 şema, 4 kâğıt üstü vaka) | P3 |
-| 40 | Kablosuz (sürüm teyidine bağlı) | Okuma | Kapsam dışı | P3 |
+| 40 | Kurumsal kablosuz: RF, AP katılımı, dolaşım | Okuma | Kapsam dışı. Okuma dersi var (`docs/dersler/kablosuz-ileri.md`, `wlanadv`; 7 şema, 5 kâğıt üstü vaka) | P3 |
 
 Kaynak karşılaştırmasıyla eklenen: **#49 Multicast** (IGMP, PIM, RP kavramları) — Okuma + Gerçek Lab (FRR pimd), P3. Okuma dersi var (`docs/dersler/multicast.md`, `multicast`; 7 şema, 4 kâğıt üstü vaka).
 
@@ -110,13 +110,13 @@ Kaynak karşılaştırmasıyla eklenen: **#49 Multicast** (IGMP, PIM, RP kavraml
 | # | Konu | Pratik | Motor / Gerçek Lab durumu | Öncelik |
 | --- | --- | --- | --- | --- |
 | 41 | EIGRP (named mode, metrik, stub; ENCOR v1.0'da da var) | Okuma, ileride motor | Motor yok; FRR desteği sınırlı. Okuma dersi var (`docs/dersler/eigrp.md`, `eigrp`; 7 şema, 4 kâğıt üstü vaka) | P3 |
-| 42 | İleri OSPF sorun giderme | Gerçek Lab | FRR destekler. Temeli #31'de (çok alan sorun giderme senaryoları); ayrı ders Gerçek Lab ile | P2 |
-| 43 | İleri BGP: iBGP, attribute'lar, route-map | Gerçek Lab | FRR destekler. Temeli #32'de (LP, Weight, prepend, route-map); iBGP ve ileri özellikler Gerçek Lab ile | P2 |
+| 42 | İleri OSPF sorun giderme | Gerçek Lab + motor | FRR destekler. Okuma dersi var (`docs/dersler/ospf-sorun-giderme.md`, `ospftshoot`; 7 şema, 5 kâğıt üstü vaka) | P2 |
+| 43 | İleri BGP: iBGP, route reflector, attribute'lar, politika | Gerçek Lab | FRR destekler. Okuma dersi var (`docs/dersler/bgp-ileri.md`, `bgpadv`; 7 şema, 5 kâğıt üstü vaka) | P2 |
 | 44 | Redistribution ve rota filtreleme (prefix-list, route-map) | Gerçek Lab | FRR destekler. Okuma dersi var (`docs/dersler/redistribution.md`, `redistribution`; 7 şema, 4 kâğıt üstü vaka) | P2 |
-| 45 | PBR ve VRF-lite | Gerçek Lab | FRR destekler. VRF-lite #33'te; PBR yazılacak | P2 |
-| 46 | DMVPN | Okuma | Yok. #34'te kısaca anılıyor; ayrı ders yazılacak | P3 |
-| 47 | IPv6 ileri ve first-hop security | Motor + okuma | 16. konuya bağlı | P3 |
-| 48 | Altyapı servisleri sorun giderme: DHCP, NTP, SNMP, Syslog, IP SLA | Motor + okuma | DHCP var; diğerleri yok | P2 |
+| 45 | PBR ve VRF-lite | Gerçek Lab | FRR destekler. VRF-lite #33'te; PBR okuma dersi var (`docs/dersler/pbr.md`, `pbr`; 7 şema, 5 kâğıt üstü vaka) | P2 |
+| 46 | DMVPN | Okuma | Yok. Okuma dersi var (`docs/dersler/dmvpn.md`, `dmvpn`; 7 şema, 5 kâğıt üstü vaka) | P3 |
+| 47 | IPv6 ileri: DHCPv6, IPv6 ACL, first-hop security | Motor + okuma | 16. konuya bağlı. Okuma dersi var (`docs/dersler/ipv6-ileri.md`, `ipv6adv`; 7 şema, 5 kâğıt üstü vaka) | P3 |
+| 48 | Altyapı servisleri sorun giderme: DHCP, NTP, SNMP, Syslog, IP SLA | Motor + okuma | DHCP var; diğerleri yok. Okuma dersi var (`docs/dersler/servis-sorun-giderme.md`, `svctshoot`; 7 şema, 5 kâğıt üstü vaka) | P2 |
 
 Bu seviyede 23 konunun 8'i Gerçek Lab'a, yaklaşık yarısı ağırlıkla okumaya dayanıyor. CCNP hedefi ciddiyse Gerçek Lab'ı çok kullanıcılı ve kolay kurulur hale getirmek motor geliştirmesi kadar önemlidir.
 
@@ -185,7 +185,7 @@ Mevcut 40 Akademi labı ve 17 arıza senaryosu da aynı numaralarla etiketlenip 
 4. **Seviye 2 (CCNA v2.0):** Faz B–D motor işleriyle birlikte; motoru hazır olmayan konular önce okuma + sınav olarak yayınlanır, pratik geldikçe eklenir.
 5. **Seviye 3 (CCNP):** Faz E (Gerçek Lab) hazır olunca routing ağırlıklı konular; okuma konuları her an yazılabilir.
 
-**Durum (15 Kasım 2026):** Seviye 1'in 12 konusu ve Seviye 2'nin 14 konusu uygulamada; her biri `docs/dersler/` altında 7 şemalı ayrıntılı derse sahip (simülatörde çalışmayanlar "okuma dersi" etiketli). Seviye 3'te 15 okuma dersi yazıldı (#27–29, #31–39, #41, #44, #49). Henüz ayrı dersi olmayanlar: #30 (#14 ve #29 kapsıyor), #40, #42, #43, #45 (PBR), #46, #47, #48. Okuma dersleri simülatör desteği gelince pratiğe çevrilir: her dersin "Motor gereksinimleri" bölümü ne gerektiğini yazar.
+**Durum (16 Kasım 2026):** Seviye 1'in 12 konusu ve Seviye 2'nin 14 konusu uygulamada; her biri `docs/dersler/` altında 7 şemalı ayrıntılı derse sahip (simülatörde çalışmayanlar "okuma dersi" etiketli). Seviye 3'ün 22 konusunun hepsi okuma dersi olarak yazıldı (#27–29, #31–49); #30 ayrı ders değildir (#14 ve #29 kapsar). Okuma dersleri simülatör desteği gelince pratiğe çevrilir: her dersin "Motor gereksinimleri" bölümü ne gerektiğini yazar.
 
 **Ders yapısı (bütün ayrıntılı dersler):** 0 Bir bakışta · 1 Neden önemli · 2 Kavram (benzetme → teknik → şema → dikkat) · 3 Çıktı okuma · 4 Yönlendirmeli lab · 5 Sık hatalar · 6 Arıza senaryoları (neden/çözüm kapalı kutuda) · 7 Kısa sınav (cevaplar kapalı) · 8 Özet kartı · 9 Doğrulama notları. Şemalar `docs/dersler/gorseller/<konu>.py` tanımlarından `tools/build_figures.py` ile üretilir; uygulama bunları "Ayrıntılı öğren" adımında gösterir.
 
