@@ -125,7 +125,7 @@ ip prefix-list SUBE: 1 entries
 
 ## 4. Yönlendirmeli lab
 
-> **Simülatörde yok:** Lab'ı kâğıt üstünde yürüt; her adımda Bölüm 3'teki beklenen çıktıyla karşılaştır.
+> **Kısmen simülatörde:** Statik ve bağlı ağları OSPF'e aktarmayı Simülatör'deki **ospf-dagitim** labında dene (Pratik adımında). EIGRP, route-map ve etiket adımlarını kâğıt üstünde Bölüm 3'teki çıktılarla karşılaştır.
 
 Topoloji: g3'teki gibi; OSPF alanında 10.1.0.0/16, EIGRP alanında 10.2.0.0/16; ASBR-1 ve ASBR-2 iki yönde aktarım yapıyor.
 
@@ -281,4 +281,5 @@ Kaynaklar: INE ENCOR ve CCNP ENCOR v1.0 (kapsam kontrolü için), ENARSI konu li
 
 **Motor gereksinimleri**
 
-- [ ] Redistribution, route-map ve prefix-list Labber'da yok; Gerçek Lab (FRR) bunları destekler. Hazır olunca S1–S4 `redis-*` kimlikleriyle eklenir.
+- [x] OSPF'e `redistribute static|connected [metric N] [subnets]` Labber'da var: Simülatör'deki **ospf-dagitim** labı (statik ve bağlı ağları E2 olarak aktarma, `subnets` tuzağı, metrik).
+- [ ] OSPF'ten başka protokole aktarım, route-map, prefix-list ve etiket Labber'da yok; Gerçek Lab (FRR) bunları destekler. Hazır olunca S1–S4 `redis-*` kimlikleriyle eklenir.

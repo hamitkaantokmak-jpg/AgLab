@@ -264,4 +264,5 @@ Kaynaklar: INE ENCOR (OSPF: multi-area, LSA types, area types, summarization) ve
 
 **Motor gereksinimleri**
 
-- [ ] Çok alan, LSA türleri ve alan türleri Labber'da yok; Gerçek Lab (FRR) bunları çalıştırır. Hazır olunca S1–S4 `ospfm-*` kimlikleriyle eklenir.
+- [x] Çok alan, ABR/ASBR, varsayılan rota, stub ve totally stubby alanlar Labber'da var: Simülatör'deki **ospf-cok-alan** (kurulum) ve **ospf-alan-ariza** (stub bayrağı, omurgasız ABR) labları.
+- [ ] LSA veritabanı (`show ip ospf database`), özetleme (`area range`), NSSA ve virtual-link Labber'da yok; Gerçek Lab (FRR) bunları çalıştırır. Hazır olunca kalan vakalar `ospfm-*` kimlikleriyle eklenir.

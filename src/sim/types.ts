@@ -233,8 +233,16 @@ export interface OspfConfig {
   /** Mbps */
   refBw: number
   defaultOriginate: null | { always: boolean }
+  /** `redistribute static|connected [metric N] [subnets]` (E2 externals; without `subnets` only classful networks) */
+  redistribute?: { static?: OspfRedist; connected?: OspfRedist }
   /** area id -> stub settings */
   stubs: Record<string, { noSummary: boolean }>
+}
+
+export interface OspfRedist {
+  subnets: boolean
+  /** E2 metric; undefined = 20 */
+  metric?: number
 }
 
 export interface StaticRoute {

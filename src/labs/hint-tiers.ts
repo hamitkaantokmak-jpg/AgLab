@@ -370,6 +370,28 @@ export const HINT_TIERS: Record<string, Record<string, [string, string]>> = {
       'Şube varsayılan rotayla ABR’ye, ABR omurga üzerinden merkeze gider; dönüş O IA rotasıyla gelir.',
     ],
   },
+  'ospf-dagitim': {
+    static: [
+      'R1 statik rotayı aktarıyor görünüyor; R3’ün tablosunda o ağ var mı? Aktarılan ağın maske uzunluğuna bak.',
+      'Eski IOS’ta OSPF’e aktarımda alt ağların da geçmesi ayrıca istenmezse yalnız sınıflı (A/B/C) ağlar aktarılır.',
+    ],
+    metric: [
+      'R3’te aktarılan rotanın köşeli parantezdeki metriği kaç?',
+      'Aktarılan rotaya metrik verilmezse OSPF varsayılanı (20) kullanılır; aktarım satırında metrik belirtilebilir.',
+    ],
+    connected: [
+      'DMZ ağı R3’te var mı? R1’in DMZ arayüzü OSPF’te mi?',
+      'OSPF’e eklenmeyen bir bağlı ağ, bağlı ağların aktarılmasıyla dış (E2) rota olarak duyurulur.',
+    ],
+    asbr: [
+      'R1 kendini OSPF’te nasıl tanımlıyor? Sınır router’ı satırı var mı?',
+      'Başka bir kaynaktan (statik, bağlı, başka protokol) OSPF’e rota aktaran router ASBR’dir.',
+    ],
+    e2e: [
+      'PC3’ten iki hedefe paket hangi atlamalardan geçiyor, dönüş nereden geliyor?',
+      'Gidiş için R3’ün dış rotası, dönüş için eski router’ın varsayılan rotası ve R1’in OSPF rotası gerekir.',
+    ],
+  },
   'ospf-sorun-ileri': {
     nettype: [
       'R1, R2’yi FULL görüyor ama tablosunda OSPF rotası yok. İki uçta arayüz ayarlarından biri farklı mı?',

@@ -281,3 +281,42 @@ describe('ospf multi-area', () => {
     expect(rt.derived.ospf['R3']!.asbr).toBe(true)
   })
 })
+
+describe('ospf redistribution (Konu #44)', () => {
+  const def = () => findLab('ospf-dagitim')!
+  const route = (rt: LabRuntime, dev: string, net: string) => rt.query().route(dev, net, 24)
+  it('without subnets only classful networks are redistributed', () => {
+    const rt = createLab(def())
+    expect(route(rt, 'R3', '10.50.1.0')).toBeFalsy()
+    expect(rt.query().ospf('R1')!.asbr).toBe(false)
+  })
+  it('subnets: E2 with metric 20 by default, set metric is used', () => {
+    const rt = createLab(def())
+    cfg(rt, 'R1', 'router ospf 1\nredistribute static subnets')
+    expect(route(rt, 'R3', '10.50.1.0')).toMatchObject({ code: 'O E2', metric: 20 })
+    cfg(rt, 'R1', 'router ospf 1\nredistribute static metric 50 subnets')
+    expect(route(rt, 'R3', '10.50.1.0')).toMatchObject({ code: 'O E2', metric: 50 })
+    cfg(rt, 'R1', 'router ospf 1\nno redistribute static')
+    expect(route(rt, 'R3', '10.50.1.0')).toBeFalsy()
+  })
+  it('connected: networks already in OSPF stay intra-area', () => {
+    const rt = solve(def())
+    expect(route(rt, 'R3', '172.16.5.0')).toMatchObject({ code: 'O E2' })
+    cfg(rt, 'R1', 'router ospf 1\nnetwork 172.16.5.0 0.0.0.255 area 0')
+    expect(route(rt, 'R3', '172.16.5.0')).toMatchObject({ code: 'O' })
+  })
+})
+
+describe('advanced OSPF troubleshooting (Konu #42)', () => {
+  it('network type mismatch: FULL but outside SPF', () => {
+    const rt = createLab(findLab('ospf-sorun-ileri')!)
+    const nb = rt.query().ospf('R1')!.nbrs.find((n) => n.peerDev === 'R2')!
+    expect(nb.state).toBe('FULL')
+    expect(nb.spf).toBe(false)
+  })
+  it('priority 0 on both ends: no DR, stuck in 2WAY', () => {
+    const rt = solve(findLab('ospf-sorun-ileri')!)
+    cfg(rt, 'R3', 'interface gi0/2\nip ospf priority 0')
+    expect(rt.query().ospf('R3')!.nbrs.find((n) => n.peerDev === 'R4')!.state).toBe('2WAY')
+  })
+})
