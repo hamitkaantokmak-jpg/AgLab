@@ -13,8 +13,11 @@ import routedAccess from './routed-access'
 import bpduGuard from './bpdu-guard'
 import ospfTrouble from './ospf-troubleshoot'
 import ospfMulti from './ospf-multiarea'
+import ospfAdvTrouble from './ospf-advanced-troubleshoot'
+import ospfAreaTrouble from './ospf-area-troubleshoot'
+import ospfRedist from './ospf-redistribution'
 
-export const LABS: LabDef[] = [vlanBasics, troubleshoot, hardening, campus, stpLb, ecTrouble, l3Static, mgmt, ospfSingle, routedAccess, bpduGuard, ospfTrouble, ospfMulti]
+export const LABS: LabDef[] = [vlanBasics, troubleshoot, hardening, campus, stpLb, ecTrouble, l3Static, mgmt, ospfSingle, routedAccess, bpduGuard, ospfTrouble, ospfMulti, ospfAreaTrouble, ospfAdvTrouble, ospfRedist]
 
 export function findLab(id: string): LabDef | undefined {
   return LABS.find((l) => l.id === id)

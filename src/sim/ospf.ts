@@ -340,11 +340,24 @@ function computeOspf(d: Derived): Record<string, OspfState> {
   const externals = new Map<string, { net: string; prefix: number; metric: number }[]>()
   for (const dev of Object.keys(out)) {
     const o = d.cfgs[dev]!.ospf!
-    if (!o.defaultOriginate || !out[dev]!.rid) continue
-    const hasDefault = routeTable(d, dev).some((e) => e.prefix === 0 && e.code === 'S')
-    if (!o.defaultOriginate.always && !hasDefault) continue
+    if (!out[dev]!.rid) continue
+    const list: { net: string; prefix: number; metric: number }[] = []
+    const table = o.defaultOriginate || o.redistribute ? routeTable(d, dev) : []
+    if (o.defaultOriginate && (o.defaultOriginate.always || table.some((e) => e.prefix === 0 && e.code === 'S'))) list.push({ net: '0.0.0.0', prefix: 0, metric: 1 })
+    // redistribute static|connected: E2, metric 20 unless set; without `subnets` only classful networks
+    const ospfIfs = new Set(out[dev]!.ifs.map((i) => i.name))
+    for (const src of ['static', 'connected'] as const) {
+      const rd = o.redistribute?.[src]
+      if (!rd) continue
+      for (const e of table) {
+        if (e.prefix === 0 || (src === 'static' ? e.code !== 'S' : e.code !== 'C' || ospfIfs.has(e.ifname!))) continue
+        if (!rd.subnets && e.prefix !== classfulPrefix(e.net)) continue
+        if (!list.some((x) => x.net === e.net && x.prefix === e.prefix)) list.push({ net: e.net, prefix: e.prefix, metric: rd.metric ?? 20 })
+      }
+    }
+    if (!list.length) continue
     out[dev]!.asbr = true
-    externals.set(dev, [{ net: '0.0.0.0', prefix: 0, metric: 1 }])
+    externals.set(dev, list)
   }
 
   // intra-area: dist[dev][area], intra[dev][area] = prefix -> reach
@@ -509,4 +522,10 @@ function upsert(
   if (prev && prev.code === 'O' && code !== 'O') return
   if (!prev || prev.code !== code || r.cost < prev.r.cost) best.set(k, { code, r: { cost: r.cost, paths: [...r.paths] } })
   else if (r.cost === prev.r.cost) prev.r.paths = mergePaths(prev.r.paths, r.paths)
+}
+
+/** Classful prefix length of a network (A /8, B /16, C /24; others /32). */
+function classfulPrefix(net: string): number {
+  const first = Number(net.split('.')[0])
+  return first < 128 ? 8 : first < 192 ? 16 : first < 224 ? 24 : 32
 }

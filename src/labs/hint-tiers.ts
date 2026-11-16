@@ -348,4 +348,70 @@ export const HINT_TIERS: Record<string, Record<string, [string, string]>> = {
       'Her alan varsayılan rotayla bir sonraki adıma, ASBR de dış ağa gider.',
     ],
   },
+  'ospf-alan-ariza': {
+    stubflag: [
+      'R1 ile R2 birbirini komşu listesinde görüyor mu? İkisinin alan 1 için ayarlarını karşılaştır.',
+      'Bir alanın stub olup olmadığı hello paketinde taşınır; bir alanda bütün router’lar aynı bayrağı taşımalıdır.',
+    ],
+    backbone: [
+      'R2 hangi alanlara bağlı? Kendini alan sınır router’ı olarak görüyor mu?',
+      'Alanlar arası trafik omurga (area 0) üzerinden geçer; ABR’nin bir ayağı mutlaka area 0’da olmalıdır.',
+    ],
+    interarea: [
+      'R4’ün tablosunda şube LAN’ı var mı, hangi rota türüyle?',
+      'Başka alandan gelen ağlar omurgaya bağlı ABR’nin ürettiği özet LSA ile gelir ve O IA olarak görünür.',
+    ],
+    tstub: [
+      'R1’in tablosunda hangi OSPF rota türleri var? Varsayılan rota dışında alanlar arası rota kaldı mı?',
+      'Totally stubby alana ABR yalnız varsayılan rotayı verir; alanlar arası özetleri de kesmek ABR’nin işidir.',
+    ],
+    e2e: [
+      'PC1’den PC4’e paket hangi atlamalardan geçiyor?',
+      'Şube varsayılan rotayla ABR’ye, ABR omurga üzerinden merkeze gider; dönüş O IA rotasıyla gelir.',
+    ],
+  },
+  'ospf-dagitim': {
+    static: [
+      'R1 statik rotayı aktarıyor görünüyor; R3’ün tablosunda o ağ var mı? Aktarılan ağın maske uzunluğuna bak.',
+      'Eski IOS’ta OSPF’e aktarımda alt ağların da geçmesi ayrıca istenmezse yalnız sınıflı (A/B/C) ağlar aktarılır.',
+    ],
+    metric: [
+      'R3’te aktarılan rotanın köşeli parantezdeki metriği kaç?',
+      'Aktarılan rotaya metrik verilmezse OSPF varsayılanı (20) kullanılır; aktarım satırında metrik belirtilebilir.',
+    ],
+    connected: [
+      'DMZ ağı R3’te var mı? R1’in DMZ arayüzü OSPF’te mi?',
+      'OSPF’e eklenmeyen bir bağlı ağ, bağlı ağların aktarılmasıyla dış (E2) rota olarak duyurulur.',
+    ],
+    asbr: [
+      'R1 kendini OSPF’te nasıl tanımlıyor? Sınır router’ı satırı var mı?',
+      'Başka bir kaynaktan (statik, bağlı, başka protokol) OSPF’e rota aktaran router ASBR’dir.',
+    ],
+    e2e: [
+      'PC3’ten iki hedefe paket hangi atlamalardan geçiyor, dönüş nereden geliyor?',
+      'Gidiş için R3’ün dış rotası, dönüş için eski router’ın varsayılan rotası ve R1’in OSPF rotası gerekir.',
+    ],
+  },
+  'ospf-sorun-ileri': {
+    nettype: [
+      'R1, R2’yi FULL görüyor ama tablosunda OSPF rotası yok. İki uçta arayüz ayarlarından biri farklı mı?',
+      'Bir uç bağlantıyı noktadan noktaya, diğeri yayın ağı sayarsa komşuluk kurulur ama iki router bağı farklı anlatır; SPF bağı kullanmaz.',
+    ],
+    rid: [
+      'R2 ile R3 birbirini hiç görmüyor; ikisinin OSPF kimliklerine bak.',
+      'Her OSPF router’ının kimliği benzersiz olmalı; kimlik değişince süreç yeniden başlamadan yeni kimlik kullanılmaz.',
+    ],
+    dr: [
+      'R3–R4 komşuluğu hangi durumda kalıyor? Segmentte DR ve BDR kim?',
+      'Yayın segmentinde FULL komşuluk DR/BDR ile kurulur; önceliği 0 olan router DR olamaz. Kimse aday değilse DR seçilmez.',
+    ],
+    route: [
+      'R1’in tablosunda uzak LAN var mı? Yoksa zincirin hangi halkasında rota kayboluyor?',
+      'Rota, LSA’lar her bağlantıda FULL komşuluklarla taşınıp SPF hesabına girince oluşur.',
+    ],
+    e2e: [
+      'PC1’den PC4’e paket hangi atlamalardan geçiyor, nerede duruyor?',
+      'Gidiş ve dönüş için iki uçta da rota gerekir; üç bağlantı düzelince ikisi de olur.',
+    ],
+  },
 }

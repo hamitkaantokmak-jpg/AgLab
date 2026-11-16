@@ -332,19 +332,19 @@ var AgLabSim = (() => {
 
   // src/sim/topology.ts
   var pk = (dev, port) => `${dev}|${port}`;
-  function buildTopo(lab14) {
+  function buildTopo(lab17) {
     const devices = {};
-    for (const d of lab14.devices) devices[d.id] = d;
+    for (const d of lab17.devices) devices[d.id] = d;
     const peer = {};
-    for (const l of lab14.links) {
+    for (const l of lab17.links) {
       peer[pk(l.a[0], l.a[1])] = { dev: l.b[0], port: l.b[1] };
       peer[pk(l.b[0], l.b[1])] = { dev: l.a[0], port: l.a[1] };
     }
-    const switches = lab14.devices.filter((d) => d.kind === "switch");
-    const pcs = lab14.devices.filter((d) => d.kind === "pc");
+    const switches = lab17.devices.filter((d) => d.kind === "switch");
+    const pcs = lab17.devices.filter((d) => d.kind === "pc");
     const pcAttach = {};
     for (const pc of pcs) pcAttach[pc.id] = peer[pk(pc.id, "eth0")] ?? null;
-    return { lab: lab14, devices, switches, pcs, peer, pcAttach };
+    return { lab: lab17, devices, switches, pcs, peer, pcAttach };
   }
 
   // src/sim/engine.ts
@@ -1298,12 +1298,12 @@ var AgLabSim = (() => {
       const prefix = maskToPrefix(r.mask);
       return prefix === null ? [] : [{ code: "S", net: r.net, prefix, ad: r.ad ?? 1, idx, nh: r.nh, ifname: "" }];
     });
-    const ospf = (d.ospf[dev]?.routes ?? []).filter((r) => r.paths.length).map((r) => ({ code: r.code, net: r.net, prefix: r.prefix, ad: OSPF_AD, nh: r.paths[0].nh, ifname: r.paths[0].ifname, metric: r.metric, paths: r.paths }));
+    const ospf2 = (d.ospf[dev]?.routes ?? []).filter((r) => r.paths.length).map((r) => ({ code: r.code, net: r.net, prefix: r.prefix, ad: OSPF_AD, nh: r.paths[0].nh, ifname: r.paths[0].ifname, metric: r.metric, paths: r.paths }));
     const lookupFor = (dst, seen) => {
       const matches = [
         ...connected.filter((c) => inPrefix(dst, c.net, c.prefix)).map((c) => ({ ...c, ad: 0 })),
         ...statics.filter((c) => !seen.has(c.idx) && inPrefix(dst, c.net, c.prefix)),
-        ...ospf.filter((c) => inPrefix(dst, c.net, c.prefix))
+        ...ospf2.filter((c) => inPrefix(dst, c.net, c.prefix))
       ].sort((a, b) => b.prefix - a.prefix || a.ad - b.ad || (a.code === "S" ? 0 : 1) - (b.code === "S" ? 0 : 1));
       for (const m of matches) {
         if (m.code === "C") return { ifname: m.ifname, via: dst };
@@ -1330,7 +1330,7 @@ var AgLabSim = (() => {
       if (!r) continue;
       consider({ code: "S", net: s.net, prefix: s.prefix, nh: s.nh, ifname: r.ifname, ...s.ad !== 1 ? { ad: s.ad } : {}, via: r.via }, s.ad * 2);
     }
-    for (const r of ospf) consider({ code: r.code, net: r.net, prefix: r.prefix, nh: r.nh, ifname: r.ifname, metric: r.metric, paths: r.paths }, r.ad * 2 + 1);
+    for (const r of ospf2) consider({ code: r.code, net: r.net, prefix: r.prefix, nh: r.nh, ifname: r.ifname, metric: r.metric, paths: r.paths }, r.ad * 2 + 1);
     for (const e of best.values()) {
       const { rank: _rank, ...entry } = e;
       out.push(entry);
@@ -1532,8 +1532,8 @@ var AgLabSim = (() => {
     const back = deliver(d, replier, src, { proto: "icmp", icmpType: "echo-reply", src: dst, dport: fwd.pkt?.sport, natPending: fwd.nat });
     const backTo = back.hops[back.hops.length - 1]?.dev ?? replier;
     if (back.kind !== "ok" || backTo !== from) return { ok: false, reason: "timeout", forward: fwd, back, firstHopArp };
-    const base2 = d.topo.devices[replier].kind === "pc" ? 64 : 255;
-    return { ok: true, ttl: base2 - back.routersCrossed, replier, forward: fwd, back, firstHopArp };
+    const base3 = d.topo.devices[replier].kind === "pc" ? 64 : 255;
+    return { ok: true, ttl: base3 - back.routersCrossed, replier, forward: fwd, back, firstHopArp };
   }
   function traceProbe(d, from, dst, ttl, dport, sport = 49152) {
     const fwd = deliver(d, from, dst, { proto: "udp", sport, dport, ttl });
@@ -1675,8 +1675,8 @@ var AgLabSim = (() => {
     for (const g of d.fhrp?.groups ?? []) {
       const a = g.active;
       if (!a || g.vip !== ip2) continue;
-      const base2 = l3Ifs(d, a.dev).find((i) => i.name === a.ifname);
-      if (base2?.node && inDomain(base2.node)) return { ...base2, ip: ip2, mac: virtualMac(a) };
+      const base3 = l3Ifs(d, a.dev).find((i) => i.name === a.ifname);
+      if (base3?.node && inDomain(base3.node)) return { ...base3, ip: ip2, mac: virtualMac(a) };
     }
     return null;
   }
@@ -2420,6 +2420,10 @@ var AgLabSim = (() => {
     if (r.passiveDefault) o.push(" passive-interface default");
     for (const p of r.passive) o.push(`${r.passiveDefault ? " no" : ""} passive-interface ${p}`);
     for (const n of r.networks) o.push(` network ${n.addr} ${n.wildcard} area ${n.area}`);
+    for (const src of ["connected", "static"]) {
+      const x = r.redistribute?.[src];
+      if (x) o.push(` redistribute ${src}${x.metric !== void 0 ? " metric " + x.metric : ""}${x.subnets ? " subnets" : ""}`);
+    }
     if (r.defaultOriginate) o.push(" default-information originate" + (r.defaultOriginate.always ? " always" : ""));
     o.push("!");
     return o;
@@ -3690,6 +3694,18 @@ var AgLabSim = (() => {
     { p: "default-information originate", run: (x) => void (x.ospf.defaultOriginate = { always: false }) },
     { p: "default-information originate always", run: (x) => void (x.ospf.defaultOriginate = { always: true }) },
     { p: "no default-information originate", run: (x) => void (x.ospf.defaultOriginate = null) },
+    { p: "redistribute static", run: (x) => x.redist("static", false) },
+    { p: "redistribute static subnets", run: (x) => x.redist("static", true) },
+    { p: "redistribute static metric <1-16777214:OSPF default metric>", run: (x, a) => x.redist("static", false, Number(a[3])) },
+    { p: "redistribute static metric <1-16777214:OSPF default metric> subnets", run: (x, a) => x.redist("static", true, Number(a[3])) },
+    { p: "redistribute static subnets metric <1-16777214:OSPF default metric>", run: (x, a) => x.redist("static", true, Number(a[4])) },
+    { p: "no redistribute static", run: (x) => void delete x.ospf.redistribute?.static },
+    { p: "redistribute connected", run: (x) => x.redist("connected", false) },
+    { p: "redistribute connected subnets", run: (x) => x.redist("connected", true) },
+    { p: "redistribute connected metric <1-16777214:OSPF default metric>", run: (x, a) => x.redist("connected", false, Number(a[3])) },
+    { p: "redistribute connected metric <1-16777214:OSPF default metric> subnets", run: (x, a) => x.redist("connected", true, Number(a[3])) },
+    { p: "redistribute connected subnets metric <1-16777214:OSPF default metric>", run: (x, a) => x.redist("connected", true, Number(a[4])) },
+    { p: "no redistribute connected", run: (x) => void delete x.ospf.redistribute?.connected },
     { p: "area <0-4294967295:OSPF area ID as a decimal value> stub", run: (x, a) => x.stubArea(Number(a[1]), false) },
     { p: "area <0-4294967295:OSPF area ID as a decimal value> stub no-summary", run: (x, a) => x.stubArea(Number(a[1]), true) },
     {
@@ -4159,10 +4175,10 @@ var AgLabSim = (() => {
       return name;
     }
     newPo(from) {
-      const base2 = from ? pickL2(from) : { shutdown: false, description: "", mode: "dynamic-auto", accessVlan: 1, nativeVlan: 1, allowed: null, nonegotiate: false, encapDot1q: false, portfast: false };
-      base2.shutdown = false;
-      base2.description = "";
-      return base2;
+      const base3 = from ? pickL2(from) : { shutdown: false, description: "", mode: "dynamic-auto", accessVlan: 1, nativeVlan: 1, allowed: null, nonegotiate: false, encapDot1q: false, portfast: false };
+      base3.shutdown = false;
+      base3.description = "";
+      return base3;
     }
     // ---- L5-c: access lists ----
     aclSyntax(e, argIndex) {
@@ -4645,6 +4661,13 @@ var AgLabSim = (() => {
     stubArea(area, noSummary) {
       if (area === 0) return ["% OSPF: Backbone can not be configured as stub area"];
       this.ospf.stubs[String(area)] = { noSummary };
+    }
+    /** `redistribute static|connected …` under router ospf */
+    redist(src, subnets, metric) {
+      var _a;
+      const r = (_a = this.ospf).redistribute ?? (_a.redistribute = {});
+      r[src] = metric === void 0 ? { subnets } : { subnets, metric };
+      if (!subnets) return ["% Only classful networks will be redistributed"];
     }
     clearOspf() {
       if (!this.cfg.ospf) return;
@@ -5611,11 +5634,11 @@ var AgLabSim = (() => {
         for (const [k, v] of dist2) if (!done.has(k) && (cur === null || v.cost < dist2.get(cur).cost)) cur = k;
         if (cur === null) break;
         done.add(cur);
-        const base2 = dist2.get(cur);
+        const base3 = dist2.get(cur);
         for (const e of edges.get(ekey(cur, area)) ?? []) {
           if (done.has(e.to)) continue;
-          const cost = base2.cost + e.cost;
-          const paths = cur === root ? [e.path] : base2.paths;
+          const cost = base3.cost + e.cost;
+          const paths = cur === root ? [e.path] : base3.paths;
           const prev = dist2.get(e.to);
           if (!prev || cost < prev.cost) dist2.set(e.to, { cost, paths: [...paths] });
           else if (cost === prev.cost) prev.paths = mergePaths(prev.paths, paths);
@@ -5628,11 +5651,23 @@ var AgLabSim = (() => {
     const externals = /* @__PURE__ */ new Map();
     for (const dev of Object.keys(out)) {
       const o = d.cfgs[dev].ospf;
-      if (!o.defaultOriginate || !out[dev].rid) continue;
-      const hasDefault = routeTable(d, dev).some((e) => e.prefix === 0 && e.code === "S");
-      if (!o.defaultOriginate.always && !hasDefault) continue;
+      if (!out[dev].rid) continue;
+      const list = [];
+      const table = o.defaultOriginate || o.redistribute ? routeTable(d, dev) : [];
+      if (o.defaultOriginate && (o.defaultOriginate.always || table.some((e) => e.prefix === 0 && e.code === "S"))) list.push({ net: "0.0.0.0", prefix: 0, metric: 1 });
+      const ospfIfs = new Set(out[dev].ifs.map((i) => i.name));
+      for (const src of ["static", "connected"]) {
+        const rd = o.redistribute?.[src];
+        if (!rd) continue;
+        for (const e of table) {
+          if (e.prefix === 0 || (src === "static" ? e.code !== "S" : e.code !== "C" || ospfIfs.has(e.ifname))) continue;
+          if (!rd.subnets && e.prefix !== classfulPrefix(e.net)) continue;
+          if (!list.some((x) => x.net === e.net && x.prefix === e.prefix)) list.push({ net: e.net, prefix: e.prefix, metric: rd.metric ?? 20 });
+        }
+      }
+      if (!list.length) continue;
       out[dev].asbr = true;
-      externals.set(dev, [{ net: "0.0.0.0", prefix: 0, metric: 1 }]);
+      externals.set(dev, list);
     }
     const dist = {};
     const intra = {};
@@ -5774,6 +5809,10 @@ var AgLabSim = (() => {
     if (prev && prev.code === "O" && code !== "O") return;
     if (!prev || prev.code !== code || r.cost < prev.r.cost) best.set(k, { code, r: { cost: r.cost, paths: [...r.paths] } });
     else if (r.cost === prev.r.cost) prev.r.paths = mergePaths(prev.r.paths, r.paths);
+  }
+  function classfulPrefix(net) {
+    const first = Number(net.split(".")[0]);
+    return first < 128 ? 8 : first < 192 ? 16 : first < 224 ? 24 : 32;
   }
 
   // src/sim/query.ts
@@ -8597,8 +8636,423 @@ write memory`
   };
   var ospf_multiarea_default = lab13;
 
+  // src/labs/ospf-advanced-troubleshoot.ts
+  var base2 = (n, extra) => `ip routing
+vlan 10
+ name LAN
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+exit
+interface vlan 10
+ ip address 192.168.${n}.1 255.255.255.0
+exit
+${extra}`;
+  var routed3 = (port, ip2, more = "") => `interface ${port}
+ no switchport
+ ip address ${ip2} 255.255.255.252${more}
+exit`;
+  var ospf = (rid, n, nets) => `
+router ospf 1
+ router-id ${rid}
+ passive-interface vlan 10
+ network 192.168.${n}.0 0.0.0.255 area 0
+${nets.map((x) => ` network ${x} 0.0.0.3 area 0`).join("\n")}
+exit`;
+  var lab14 = {
+    id: "ospf-sorun-ileri",
+    title: "İleri OSPF sorun giderme: ağ tipi, çift router-id ve DR seçimi",
+    summary: "Dört router zinciri. Bir komşuluk FULL görünüyor ama rota gelmiyor, biri hiç kurulmuyor, biri 2-WAY'de takılı. Her bağlantıda takılan durumdan nedeni bul ve PC1 ile PC4 arasını aç.",
+    level: "İleri",
+    tags: ["ENARSI", "OSPF", "Arıza giderme", "Ağ tipi", "Router-id", "DR/BDR"],
+    brief: [
+      "Zincir: R1 — R2 — R3 — R4; bütün bağlantılar /30 routed port, hepsi area 0. LAN'lar 192.168.1.0/24 (R1) ve 192.168.4.0/24 (R4). IP adresleri doğru.",
+      "Belirti: PC1, PC4'e ulaşamıyor. R1'de show ip ospf neighbor R2'yi FULL gösteriyor ama R1'in tablosunda OSPF rotası yok. R2 ile R3 birbirini hiç görmüyor. R3 ile R4 arasında komşuluk 2WAY/DROTHER'da kalıyor.",
+      "Yöntem: her bağlantıda önce durumu oku (show ip ospf neighbor), sonra arayüz ayarlarını karşılaştır (show ip ospf interface), sonra süreç ayarlarına bak (show ip ospf, show running-config | section ospf).",
+      "Kurallar: iki uçta aynı ağ tipi; her router'ın benzersiz router-id'si (değişince clear ip ospf process); broadcast bir segmentte en az bir router'ın priority'si 0'dan büyük olmalı ki DR seçilebilsin.",
+      "Bitince: üç komşuluk FULL, R1'in tablosunda 192.168.4.0/24 OSPF rotası, PC1 ↔ PC4 ping."
+    ],
+    view: { w: 960, h: 500 },
+    devices: [
+      { id: "R1", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0080.0001", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 130, y: 160 },
+      { id: "R2", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0080.0002", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 360, y: 160 },
+      { id: "R3", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0080.0003", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 590, y: 160 },
+      { id: "R4", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0080.0004", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 820, y: 160 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.8001", x: 130, y: 420 },
+      { id: "PC4", kind: "pc", mac: "0050.7966.8004", x: 820, y: 420 }
+    ],
+    links: [
+      { a: ["R1", "GigabitEthernet0/1"], b: ["R2", "GigabitEthernet0/1"] },
+      { a: ["R2", "GigabitEthernet0/2"], b: ["R3", "GigabitEthernet0/1"] },
+      { a: ["R3", "GigabitEthernet0/2"], b: ["R4", "GigabitEthernet0/1"] },
+      { a: ["PC1", "eth0"], b: ["R1", "FastEthernet0/1"] },
+      { a: ["PC4", "eth0"], b: ["R4", "FastEthernet0/1"] }
+    ],
+    initialConfig: {
+      R1: base2(1, routed3("gi0/1", "10.0.12.1")) + ospf("1.1.1.1", 1, ["10.0.12.0"]),
+      // fault 1: network type point-to-point on one end only
+      R2: base2(2, [routed3("gi0/1", "10.0.12.2", "\n ip ospf network point-to-point"), routed3("gi0/2", "10.0.23.1")].join("\n")) + ospf("2.2.2.2", 2, ["10.0.12.0", "10.0.23.0"]),
+      // fault 2: router-id copied from R2; fault 3a: priority 0 towards R4
+      R3: base2(3, [routed3("gi0/1", "10.0.23.2"), routed3("gi0/2", "10.0.34.1", "\n ip ospf priority 0")].join("\n")) + ospf("2.2.2.2", 3, ["10.0.23.0", "10.0.34.0"]),
+      // fault 3b: priority 0 towards R3 as well
+      R4: base2(4, routed3("gi0/1", "10.0.34.2", "\n ip ospf priority 0")) + ospf("4.4.4.4", 4, ["10.0.34.0"])
+    },
+    initialPcs: {
+      PC1: { ip: "192.168.1.10", prefix: 24, gw: "192.168.1.1" },
+      PC4: { ip: "192.168.4.10", prefix: 24, gw: "192.168.4.1" }
+    },
+    objectives: [
+      {
+        id: "nettype",
+        title: "R1–R2: iki uçta aynı ağ tipi, rotalar SPF'e giriyor",
+        hint: "R2 Gi0/1: no ip ospf network (ya da iki uçta da point-to-point).",
+        check: (q) => {
+          const nb = q.ospf("R1")?.nbrs.find((n) => n.peerDev === "R2");
+          return { ok: !!nb && nb.state === "FULL" && nb.spf, detail: nb ? `${nb.state}${nb.spf ? "" : ", SPF dışında"}` : "komşu yok" };
+        }
+      },
+      {
+        id: "rid",
+        title: "R2–R3 komşuluğu FULL (router-id benzersiz)",
+        hint: "R3: router ospf 1 → router-id 3.3.3.3 → end → clear ip ospf process (soruya yes).",
+        check: (q) => q.ospfAdjacent("R2", "R3")
+      },
+      {
+        id: "dr",
+        title: "R3–R4 komşuluğu FULL (segmentte bir DR seçildi)",
+        hint: "R3 Gi0/2 ya da R4 Gi0/1: no ip ospf priority. İki uç da priority 0 iken DR seçilemez.",
+        check: (q) => q.ospfAdjacent("R3", "R4")
+      },
+      {
+        id: "route",
+        title: "R1'in tablosunda 192.168.4.0/24 OSPF rotası",
+        hint: "show ip route ospf. Önceki üç hedef tamamsa rota R2 üzerinden gelir.",
+        check: (q) => {
+          const r = q.route("R1", "192.168.4.0", 24);
+          return { ok: !!r && r.code === "O", detail: r ? `${r.code} via ${r.nh}` : "rota yok" };
+        }
+      },
+      {
+        id: "e2e",
+        title: "PC1 ↔ PC4 ping",
+        hint: "PC1'de: ping 192.168.4.10, sonra trace 192.168.4.10.",
+        check: (q) => q.ping("PC1", "192.168.4.10").ok && q.ping("PC4", "192.168.1.10").ok
+      }
+    ],
+    solution: {
+      R2: `configure terminal
+interface gi0/1
+ no ip ospf network
+end
+write memory`,
+      R3: `configure terminal
+router ospf 1
+ router-id 3.3.3.3
+end
+clear ip ospf process
+yes
+configure terminal
+interface gi0/2
+ no ip ospf priority
+end
+write memory`
+    }
+  };
+  var ospf_advanced_troubleshoot_default = lab14;
+
+  // src/labs/ospf-area-troubleshoot.ts
+  var lan2 = (n) => `vlan 10
+ name LAN
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+exit
+interface vlan 10
+ ip address 192.168.${n}.1 255.255.255.0
+exit`;
+  var routed4 = (port, ip2) => `interface ${port}
+ no switchport
+ ip address ${ip2} 255.255.255.252
+exit`;
+  var lab15 = {
+    id: "ospf-alan-ariza",
+    title: "Çok alanlı OSPF arıza giderme: stub bayrağı ve omurgasız ABR",
+    summary: "Şube alanı (area 1) merkeze hiç bağlanmıyor. Önce komşuluğu engelleyen bayrak uyuşmazlığını, sonra omurgaya bağlanmayan ABR'yi bul; sonunda area 1'i totally stubby yap.",
+    level: "İleri",
+    tags: ["ENCOR", "OSPF", "Multi-area", "Stub area", "ABR", "Arıza giderme"],
+    brief: [
+      "Tasarım: R1 (şube, area 1) — R2 (ABR) — R3 (merkez) — R4 (merkez LAN). R2–R3 ve R3–R4 bağlantıları ve merkez LAN'ları area 0 olmalı. Area 1 totally stubby olacak: şube yalnız varsayılan rotayı ve kendi alanını görecek.",
+      "Belirti: R1 ile R2 komşu değil. R1'de area 1 stub yazılmış. Ayrıca bir teknisyen R2–R3 bağlantısını iki uçta da area 2'ye almış; R3 bu yüzden ABR gibi görünüyor ama R2 omurgaya bağlı değil.",
+      "Kurallar: stub bayrağı bir alandaki bütün router'larda aynı olmalı (hello'da karşılaştırılır). Alanlar arası rotalar yalnız area 0'a bağlı ABR üzerinden geçer; omurgaya dokunmayan bir router iki alanı birbirine bağlayamaz.",
+      "Totally stubby: alandaki her router'da area 1 stub, ABR'de ayrıca no-summary. R1'de O*IA 0.0.0.0/0 dışında alanlar arası rota kalmamalı.",
+      "Kontrol: show ip ospf neighbor, show ip ospf (ABR satırı ve alanlar), show ip ospf interface brief, show ip route ospf. PC1 → PC4 ping."
+    ],
+    view: { w: 960, h: 500 },
+    devices: [
+      { id: "R1", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0090.0001", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 130, y: 160 },
+      { id: "R2", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0090.0002", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 360, y: 160 },
+      { id: "R3", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0090.0003", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 590, y: 160 },
+      { id: "R4", kind: "switch", model: "WS-C3560-24PS", mac: "5254.0090.0004", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 820, y: 160 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.9001", x: 130, y: 420 },
+      { id: "PC4", kind: "pc", mac: "0050.7966.9004", x: 820, y: 420 }
+    ],
+    links: [
+      { a: ["R1", "GigabitEthernet0/1"], b: ["R2", "GigabitEthernet0/1"] },
+      { a: ["R2", "GigabitEthernet0/2"], b: ["R3", "GigabitEthernet0/1"] },
+      { a: ["R3", "GigabitEthernet0/2"], b: ["R4", "GigabitEthernet0/1"] },
+      { a: ["PC1", "eth0"], b: ["R1", "FastEthernet0/1"] },
+      { a: ["PC4", "eth0"], b: ["R4", "FastEthernet0/1"] }
+    ],
+    initialConfig: {
+      // fault 1: stub flag only on R1
+      R1: `ip routing
+${lan2(1)}
+${routed4("gi0/1", "10.1.12.1")}
+router ospf 1
+ router-id 1.1.1.1
+ area 1 stub
+ passive-interface vlan 10
+ network 10.1.12.0 0.0.0.3 area 1
+ network 192.168.1.0 0.0.0.255 area 1
+exit`,
+      // fault 2: backbone link in area 2 on both ends
+      R2: `ip routing
+${routed4("gi0/1", "10.1.12.2")}
+${routed4("gi0/2", "10.0.23.1")}
+router ospf 1
+ router-id 2.2.2.2
+ network 10.1.12.0 0.0.0.3 area 1
+ network 10.0.23.0 0.0.0.3 area 2
+exit`,
+      R3: `ip routing
+${lan2(3)}
+${routed4("gi0/1", "10.0.23.2")}
+${routed4("gi0/2", "10.0.34.1")}
+router ospf 1
+ router-id 3.3.3.3
+ passive-interface vlan 10
+ network 10.0.23.0 0.0.0.3 area 2
+ network 10.0.34.0 0.0.0.3 area 0
+ network 192.168.3.0 0.0.0.255 area 0
+exit`,
+      R4: `ip routing
+${lan2(4)}
+${routed4("gi0/1", "10.0.34.2")}
+router ospf 1
+ router-id 4.4.4.4
+ passive-interface vlan 10
+ network 10.0.34.0 0.0.0.3 area 0
+ network 192.168.4.0 0.0.0.255 area 0
+exit`
+    },
+    initialPcs: {
+      PC1: { ip: "192.168.1.10", prefix: 24, gw: "192.168.1.1" },
+      PC4: { ip: "192.168.4.10", prefix: 24, gw: "192.168.4.1" }
+    },
+    objectives: [
+      {
+        id: "stubflag",
+        title: "R1–R2 komşuluğu FULL (stub bayrağı iki uçta aynı)",
+        hint: "R2: router ospf 1 → area 1 stub. (Bayrağı R1'den kaldırmak da komşuluğu kurar ama tasarım totally stubby istiyor.)",
+        check: (q) => q.ospfAdjacent("R1", "R2")
+      },
+      {
+        id: "backbone",
+        title: "R2–R3 bağlantısı area 0'da; R2 omurgaya bağlı ABR",
+        hint: 'R2 ve R3: no network 10.0.23.0 0.0.0.3 area 2 → network 10.0.23.0 0.0.0.3 area 0. Kontrol: show ip ospf → "It is an area border router", alanlar 0 ve 1.',
+        check: (q) => {
+          const r2 = q.ospf("R2");
+          return { ok: !!r2?.abr && r2.areas.join() === "0,1" && q.ospfAdjacent("R2", "R3"), detail: r2 ? `R2 alanları: ${r2.areas.join(", ")}` : "R2'de OSPF yok" };
+        }
+      },
+      {
+        id: "interarea",
+        title: "R4, şube LAN'ını (192.168.1.0/24) O IA olarak görüyor",
+        hint: "Alanlar arası rota ancak omurgaya bağlı ABR'nin ürettiği özet LSA ile gelir. show ip route 192.168.1.0 (R4).",
+        check: (q) => {
+          const r = q.route("R4", "192.168.1.0", 24);
+          return { ok: r?.code === "O IA", detail: r ? r.code : "rota yok" };
+        }
+      },
+      {
+        id: "tstub",
+        title: "Area 1 totally stubby: R1'de yalnız O*IA varsayılan",
+        hint: `R2: router ospf 1 → area 1 stub no-summary. R1'de "O IA" olarak yalnız 0.0.0.0/0 kalmalı.`,
+        check: (q) => {
+          const rs = q.routes("R1").filter((e) => e.code.startsWith("O"));
+          const def = rs.find((e) => e.prefix === 0);
+          const extra = rs.filter((e) => e.code !== "O" && e.prefix !== 0).map((e) => `${e.code} ${e.net}/${e.prefix}`);
+          const ok = def?.code === "O IA" && !extra.length;
+          return { ok, detail: !def ? "R1'de varsayılan rota yok" : extra.length ? "Fazla: " + extra.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "e2e",
+        title: "PC1 ↔ PC4 ping",
+        hint: "R1 varsayılan rotayla R2'ye, R2 omurga üzerinden R4'e gider; dönüş O IA rotasıyla. PC1'de: trace 192.168.4.10",
+        check: (q) => q.ping("PC1", "192.168.4.10").ok && q.ping("PC4", "192.168.1.10").ok
+      }
+    ],
+    solution: {
+      R2: `configure terminal
+router ospf 1
+ area 1 stub no-summary
+ no network 10.0.23.0 0.0.0.3 area 2
+ network 10.0.23.0 0.0.0.3 area 0
+end
+write memory`,
+      R3: `configure terminal
+router ospf 1
+ no network 10.0.23.0 0.0.0.3 area 2
+ network 10.0.23.0 0.0.0.3 area 0
+end
+write memory`
+    }
+  };
+  var ospf_area_troubleshoot_default = lab15;
+
+  // src/labs/ospf-redistribution.ts
+  var lan3 = (vlan, ip2) => `vlan ${vlan}
+ name LAN
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan ${vlan}
+exit
+interface vlan ${vlan}
+ ip address ${ip2} 255.255.255.0
+exit`;
+  var routed5 = (port, ip2) => `interface ${port}
+ no switchport
+ ip address ${ip2} 255.255.255.252
+exit`;
+  var lab16 = {
+    id: "ospf-dagitim",
+    title: "Redistribution: statik ve bağlı ağları OSPF'e aktarmak",
+    summary: "Eski bir router'ın arkasındaki sunucu ağı ve R1'deki DMZ ağı OSPF alanında görünmüyor. R1'i ASBR yap: statik rotayı ve DMZ'yi E2 olarak, istenen metrikle aktar.",
+    level: "İleri",
+    tags: ["ENARSI", "OSPF", "Redistribution", "ASBR", "E2", "subnets"],
+    brief: [
+      "R0 eski bir router: OSPF çalıştırmıyor, arkasında 10.50.1.0/24 sunucu ağı var, varsayılan rotası R1'e bakıyor. R1 bu ağa statik rotayla gidiyor (ip route 10.50.1.0 255.255.255.0 10.9.0.2).",
+      "R1'de ayrıca DMZ ağı 172.16.5.0/24 (Vlan20) var ve OSPF'e eklenmemesi isteniyor: arayüz OSPF'te olmadan aktarılmalı. R1–R2–R3 arası OSPF area 0 hazır.",
+      "Belirti: R1'de router ospf altında redistribute static yazılmış; ama R3'ün tablosunda 10.50.1.0/24 yok. DMZ de yok.",
+      "Kurallar: Labber'ın 12.2 sürümlü IOS'unda OSPF'e aktarımda subnets yazılmazsa yalnız sınıflı (A/B/C) ağlar aktarılır; 10.50.1.0/24 bir A sınıfı ağın alt ağıdır. Aktarılan rotalar varsayılan olarak metrik 20, tip E2 alır. İstenen: statikler metrik 50, bağlı ağlar varsayılan 20.",
+      "Kontrol: show ip ospf (R1 ASBR mı), show running-config | section ospf, R3'te show ip route ospf (O E2 satırları ve metrikleri). PC3'ten SRV0 ve PC-DMZ'ye ping."
+    ],
+    view: { w: 960, h: 500 },
+    devices: [
+      { id: "R0", kind: "switch", model: "WS-C3560-24PS", mac: "5254.00a0.0000", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 110, y: 160 },
+      { id: "R1", kind: "switch", model: "WS-C3560-24PS", mac: "5254.00a0.0001", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 340, y: 160 },
+      { id: "R2", kind: "switch", model: "WS-C3560-24PS", mac: "5254.00a0.0002", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 590, y: 160 },
+      { id: "R3", kind: "switch", model: "WS-C3560-24PS", mac: "5254.00a0.0003", ports: ports("Fa0/1-2", "Gi0/1-2"), l3: true, needsEncap: true, x: 840, y: 160 },
+      { id: "SRV0", kind: "pc", mac: "0050.7966.a000", x: 110, y: 420 },
+      { id: "PC-DMZ", kind: "pc", mac: "0050.7966.a001", x: 340, y: 420 },
+      { id: "PC3", kind: "pc", mac: "0050.7966.a003", x: 840, y: 420 }
+    ],
+    links: [
+      { a: ["R0", "GigabitEthernet0/1"], b: ["R1", "GigabitEthernet0/1"] },
+      { a: ["R1", "GigabitEthernet0/2"], b: ["R2", "GigabitEthernet0/1"] },
+      { a: ["R2", "GigabitEthernet0/2"], b: ["R3", "GigabitEthernet0/1"] },
+      { a: ["SRV0", "eth0"], b: ["R0", "FastEthernet0/1"] },
+      { a: ["PC-DMZ", "eth0"], b: ["R1", "FastEthernet0/1"] },
+      { a: ["PC3", "eth0"], b: ["R3", "FastEthernet0/1"] }
+    ],
+    initialConfig: {
+      R0: `ip routing
+${lan3(10, "10.50.1.1")}
+${routed5("gi0/1", "10.9.0.2")}
+ip route 0.0.0.0 0.0.0.0 10.9.0.1`,
+      // fault: redistribute static without subnets; connected not redistributed
+      R1: `ip routing
+${lan3(20, "172.16.5.1")}
+${routed5("gi0/1", "10.9.0.1")}
+${routed5("gi0/2", "10.0.12.1")}
+ip route 10.50.1.0 255.255.255.0 10.9.0.2
+router ospf 1
+ router-id 1.1.1.1
+ network 10.0.12.0 0.0.0.3 area 0
+ redistribute static
+exit`,
+      R2: `ip routing
+${routed5("gi0/1", "10.0.12.2")}
+${routed5("gi0/2", "10.0.23.1")}
+router ospf 1
+ router-id 2.2.2.2
+ network 10.0.12.0 0.0.0.3 area 0
+ network 10.0.23.0 0.0.0.3 area 0
+exit`,
+      R3: `ip routing
+${lan3(30, "192.168.3.1")}
+${routed5("gi0/1", "10.0.23.2")}
+router ospf 1
+ router-id 3.3.3.3
+ passive-interface vlan 30
+ network 10.0.23.0 0.0.0.3 area 0
+ network 192.168.3.0 0.0.0.255 area 0
+exit`
+    },
+    initialPcs: {
+      SRV0: { ip: "10.50.1.10", prefix: 24, gw: "10.50.1.1" },
+      "PC-DMZ": { ip: "172.16.5.10", prefix: 24, gw: "172.16.5.1" },
+      PC3: { ip: "192.168.3.10", prefix: 24, gw: "192.168.3.1" }
+    },
+    objectives: [
+      {
+        id: "static",
+        title: "R3'te 10.50.1.0/24 O E2 olarak var",
+        hint: "R1: router ospf 1 → redistribute static subnets. subnets olmadan yalnız sınıflı ağlar aktarılır.",
+        check: (q) => {
+          const r = q.route("R3", "10.50.1.0", 24);
+          return { ok: r?.code === "O E2", detail: r ? r.code : "rota yok" };
+        }
+      },
+      {
+        id: "metric",
+        title: "Aktarılan statik rotanın metriği 50",
+        hint: "R1: redistribute static metric 50 subnets. Kontrol: R3'te show ip route 10.50.1.0 → [110/50].",
+        check: (q) => {
+          const r = q.route("R3", "10.50.1.0", 24);
+          return { ok: r?.code === "O E2" && r.metric === 50, detail: r ? `metrik ${r.metric}` : "rota yok" };
+        }
+      },
+      {
+        id: "connected",
+        title: "DMZ (172.16.5.0/24) OSPF'e eklenmeden R3'te O E2",
+        hint: "R1: redistribute connected subnets. DMZ arayüzünü network satırıyla OSPF'e eklersen rota O (alan içi) olur; istenen bu değil.",
+        check: (q) => {
+          const r = q.route("R3", "172.16.5.0", 24);
+          const inOspf = !!q.ospf("R1")?.ifs.some((i) => i.name === "Vlan20");
+          return { ok: r?.code === "O E2" && !inOspf, detail: inOspf ? "Vlan20 OSPF'te" : r ? r.code : "rota yok" };
+        }
+      },
+      {
+        id: "asbr",
+        title: "R1 ASBR",
+        hint: 'show ip ospf → "It is an autonomous system boundary router". Aktarım yapan router ASBR olur.',
+        check: (q) => !!q.ospf("R1")?.asbr
+      },
+      {
+        id: "e2e",
+        title: "PC3 → SRV0 ve PC3 → PC-DMZ ping",
+        hint: "Gidiş E2 rotalarıyla R1'e, R1 statik rotayla R0'a; dönüş R0'ın varsayılan rotası ve R1'in OSPF rotasıyla.",
+        check: (q) => q.ping("PC3", "10.50.1.10").ok && q.ping("PC3", "172.16.5.10").ok
+      }
+    ],
+    solution: {
+      R1: `configure terminal
+router ospf 1
+ redistribute static metric 50 subnets
+ redistribute connected subnets
+end
+write memory`
+    }
+  };
+  var ospf_redistribution_default = lab16;
+
   // src/labs/index.ts
-  var LABS = [vlan_basics_default, trunk_troubleshoot_default, trunk_hardening_default, campus_l2_l3_default, stp_load_balancing_default, etherchannel_troubleshoot_default, l3_static_routing_default, mgmt_vlan_default, ospf_single_area_default, routed_access_default, bpdu_guard_default, ospf_troubleshoot_default, ospf_multiarea_default];
+  var LABS = [vlan_basics_default, trunk_troubleshoot_default, trunk_hardening_default, campus_l2_l3_default, stp_load_balancing_default, etherchannel_troubleshoot_default, l3_static_routing_default, mgmt_vlan_default, ospf_single_area_default, routed_access_default, bpdu_guard_default, ospf_troubleshoot_default, ospf_multiarea_default, ospf_area_troubleshoot_default, ospf_advanced_troubleshoot_default, ospf_redistribution_default];
 
   // src/labs/hint-tiers.ts
   var HINT_TIERS = {
@@ -8942,6 +9396,72 @@ write memory`
       e2e: [
         "PC1’in paketleri internete hangi atlamalardan çıkıyor?",
         "Her alan varsayılan rotayla bir sonraki adıma, ASBR de dış ağa gider."
+      ]
+    },
+    "ospf-alan-ariza": {
+      stubflag: [
+        "R1 ile R2 birbirini komşu listesinde görüyor mu? İkisinin alan 1 için ayarlarını karşılaştır.",
+        "Bir alanın stub olup olmadığı hello paketinde taşınır; bir alanda bütün router’lar aynı bayrağı taşımalıdır."
+      ],
+      backbone: [
+        "R2 hangi alanlara bağlı? Kendini alan sınır router’ı olarak görüyor mu?",
+        "Alanlar arası trafik omurga (area 0) üzerinden geçer; ABR’nin bir ayağı mutlaka area 0’da olmalıdır."
+      ],
+      interarea: [
+        "R4’ün tablosunda şube LAN’ı var mı, hangi rota türüyle?",
+        "Başka alandan gelen ağlar omurgaya bağlı ABR’nin ürettiği özet LSA ile gelir ve O IA olarak görünür."
+      ],
+      tstub: [
+        "R1’in tablosunda hangi OSPF rota türleri var? Varsayılan rota dışında alanlar arası rota kaldı mı?",
+        "Totally stubby alana ABR yalnız varsayılan rotayı verir; alanlar arası özetleri de kesmek ABR’nin işidir."
+      ],
+      e2e: [
+        "PC1’den PC4’e paket hangi atlamalardan geçiyor?",
+        "Şube varsayılan rotayla ABR’ye, ABR omurga üzerinden merkeze gider; dönüş O IA rotasıyla gelir."
+      ]
+    },
+    "ospf-dagitim": {
+      static: [
+        "R1 statik rotayı aktarıyor görünüyor; R3’ün tablosunda o ağ var mı? Aktarılan ağın maske uzunluğuna bak.",
+        "Eski IOS’ta OSPF’e aktarımda alt ağların da geçmesi ayrıca istenmezse yalnız sınıflı (A/B/C) ağlar aktarılır."
+      ],
+      metric: [
+        "R3’te aktarılan rotanın köşeli parantezdeki metriği kaç?",
+        "Aktarılan rotaya metrik verilmezse OSPF varsayılanı (20) kullanılır; aktarım satırında metrik belirtilebilir."
+      ],
+      connected: [
+        "DMZ ağı R3’te var mı? R1’in DMZ arayüzü OSPF’te mi?",
+        "OSPF’e eklenmeyen bir bağlı ağ, bağlı ağların aktarılmasıyla dış (E2) rota olarak duyurulur."
+      ],
+      asbr: [
+        "R1 kendini OSPF’te nasıl tanımlıyor? Sınır router’ı satırı var mı?",
+        "Başka bir kaynaktan (statik, bağlı, başka protokol) OSPF’e rota aktaran router ASBR’dir."
+      ],
+      e2e: [
+        "PC3’ten iki hedefe paket hangi atlamalardan geçiyor, dönüş nereden geliyor?",
+        "Gidiş için R3’ün dış rotası, dönüş için eski router’ın varsayılan rotası ve R1’in OSPF rotası gerekir."
+      ]
+    },
+    "ospf-sorun-ileri": {
+      nettype: [
+        "R1, R2’yi FULL görüyor ama tablosunda OSPF rotası yok. İki uçta arayüz ayarlarından biri farklı mı?",
+        "Bir uç bağlantıyı noktadan noktaya, diğeri yayın ağı sayarsa komşuluk kurulur ama iki router bağı farklı anlatır; SPF bağı kullanmaz."
+      ],
+      rid: [
+        "R2 ile R3 birbirini hiç görmüyor; ikisinin OSPF kimliklerine bak.",
+        "Her OSPF router’ının kimliği benzersiz olmalı; kimlik değişince süreç yeniden başlamadan yeni kimlik kullanılmaz."
+      ],
+      dr: [
+        "R3–R4 komşuluğu hangi durumda kalıyor? Segmentte DR ve BDR kim?",
+        "Yayın segmentinde FULL komşuluk DR/BDR ile kurulur; önceliği 0 olan router DR olamaz. Kimse aday değilse DR seçilmez."
+      ],
+      route: [
+        "R1’in tablosunda uzak LAN var mı? Yoksa zincirin hangi halkasında rota kayboluyor?",
+        "Rota, LSA’lar her bağlantıda FULL komşuluklarla taşınıp SPF hesabına girince oluşur."
+      ],
+      e2e: [
+        "PC1’den PC4’e paket hangi atlamalardan geçiyor, nerede duruyor?",
+        "Gidiş ve dönüş için iki uçta da rota gerekir; üç bağlantı düzelince ikisi de olur."
       ]
     }
   };
@@ -9451,7 +9971,7 @@ write memory`
         if (!Number.isInteger(pid) || pid < 1 || pid > 65535) reject(id, "ospf.pid", "Geçersiz OSPF süreç numarası");
         else if (rid !== null && rid !== "" && !isIp(String(rid))) reject(id, "ospf.routerId", "Geçersiz OSPF router-id");
         else {
-          const ospf = {
+          const ospf2 = {
             pid,
             routerId: rid ? String(rid) : null,
             activeRid: rid ? String(rid) : null,
@@ -9468,9 +9988,9 @@ write memory`
             const area = Number(n?.["area"]);
             if (!isIp(String(n?.["network"] ?? "")) || !isIp(String(n?.["wildcard"] ?? "")) || !Number.isInteger(area) || area < 0)
               reject(id, `ospf.networks[${i}]`, "Geçersiz OSPF network satırı");
-            else ospf.networks.push({ addr: String(n["network"]), wildcard: String(n["wildcard"]), area });
+            else ospf2.networks.push({ addr: String(n["network"]), wildcard: String(n["wildcard"]), area });
           });
-          cfg.ospf = ospf;
+          cfg.ospf = ospf2;
         }
       }
       running[id] = cfg;
@@ -10110,12 +10630,13 @@ write memory`
     if (o.passiveDefault || o.passive.length) fail("passive-interface");
     if (o.refBw !== 100) fail("auto-cost reference-bandwidth");
     if (o.defaultOriginate) fail("default-information originate");
+    if (o.redistribute && Object.keys(o.redistribute).length) fail("redistribute");
     if (Object.keys(o.stubs).length) fail("stub area");
     const prev = orig.ospf ?? {};
-    const ospf = { ...prev, pid: o.pid };
-    if (o.routerId || prev["routerId"] !== void 0) ospf["routerId"] = o.routerId ?? "";
-    ospf["networks"] = o.networks.map((n) => ({ network: n.addr, wildcard: n.wildcard, area: n.area }));
-    d.ospf = ospf;
+    const ospf2 = { ...prev, pid: o.pid };
+    if (o.routerId || prev["routerId"] !== void 0) ospf2["routerId"] = o.routerId ?? "";
+    ospf2["networks"] = o.networks.map((n) => ({ network: n.addr, wildcard: n.wildcard, area: n.area }));
+    d.ospf = ospf2;
   }
   function helperBack(l3, canon, fail) {
     if (!l3) return null;
@@ -10392,8 +10913,8 @@ write memory`
     }
     const replier = fwd.hops[fwd.hops.length - 1]?.dev ?? from;
     const back = r.back ?? deliver(d, replier, src);
-    const base2 = rt.topo.devices[replier]?.kind === "pc" ? 64 : 255;
-    const backTo = walk2("icmp-reply", replier, back.hops, dst, src, base2);
+    const base3 = rt.topo.devices[replier]?.kind === "pc" ? 64 : 255;
+    const backTo = walk2("icmp-reply", replier, back.hops, dst, src, base3);
     if (!r.ok || back.kind !== "ok" || backTo !== from) {
       records.push({ raw: `discard ${backTo} no-return-path` });
       records.push({ raw: `icmp-undelivered ${from} ${r.reason ?? "timeout"}` });
@@ -10522,10 +11043,10 @@ write memory`
   function importReportWithCli(report, t, lines) {
     const name = (id) => String(t.devices.find((d) => String(d.id) === id)?.name ?? id);
     const row = (l) => ({ device: name(l.device), line: l.line, command: l.command, ...l.reason ? { reason: l.reason } : {} });
-    const base2 = { ...report ?? {} };
+    const base3 = { ...report ?? {} };
     const out = {
-      ...base2,
-      converterUnmodeledConfigLines: base2["converterUnmodeledConfigLines"] ?? base2["unmodeledConfigLines"] ?? [],
+      ...base3,
+      converterUnmodeledConfigLines: base3["converterUnmodeledConfigLines"] ?? base3["unmodeledConfigLines"] ?? [],
       unmodeledConfigLines: lines.filter((l) => l.status === "unmodeled").map(row),
       ignoredConfigLines: lines.filter((l) => l.status === "ignored").map(row),
       labberCli: summarize(lines)

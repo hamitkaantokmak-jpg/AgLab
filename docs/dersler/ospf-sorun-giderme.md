@@ -154,7 +154,7 @@ R4#show ip route 10.9.9.9
 
 ## 4. Yönlendirmeli lab
 
-> **Kısmen simülatörde:** Komşuluğun kurulması ve rota oluşması Labber'da denenebilir; ara durumlar, debug ve LSDB adımları için kâğıt üstünde Bölüm 3'teki çıktılarla karşılaştır.
+> **Kısmen simülatörde:** 1–4. adımların karşılığı Simülatör'deki **ospf-sorun-ileri** labıdır (ağ tipi, çift router-id, DR seçimi; Pratik adımında). debug, LSDB ve 5–6. adımları kâğıt üstünde Bölüm 3'teki çıktılarla karşılaştır.
 
 Topoloji: R1–R2–R3 zinciri, alan 0; R3'ün arkasında alan 1 ve R5 (ASBR, 172.16.0.0/16'yı aktarıyor).
 
@@ -321,4 +321,5 @@ Kaynaklar: INE ENCOR OSPF Fundamentals ve CCNP ENCOR v1.0 (kapsam kontrolü içi
 
 **Motor gereksinimleri**
 
-- [ ] Labber'da OSPF ara durumlarının (INIT, 2-WAY, EXSTART) modellenmesi, MTU ve hello/dead karşılaştırması, `show ip ospf interface` ve `show ip ospf database`. Hazır olunca S1–S5 `ospft-*` kimlikleriyle eklenir.
+- [x] Labber'da komşuluk şartları (alan, hello/dead, stub, router-id), MTU → EXSTART, ağ tipi uyuşmazlığı (FULL ama SPF dışı) ve DR seçimi (priority 0 → 2-WAY) var: Simülatör'deki **ospf-sorun-ileri** ve **ospf-ariza** labları.
+- [ ] `show ip ospf database`, distribute-list ve forwarding address Labber'da yok. Hazır olunca S3 ve S5 `ospft-*` kimlikleriyle eklenir.

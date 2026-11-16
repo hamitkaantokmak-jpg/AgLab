@@ -668,6 +668,9 @@
     'ospf-ariza': 'ospf',
     'routed-erisim-blogu': 'design',
     'ospf-cok-alan': 'ospfadv',
+    'ospf-alan-ariza': 'ospfadv',
+    'ospf-sorun-ileri': 'ospftshoot',
+    'ospf-dagitim': 'redistribution',
   };
   function academyCourse(id) {
     const n = Number(String(id).replace(/\D/g, ''));

@@ -1317,6 +1317,7 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
   if (o.passiveDefault || o.passive.length) fail('passive-interface')
   if (o.refBw !== 100) fail('auto-cost reference-bandwidth')
   if (o.defaultOriginate) fail('default-information originate')
+  if (o.redistribute && Object.keys(o.redistribute).length) fail('redistribute')
   if (Object.keys(o.stubs).length) fail('stub area')
   const prev = (orig.ospf ?? {}) as Record<string, unknown>
   const ospf: Record<string, unknown> = { ...prev, pid: o.pid }

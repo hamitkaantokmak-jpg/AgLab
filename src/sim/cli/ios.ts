@@ -435,6 +435,18 @@ const routerPatterns: P[] = [
   { p: 'default-information originate', run: (x) => void (x.ospf.defaultOriginate = { always: false }) },
   { p: 'default-information originate always', run: (x) => void (x.ospf.defaultOriginate = { always: true }) },
   { p: 'no default-information originate', run: (x) => void (x.ospf.defaultOriginate = null) },
+  { p: 'redistribute static', run: (x) => x.redist('static', false) },
+  { p: 'redistribute static subnets', run: (x) => x.redist('static', true) },
+  { p: 'redistribute static metric <1-16777214:OSPF default metric>', run: (x, a) => x.redist('static', false, Number(a[3])) },
+  { p: 'redistribute static metric <1-16777214:OSPF default metric> subnets', run: (x, a) => x.redist('static', true, Number(a[3])) },
+  { p: 'redistribute static subnets metric <1-16777214:OSPF default metric>', run: (x, a) => x.redist('static', true, Number(a[4])) },
+  { p: 'no redistribute static', run: (x) => void delete x.ospf.redistribute?.static },
+  { p: 'redistribute connected', run: (x) => x.redist('connected', false) },
+  { p: 'redistribute connected subnets', run: (x) => x.redist('connected', true) },
+  { p: 'redistribute connected metric <1-16777214:OSPF default metric>', run: (x, a) => x.redist('connected', false, Number(a[3])) },
+  { p: 'redistribute connected metric <1-16777214:OSPF default metric> subnets', run: (x, a) => x.redist('connected', true, Number(a[3])) },
+  { p: 'redistribute connected subnets metric <1-16777214:OSPF default metric>', run: (x, a) => x.redist('connected', true, Number(a[4])) },
+  { p: 'no redistribute connected', run: (x) => void delete x.ospf.redistribute?.connected },
   { p: 'area <0-4294967295:OSPF area ID as a decimal value> stub', run: (x, a) => x.stubArea(Number(a[1]), false) },
   { p: 'area <0-4294967295:OSPF area ID as a decimal value> stub no-summary', run: (x, a) => x.stubArea(Number(a[1]), true) },
   {
@@ -1504,6 +1516,13 @@ export class IosSession {
   stubArea(area: number, noSummary: boolean): Out {
     if (area === 0) return ['% OSPF: Backbone can not be configured as stub area']
     this.ospf.stubs[String(area)] = { noSummary }
+  }
+
+  /** `redistribute static|connected …` under router ospf */
+  redist(src: 'static' | 'connected', subnets: boolean, metric?: number): Out {
+    const r = (this.ospf.redistribute ??= {})
+    r[src] = metric === undefined ? { subnets } : { subnets, metric }
+    if (!subnets) return ['% Only classful networks will be redistributed']
   }
 
   clearOspf(): Out {

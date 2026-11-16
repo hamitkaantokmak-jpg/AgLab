@@ -170,6 +170,10 @@ function ospfLines(c: SwitchConfig): string[] {
   if (r.passiveDefault) o.push(' passive-interface default')
   for (const p of r.passive) o.push(`${r.passiveDefault ? ' no' : ''} passive-interface ${p}`)
   for (const n of r.networks) o.push(` network ${n.addr} ${n.wildcard} area ${n.area}`)
+  for (const src of ['connected', 'static'] as const) {
+    const x = r.redistribute?.[src]
+    if (x) o.push(` redistribute ${src}${x.metric !== undefined ? ' metric ' + x.metric : ''}${x.subnets ? ' subnets' : ''}`)
+  }
   if (r.defaultOriginate) o.push(' default-information originate' + (r.defaultOriginate.always ? ' always' : ''))
   o.push('!')
   return o
