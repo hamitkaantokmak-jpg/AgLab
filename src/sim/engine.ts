@@ -7,6 +7,7 @@ import type { OspfState } from './ospf'
 import { l2Signature } from './config'
 import { ifType, macAdd } from './util'
 import { pk, type Topo } from './topology'
+import { computeMst, mstComponents } from './mst'
 
 export type EcFlag = 'P' | 's' | 'I' | 'D'
 
@@ -40,6 +41,8 @@ export interface LPort {
   /** access VLAN missing from VLAN DB */
   inactive: boolean
   cost: number
+  /** hız (Mbit/s; Port-channel üyelerin toplamı): MST uzun yol maliyeti için */
+  speed: number
   portNum: number
   status: 'connected' | 'notconnect' | 'disabled' | 'suspended' | 'inactive' | 'err-disabled'
 }
@@ -53,12 +56,18 @@ export interface EcGroup {
 }
 
 export interface StpPort {
-  role: 'Root' | 'Desg' | 'Altn'
+  /** Mstr: MST bölgesinin CIST kök portu (sınırda), MSTI'lerde görünür */
+  role: 'Root' | 'Desg' | 'Altn' | 'Mstr'
   state: 'FWD' | 'BLK' | 'BKN'
   cost: number
   portNum: number
   edge: boolean
   inconsistent?: 'PVID_Inc'
+  /** port önceliği (show: öncelik.numara); yoksa 128 */
+  prio?: number
+  /** MST bölge sınırı: komşu PVST+/Rapid PVST+ (PVST) ya da başka MST bölgesi (RSTP);
+   *  PVST+ tarafında MST komşusu (Peer) */
+  boundary?: 'PVST' | 'RSTP' | 'Peer'
 }
 
 export interface StpBridge {
@@ -127,6 +136,8 @@ export interface Derived {
   arpCache?: Set<string>
   /** FHRP: HSRP/VRRP members and elected Active/Master (filled by the runtime; see fhrp.ts) */
   fhrp?: import('./fhrp').FhrpState
+  /** MST (802.1s): MST kipindeki switch'lerin örnekleri ve bölgesi (mst.ts) */
+  mst: Record<string, import('./mst').MstState>
   /**
    * IP SLA sonuçları ve izlenen nesne durumları (runtime doldurur; track.ts). Yokken (ilk
    * hesap aşaması) track'li statik rotaların hepsi kurulu sayılır.
@@ -299,6 +310,7 @@ export function derive(
         opMode: 'access',
         inactive: false,
         cost: speedCost(bundled.reduce((s, p) => s + speedOf(p), 0)),
+        speed: bundled.reduce((s, p) => s + speedOf(p), 0),
         portNum: 64 + id,
         status: poCfg.shutdown ? 'disabled' : bundled.length ? 'connected' : 'notconnect',
       }
@@ -323,6 +335,7 @@ export function derive(
         opMode: 'access',
         inactive: false,
         cost: speedCost(speedOf(port)),
+        speed: speedOf(port),
         portNum: portIndex(sw, port),
         status: ps.adminDown ? 'disabled' : ps.errDisabled ? 'err-disabled' : suspended ? 'suspended' : ps.up ? 'connected' : 'notconnect',
       }
@@ -375,6 +388,7 @@ export function derive(
     lportOfPhys,
     ec,
     stp: {},
+    mst: {},
     svis: {},
     nativeMismatch: [],
     errdis,
@@ -387,7 +401,10 @@ export function derive(
   const allVlans = new Set<number>()
   for (const c of Object.values(cfgs))
     for (const v of Object.keys(c.vlans)) if (Number(v) < 1002 || Number(v) > 1005) allVlans.add(Number(v))
-  for (const v of [...allVlans].sort((a, b) => a - b)) d.stp[v] = computeStp(d, v)
+  // MST kipinde switch içeren L2 bileşenleri mst.ts'te (CIST + MSTI); diğerleri VLAN başına
+  const mstDevs = mstComponents(d)
+  for (const v of [...allVlans].sort((a, b) => a - b)) d.stp[v] = computeStp(d, v, mstDevs)
+  if (mstDevs.size) computeMst(d, mstDevs, [...allVlans].sort((a, b) => a - b))
 
   // 6. SVIs
   for (const sw of topo.switches) {
@@ -493,7 +510,7 @@ function cmpVec(a: Vec, b: Vec): number {
   )
 }
 
-function computeStp(d: Derived, v: number): Record<string, StpBridge> {
+function computeStp(d: Derived, v: number, skip: Set<string>): Record<string, StpBridge> {
   const bridges: Record<string, StpBridge> = {}
   interface Edge {
     lp: LPort
@@ -503,7 +520,7 @@ function computeStp(d: Derived, v: number): Record<string, StpBridge> {
   const edges: Record<string, Edge[]> = {}
   for (const sw of d.topo.switches) {
     const cfg = d.cfgs[sw.id]!
-    if (!vlanExists(cfg, v) || d.hw.off.has(sw.id)) continue
+    if (!vlanExists(cfg, v) || d.hw.off.has(sw.id) || skip.has(sw.id)) continue
     const prio = (cfg.stpPriority[String(v)] ?? 32768) + v
     const mac = sw.mac
     const b: StpBridge = { prio, mac, rootPrio: prio, rootMac: mac, rootCost: 0, rootPort: null, isRoot: true, ports: {} }

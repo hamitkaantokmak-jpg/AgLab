@@ -1084,6 +1084,10 @@ export function toAglab(
     if (Object.keys(cfg.tracks ?? {}).length) fail('track (izlenen nesne; switch üzerinde desteklenmiyor)')
     if (Object.keys(cfg.ipSla ?? {}).length) fail('IP SLA (desteklenmiyor)')
     if (cfg.ipRouting) fail('ip routing')
+    // MST (802.1s): kip, bölge yapılandırması, örnek öncelikleri ve port maliyet/öncelikleri
+    // AğLab modelinde yok; sessizce düşürülmez
+    const mstPorts = [...Object.values(cfg.ifaces), ...Object.values(cfg.pos)].some((c) => c.mstCost || c.mstPortPriority)
+    if (cfg.stpMode === 'mst' || cfg.mst || mstPorts) fail('MST (802.1s) yapılandırması (desteklenmiyor)')
     if (cfg.stpMode !== 'pvst') fail('spanning-tree mode ' + cfg.stpMode)
     if (cfg.bpduguardDefault) fail('spanning-tree portfast bpduguard default')
     if (cfg.errRecoveryBpdu || cfg.errRecoveryInterval !== undefined) fail('errdisable recovery')

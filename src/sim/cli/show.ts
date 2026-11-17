@@ -1,7 +1,7 @@
 // IOS-format show output generated from config + derived state.
 
 import { poolRange } from '../dhcp'
-import { allows, bpduGuardOn, egress, portForwards, vlanExists, type LPort } from '../engine'
+import { allows, bpduGuardOn, egress, portForwards, vlanExists, type LPort, type StpBridge, type StpPort } from '../engine'
 import { macTable, routeTable, type RouteEntry } from '../net'
 import type { OspfIf } from '../ospf'
 import type { LabRuntime } from '../runtime'
@@ -9,7 +9,8 @@ import { psConfigLines } from '../portsec'
 import { aclConfigLines } from '../acl'
 import { natConfigLines } from '../nat'
 import { pk } from '../topology'
-import type { IpAddr, L2IfConfig, L3Opts, PhysIfConfig, SwitchConfig, SwitchDef } from '../types'
+import type { IpAddr, L2IfConfig, L3Opts, MstConfig, PhysIfConfig, SwitchConfig, SwitchDef } from '../types'
+import { formatVlans, instanceIds, instanceOf, mstDigest as mstDigestOf, mstOf, vlansOf, type MstInstanceState } from '../mst'
 import { formatVlanList, ifType, intToIp, ipToInt, macAdd, maskToPrefix, pad, padL, prefixMaskInt, shortIf } from '../util'
 
 const sortIfs = (sw: SwitchDef, names: string[]) =>
@@ -30,6 +31,12 @@ function l2Lines(c: L2IfConfig, needsEncap: boolean): string[] {
   if (c.nonegotiate) out.push(' switchport nonegotiate')
   if (c.shutdown) out.push(' shutdown')
   if (c.portfast) out.push(' spanning-tree portfast')
+  // MST: örnek başına port maliyeti ve önceliği
+  const insts = [...new Set([...Object.keys(c.mstCost ?? {}), ...Object.keys(c.mstPortPriority ?? {})])].map(Number).sort((a, b) => a - b)
+  for (const i of insts) {
+    if (c.mstCost?.[String(i)] !== undefined) out.push(` spanning-tree mst ${i} cost ${c.mstCost[String(i)]}`)
+    if (c.mstPortPriority?.[String(i)] !== undefined) out.push(` spanning-tree mst ${i} port-priority ${c.mstPortPriority[String(i)]}`)
+  }
   return out
 }
 
@@ -217,6 +224,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   const byPrio = new Map<number, number[]>()
   for (const [v, p] of Object.entries(c.stpPriority)) byPrio.set(p, [...(byPrio.get(p) ?? []), Number(v)])
   for (const [p, vs] of [...byPrio].sort((a, b) => a[1][0]! - b[1][0]!)) o.push(`spanning-tree vlan ${formatVlanList(vs)} priority ${p}`)
+  o.push(...mstRunningLines(c))
   if (c.bpduguardDefault) o.push('spanning-tree portfast bpduguard default')
   if (c.errRecoveryBpdu) o.push('errdisable recovery cause bpduguard')
   if (c.errRecoveryInterval) o.push('errdisable recovery interval ' + c.errRecoveryInterval)
@@ -705,9 +713,52 @@ export function showErrRecovery(rt: LabRuntime, dev: string): string[] {
 
 const fmtBid = (mac: string) => mac
 
+/** Port türü sütunu: P2p, Edge, PVID tutarsızlığı, MST sınırı. */
+const portType = (p: StpPort) =>
+  (p.edge ? 'P2p Edge' : 'P2p') +
+  (p.boundary === 'Peer' ? ' Peer(STP)' : p.boundary ? ` Bound(${p.boundary})` : '') +
+  (p.inconsistent ? ' *PVID_Inc' : '')
+
+function portRows(rt: LabRuntime, dev: string, ports: Record<string, StpPort>, w = 20): string[] {
+  const sw = rt.topo.devices[dev] as SwitchDef
+  const order = (n: string) => (n.startsWith('Port-channel') ? 1000 + Number(n.slice(12)) : sw.ports.indexOf(n))
+  return Object.entries(ports)
+    .sort((a, b2) => order(a[0]) - order(b2[0]))
+    .map(([name, p]) => pad(shortIf(name), w) + pad(p.role, 5) + pad(p.state === 'BKN' ? 'BKN*' : p.state, 4) + pad(p.cost, 10) + pad(`${p.prio ?? 128}.${p.portNum}`, 9) + portType(p))
+}
+
+/** Bir STP örneğinin `show spanning-tree [vlan N]` bloğu (VLAN ya da MST örneği). */
+function stpBlock(rt: LabRuntime, dev: string, label: string, proto: string, b: StpBridge, sysId: number): string[] {
+  const rootPortLp = b.rootPort ? rt.derived.lportByName[pk(dev, b.rootPort)] : null
+  const o = ['', label, `  Spanning tree enabled protocol ${proto}`]
+  o.push(`  Root ID    Priority    ${b.rootPrio}`, `             Address     ${fmtBid(b.rootMac)}`)
+  if (b.isRoot) o.push('             This bridge is the root')
+  else o.push(`             Cost        ${b.rootCost}`, `             Port        ${rootPortLp?.portNum ?? 0} (${b.rootPort})`)
+  o.push('             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec', '')
+  o.push(`  Bridge ID  Priority    ${b.prio}  (priority ${b.prio - sysId} sys-id-ext ${sysId})`, `             Address     ${b.mac}`)
+  o.push('             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec', '             Aging Time  300 sec', '')
+  o.push('Interface           Role Sts Cost      Prio.Nbr Type', '------------------- ---- --- --------- -------- --------------------------------')
+  o.push(...portRows(rt, dev, b.ports))
+  return o
+}
+
+const instBridge = (x: MstInstanceState): StpBridge => ({
+  prio: x.prio, mac: x.mac, rootPrio: x.rootPrio, rootMac: x.rootMac, rootCost: x.id === 0 ? x.extCost : x.intCost,
+  rootPort: x.rootPort, isRoot: x.isRoot, ports: x.ports,
+})
+
 export function showSpanningTree(rt: LabRuntime, dev: string, only?: number): string[] {
   const d = rt.derived
   const c = rt.running[dev]!
+  // MST kipi: örnek başına bloklar ("MST0", "MST1"); `vlan N` VLAN'ın örneğini gösterir
+  const st = d.mst[dev]
+  if (c.stpMode === 'mst' && st) {
+    const want = only === undefined ? null : instanceOf(mstOf(c), only)
+    if (only !== undefined && !vlanExists(c, only)) return [`Spanning tree instance(s) for vlan ${only} does not exist.`]
+    const o: string[] = []
+    for (const x of st.instances) if (want === null || x.id === want) o.push(...stpBlock(rt, dev, 'MST' + x.id, 'mstp', instBridge(x), x.id))
+    return o
+  }
   const vlans = Object.keys(d.stp)
     .map(Number)
     .filter((v) => d.stp[v]![dev] && (only === undefined || v === only))
@@ -716,25 +767,131 @@ export function showSpanningTree(rt: LabRuntime, dev: string, only?: number): st
   const o: string[] = []
   for (const v of vlans) {
     const b = d.stp[v]![dev]!
-    const ports = Object.entries(b.ports)
-    if (!ports.length && only === undefined) continue
-    const sysPrio = b.prio
-    const rootPortLp = b.rootPort ? d.lportByName[pk(dev, b.rootPort)] : null
-    o.push('', `VLAN${String(v).padStart(4, '0')}`, `  Spanning tree enabled protocol ${c.stpMode === 'rapid-pvst' ? 'rstp' : 'ieee'}`)
-    o.push(`  Root ID    Priority    ${b.rootPrio}`, `             Address     ${fmtBid(b.rootMac)}`)
-    if (b.isRoot) o.push('             This bridge is the root')
-    else o.push(`             Cost        ${b.rootCost}`, `             Port        ${rootPortLp?.portNum ?? 0} (${b.rootPort})`)
-    o.push('             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec', '')
-    o.push(`  Bridge ID  Priority    ${sysPrio}  (priority ${sysPrio - v} sys-id-ext ${v})`, `             Address     ${b.mac}`)
-    o.push('             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec', '             Aging Time  300 sec', '')
-    o.push('Interface           Role Sts Cost      Prio.Nbr Type', '------------------- ---- --- --------- -------- --------------------------------')
-    const sw = rt.topo.devices[dev] as SwitchDef
-    const order = (n: string) => (n.startsWith('Port-channel') ? 1000 + Number(n.slice(12)) : sw.ports.indexOf(n))
-    for (const [name, p] of ports.sort((a, b2) => order(a[0]) - order(b2[0]))) {
-      const type = (p.edge ? 'P2p Edge' : 'P2p') + (p.inconsistent ? ' *PVID_Inc' : '')
-      o.push(pad(shortIf(name), 20) + pad(p.role, 5) + pad(p.state === 'BKN' ? 'BKN*' : p.state, 4) + pad(p.cost, 10) + pad('128.' + p.portNum, 9) + type)
-    }
+    if (!Object.keys(b.ports).length && only === undefined) continue
+    o.push(...stpBlock(rt, dev, `VLAN${String(v).padStart(4, '0')}`, c.stpMode === 'rapid-pvst' ? 'rstp' : 'ieee', b, v))
   }
+  return o
+}
+
+// ---- MST (802.1s) ----
+
+/** running-config: bölge bloğu ve örnek öncelikleri (IOS sırası: blok, sonra öncelikler). */
+function mstRunningLines(c: SwitchConfig): string[] {
+  const m = c.mst
+  if (!m) return []
+  const o: string[] = []
+  const insts = Object.keys(m.instances).map(Number).sort((a, b) => a - b)
+  if (m.name || m.revision || insts.length) {
+    o.push('!', 'spanning-tree mst configuration')
+    if (m.name) o.push(' name ' + m.name)
+    if (m.revision) o.push(' revision ' + m.revision)
+    for (const i of insts) if (m.instances[String(i)]!.length) o.push(` instance ${i} vlan ${formatVlanList(m.instances[String(i)]!)}`)
+    o.push('!')
+  }
+  for (const i of Object.keys(m.priority).map(Number).sort((a, b) => a - b)) o.push(`spanning-tree mst ${i} priority ${m.priority[String(i)]}`)
+  return o
+}
+
+/** `show spanning-tree mst configuration [digest]` ve (config-mst) `show current|pending`. */
+export function mstConfigLines(m: MstConfig, kind: 'show' | 'digest' | 'current' | 'pending'): string[] {
+  const ids = instanceIds(m).filter((i) => i === 0 || m.instances[String(i)]!.length)
+  const o: string[] = []
+  if (kind === 'current') o.push('Current MST configuration')
+  if (kind === 'pending') o.push('Pending MST configuration')
+  o.push(`Name      [${m.name}]`, `Revision  ${pad(m.revision, 6)}Instances configured ${ids.length}`)
+  if (kind === 'digest') {
+    o.push(`Digest          0x${mstDigestOf(m)}`)
+    return o
+  }
+  o.push('', 'Instance  Vlans mapped', '--------  ' + '-'.repeat(69))
+  for (const i of ids) o.push(pad(i, 10) + formatVlans(vlansOf(m, i)))
+  o.push('-'.repeat(79))
+  return o
+}
+
+const ROLE_TEXT: Record<StpPort['role'], string> = { Root: 'root', Desg: 'designated', Altn: 'alternate', Mstr: 'master' }
+const STATE_TEXT: Record<StpPort['state'], string> = { FWD: 'forwarding', BLK: 'blocking', BKN: 'broken' }
+
+/** `show spanning-tree mst [örnek] [detail]` */
+export function showSpanningTreeMst(rt: LabRuntime, dev: string, only?: number, detail = false): string[] {
+  const c = rt.running[dev]!
+  const st = rt.derived.mst[dev]
+  if (c.stpMode !== 'mst' || !st) return ['% Switch is not in mst mode']
+  const list = st.instances.filter((x) => only === undefined || x.id === only)
+  if (!list.length) return [`% MST instance ${only} does not exist`]
+  const bid = (p: number, i: number) => `priority      ${p} (${p - i} sysid ${i})`
+  const o: string[] = []
+  for (const x of list) {
+    const sw = rt.topo.devices[dev] as SwitchDef
+    o.push('', pad(`##### MST${x.id}`, 14) + 'vlans mapped:   ' + formatVlans(x.vlans))
+    o.push(`Bridge        address ${sw.mac}  ${bid(x.prio, x.id)}`)
+    if (x.id === 0) {
+      if (x.isRoot) o.push('Root          this switch for the CIST')
+      else {
+        o.push(`Root          address ${x.rootMac}  ${bid(x.rootPrio, 0)}`)
+        o.push(`              port    ${pad(x.rootPort ? shortIf(x.rootPort) : 'none', 17)}path cost     ${x.extCost}`)
+        if (x.rrMac === x.mac) o.push('Regional Root this switch')
+        else o.push(`Regional Root address ${x.rrMac}  ${bid(x.rrPrio, 0)}`, `                                       internal cost ${x.intCost}     rem hops 19`)
+      }
+      o.push('Operational   hello time 2 , forward delay 15, max age 20, txholdcount 6')
+      o.push('Configured    hello time 2 , forward delay 15, max age 20, max hops    20')
+    } else if (x.isRoot) o.push(`Root          this switch for MST${x.id}`)
+    else {
+      o.push(`Root          address ${x.rootMac}  ${bid(x.rootPrio, x.id)}`)
+      o.push(`              port    ${pad(x.rootPort ? shortIf(x.rootPort) : 'none', 17)}cost          ${x.intCost}     rem hops 19`)
+    }
+    o.push('', 'Interface        Role Sts Cost      Prio.Nbr Type', '---------------- ---- --- --------- -------- --------------------------------')
+    o.push(...portRows(rt, dev, x.ports, 17))
+    if (detail)
+      for (const [name, p] of Object.entries(x.ports)) {
+        o.push('', ` ${name} of MST${x.id} is ${ROLE_TEXT[p.role]} ${STATE_TEXT[p.state]}`)
+        o.push(`Port info             port id       ${pad(`${p.prio ?? 128}.${p.portNum}`, 8)}priority  ${pad(p.prio ?? 128, 5)}cost  ${p.cost}`)
+        o.push(`Designated root       address ${x.rootMac}  priority  ${x.rootPrio}`)
+      }
+  }
+  return o
+}
+
+/** `show spanning-tree summary` (pvst / rapid-pvst / mst). */
+export function showSpanningTreeSummary(rt: LabRuntime, dev: string): string[] {
+  const d = rt.derived
+  const c = rt.running[dev]!
+  const rows: { name: string; ports: StpPort[]; root: boolean }[] = []
+  if (c.stpMode === 'mst' && d.mst[dev]) {
+    for (const x of d.mst[dev]!.instances) rows.push({ name: 'MST' + x.id, ports: Object.values(x.ports), root: x.isRoot })
+  } else
+    for (const v of Object.keys(d.stp).map(Number).sort((a, b) => a - b)) {
+      const b = d.stp[v]![dev]
+      if (b && Object.keys(b.ports).length) rows.push({ name: `VLAN${String(v).padStart(4, '0')}`, ports: Object.values(b.ports), root: b.isRoot })
+    }
+  const roots = rows.filter((r) => r.root).map((r) => r.name)
+  const o = [
+    `Switch is in ${c.stpMode} mode` + (c.stpMode === 'mst' ? ' (IEEE Standard)' : ''),
+    `Root bridge for: ${roots.length ? roots.join(', ') : 'none'}`,
+    'Extended system ID           is enabled',
+    'Portfast Default             is disabled',
+    `PortFast BPDU Guard Default  is ${c.bpduguardDefault ? 'enabled' : 'disabled'}`,
+    'Portfast BPDU Filter Default is disabled',
+    'Loopguard Default            is disabled',
+    'EtherChannel misconfig guard is enabled',
+    `Configured Pathcost method used is ${c.stpMode === 'mst' ? 'long' : 'short'}`,
+    'UplinkFast                   is disabled',
+    'BackboneFast                 is disabled',
+    '',
+    'Name                   Blocking Listening Learning Forwarding STP Active',
+    '---------------------- -------- --------- -------- ---------- ----------',
+  ]
+  const line = (name: string, blk: number, fwd: number) => pad(name, 23) + padL(blk, 8) + padL(0, 10) + padL(0, 9) + padL(fwd, 11) + padL(blk + fwd, 11)
+  let tb = 0, tf = 0
+  for (const r of rows) {
+    const blk = r.ports.filter((p) => p.state !== 'FWD').length
+    const fwd = r.ports.length - blk
+    tb += blk
+    tf += fwd
+    o.push(line(r.name, blk, fwd))
+  }
+  o.push('---------------------- -------- --------- -------- ---------- ----------')
+  o.push(line(`${rows.length} ${c.stpMode === 'mst' ? 'msts' : 'vlans'}`, tb, tf))
   return o
 }
 

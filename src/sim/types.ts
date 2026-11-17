@@ -3,7 +3,7 @@
 
 export type SwitchportMode = 'access' | 'trunk' | 'dynamic-auto' | 'dynamic-desirable'
 export type ChannelMode = 'on' | 'active' | 'passive' | 'desirable' | 'auto'
-export type StpMode = 'pvst' | 'rapid-pvst'
+export type StpMode = 'pvst' | 'rapid-pvst' | 'mst'
 
 export interface L2IfConfig {
   shutdown: boolean
@@ -16,6 +16,23 @@ export interface L2IfConfig {
   nonegotiate: boolean
   encapDot1q: boolean
   portfast: boolean
+  /** MST: `spanning-tree mst <örnek> cost <n>` (örnek → maliyet) */
+  mstCost?: Record<string, number>
+  /** MST: `spanning-tree mst <örnek> port-priority <n>` (örnek → öncelik; varsayılan 128) */
+  mstPortPriority?: Record<string, number>
+}
+
+/**
+ * MST (802.1s) bölge yapılandırması (`spanning-tree mst configuration`) ve örnek öncelikleri.
+ * Bölge = ad + revizyon + VLAN→örnek eşlemesi; eşlenmemiş VLAN'lar örnek 0'dadır (IST).
+ */
+export interface MstConfig {
+  name: string
+  revision: number
+  /** örnek no (1-4094) → eşlenen VLAN'lar (artan) */
+  instances: Record<string, number[]>
+  /** örnek no (0 dahil) → köprü önceliği (sys-id-ext hariç; varsayılan 32768) */
+  priority: Record<string, number>
 }
 
 export interface IpAddr {
@@ -292,6 +309,8 @@ export interface SwitchConfig {
   stpMode: StpMode
   /** vlan id -> bridge priority (without the vlan id added) */
   stpPriority: Record<string, number>
+  /** MST bölge yapılandırması ve örnek öncelikleri (yapılandırılmadıysa yok) */
+  mst?: MstConfig
   ipRouting: boolean
   routes: StaticRoute[]
   defaultGateway: string | null

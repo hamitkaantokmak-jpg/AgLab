@@ -2,10 +2,11 @@
 
 import * as fhrp from '../fhrp'
 import * as tracking from '../track'
+import { defaultMst, mstOf } from '../mst'
 import { defaultSvi, defaultSwitchConfig, defaultVlanName, pickL2, RESERVED_VLANS } from '../config'
 import { arpMac, deliver, l3Ifs, ping, traceProbe } from '../net'
 import type { LabRuntime } from '../runtime'
-import type { ChannelMode, DhcpPool, FhrpTrack, HsrpGroup, IpSlaConfig, TrackConfig, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
+import type { ChannelMode, DhcpPool, FhrpTrack, HsrpGroup, IpSlaConfig, MstConfig, TrackConfig, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { canonIf, clone, ifNum, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
@@ -16,8 +17,10 @@ import * as nat from '../nat'
 
 /** IP SLA işlem numarası (IOS: 1-2147483647) */
 const SLA = '<1-2147483647:Entry number>'
+/** MST örnek listesi (0-4094; ör. 0-3,5) */
+const MI = '<WORD:MST instance range, example: 0-3,5,7-9>'
 
-export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl' | 'track' | 'ipsla' | 'ipslaEcho'
+export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl' | 'track' | 'ipsla' | 'ipslaEcho' | 'mst'
 
 type P = Pattern<IosSession>
 type Out = string[] | void
@@ -62,6 +65,14 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show ip arp', run: (x) => x.showArp() },
     { p: 'show spanning-tree', run: (x) => show.showSpanningTree(x.rt, x.dev) },
     { p: 'show spanning-tree vlan <1-4094:VLAN Switch Spanning Trees>', run: (x, a) => show.showSpanningTree(x.rt, x.dev, Number(a[3])) },
+    { p: 'show spanning-tree summary', run: (x) => show.showSpanningTreeSummary(x.rt, x.dev) },
+    // MST (802.1s)
+    { p: 'show spanning-tree mst', run: (x) => show.showSpanningTreeMst(x.rt, x.dev) },
+    { p: 'show spanning-tree mst detail', run: (x) => show.showSpanningTreeMst(x.rt, x.dev, undefined, true) },
+    { p: 'show spanning-tree mst <0-4094:MST instance number>', run: (x, a) => show.showSpanningTreeMst(x.rt, x.dev, Number(a[3])) },
+    { p: 'show spanning-tree mst <0-4094:MST instance number> detail', run: (x, a) => show.showSpanningTreeMst(x.rt, x.dev, Number(a[3]), true) },
+    { p: 'show spanning-tree mst configuration', run: (x) => show.mstConfigLines(mstOf(x.cfg), 'show') },
+    { p: 'show spanning-tree mst configuration digest', run: (x) => show.mstConfigLines(mstOf(x.cfg), 'digest') },
     { p: 'show etherchannel summary', run: (x) => show.showEtherchannelSummary(x.rt, x.dev) },
     { p: 'show mac address-table', run: (x) => show.showMac(x.rt, x.dev) },
     { p: 'show mac address-table address <H.H.H:48 bit mac address>', run: (x, a) => show.showMac(x.rt, x.dev, normalizeMac(a[4]!)!) },
@@ -185,6 +196,23 @@ const commonSub: P[] = [
   { p: 'do <LINE:Exec Command>', run: (x, a) => x.doCmd(a[1]!) },
 ]
 
+// MST (802.1s) `(config-mst)`: değişiklikler beklemede tutulur; exit/end uygular, abort atar
+const mstPatterns: P[] = [
+  { p: 'exit', run: (x) => x.mstLeave(true) },
+  { p: 'end', run: (x) => void (x.mstLeave(true), x.end()) },
+  { p: 'abort', run: (x) => x.mstLeave(false) },
+  { p: 'do <LINE:Exec Command>', run: (x, a) => x.doCmd(a[1]!) },
+  { p: 'name <WORD:Name of the region>', run: (x, a) => void (x.mstPending!.name = a[1]!) },
+  { p: 'no name', run: (x) => void (x.mstPending!.name = '') },
+  { p: 'revision <0-65535:Configuration revision number>', run: (x, a) => void (x.mstPending!.revision = Number(a[1])) },
+  { p: 'no revision', run: (x) => void (x.mstPending!.revision = 0) },
+  { p: 'instance <1-4094:MST instance number> vlan <vlist:VLAN range, example: 1,3-5,7,9-11>', run: (x, a) => x.mstMap(Number(a[1]), a[3]!, true) },
+  { p: 'no instance <1-4094:MST instance number> vlan <vlist:VLAN range, example: 1,3-5,7,9-11>', run: (x, a) => x.mstMap(Number(a[2]), a[4]!, false) },
+  { p: 'no instance <1-4094:MST instance number>', run: (x, a) => void delete x.mstPending!.instances[a[2]!] },
+  { p: 'show current', run: (x) => show.mstConfigLines(mstOf(x.cfg), 'current') },
+  { p: 'show pending', run: (x) => show.mstConfigLines(x.mstPending!, 'pending') },
+]
+
 // IP SLA alt kipleri: `(config-ip-sla)` tür seçimi, `(config-ip-sla-echo)` icmp-echo ayarları
 const ipSlaPatterns: P[] = [
   ...commonSub,
@@ -239,6 +267,15 @@ const configPatterns = (def: SwitchDef): P[] => {
     },
     { p: 'spanning-tree mode pvst', run: (x) => void (x.cfg.stpMode = 'pvst') },
     { p: 'spanning-tree mode rapid-pvst', run: (x) => void (x.cfg.stpMode = 'rapid-pvst') },
+    // MST (802.1s): bölge yapılandırması (config-mst) kipinde bekletilir, exit ile uygulanır
+    { p: 'spanning-tree mode mst', run: (x) => void (x.cfg.stpMode = 'mst') },
+    { p: 'spanning-tree mst configuration', run: (x) => x.enterMst() },
+    { p: 'no spanning-tree mst configuration', run: (x) => x.mstSetRegion(defaultMst()) },
+    { p: `spanning-tree mst ${MI} priority <0-61440:bridge priority in increments of 4096>`, run: (x, a) => x.mstPriority(a[2]!, Number(a[4])) },
+    { p: `spanning-tree mst ${MI} root primary`, run: (x, a) => x.mstRoot(a[2]!, 'primary') },
+    { p: `spanning-tree mst ${MI} root secondary`, run: (x, a) => x.mstRoot(a[2]!, 'secondary') },
+    { p: `no spanning-tree mst ${MI} priority`, run: (x, a) => x.mstPriorityClear(a[3]!) },
+    { p: `no spanning-tree mst ${MI} root`, run: (x, a) => x.mstPriorityClear(a[3]!) },
     { p: 'no spanning-tree mode', run: (x) => void (x.cfg.stpMode = 'pvst') },
     { p: 'spanning-tree vlan <vlist:VLAN range, example: 1,3-5,7,9-11> priority <0-61440:bridge priority in increments of 4096>', run: (x, a) => x.stpPriority(a[2]!, Number(a[4])) },
     { p: 'spanning-tree vlan <vlist:VLAN range, example: 1,3-5,7,9-11> root primary', run: (x, a) => x.stpRoot(a[2]!, 'primary') },
@@ -610,6 +647,11 @@ const l2IfPatterns = (def: SwitchDef): P[] => {
     { p: 'no switchport nonegotiate', run: (x) => x.eachL2((c) => void (c.nonegotiate = false)) },
     { p: 'spanning-tree portfast', run: (x) => x.eachL2((c) => void (c.portfast = true), false) },
     { p: 'no spanning-tree portfast', run: (x) => x.eachL2((c) => void (c.portfast = false), false) },
+    // MST: örnek başına port maliyeti / önceliği
+    { p: `spanning-tree mst ${MI} cost <1-200000000:Change an interface's per instance spanning tree path cost>`, run: (x, a) => x.mstPort(a[2]!, 'mstCost', Number(a[4])) },
+    { p: `spanning-tree mst ${MI} port-priority <0-240:port priority in increments of 16>`, run: (x, a) => x.mstPort(a[2]!, 'mstPortPriority', Number(a[4])) },
+    { p: `no spanning-tree mst ${MI} cost`, run: (x, a) => x.mstPort(a[3]!, 'mstCost', null) },
+    { p: `no spanning-tree mst ${MI} port-priority`, run: (x, a) => x.mstPort(a[3]!, 'mstPortPriority', null) },
     { p: 'channel-group <1-48:Channel group number> mode on', run: (x, a) => x.channelGroup(Number(a[1]), 'on') },
     { p: 'channel-group <1-48:Channel group number> mode active', run: (x, a) => x.channelGroup(Number(a[1]), 'active') },
     { p: 'channel-group <1-48:Channel group number> mode passive', run: (x, a) => x.channelGroup(Number(a[1]), 'passive') },
@@ -717,6 +759,7 @@ function tries(def: SwitchDef) {
       track: buildTrie(trackPatterns),
       ipsla: buildTrie(ipSlaPatterns),
       ipslaEcho: buildTrie(ipSlaEchoPatterns),
+      mst: buildTrie(mstPatterns),
     }
     trieCache.set(def, t)
   }
@@ -737,6 +780,8 @@ export class IosSession {
   /** `(config-track)` / `(config-ip-sla…)` altında düzenlenen nesne / işlem */
   trackNo = 0
   slaNo = 0
+  /** `(config-mst)` altında bekleyen bölge yapılandırması (exit ile uygulanır) */
+  mstPending: MstConfig | null = null
   history: string[] = []
   private pending: { prompt: string; fn: (line: string) => Out } | null = null
   private starts: number[] = []
@@ -777,13 +822,15 @@ export class IosSession {
         return h + '(config-ip-sla)#'
       case 'ipslaEcho':
         return h + '(config-ip-sla-echo)#'
+      case 'mst':
+        return h + '(config-mst)#'
       case 'acl':
         return h + (this.cfg.acls?.[this.aclName]?.type === 'extended' ? '(config-ext-nacl)#' : '(config-std-nacl)#')
     }
   }
 
   get inConfig() {
-    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho'
+    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho' || this.mode === 'mst'
   }
 
   private trie(): TrieNode<IosSession> {
@@ -1718,6 +1765,111 @@ export class IosSession {
       } else if (me) prio = Math.min(24576, me.prio - v)
       this.cfg.stpPriority[String(v)] = prio
     }
+  }
+
+  // ---- MST (802.1s) ----
+
+  /** Örnek listesi (0-4094); geçersizse komut reddedilir. */
+  private mstList(list: string, at: number): number[] {
+    const ids = parseVlanList(list, 0, 4094)
+    if (!ids) throw new InvalidAt(at)
+    return ids
+  }
+
+  /** Global kipe dön (metinden yüklemede blok sonu): `(config-mst)` bekleyenleri uygulanır. */
+  toConfig(): void {
+    if (this.mode === 'mst') this.mstLeave(true)
+    this.mode = 'config'
+  }
+
+  enterMst(): Out {
+    const m = mstOf(this.cfg)
+    this.mstPending = { name: m.name, revision: m.revision, instances: clone(m.instances), priority: {} }
+    this.mode = 'mst'
+  }
+
+  /** `(config-mst)`'den çıkış: apply = exit/end (uygula), değilse abort (at). */
+  mstLeave(apply: boolean): Out {
+    if (apply && this.mstPending) this.mstSetRegion(this.mstPending)
+    this.mstPending = null
+    this.mode = 'config'
+  }
+
+  /** Bölge (ad, revizyon, eşleme) yazılır; öncelikler korunur. Varsayılana dönünce kayıt silinir. */
+  mstSetRegion(r: MstConfig): Out {
+    const priority = this.cfg.mst?.priority ?? {}
+    const next: MstConfig = { name: r.name, revision: r.revision, instances: clone(r.instances), priority }
+    if (!next.name && !next.revision && !Object.keys(next.instances).length && !Object.keys(priority).length) delete this.cfg.mst
+    else this.cfg.mst = next
+  }
+
+  /** `instance N vlan <liste>` (VLAN başka örnekteyse oraya taşınır) / `no instance N vlan <liste>`. */
+  mstMap(inst: number, list: string, add: boolean): Out {
+    const vs = parseVlanList(list)
+    if (!vs) throw new InvalidAt(add ? 3 : 4)
+    const m = this.mstPending!
+    if (add) {
+      for (const [i, cur] of Object.entries(m.instances)) if (i !== String(inst)) m.instances[i] = cur.filter((v) => !vs.includes(v))
+      m.instances[String(inst)] = [...new Set([...(m.instances[String(inst)] ?? []), ...vs])].sort((a, b) => a - b)
+    } else if (m.instances[String(inst)]) m.instances[String(inst)] = m.instances[String(inst)]!.filter((v) => !vs.includes(v))
+  }
+
+  private mstPrioSet(fn: (p: Record<string, number>) => void): void {
+    const m = (this.cfg.mst ??= defaultMst())
+    fn(m.priority)
+    this.mstSetRegion(m)
+  }
+
+  mstPriority(list: string, prio: number): Out {
+    const ids = this.mstList(list, 2)
+    if (prio % 4096 !== 0)
+      return [
+        '% Bridge Priority must be in increments of 4096.',
+        '% Allowed values are:',
+        '  0     4096  8192  12288 16384 20480 24576 28672',
+        '  32768 36864 40960 45056 49152 53248 57344 61440',
+      ]
+    this.mstPrioSet((p) => ids.forEach((i) => (p[String(i)] = prio)))
+  }
+
+  /** `root primary`: 24576, kök daha düşükse onun 4096 altı; `secondary`: 28672 (IOS makrosu). */
+  mstRoot(list: string, kind: 'primary' | 'secondary'): Out {
+    const ids = this.mstList(list, 2)
+    const st = this.rt.derived.mst[this.dev]
+    for (const i of ids) {
+      if (kind === 'secondary') {
+        this.mstPrioSet((p) => (p[String(i)] = 28672))
+        continue
+      }
+      const me = st?.instances.find((x) => x.id === i)
+      let prio = 24576
+      if (me && !me.isRoot) {
+        const rootPrio = me.rootPrio - i
+        if (rootPrio <= 24576) prio = rootPrio - 4096
+        if (prio < 0) return [`% Failed to make the bridge root for MST instance ${i}`]
+      } else if (me) prio = Math.min(24576, me.prio - i)
+      this.mstPrioSet((p) => (p[String(i)] = prio))
+    }
+  }
+
+  mstPriorityClear(list: string): Out {
+    const ids = this.mstList(list, 3)
+    if (!this.cfg.mst) return
+    this.mstPrioSet((p) => ids.forEach((i) => delete p[String(i)]))
+  }
+
+  /** Arayüz: `spanning-tree mst <liste> cost|port-priority <n>` (null: kaldır). */
+  mstPort(list: string, field: 'mstCost' | 'mstPortPriority', value: number | null): Out {
+    const ids = this.mstList(list, value === null ? 3 : 2)
+    if (field === 'mstPortPriority' && value !== null && value % 16 !== 0) return ['% Port Priority in increments of 16 is required']
+    return this.eachL2((c) => {
+      const m = (c[field] ??= {})
+      for (const i of ids) {
+        if (value === null) delete m[String(i)]
+        else m[String(i)] = value
+      }
+      if (!Object.keys(m).length) delete c[field]
+    }, false)
   }
 
   stpClear(list: string): Out {

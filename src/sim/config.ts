@@ -84,5 +84,7 @@ export function pickL2(c: L2IfConfig): L2IfConfig {
     nonegotiate: c.nonegotiate,
     encapDot1q: c.encapDot1q,
     portfast: c.portfast,
+    ...(c.mstCost ? { mstCost: { ...c.mstCost } } : {}),
+    ...(c.mstPortPriority ? { mstPortPriority: { ...c.mstPortPriority } } : {}),
   }
 }

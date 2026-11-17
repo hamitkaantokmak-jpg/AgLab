@@ -6338,7 +6338,9 @@ var AgLabSim = (() => {
       allowed: c.allowed ? [...c.allowed] : null,
       nonegotiate: c.nonegotiate,
       encapDot1q: c.encapDot1q,
-      portfast: c.portfast
+      portfast: c.portfast,
+      ...c.mstCost ? { mstCost: { ...c.mstCost } } : {},
+      ...c.mstPortPriority ? { mstPortPriority: { ...c.mstPortPriority } } : {}
     };
   }
 
@@ -6495,6 +6497,349 @@ var AgLabSim = (() => {
     return { lab: lab19, devices, switches, pcs, peer, pcAttach };
   }
 
+  // src/sim/mst.ts
+  var defaultMst = () => ({ name: "", revision: 0, instances: {}, priority: {} });
+  var mstOf = (cfg) => cfg.mst ?? defaultMst();
+  function instanceOf(m, v) {
+    for (const [i, vs] of Object.entries(m.instances)) if (vs.includes(v)) return Number(i);
+    return 0;
+  }
+  function vlansOf(m, inst) {
+    if (inst !== 0) return [...m.instances[String(inst)] ?? []].sort((a, b) => a - b);
+    const used = new Set(Object.values(m.instances).flat());
+    const out = [];
+    for (let v = 1; v <= 4094; v++) if (!used.has(v)) out.push(v);
+    return out;
+  }
+  var instanceIds = (m) => [0, ...Object.keys(m.instances).map(Number).sort((a, b) => a - b)];
+  function md5(bytes) {
+    const K = new Uint32Array(64);
+    for (let i = 0; i < 64; i++) K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 2 ** 32) >>> 0;
+    const S = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+    const len = bytes.length;
+    const total = (len + 8 >> 6) + 1;
+    const buf = new Uint8Array(total * 64);
+    buf.set(bytes);
+    buf[len] = 128;
+    const bits = len * 8;
+    for (let i = 0; i < 4; i++) buf[total * 64 - 8 + i] = bits >>> 8 * i & 255;
+    buf[total * 64 - 4] = Math.floor(len / 2 ** 29) & 255;
+    let a0 = 1732584193, b0 = 4023233417, c0 = 2562383102, d0 = 271733878;
+    const M = new Uint32Array(16);
+    for (let blk = 0; blk < total; blk++) {
+      for (let i = 0; i < 16; i++) {
+        const o = blk * 64 + i * 4;
+        M[i] = (buf[o] | buf[o + 1] << 8 | buf[o + 2] << 16 | buf[o + 3] << 24) >>> 0;
+      }
+      let A = a0, B = b0, C = c0, D2 = d0;
+      for (let i = 0; i < 64; i++) {
+        let F, g;
+        if (i < 16) [F, g] = [B & C | ~B & D2, i];
+        else if (i < 32) [F, g] = [D2 & B | ~D2 & C, (5 * i + 1) % 16];
+        else if (i < 48) [F, g] = [B ^ C ^ D2, (3 * i + 5) % 16];
+        else [F, g] = [C ^ (B | ~D2), 7 * i % 16];
+        F = F + A + K[i] + M[g] >>> 0;
+        A = D2;
+        D2 = C;
+        C = B;
+        const s = S[(i >> 4) * 4 + i % 4];
+        B = B + (F << s | F >>> 32 - s) >>> 0;
+      }
+      a0 = a0 + A >>> 0;
+      b0 = b0 + B >>> 0;
+      c0 = c0 + C >>> 0;
+      d0 = d0 + D2 >>> 0;
+    }
+    const out = new Uint8Array(16);
+    [a0, b0, c0, d0].forEach((w, i) => {
+      for (let j = 0; j < 4; j++) out[i * 4 + j] = w >>> 8 * j & 255;
+    });
+    return out;
+  }
+  var DIGEST_KEY = [19, 172, 6, 166, 46, 71, 253, 81, 249, 93, 43, 162, 67, 205, 3, 70];
+  function mstDigest(m) {
+    const table = new Uint8Array(4096 * 2);
+    for (const [i, vs] of Object.entries(m.instances))
+      for (const v of vs) {
+        table[v * 2] = Number(i) >> 8 & 255;
+        table[v * 2 + 1] = Number(i) & 255;
+      }
+    const key = new Uint8Array(64);
+    key.set(DIGEST_KEY);
+    const ipad = key.map((b) => b ^ 54);
+    const opad = key.map((b) => b ^ 92);
+    const inner = new Uint8Array(64 + table.length);
+    inner.set(ipad);
+    inner.set(table, 64);
+    const ih = md5(inner);
+    const outer = new Uint8Array(64 + 16);
+    outer.set(opad);
+    outer.set(ih, 64);
+    return [...md5(outer)].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+  }
+  var stpPort = (lp) => lp.active && !lp.routed && !lp.inactive;
+  function l2Links(d) {
+    const out = {};
+    for (const sw2 of d.topo.switches) {
+      if (sw2.router || d.hw.off.has(sw2.id)) continue;
+      const list = [];
+      for (const lp of d.lports[sw2.id] ?? []) {
+        if (!stpPort(lp)) continue;
+        const p = peerOf(d, lp);
+        if (!p || !stpPort(p) || d.hw.off.has(p.dev) || d.topo.devices[p.dev].router) continue;
+        list.push({ lp, peer: p.dev, plp: p });
+      }
+      out[sw2.id] = list;
+    }
+    return out;
+  }
+  function mstComponents(d) {
+    const mstAny = d.topo.switches.some((s) => d.cfgs[s.id]?.stpMode === "mst" && !s.router);
+    if (!mstAny) return /* @__PURE__ */ new Set();
+    const links = l2Links(d);
+    const out = /* @__PURE__ */ new Set();
+    const seen = /* @__PURE__ */ new Set();
+    for (const start of Object.keys(links)) {
+      if (seen.has(start)) continue;
+      const comp = [];
+      const stack = [start];
+      seen.add(start);
+      while (stack.length) {
+        const x = stack.pop();
+        comp.push(x);
+        for (const l of links[x] ?? [])
+          if (!seen.has(l.peer)) {
+            seen.add(l.peer);
+            stack.push(l.peer);
+          }
+      }
+      if (comp.some((x) => d.cfgs[x].stpMode === "mst")) for (const x of comp) out.add(x);
+    }
+    return out;
+  }
+  var longCost = (mbps) => Math.max(1, Math.min(2e8, Math.round(2e7 / Math.max(1, mbps))));
+  var cmpVec = (a, b) => {
+    for (let i = 0; i < a.length; i++) {
+      const x = a[i], y = b[i];
+      const c = typeof x === "number" ? x - y : x.localeCompare(y);
+      if (c) return c;
+    }
+    return 0;
+  };
+  function computeMst(d, devs, vlans3) {
+    var _a;
+    const links = l2Links(d);
+    const nodes = [...devs].filter((x) => links[x]);
+    const isMst = (x) => d.cfgs[x].stpMode === "mst";
+    const cfgM = (x) => mstOf(d.cfgs[x]);
+    const digest = {};
+    const key = {};
+    for (const x of nodes) {
+      digest[x] = mstDigest(cfgM(x));
+      key[x] = isMst(x) ? `${cfgM(x).name}|${cfgM(x).revision}|${digest[x]}` : "#" + x;
+    }
+    const region = {};
+    for (const x of nodes) {
+      if (region[x]) continue;
+      region[x] = x;
+      if (!isMst(x)) continue;
+      const stack = [x];
+      while (stack.length) {
+        const y = stack.pop();
+        for (const l of links[y])
+          if (!region[l.peer] && isMst(l.peer) && key[l.peer] === key[x]) {
+            region[l.peer] = x;
+            stack.push(l.peer);
+          }
+      }
+    }
+    const same = (a, b) => region[a] === region[b];
+    const mac = (x) => d.topo.devices[x].mac;
+    const portPrio = (x, lp, inst) => isMst(x) ? lp.cfg.mstPortPriority?.[String(inst)] ?? 128 : 128;
+    const portId = (x, lp, inst) => portPrio(x, lp, inst) * 4096 + lp.portNum;
+    const cost = (x, lp, inst) => isMst(x) ? lp.cfg.mstCost?.[String(inst)] ?? longCost(lp.speed) : lp.cost;
+    const prioOf = (x, inst) => isMst(x) ? (cfgM(x).priority[String(inst)] ?? 32768) + inst : (d.cfgs[x].stpPriority["1"] ?? 32768) + 1;
+    const devOf = (p, m, among) => among.find((x) => mac(x) === m && prioOf(x, 0) === p) ?? null;
+    const rounds = nodes.length + 1;
+    const self = (x) => [prioOf(x, 0), mac(x), 0, prioOf(x, 0), mac(x), 0, prioOf(x, 0), mac(x), 0];
+    const best = {};
+    for (const x of nodes) best[x] = { v: self(x), via: null };
+    for (let r = 0; r < rounds; r++) {
+      let changed = false;
+      const next = {};
+      for (const x of nodes) {
+        let cur = { v: self(x), via: null };
+        for (const l of links[x]) {
+          const nb = best[l.peer].v;
+          const c = cost(x, l.lp, 0);
+          const cand = same(x, l.peer) ? [nb[0], nb[1], nb[2], nb[3], nb[4], nb[5] + c, prioOf(l.peer, 0), mac(l.peer), portId(l.peer, l.plp, 0)] : [nb[0], nb[1], nb[2] + c, prioOf(x, 0), mac(x), 0, prioOf(l.peer, 0), mac(l.peer), portId(l.peer, l.plp, 0)];
+          if (cmpVec(cand, cur.v) < 0) cur = { v: cand, via: l.lp.name };
+        }
+        next[x] = cur;
+        if (cmpVec(cur.v, best[x].v) !== 0 || cur.via !== best[x].via) changed = true;
+      }
+      Object.assign(best, next);
+      if (!changed) break;
+    }
+    const sent = (x, lp) => [...best[x].v.slice(0, 6), prioOf(x, 0), mac(x), portId(x, lp, 0)];
+    const boundaryOf = (x, l) => same(x, l.peer) ? void 0 : isMst(x) ? isMst(l.peer) ? "RSTP" : "PVST" : isMst(l.peer) ? "Peer" : void 0;
+    const edgePort = (x, lp, inst) => ({
+      role: "Desg",
+      state: "FWD",
+      cost: cost(x, lp, inst),
+      portNum: lp.portNum,
+      edge: lp.peerIsPc,
+      prio: portPrio(x, lp, inst)
+    });
+    const cist = {};
+    for (const x of nodes) {
+      const v = best[x].v;
+      const ports2 = {};
+      for (const lp of d.lports[x] ?? []) if (stpPort(lp)) ports2[lp.name] = edgePort(x, lp, 0);
+      for (const l of links[x]) {
+        const p = ports2[l.lp.name];
+        p.edge = false;
+        const b = boundaryOf(x, l);
+        if (b) p.boundary = b;
+        if (l.lp.name === best[x].via) [p.role, p.state] = ["Root", "FWD"];
+        else if (cmpVec(sent(x, l.lp), sent(l.peer, l.plp)) < 0) [p.role, p.state] = ["Desg", "FWD"];
+        else [p.role, p.state] = ["Altn", "BLK"];
+      }
+      cist[x] = {
+        id: 0,
+        vlans: isMst(x) ? vlansOf(cfgM(x), 0) : [],
+        prio: prioOf(x, 0),
+        mac: mac(x),
+        rootPrio: v[0],
+        rootMac: v[1],
+        rootDev: devOf(v[0], v[1], nodes),
+        rootPort: best[x].via,
+        isRoot: v[1] === mac(x) && v[0] === prioOf(x, 0),
+        extCost: v[2],
+        rrPrio: v[3],
+        rrMac: v[4],
+        rrDev: devOf(v[3], v[4], nodes),
+        intCost: v[5],
+        ports: ports2
+      };
+    }
+    const msti = {};
+    const regions = /* @__PURE__ */ new Map();
+    for (const x of nodes) if (isMst(x)) regions.set(region[x], [...regions.get(region[x]) ?? [], x]);
+    for (const members of regions.values()) {
+      const ids = instanceIds(cfgM(members[0])).filter((i) => i !== 0);
+      for (const inst of ids) {
+        const me = (x) => [prioOf(x, inst), mac(x), 0, prioOf(x, inst), mac(x), 0];
+        const b = {};
+        for (const x of members) b[x] = { v: me(x), via: null };
+        for (let r = 0; r < members.length + 1; r++) {
+          let changed = false;
+          const next = {};
+          for (const x of members) {
+            let cur = { v: me(x), via: null };
+            for (const l of links[x]) {
+              if (!same(x, l.peer)) continue;
+              const nb = b[l.peer].v;
+              const cand = [nb[0], nb[1], nb[2] + cost(x, l.lp, inst), prioOf(l.peer, inst), mac(l.peer), portId(l.peer, l.plp, inst)];
+              if (cmpVec(cand, cur.v) < 0) cur = { v: cand, via: l.lp.name };
+            }
+            next[x] = cur;
+            if (cmpVec(cur.v, b[x].v) !== 0 || cur.via !== b[x].via) changed = true;
+          }
+          Object.assign(b, next);
+          if (!changed) break;
+        }
+        const sentI = (x, lp) => [...b[x].v.slice(0, 3), prioOf(x, inst), mac(x), portId(x, lp, inst)];
+        for (const x of members) {
+          const v = b[x].v;
+          const ports2 = {};
+          for (const lp of d.lports[x] ?? []) if (stpPort(lp)) ports2[lp.name] = edgePort(x, lp, inst);
+          for (const l of links[x]) {
+            const p = ports2[l.lp.name];
+            p.edge = false;
+            if (!same(x, l.peer)) {
+              const c = cist[x].ports[l.lp.name];
+              p.boundary = c.boundary;
+              if (c.role === "Root") [p.role, p.state] = ["Mstr", "FWD"];
+              else [p.role, p.state] = [c.role, c.state];
+              continue;
+            }
+            if (l.lp.name === b[x].via) [p.role, p.state] = ["Root", "FWD"];
+            else if (cmpVec(sentI(x, l.lp), sentI(l.peer, l.plp)) < 0) [p.role, p.state] = ["Desg", "FWD"];
+            else [p.role, p.state] = ["Altn", "BLK"];
+          }
+          const rootDev = members.find((y) => mac(y) === v[1] && prioOf(y, inst) === v[0]) ?? null;
+          (msti[x] ?? (msti[x] = {}))[inst] = {
+            id: inst,
+            vlans: vlansOf(cfgM(x), inst),
+            prio: prioOf(x, inst),
+            mac: mac(x),
+            rootPrio: v[0],
+            rootMac: v[1],
+            rootDev,
+            rootPort: b[x].via,
+            isRoot: rootDev === x,
+            extCost: 0,
+            rrPrio: v[0],
+            rrMac: v[1],
+            rrDev: rootDev,
+            intCost: v[2],
+            ports: ports2
+          };
+        }
+      }
+    }
+    for (const x of nodes) {
+      if (isMst(x)) {
+        const m = cfgM(x);
+        const cfgX = d.cfgs[x];
+        const shown = (st) => {
+          const vs = Object.keys(cfgX.vlans).map(Number).filter((v) => vlanExists(cfgX, v) && instanceOf(m, v) === st.id);
+          const ports2 = {};
+          for (const lp of d.lports[x] ?? []) if (st.ports[lp.name] && vs.some((v) => egress(d, lp, v))) ports2[lp.name] = st.ports[lp.name];
+          return { ...st, ports: ports2 };
+        };
+        d.mst[x] = {
+          region: { name: m.name, revision: m.revision, digest: digest[x] },
+          instances: [cist[x], ...instanceIds(m).filter((i) => i !== 0).map((i) => msti[x][i])].map(shown)
+        };
+      }
+      const cfg = d.cfgs[x];
+      for (const v of vlans3) {
+        if (!vlanExists(cfg, v)) continue;
+        const inst = isMst(x) ? instanceOf(cfgM(x), v) : 0;
+        const src = inst === 0 ? cist[x] : msti[x][inst];
+        const prio = isMst(x) ? src.prio : (cfg.stpPriority[String(v)] ?? 32768) + v;
+        const bridge = {
+          prio,
+          mac: mac(x),
+          rootPrio: src.rootPrio,
+          rootMac: src.rootMac,
+          rootCost: inst === 0 ? src.extCost : src.intCost,
+          rootPort: src.rootPort,
+          isRoot: src.isRoot,
+          ports: {}
+        };
+        for (const lp of d.lports[x] ?? []) {
+          if (!egress(d, lp, v)) continue;
+          bridge.ports[lp.name] = { ...src.ports[lp.name] ?? edgePort(x, lp, inst) };
+        }
+        ;
+        ((_a = d.stp)[v] ?? (_a[v] = {}))[x] = bridge;
+      }
+    }
+  }
+  function formatVlans(vs) {
+    const parts = [];
+    for (let i = 0; i < vs.length; ) {
+      let j = i;
+      while (j + 1 < vs.length && vs[j + 1] === vs[j] + 1) j++;
+      parts.push(j > i ? `${vs[i]}-${vs[j]}` : `${vs[i]}`);
+      i = j + 1;
+    }
+    return parts.join(",");
+  }
+
   // src/sim/engine.ts
   var protoOf = (m) => m === "on" ? "-" : m === "active" || m === "passive" ? "LACP" : "PAgP";
   function negotiate(local, peer) {
@@ -6634,6 +6979,7 @@ var AgLabSim = (() => {
           opMode: "access",
           inactive: false,
           cost: speedCost(bundled.reduce((s, p) => s + speedOf(p), 0)),
+          speed: bundled.reduce((s, p) => s + speedOf(p), 0),
           portNum: 64 + id,
           status: poCfg.shutdown ? "disabled" : bundled.length ? "connected" : "notconnect"
         };
@@ -6658,6 +7004,7 @@ var AgLabSim = (() => {
           opMode: "access",
           inactive: false,
           cost: speedCost(speedOf(port)),
+          speed: speedOf(port),
           portNum: portIndex(sw2, port),
           status: ps.adminDown ? "disabled" : ps.errDisabled ? "err-disabled" : suspended ? "suspended" : ps.up ? "connected" : "notconnect"
         };
@@ -6705,6 +7052,7 @@ var AgLabSim = (() => {
       lportOfPhys,
       ec,
       stp: {},
+      mst: {},
       svis: {},
       nativeMismatch: [],
       errdis,
@@ -6715,7 +7063,9 @@ var AgLabSim = (() => {
     const allVlans = /* @__PURE__ */ new Set();
     for (const c of Object.values(cfgs))
       for (const v of Object.keys(c.vlans)) if (Number(v) < 1002 || Number(v) > 1005) allVlans.add(Number(v));
-    for (const v of [...allVlans].sort((a, b) => a - b)) d.stp[v] = computeStp(d, v);
+    const mstDevs = mstComponents(d);
+    for (const v of [...allVlans].sort((a, b) => a - b)) d.stp[v] = computeStp(d, v, mstDevs);
+    if (mstDevs.size) computeMst(d, mstDevs, [...allVlans].sort((a, b) => a - b));
     for (const sw2 of topo.switches) {
       const cfg = cfgs[sw2.id];
       const out = [];
@@ -6782,15 +7132,15 @@ var AgLabSim = (() => {
     const st = d.stp[v]?.[dev]?.ports[lp.name];
     return !!st && st.state === "FWD";
   }
-  function cmpVec(a, b) {
+  function cmpVec2(a, b) {
     return a.rootPrio - b.rootPrio || a.rootMac.localeCompare(b.rootMac) || a.cost - b.cost || a.sPrio - b.sPrio || a.sMac.localeCompare(b.sMac) || a.sPort - b.sPort;
   }
-  function computeStp(d, v) {
+  function computeStp(d, v, skip) {
     const bridges = {};
     const edges = {};
     for (const sw2 of d.topo.switches) {
       const cfg = d.cfgs[sw2.id];
-      if (!vlanExists(cfg, v) || d.hw.off.has(sw2.id)) continue;
+      if (!vlanExists(cfg, v) || d.hw.off.has(sw2.id) || skip.has(sw2.id)) continue;
       const prio = (cfg.stpPriority[String(v)] ?? 32768) + v;
       const mac = sw2.mac;
       const b = { prio, mac, rootPrio: prio, rootMac: mac, rootCost: 0, rootPort: null, isRoot: true, ports: {} };
@@ -6842,10 +7192,10 @@ var AgLabSim = (() => {
             sMac: peerB.mac,
             sPort: e.peerLp.portNum
           };
-          if (cmpVec(cand, cur.vec) < 0) cur = { vec: cand, via: e.lp.name };
+          if (cmpVec2(cand, cur.vec) < 0) cur = { vec: cand, via: e.lp.name };
         }
         next[dev] = cur;
-        if (cmpVec(cur.vec, best[dev].vec) !== 0 || cur.via !== best[dev].via) changed = true;
+        if (cmpVec2(cur.vec, best[dev].vec) !== 0 || cur.via !== best[dev].via) changed = true;
       }
       Object.assign(best, next);
       if (!changed) break;
@@ -8464,6 +8814,16 @@ var AgLabSim = (() => {
 
   // src/sim/cli/help.ts
   var HELP = {
+    // MST (802.1s)
+    mst: "Multiple spanning tree configuration",
+    abort: "Abort the MST configuration and exit",
+    pending: "Display the new MST configuration to be applied",
+    current: "Display the current MST configuration",
+    instance: "Map vlans to an MST instance",
+    revision: "Set configuration revision number",
+    digest: "Display the MST configuration digest",
+    "port-priority": "Change an interface's spanning tree port priority",
+    detail: "Detailed information",
     // IP SLA ve nesne izleme
     sla: "IP Service Level Agreement",
     "icmp-echo": "ICMP Echo Operation",
@@ -9005,6 +9365,11 @@ var AgLabSim = (() => {
     if (c.nonegotiate) out.push(" switchport nonegotiate");
     if (c.shutdown) out.push(" shutdown");
     if (c.portfast) out.push(" spanning-tree portfast");
+    const insts = [.../* @__PURE__ */ new Set([...Object.keys(c.mstCost ?? {}), ...Object.keys(c.mstPortPriority ?? {})])].map(Number).sort((a, b) => a - b);
+    for (const i of insts) {
+      if (c.mstCost?.[String(i)] !== void 0) out.push(` spanning-tree mst ${i} cost ${c.mstCost[String(i)]}`);
+      if (c.mstPortPriority?.[String(i)] !== void 0) out.push(` spanning-tree mst ${i} port-priority ${c.mstPortPriority[String(i)]}`);
+    }
     return out;
   }
   function l3Lines(ip2, o, noIpLine) {
@@ -9165,6 +9530,7 @@ var AgLabSim = (() => {
     const byPrio = /* @__PURE__ */ new Map();
     for (const [v, p] of Object.entries(c.stpPriority)) byPrio.set(p, [...byPrio.get(p) ?? [], Number(v)]);
     for (const [p, vs] of [...byPrio].sort((a, b) => a[1][0] - b[1][0])) o.push(`spanning-tree vlan ${formatVlanList(vs)} priority ${p}`);
+    o.push(...mstRunningLines(c));
     if (c.bpduguardDefault) o.push("spanning-tree portfast bpduguard default");
     if (c.errRecoveryBpdu) o.push("errdisable recovery cause bpduguard");
     if (c.errRecoveryInterval) o.push("errdisable recovery interval " + c.errRecoveryInterval);
@@ -9603,34 +9969,166 @@ var AgLabSim = (() => {
     return o;
   }
   var fmtBid = (mac) => mac;
+  var portType = (p) => (p.edge ? "P2p Edge" : "P2p") + (p.boundary === "Peer" ? " Peer(STP)" : p.boundary ? ` Bound(${p.boundary})` : "") + (p.inconsistent ? " *PVID_Inc" : "");
+  function portRows(rt, dev, ports2, w = 20) {
+    const sw2 = rt.topo.devices[dev];
+    const order = (n) => n.startsWith("Port-channel") ? 1e3 + Number(n.slice(12)) : sw2.ports.indexOf(n);
+    return Object.entries(ports2).sort((a, b2) => order(a[0]) - order(b2[0])).map(([name, p]) => pad(shortIf(name), w) + pad(p.role, 5) + pad(p.state === "BKN" ? "BKN*" : p.state, 4) + pad(p.cost, 10) + pad(`${p.prio ?? 128}.${p.portNum}`, 9) + portType(p));
+  }
+  function stpBlock(rt, dev, label, proto, b, sysId) {
+    const rootPortLp = b.rootPort ? rt.derived.lportByName[pk(dev, b.rootPort)] : null;
+    const o = ["", label, `  Spanning tree enabled protocol ${proto}`];
+    o.push(`  Root ID    Priority    ${b.rootPrio}`, `             Address     ${fmtBid(b.rootMac)}`);
+    if (b.isRoot) o.push("             This bridge is the root");
+    else o.push(`             Cost        ${b.rootCost}`, `             Port        ${rootPortLp?.portNum ?? 0} (${b.rootPort})`);
+    o.push("             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec", "");
+    o.push(`  Bridge ID  Priority    ${b.prio}  (priority ${b.prio - sysId} sys-id-ext ${sysId})`, `             Address     ${b.mac}`);
+    o.push("             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec", "             Aging Time  300 sec", "");
+    o.push("Interface           Role Sts Cost      Prio.Nbr Type", "------------------- ---- --- --------- -------- --------------------------------");
+    o.push(...portRows(rt, dev, b.ports));
+    return o;
+  }
+  var instBridge = (x) => ({
+    prio: x.prio,
+    mac: x.mac,
+    rootPrio: x.rootPrio,
+    rootMac: x.rootMac,
+    rootCost: x.id === 0 ? x.extCost : x.intCost,
+    rootPort: x.rootPort,
+    isRoot: x.isRoot,
+    ports: x.ports
+  });
   function showSpanningTree(rt, dev, only) {
     const d = rt.derived;
     const c = rt.running[dev];
+    const st = d.mst[dev];
+    if (c.stpMode === "mst" && st) {
+      const want = only === void 0 ? null : instanceOf(mstOf(c), only);
+      if (only !== void 0 && !vlanExists(c, only)) return [`Spanning tree instance(s) for vlan ${only} does not exist.`];
+      const o2 = [];
+      for (const x of st.instances) if (want === null || x.id === want) o2.push(...stpBlock(rt, dev, "MST" + x.id, "mstp", instBridge(x), x.id));
+      return o2;
+    }
     const vlans3 = Object.keys(d.stp).map(Number).filter((v) => d.stp[v][dev] && (only === void 0 || v === only));
     if (only !== void 0 && !vlans3.length) return [`Spanning tree instance(s) for vlan ${only} does not exist.`];
     if (!vlans3.length) return ["No spanning tree instance exists."];
     const o = [];
     for (const v of vlans3) {
       const b = d.stp[v][dev];
-      const ports2 = Object.entries(b.ports);
-      if (!ports2.length && only === void 0) continue;
-      const sysPrio = b.prio;
-      const rootPortLp = b.rootPort ? d.lportByName[pk(dev, b.rootPort)] : null;
-      o.push("", `VLAN${String(v).padStart(4, "0")}`, `  Spanning tree enabled protocol ${c.stpMode === "rapid-pvst" ? "rstp" : "ieee"}`);
-      o.push(`  Root ID    Priority    ${b.rootPrio}`, `             Address     ${fmtBid(b.rootMac)}`);
-      if (b.isRoot) o.push("             This bridge is the root");
-      else o.push(`             Cost        ${b.rootCost}`, `             Port        ${rootPortLp?.portNum ?? 0} (${b.rootPort})`);
-      o.push("             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec", "");
-      o.push(`  Bridge ID  Priority    ${sysPrio}  (priority ${sysPrio - v} sys-id-ext ${v})`, `             Address     ${b.mac}`);
-      o.push("             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec", "             Aging Time  300 sec", "");
-      o.push("Interface           Role Sts Cost      Prio.Nbr Type", "------------------- ---- --- --------- -------- --------------------------------");
-      const sw2 = rt.topo.devices[dev];
-      const order = (n) => n.startsWith("Port-channel") ? 1e3 + Number(n.slice(12)) : sw2.ports.indexOf(n);
-      for (const [name, p] of ports2.sort((a, b2) => order(a[0]) - order(b2[0]))) {
-        const type = (p.edge ? "P2p Edge" : "P2p") + (p.inconsistent ? " *PVID_Inc" : "");
-        o.push(pad(shortIf(name), 20) + pad(p.role, 5) + pad(p.state === "BKN" ? "BKN*" : p.state, 4) + pad(p.cost, 10) + pad("128." + p.portNum, 9) + type);
-      }
+      if (!Object.keys(b.ports).length && only === void 0) continue;
+      o.push(...stpBlock(rt, dev, `VLAN${String(v).padStart(4, "0")}`, c.stpMode === "rapid-pvst" ? "rstp" : "ieee", b, v));
     }
+    return o;
+  }
+  function mstRunningLines(c) {
+    const m = c.mst;
+    if (!m) return [];
+    const o = [];
+    const insts = Object.keys(m.instances).map(Number).sort((a, b) => a - b);
+    if (m.name || m.revision || insts.length) {
+      o.push("!", "spanning-tree mst configuration");
+      if (m.name) o.push(" name " + m.name);
+      if (m.revision) o.push(" revision " + m.revision);
+      for (const i of insts) if (m.instances[String(i)].length) o.push(` instance ${i} vlan ${formatVlanList(m.instances[String(i)])}`);
+      o.push("!");
+    }
+    for (const i of Object.keys(m.priority).map(Number).sort((a, b) => a - b)) o.push(`spanning-tree mst ${i} priority ${m.priority[String(i)]}`);
+    return o;
+  }
+  function mstConfigLines(m, kind) {
+    const ids = instanceIds(m).filter((i) => i === 0 || m.instances[String(i)].length);
+    const o = [];
+    if (kind === "current") o.push("Current MST configuration");
+    if (kind === "pending") o.push("Pending MST configuration");
+    o.push(`Name      [${m.name}]`, `Revision  ${pad(m.revision, 6)}Instances configured ${ids.length}`);
+    if (kind === "digest") {
+      o.push(`Digest          0x${mstDigest(m)}`);
+      return o;
+    }
+    o.push("", "Instance  Vlans mapped", "--------  " + "-".repeat(69));
+    for (const i of ids) o.push(pad(i, 10) + formatVlans(vlansOf(m, i)));
+    o.push("-".repeat(79));
+    return o;
+  }
+  var ROLE_TEXT = { Root: "root", Desg: "designated", Altn: "alternate", Mstr: "master" };
+  var STATE_TEXT = { FWD: "forwarding", BLK: "blocking", BKN: "broken" };
+  function showSpanningTreeMst(rt, dev, only, detail = false) {
+    const c = rt.running[dev];
+    const st = rt.derived.mst[dev];
+    if (c.stpMode !== "mst" || !st) return ["% Switch is not in mst mode"];
+    const list = st.instances.filter((x) => only === void 0 || x.id === only);
+    if (!list.length) return [`% MST instance ${only} does not exist`];
+    const bid = (p, i) => `priority      ${p} (${p - i} sysid ${i})`;
+    const o = [];
+    for (const x of list) {
+      const sw2 = rt.topo.devices[dev];
+      o.push("", pad(`##### MST${x.id}`, 14) + "vlans mapped:   " + formatVlans(x.vlans));
+      o.push(`Bridge        address ${sw2.mac}  ${bid(x.prio, x.id)}`);
+      if (x.id === 0) {
+        if (x.isRoot) o.push("Root          this switch for the CIST");
+        else {
+          o.push(`Root          address ${x.rootMac}  ${bid(x.rootPrio, 0)}`);
+          o.push(`              port    ${pad(x.rootPort ? shortIf(x.rootPort) : "none", 17)}path cost     ${x.extCost}`);
+          if (x.rrMac === x.mac) o.push("Regional Root this switch");
+          else o.push(`Regional Root address ${x.rrMac}  ${bid(x.rrPrio, 0)}`, `                                       internal cost ${x.intCost}     rem hops 19`);
+        }
+        o.push("Operational   hello time 2 , forward delay 15, max age 20, txholdcount 6");
+        o.push("Configured    hello time 2 , forward delay 15, max age 20, max hops    20");
+      } else if (x.isRoot) o.push(`Root          this switch for MST${x.id}`);
+      else {
+        o.push(`Root          address ${x.rootMac}  ${bid(x.rootPrio, x.id)}`);
+        o.push(`              port    ${pad(x.rootPort ? shortIf(x.rootPort) : "none", 17)}cost          ${x.intCost}     rem hops 19`);
+      }
+      o.push("", "Interface        Role Sts Cost      Prio.Nbr Type", "---------------- ---- --- --------- -------- --------------------------------");
+      o.push(...portRows(rt, dev, x.ports, 17));
+      if (detail)
+        for (const [name, p] of Object.entries(x.ports)) {
+          o.push("", ` ${name} of MST${x.id} is ${ROLE_TEXT[p.role]} ${STATE_TEXT[p.state]}`);
+          o.push(`Port info             port id       ${pad(`${p.prio ?? 128}.${p.portNum}`, 8)}priority  ${pad(p.prio ?? 128, 5)}cost  ${p.cost}`);
+          o.push(`Designated root       address ${x.rootMac}  priority  ${x.rootPrio}`);
+        }
+    }
+    return o;
+  }
+  function showSpanningTreeSummary(rt, dev) {
+    const d = rt.derived;
+    const c = rt.running[dev];
+    const rows = [];
+    if (c.stpMode === "mst" && d.mst[dev]) {
+      for (const x of d.mst[dev].instances) rows.push({ name: "MST" + x.id, ports: Object.values(x.ports), root: x.isRoot });
+    } else
+      for (const v of Object.keys(d.stp).map(Number).sort((a, b) => a - b)) {
+        const b = d.stp[v][dev];
+        if (b && Object.keys(b.ports).length) rows.push({ name: `VLAN${String(v).padStart(4, "0")}`, ports: Object.values(b.ports), root: b.isRoot });
+      }
+    const roots = rows.filter((r) => r.root).map((r) => r.name);
+    const o = [
+      `Switch is in ${c.stpMode} mode` + (c.stpMode === "mst" ? " (IEEE Standard)" : ""),
+      `Root bridge for: ${roots.length ? roots.join(", ") : "none"}`,
+      "Extended system ID           is enabled",
+      "Portfast Default             is disabled",
+      `PortFast BPDU Guard Default  is ${c.bpduguardDefault ? "enabled" : "disabled"}`,
+      "Portfast BPDU Filter Default is disabled",
+      "Loopguard Default            is disabled",
+      "EtherChannel misconfig guard is enabled",
+      `Configured Pathcost method used is ${c.stpMode === "mst" ? "long" : "short"}`,
+      "UplinkFast                   is disabled",
+      "BackboneFast                 is disabled",
+      "",
+      "Name                   Blocking Listening Learning Forwarding STP Active",
+      "---------------------- -------- --------- -------- ---------- ----------"
+    ];
+    const line = (name, blk, fwd) => pad(name, 23) + padL(blk, 8) + padL(0, 10) + padL(0, 9) + padL(fwd, 11) + padL(blk + fwd, 11);
+    let tb = 0, tf = 0;
+    for (const r of rows) {
+      const blk = r.ports.filter((p) => p.state !== "FWD").length;
+      const fwd = r.ports.length - blk;
+      tb += blk;
+      tf += fwd;
+      o.push(line(r.name, blk, fwd));
+    }
+    o.push("---------------------- -------- --------- -------- ---------- ----------");
+    o.push(line(`${rows.length} ${c.stpMode === "mst" ? "msts" : "vlans"}`, tb, tf));
     return o;
   }
   function showEtherchannelSummary(rt, dev) {
@@ -10016,6 +10514,7 @@ var AgLabSim = (() => {
 
   // src/sim/cli/ios.ts
   var SLA = "<1-2147483647:Entry number>";
+  var MI = "<WORD:MST instance range, example: 0-3,5,7-9>";
   var CliError = class {
     constructor(lines) {
       this.lines = lines;
@@ -10056,6 +10555,14 @@ var AgLabSim = (() => {
       { p: "show ip arp", run: (x) => x.showArp() },
       { p: "show spanning-tree", run: (x) => showSpanningTree(x.rt, x.dev) },
       { p: "show spanning-tree vlan <1-4094:VLAN Switch Spanning Trees>", run: (x, a) => showSpanningTree(x.rt, x.dev, Number(a[3])) },
+      { p: "show spanning-tree summary", run: (x) => showSpanningTreeSummary(x.rt, x.dev) },
+      // MST (802.1s)
+      { p: "show spanning-tree mst", run: (x) => showSpanningTreeMst(x.rt, x.dev) },
+      { p: "show spanning-tree mst detail", run: (x) => showSpanningTreeMst(x.rt, x.dev, void 0, true) },
+      { p: "show spanning-tree mst <0-4094:MST instance number>", run: (x, a) => showSpanningTreeMst(x.rt, x.dev, Number(a[3])) },
+      { p: "show spanning-tree mst <0-4094:MST instance number> detail", run: (x, a) => showSpanningTreeMst(x.rt, x.dev, Number(a[3]), true) },
+      { p: "show spanning-tree mst configuration", run: (x) => mstConfigLines(mstOf(x.cfg), "show") },
+      { p: "show spanning-tree mst configuration digest", run: (x) => mstConfigLines(mstOf(x.cfg), "digest") },
       { p: "show etherchannel summary", run: (x) => showEtherchannelSummary(x.rt, x.dev) },
       { p: "show mac address-table", run: (x) => showMac(x.rt, x.dev) },
       { p: "show mac address-table address <H.H.H:48 bit mac address>", run: (x, a) => showMac(x.rt, x.dev, normalizeMac(a[4])) },
@@ -10177,6 +10684,21 @@ var AgLabSim = (() => {
     { p: "end", run: (x) => x.end() },
     { p: "do <LINE:Exec Command>", run: (x, a) => x.doCmd(a[1]) }
   ];
+  var mstPatterns = [
+    { p: "exit", run: (x) => x.mstLeave(true) },
+    { p: "end", run: (x) => void (x.mstLeave(true), x.end()) },
+    { p: "abort", run: (x) => x.mstLeave(false) },
+    { p: "do <LINE:Exec Command>", run: (x, a) => x.doCmd(a[1]) },
+    { p: "name <WORD:Name of the region>", run: (x, a) => void (x.mstPending.name = a[1]) },
+    { p: "no name", run: (x) => void (x.mstPending.name = "") },
+    { p: "revision <0-65535:Configuration revision number>", run: (x, a) => void (x.mstPending.revision = Number(a[1])) },
+    { p: "no revision", run: (x) => void (x.mstPending.revision = 0) },
+    { p: "instance <1-4094:MST instance number> vlan <vlist:VLAN range, example: 1,3-5,7,9-11>", run: (x, a) => x.mstMap(Number(a[1]), a[3], true) },
+    { p: "no instance <1-4094:MST instance number> vlan <vlist:VLAN range, example: 1,3-5,7,9-11>", run: (x, a) => x.mstMap(Number(a[2]), a[4], false) },
+    { p: "no instance <1-4094:MST instance number>", run: (x, a) => void delete x.mstPending.instances[a[2]] },
+    { p: "show current", run: (x) => mstConfigLines(mstOf(x.cfg), "current") },
+    { p: "show pending", run: (x) => mstConfigLines(x.mstPending, "pending") }
+  ];
   var ipSlaPatterns = [
     ...commonSub,
     { p: "icmp-echo <A.B.C.D:Destination IP address or hostname>", run: (x, a) => x.slaEcho({ target: a[1] }) },
@@ -10228,6 +10750,15 @@ var AgLabSim = (() => {
       },
       { p: "spanning-tree mode pvst", run: (x) => void (x.cfg.stpMode = "pvst") },
       { p: "spanning-tree mode rapid-pvst", run: (x) => void (x.cfg.stpMode = "rapid-pvst") },
+      // MST (802.1s): bölge yapılandırması (config-mst) kipinde bekletilir, exit ile uygulanır
+      { p: "spanning-tree mode mst", run: (x) => void (x.cfg.stpMode = "mst") },
+      { p: "spanning-tree mst configuration", run: (x) => x.enterMst() },
+      { p: "no spanning-tree mst configuration", run: (x) => x.mstSetRegion(defaultMst()) },
+      { p: `spanning-tree mst ${MI} priority <0-61440:bridge priority in increments of 4096>`, run: (x, a) => x.mstPriority(a[2], Number(a[4])) },
+      { p: `spanning-tree mst ${MI} root primary`, run: (x, a) => x.mstRoot(a[2], "primary") },
+      { p: `spanning-tree mst ${MI} root secondary`, run: (x, a) => x.mstRoot(a[2], "secondary") },
+      { p: `no spanning-tree mst ${MI} priority`, run: (x, a) => x.mstPriorityClear(a[3]) },
+      { p: `no spanning-tree mst ${MI} root`, run: (x, a) => x.mstPriorityClear(a[3]) },
       { p: "no spanning-tree mode", run: (x) => void (x.cfg.stpMode = "pvst") },
       { p: "spanning-tree vlan <vlist:VLAN range, example: 1,3-5,7,9-11> priority <0-61440:bridge priority in increments of 4096>", run: (x, a) => x.stpPriority(a[2], Number(a[4])) },
       { p: "spanning-tree vlan <vlist:VLAN range, example: 1,3-5,7,9-11> root primary", run: (x, a) => x.stpRoot(a[2], "primary") },
@@ -10579,6 +11110,11 @@ var AgLabSim = (() => {
       { p: "no switchport nonegotiate", run: (x) => x.eachL2((c) => void (c.nonegotiate = false)) },
       { p: "spanning-tree portfast", run: (x) => x.eachL2((c) => void (c.portfast = true), false) },
       { p: "no spanning-tree portfast", run: (x) => x.eachL2((c) => void (c.portfast = false), false) },
+      // MST: örnek başına port maliyeti / önceliği
+      { p: `spanning-tree mst ${MI} cost <1-200000000:Change an interface's per instance spanning tree path cost>`, run: (x, a) => x.mstPort(a[2], "mstCost", Number(a[4])) },
+      { p: `spanning-tree mst ${MI} port-priority <0-240:port priority in increments of 16>`, run: (x, a) => x.mstPort(a[2], "mstPortPriority", Number(a[4])) },
+      { p: `no spanning-tree mst ${MI} cost`, run: (x, a) => x.mstPort(a[3], "mstCost", null) },
+      { p: `no spanning-tree mst ${MI} port-priority`, run: (x, a) => x.mstPort(a[3], "mstPortPriority", null) },
       { p: "channel-group <1-48:Channel group number> mode on", run: (x, a) => x.channelGroup(Number(a[1]), "on") },
       { p: "channel-group <1-48:Channel group number> mode active", run: (x, a) => x.channelGroup(Number(a[1]), "active") },
       { p: "channel-group <1-48:Channel group number> mode passive", run: (x, a) => x.channelGroup(Number(a[1]), "passive") },
@@ -10676,7 +11212,8 @@ var AgLabSim = (() => {
         // `track N …` alt kipi (delay saklanır; zaman modellenmez)
         track: buildTrie(trackPatterns),
         ipsla: buildTrie(ipSlaPatterns),
-        ipslaEcho: buildTrie(ipSlaEchoPatterns)
+        ipslaEcho: buildTrie(ipSlaEchoPatterns),
+        mst: buildTrie(mstPatterns)
       };
       trieCache.set(def, t);
     }
@@ -10697,6 +11234,8 @@ var AgLabSim = (() => {
       /** `(config-track)` / `(config-ip-sla…)` altında düzenlenen nesne / işlem */
       __publicField(this, "trackNo", 0);
       __publicField(this, "slaNo", 0);
+      /** `(config-mst)` altında bekleyen bölge yapılandırması (exit ile uygulanır) */
+      __publicField(this, "mstPending", null);
       __publicField(this, "history", []);
       __publicField(this, "pending", null);
       __publicField(this, "starts", []);
@@ -10731,12 +11270,14 @@ var AgLabSim = (() => {
           return h + "(config-ip-sla)#";
         case "ipslaEcho":
           return h + "(config-ip-sla-echo)#";
+        case "mst":
+          return h + "(config-mst)#";
         case "acl":
           return h + (this.cfg.acls?.[this.aclName]?.type === "extended" ? "(config-ext-nacl)#" : "(config-std-nacl)#");
       }
     }
     get inConfig() {
-      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho";
+      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho" || this.mode === "mst";
     }
     trie() {
       const t = tries(this.def);
@@ -11568,6 +12109,100 @@ var AgLabSim = (() => {
         this.cfg.stpPriority[String(v)] = prio;
       }
     }
+    // ---- MST (802.1s) ----
+    /** Örnek listesi (0-4094); geçersizse komut reddedilir. */
+    mstList(list, at) {
+      const ids = parseVlanList(list, 0, 4094);
+      if (!ids) throw new InvalidAt(at);
+      return ids;
+    }
+    /** Global kipe dön (metinden yüklemede blok sonu): `(config-mst)` bekleyenleri uygulanır. */
+    toConfig() {
+      if (this.mode === "mst") this.mstLeave(true);
+      this.mode = "config";
+    }
+    enterMst() {
+      const m = mstOf(this.cfg);
+      this.mstPending = { name: m.name, revision: m.revision, instances: clone(m.instances), priority: {} };
+      this.mode = "mst";
+    }
+    /** `(config-mst)`'den çıkış: apply = exit/end (uygula), değilse abort (at). */
+    mstLeave(apply) {
+      if (apply && this.mstPending) this.mstSetRegion(this.mstPending);
+      this.mstPending = null;
+      this.mode = "config";
+    }
+    /** Bölge (ad, revizyon, eşleme) yazılır; öncelikler korunur. Varsayılana dönünce kayıt silinir. */
+    mstSetRegion(r) {
+      const priority = this.cfg.mst?.priority ?? {};
+      const next = { name: r.name, revision: r.revision, instances: clone(r.instances), priority };
+      if (!next.name && !next.revision && !Object.keys(next.instances).length && !Object.keys(priority).length) delete this.cfg.mst;
+      else this.cfg.mst = next;
+    }
+    /** `instance N vlan <liste>` (VLAN başka örnekteyse oraya taşınır) / `no instance N vlan <liste>`. */
+    mstMap(inst, list, add) {
+      const vs = parseVlanList(list);
+      if (!vs) throw new InvalidAt(add ? 3 : 4);
+      const m = this.mstPending;
+      if (add) {
+        for (const [i, cur] of Object.entries(m.instances)) if (i !== String(inst)) m.instances[i] = cur.filter((v) => !vs.includes(v));
+        m.instances[String(inst)] = [.../* @__PURE__ */ new Set([...m.instances[String(inst)] ?? [], ...vs])].sort((a, b) => a - b);
+      } else if (m.instances[String(inst)]) m.instances[String(inst)] = m.instances[String(inst)].filter((v) => !vs.includes(v));
+    }
+    mstPrioSet(fn) {
+      var _a;
+      const m = (_a = this.cfg).mst ?? (_a.mst = defaultMst());
+      fn(m.priority);
+      this.mstSetRegion(m);
+    }
+    mstPriority(list, prio) {
+      const ids = this.mstList(list, 2);
+      if (prio % 4096 !== 0)
+        return [
+          "% Bridge Priority must be in increments of 4096.",
+          "% Allowed values are:",
+          "  0     4096  8192  12288 16384 20480 24576 28672",
+          "  32768 36864 40960 45056 49152 53248 57344 61440"
+        ];
+      this.mstPrioSet((p) => ids.forEach((i) => p[String(i)] = prio));
+    }
+    /** `root primary`: 24576, kök daha düşükse onun 4096 altı; `secondary`: 28672 (IOS makrosu). */
+    mstRoot(list, kind) {
+      const ids = this.mstList(list, 2);
+      const st = this.rt.derived.mst[this.dev];
+      for (const i of ids) {
+        if (kind === "secondary") {
+          this.mstPrioSet((p) => p[String(i)] = 28672);
+          continue;
+        }
+        const me = st?.instances.find((x) => x.id === i);
+        let prio = 24576;
+        if (me && !me.isRoot) {
+          const rootPrio = me.rootPrio - i;
+          if (rootPrio <= 24576) prio = rootPrio - 4096;
+          if (prio < 0) return [`% Failed to make the bridge root for MST instance ${i}`];
+        } else if (me) prio = Math.min(24576, me.prio - i);
+        this.mstPrioSet((p) => p[String(i)] = prio);
+      }
+    }
+    mstPriorityClear(list) {
+      const ids = this.mstList(list, 3);
+      if (!this.cfg.mst) return;
+      this.mstPrioSet((p) => ids.forEach((i) => delete p[String(i)]));
+    }
+    /** Arayüz: `spanning-tree mst <liste> cost|port-priority <n>` (null: kaldır). */
+    mstPort(list, field, value) {
+      const ids = this.mstList(list, value === null ? 3 : 2);
+      if (field === "mstPortPriority" && value !== null && value % 16 !== 0) return ["% Port Priority in increments of 16 is required"];
+      return this.eachL2((c) => {
+        const m = c[field] ?? (c[field] = {});
+        for (const i of ids) {
+          if (value === null) delete m[String(i)];
+          else m[String(i)] = value;
+        }
+        if (!Object.keys(m).length) delete c[field];
+      }, false);
+    }
     stpClear(list) {
       const ids = parseVlanList(list);
       if (!ids) throw new InvalidAt(3);
@@ -11839,14 +12474,14 @@ var AgLabSim = (() => {
   var ERR = /^(%|Command rejected)/;
   var INFO = /^% Access VLAN does not exist\. Creating vlan \d+$/;
   var isError = (out) => out.some((l) => ERR.test(l.trim()) && !INFO.test(l.trim()));
-  var MODE_LINE = /^(interface|router|line|ip\s+access-list|ip\s+dhcp\s+pool|ip\s+sla\s+\d|track\s+\d|vlan\s+\d|controller|class-map|policy-map|key\s+chain|crypto)\b/i;
+  var MODE_LINE = /^(interface|router|line|spanning-tree\s+mst\s+configuration|ip\s+access-list|ip\s+dhcp\s+pool|ip\s+sla\s+\d|track\s+\d|vlan\s+\d|controller|class-map|policy-map|key\s+chain|crypto)\b/i;
   function harmless(cmd) {
     for (const [re, why] of HARMLESS) if (re.test(cmd)) return why;
     return null;
   }
   function applyConfigText(rt, dev, text) {
     const s = new IosSession(rt, dev);
-    s.mode = "config";
+    s.toConfig();
     const out = [];
     const lines = text.split(/\r?\n/);
     let rejectedParent = null;
@@ -11857,7 +12492,7 @@ var AgLabSim = (() => {
       if (!cmd) continue;
       if (cmd.startsWith("!")) {
         rejectedParent = null;
-        s.mode = "config";
+        s.toConfig();
         continue;
       }
       const banner = /^banner\s+\S+\s+(\^C|\S)(.*)$/i.exec(cmd);
@@ -11881,7 +12516,7 @@ var AgLabSim = (() => {
         break;
       }
       if (rejectedParent) {
-        s.mode = "config";
+        s.toConfig();
         const r2 = s.exec(cmd);
         if (!isError(r2) && !s.pendingPrompt) {
           rejectedParent = null;
@@ -11907,9 +12542,10 @@ var AgLabSim = (() => {
         r = [...r, "% confirmation required"];
       }
       if (isError(r) && before !== "config") {
-        s.mode = "config";
+        s.toConfig();
         const g = s.exec(cmd);
         if (!isError(g)) r = g;
+        else if (before === "mst") s.exec("spanning-tree mst configuration");
         else s.mode = before;
       }
       if (!isError(r)) {
@@ -11920,7 +12556,7 @@ var AgLabSim = (() => {
       const why = harmless(cmd);
       const isMode = MODE_LINE.test(cmd);
       if (isMode) {
-        s.mode = "config";
+        s.toConfig();
         rejectedParent = { cmd, harmless: HARMLESS_BLOCK.test(cmd) };
       }
       if (why || isMode && HARMLESS_BLOCK.test(cmd)) push(n, cmd, "ignored", why ?? "oturum/erişim hattı ayarı (ağ davranışını etkilemez)");
@@ -12453,6 +13089,24 @@ var AgLabSim = (() => {
         if (Object.values(bridges).some((o) => o !== b && o.rootMac === b.mac)) return dev;
       }
       return null;
+    }
+    /** MST: VLAN'ın eşlendiği örnek (eşlenmemiş: 0); switch MST kipinde değilse null. */
+    mstInstance(dev, vlan) {
+      const c = this.d.cfgs[dev];
+      return c?.stpMode === "mst" ? instanceOf(mstOf(c), vlan) : null;
+    }
+    /**
+     * MST: örneğin kökü bu switch'in gözünden (örnek 0: CIST kökü; MSTI: bölgesel kök):
+     * { dev, prio (sys-id-ext dahil), mac } ya da (MST değil / örnek yok) null.
+     */
+    mstRoot(dev, inst) {
+      const x = this.d.mst[dev]?.instances.find((i) => i.id === inst);
+      return x ? { dev: x.rootDev, prio: x.rootPrio, mac: x.rootMac } : null;
+    }
+    /** MST bölge kimliği: ad, revizyon ve 802.1s yapılandırma özeti (onaltılık). */
+    mstRegion(dev) {
+      const m = mstOf(this.d.cfgs[dev]);
+      return { name: m.name, revision: m.revision, digest: mstDigest(m) };
     }
     etherchannel(dev, id) {
       const g = this.d.ec[dev]?.find((x) => x.id === id);
@@ -17245,6 +17899,8 @@ write memory`
       if (Object.keys(cfg.tracks ?? {}).length) fail("track (izlenen nesne; switch üzerinde desteklenmiyor)");
       if (Object.keys(cfg.ipSla ?? {}).length) fail("IP SLA (desteklenmiyor)");
       if (cfg.ipRouting) fail("ip routing");
+      const mstPorts = [...Object.values(cfg.ifaces), ...Object.values(cfg.pos)].some((c) => c.mstCost || c.mstPortPriority);
+      if (cfg.stpMode === "mst" || cfg.mst || mstPorts) fail("MST (802.1s) yapılandırması (desteklenmiyor)");
       if (cfg.stpMode !== "pvst") fail("spanning-tree mode " + cfg.stpMode);
       if (cfg.bpduguardDefault) fail("spanning-tree portfast bpduguard default");
       if (cfg.errRecoveryBpdu || cfg.errRecoveryInterval !== void 0) fail("errdisable recovery");
