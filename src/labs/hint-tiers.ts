@@ -428,6 +428,24 @@ export const HINT_TIERS: Record<string, Record<string, [string, string]>> = {
       'Sanal adres Active router’dadır; Active GW2 olunca trafik ISP-B’den çıkar, dönüş çekirdeğin yedek rotasıyla gelir.',
     ],
   },
+  'mst-bolge': {
+    region: [
+      'Erişim switch’leri dağıtım switch’leriyle aynı MST bölgesinde mi? Sınır portları ne söylüyor?',
+      'İki MST switch’i ancak bölge adı, revizyon numarası ve VLAN → örnek eşlemesi birebir aynıysa aynı bölgededir; eşlemenin özeti karşılaştırılabilir.',
+    ],
+    cist: [
+      'Ortak ağacın (örnek 0) kökü hangi switch? Bu tasarım için doğru katman mı?',
+      'Örnek 0 da diğer örnekler gibi kendi önceliğiyle kök seçer; ayar yapılmazsa en düşük MAC adresli switch kök olur.',
+    ],
+    balance: [
+      'Erişim switch’inde VLAN 10 ve VLAN 20 hangi uplink’ten iletiliyor? İkisi aynı mı?',
+      'Bölge içinde her örnek kendi köküne göre ayrı ağaç kurar; bölge sınırında ise bütün VLAN’lar ortak ağacı izler.',
+    ],
+    ping: [
+      'Aynı VLAN’daki iki PC birbirine ulaşıyor mu?',
+      'Bölge ve kök düzeltmeleri döngüsüz bir ağaç bırakır; her VLAN kendi örneğinin yolundan akar.',
+    ],
+  },
   'ospf-sorun-ileri': {
     nettype: [
       'R1, R2’yi FULL görüyor ama tablosunda OSPF rotası yok. İki uçta arayüz ayarlarından biri farklı mı?',

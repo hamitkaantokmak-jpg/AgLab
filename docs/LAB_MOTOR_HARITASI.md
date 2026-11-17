@@ -195,6 +195,7 @@ köprü kullanılmadan doğrudan Labber'da kurulur; terminal Labber oturumudur, 
 | `ospf-dagitim` | Redistribution: statik ve bağlı ağları OSPF'e aktarmak | İleri | 7/6 | 5 | ENARSI, OSPF, Redistribution, ASBR, E2, subnets | **Labber** — LabDef doğrudan |
 | `statik-yedek` | IP SLA + track: birincil hat koptuğunda yedek internete geçmek | İleri | 7/7 | 4 | ENARSI, ENCOR, IP SLA, Track, Statik rota, Floating static, Arıza giderme | **Labber** — LabDef doğrudan |
 | `hsrp-sla-track` | IP SLA + track ile HSRP: ağ geçidi internetini kaybedince devretmek | İleri | 8/8 | 4 | ENCOR, IP SLA, Track, HSRP, Preempt, Arıza giderme | **Labber** — LabDef doğrudan |
+| `mst-bolge` | MST: bölge uyuşmazlığı ve kaybolan yük dengeleme | İleri | 8/9 | 4 | ENCOR, STP, MST, 802.1s, Bölge, CIST, Arıza giderme | **Labber** — LabDef doğrudan |
 
 ## Motor kullanmayan eski içerik (L6)
 
@@ -266,8 +267,8 @@ gerekçesiyle gösterilir (terminal ve değerlendirme açık hata verir).
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
 | Ortak senaryolar | 116 | 0 | 116 |
-| Labber labları | 18 | 0 | 18 |
-| Toplam | 174 | 0 | 174 |
+| Labber labları | 19 | 0 | 19 |
+| Toplam | 175 | 0 | 175 |
 
 | Simüle edilememe gerekçesi | İçerik sayısı |
 |---|---|
