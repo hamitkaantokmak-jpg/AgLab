@@ -13,6 +13,7 @@
 // - Simulation Mode deterministik bir yeniden oynatmadır; zamanlama modellenmez.
 
 import { allows } from '../sim/engine'
+import { fhrpOwns, fhrpTarget } from '../sim/fhrp'
 import { deliver, l2Domain, l3Ifs, nodeVlan, ping, sourceIp, type Hop, type L3If, type Node } from '../sim/net'
 import type { LabRuntime } from '../sim/runtime'
 import { pk } from '../sim/topology'
@@ -169,7 +170,9 @@ export function pingTrace(
   }
   let frameNo = 0
   let l2 = true
-  const ifOf = (dev: string, ip: string) => l3Ifs(d, dev).find((i) => i.ip === ip) ?? null
+  // atlama hedefi bir HSRP/VRRP sanal adresiyse Active/Master'ın arayüzü (sanal MAC ile)
+  const ifOf = (dev: string, ip: string) =>
+    l3Ifs(d, dev).find((i) => i.ip === ip) ?? (fhrpOwns(d, dev, ip) ? fhrpTarget(d, ip, () => true) : null)
 
   /** Bir teslimatın atlamaları; döndürdüğü: son ulaşılan cihaz. */
   const walk = (

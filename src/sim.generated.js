@@ -11502,7 +11502,7 @@ write memory`
     };
     let frameNo = 0;
     let l2 = true;
-    const ifOf = (dev, ip2) => l3Ifs(d, dev).find((i) => i.ip === ip2) ?? null;
+    const ifOf = (dev, ip2) => l3Ifs(d, dev).find((i) => i.ip === ip2) ?? (fhrpOwns(d, dev, ip2) ? fhrpTarget(d, ip2, () => true) : null);
     const walk2 = (kind, start, hops, srcIp, dstIp, baseTtl) => {
       let ttl = baseTtl;
       let sender = start;
