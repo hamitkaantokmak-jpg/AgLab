@@ -320,3 +320,29 @@ describe('advanced OSPF troubleshooting (Konu #42)', () => {
     expect(rt.query().ospf('R3')!.nbrs.find((n) => n.peerDev === 'R4')!.state).toBe('2WAY')
   })
 })
+
+describe('IP SLA + track labs (Konu #37, #48)', () => {
+  it('statik-yedek: without source-interface the probe flaps; solution fails over to ISP-B', () => {
+    const def = findLab('statik-yedek')!
+    const rt = createLab(def)
+    cfg(rt, 'R1', 'ip sla 1\nicmp-echo 203.0.113.53\nexit\nip sla schedule 1 life forever start-time now\ntrack 1 ip sla 1 reachability\nexit\nip route 0.0.0.0 0.0.0.0 10.1.1.2 track 1')
+    expect(rt.query().ipSla('R1', 1).flapping).toBe(true)
+    const solved = solve(def)
+    expect(solved.query().ipSla('R1', 1).flapping).toBe(false)
+    expect(solved.query().route('R1', '0.0.0.0', 0)?.nh).toBe('10.2.2.2')
+    cfg(solved, 'ISP-A', 'interface gi0/2\nno shutdown')
+    expect(solved.query().route('R1', '0.0.0.0', 0)?.nh).toBe('10.1.1.2')
+  })
+  it('hsrp-sla-track: decrement alone is not enough without preempt on GW2', () => {
+    const def = findLab('hsrp-sla-track')!
+    const rt = createLab(def)
+    expect(rt.query().fhrpPriority('GW1', 'g0/0', 1)).toBe(110)
+    runScript(rt, 'GW1', def.solution.GW1!)
+    expect(rt.query().fhrpPriority('GW1', 'g0/0', 1)).toBe(90)
+    expect(rt.query().fhrpActive('GW1', 'g0/0', 1)).toBe(true)
+    runScript(rt, 'GW2', def.solution.GW2!)
+    expect(rt.query().fhrpActive('GW2', 'g0/0', 1)).toBe(true)
+    cfg(rt, 'ISP-A', 'interface g0/2\nno shutdown')
+    expect(rt.query().fhrpActive('GW1', 'g0/0', 1)).toBe(true)
+  })
+})

@@ -392,6 +392,42 @@ export const HINT_TIERS: Record<string, Record<string, [string, string]>> = {
       'Gidiş için R3’ün dış rotası, dönüş için eski router’ın varsayılan rotası ve R1’in OSPF rotası gerekir.',
     ],
   },
+  'statik-yedek': {
+    sla: [
+      'R1, ISP-A’nın ötesine ulaşılıp ulaşılamadığını şu an nasıl biliyor? Arayüzün up/up olması yetiyor mu?',
+      'Router’ın kendisi düzenli olarak uzaktaki bir adrese deneme paketi gönderip sonucu tutabilir; bu deneme ancak zamanlandığında çalışır.',
+    ],
+    track: [
+      'Deneme başarısız olduğunda birincil rotanın tablodan çıkması için rota neye bağlı olmalı?',
+      'Bir rota izlenen bir nesneye bağlanabilir; nesne düşünce rota çıkar ve daha yüksek AD’li yedek rota kurulur.',
+    ],
+    noflap: [
+      'Birincil rota çıkınca deneme paketleri hangi hattan, hangi kaynak adresle gidiyor? İzlenen nesnenin durumu kararlı mı?',
+      'Deneme hedefine birincil hattan giden, izlenmeyen sabit bir yol olursa deneme yedek hatta düşmez.',
+    ],
+    e2e: [
+      'PC1’den sunucuya trace: ikinci atlama hangi ISP?',
+      'Birincil rota çıktığında varsayılan rota yedek ISP’ye döner; dönüş de çekirdekteki yedek rotayla gelir.',
+    ],
+  },
+  'hsrp-sla-track': {
+    sla: [
+      'GW1, ISP-A’nın ötesinin koptuğunu nereden bilebilir? LAN arayüzü sağlamken HSRP neyi izliyor?',
+      'Ağ geçidi internetteki bir adrese düzenli deneme gönderebilir; sonucu izlenen bir nesneye bağlanınca başka özellikler onu kullanabilir.',
+    ],
+    decrement: [
+      'GW1’in HSRP önceliği internet kopunca değişiyor mu?',
+      'HSRP önceliği izlenen bir nesneye bağlanabilir; nesne düşünce öncelik belirtilen kadar azalır. Azalan öncelik diğerininkinin altına inmeli.',
+    ],
+    takeover: [
+      'GW2’nin önceliği artık daha yüksek; yine de neden Standby kalıyor?',
+      'Çalışan bir Active router’ı yalnız daha yüksek öncelikle devralmak için devralma izni (preempt) gerekir.',
+    ],
+    e2e: [
+      'PC1’in sanal ağ geçidine giden paketleri şimdi hangi router karşılıyor? trace’in ilk atlaması ne?',
+      'Sanal adres Active router’dadır; Active GW2 olunca trafik ISP-B’den çıkar, dönüş çekirdeğin yedek rotasıyla gelir.',
+    ],
+  },
   'ospf-sorun-ileri': {
     nettype: [
       'R1, R2’yi FULL görüyor ama tablosunda OSPF rotası yok. İki uçta arayüz ayarlarından biri farklı mı?',

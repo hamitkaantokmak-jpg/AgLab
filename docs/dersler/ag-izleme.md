@@ -113,7 +113,7 @@ IPV4 SRC ADDR  IPV4 DST ADDR  TRNS SRC PORT  TRNS DST PORT  IP PROT  bytes long
 
 ## 4. Yönlendirmeli lab
 
-> **Simülatörde yok:** Lab'ı kâğıt üstünde yürüt; her adımda Bölüm 3'teki beklenen çıktıyla karşılaştır.
+> **Kısmen simülatörde:** IP SLA + track adımlarını Simülatör'deki **hsrp-sla-track** ve **statik-yedek** labları ile dene (Pratik adımında). SPAN, NetFlow ve debug adımlarını kâğıt üstünde Bölüm 3'teki çıktılarla karşılaştır.
 
 Şube R1: birincil internet (g0/1, 203.0.113.1 next-hop), yedek LTE (g0/2).
 
@@ -268,4 +268,5 @@ Kaynaklar: INE ENCOR (Network Assurance: IP SLA, SPAN/RSPAN/ERSPAN, NetFlow/Flex
 
 **Motor gereksinimleri**
 
-- [ ] Paket Dedektifi yakalamanın karşılığıdır; IP SLA + track (statik rota) ve basit NetFlow özeti motora eklenirse S1 ve S3 `mon-*` kimlikleriyle uygulanabilir.
+- [x] IP SLA (icmp-echo), track ve HSRP/statik rota bağlantısı Labber'da var: Simülatör'deki **hsrp-sla-track** (HSRP önceliğini internet erişimine bağlama, preempt) ve **statik-yedek** (track'li varsayılan rota) labları.
+- [ ] SPAN için Paket Dedektifi yakalaması kullanılır; NetFlow özeti motorda yok. Eklenirse S3 `mon-*` kimliğiyle uygulanır.
