@@ -201,6 +201,23 @@ function roas(): AglabTopology {
   }
 }
 
+describe('köprü: MST (802.1s)', () => {
+  it('MST yapılandırması AğLab\'a dönüşte "desteklenmiyor" olarak raporlanır (sessiz kayıp yok)', () => {
+    const t = lan()
+    for (const script of [
+      'spanning-tree mode mst',
+      'spanning-tree mst configuration\nname BOLGE\ninstance 1 vlan 10\nexit',
+      'spanning-tree mst 1 priority 4096',
+      'interface gi0/1\nspanning-tree mst 1 cost 100',
+    ]) {
+      const rt = createRuntime(toLabber(t))
+      runScript(rt, 'd3', 'configure terminal\n' + script + '\nend')
+      expect(() => toAglab(rt, t), script).toThrow(BridgeError)
+      expect(() => toAglab(rt, t), script).toThrow(/MST.*desteklenmiyor/)
+    }
+  })
+})
+
 describe('köprü: alt arayüz (L5-a)', () => {
   it('alt arayüz SubIfConfig\'e eşlenir; gidiş-dönüş birebir (yapılandırılmamış alt arayüz dahil)', () => {
     const t = roas()

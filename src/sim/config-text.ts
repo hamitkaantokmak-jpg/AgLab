@@ -63,7 +63,7 @@ const INFO = /^% Access VLAN does not exist\. Creating vlan \d+$/
 const isError = (out: string[]) => out.some((l) => ERR.test(l.trim()) && !INFO.test(l.trim()))
 
 /** Kip açan satırlar: reddedilirse alt satırları önceki kipte çalıştırılmaz. */
-const MODE_LINE = /^(interface|router|line|ip\s+access-list|ip\s+dhcp\s+pool|ip\s+sla\s+\d|track\s+\d|vlan\s+\d|controller|class-map|policy-map|key\s+chain|crypto)\b/i
+const MODE_LINE = /^(interface|router|line|spanning-tree\s+mst\s+configuration|ip\s+access-list|ip\s+dhcp\s+pool|ip\s+sla\s+\d|track\s+\d|vlan\s+\d|controller|class-map|policy-map|key\s+chain|crypto)\b/i
 
 function harmless(cmd: string): string | null {
   for (const [re, why] of HARMLESS) if (re.test(cmd)) return why
@@ -76,7 +76,7 @@ function harmless(cmd: string): string | null {
  */
 export function applyConfigText(rt: LabRuntime, dev: string, text: string): ConfigLine[] {
   const s = new IosSession(rt, dev)
-  s.mode = 'config'
+  s.toConfig()
   const out: ConfigLine[] = []
   const lines = text.split(/\r?\n/)
   /** reddedilen kip satırı: blok sonuna kadar alt satırlar global kipte denenir */
@@ -91,7 +91,7 @@ export function applyConfigText(rt: LabRuntime, dev: string, text: string): Conf
     if (cmd.startsWith('!')) {
       // running-config belgesinde `!` bölüm sınırıdır: sonraki satır global kipte okunur
       rejectedParent = null
-      s.mode = 'config'
+      s.toConfig()
       continue
     }
     // banner: ayraçla biten çok satırlı metin
@@ -118,7 +118,7 @@ export function applyConfigText(rt: LabRuntime, dev: string, text: string): Conf
     }
     if (rejectedParent) {
       // alt satır: önceki kipte değil, yalnız global kipte (yeni bir üst satır olabilir)
-      s.mode = 'config'
+      s.toConfig()
       const r = s.exec(cmd)
       if (!isError(r) && !s.pendingPrompt) {
         rejectedParent = null
@@ -147,9 +147,11 @@ export function applyConfigText(rt: LabRuntime, dev: string, text: string): Conf
     }
     if (isError(r) && before !== 'config') {
       // IOS: alt kipte tanınmayan komut üst kipte denenir
-      s.mode = 'config'
+      s.toConfig()
       const g = s.exec(cmd)
       if (!isError(g)) r = g
+      // (config-mst) bekleyenleri uygulandı: kipe yeniden girilir (bekleyen yapılandırma yeniden kurulur)
+      else if (before === 'mst') s.exec('spanning-tree mst configuration')
       else s.mode = before
     }
     if (!isError(r)) {
@@ -161,7 +163,7 @@ export function applyConfigText(rt: LabRuntime, dev: string, text: string): Conf
     const why = harmless(cmd)
     const isMode = MODE_LINE.test(cmd)
     if (isMode) {
-      s.mode = 'config'
+      s.toConfig()
       rejectedParent = { cmd, harmless: HARMLESS_BLOCK.test(cmd) }
     }
     if (why || (isMode && HARMLESS_BLOCK.test(cmd))) push(n, cmd, 'ignored', why ?? 'oturum/erişim hattı ayarı (ağ davranışını etkilemez)')

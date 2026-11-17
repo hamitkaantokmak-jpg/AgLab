@@ -1,5 +1,15 @@
 // IOS-style help strings for keywords (shown by '?').
 export const HELP: Record<string, string> = {
+  // MST (802.1s)
+  mst: 'Multiple spanning tree configuration',
+  abort: 'Abort the MST configuration and exit',
+  pending: 'Display the new MST configuration to be applied',
+  current: 'Display the current MST configuration',
+  instance: 'Map vlans to an MST instance',
+  revision: 'Set configuration revision number',
+  digest: 'Display the MST configuration digest',
+  'port-priority': "Change an interface's spanning tree port priority",
+  detail: 'Detailed information',
   // IP SLA ve nesne izleme
   sla: 'IP Service Level Agreement',
   'icmp-echo': 'ICMP Echo Operation',

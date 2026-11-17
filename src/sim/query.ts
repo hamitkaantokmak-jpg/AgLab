@@ -7,6 +7,7 @@ import { macTable, ping, pcNode, routeTable, type MacEntry, type PingResult, typ
 import type { DhcpBinding, SwitchConfig } from './types'
 import { pk } from './topology'
 import { objectUp } from './track'
+import { instanceOf, mstDigest, mstOf } from './mst'
 import { canonIf, ipToInt, normalizeMac, prefixMaskInt } from './util'
 
 const OSPF_AD = 110
@@ -231,6 +232,27 @@ export class LabQuery {
       if (Object.values(bridges).some((o) => o !== b && o.rootMac === b.mac)) return dev
     }
     return null
+  }
+
+  /** MST: VLAN'ın eşlendiği örnek (eşlenmemiş: 0); switch MST kipinde değilse null. */
+  mstInstance(dev: string, vlan: number): number | null {
+    const c = this.d.cfgs[dev]
+    return c?.stpMode === 'mst' ? instanceOf(mstOf(c), vlan) : null
+  }
+
+  /**
+   * MST: örneğin kökü bu switch'in gözünden (örnek 0: CIST kökü; MSTI: bölgesel kök):
+   * { dev, prio (sys-id-ext dahil), mac } ya da (MST değil / örnek yok) null.
+   */
+  mstRoot(dev: string, inst: number): { dev: string | null; prio: number; mac: string } | null {
+    const x = this.d.mst[dev]?.instances.find((i) => i.id === inst)
+    return x ? { dev: x.rootDev, prio: x.rootPrio, mac: x.rootMac } : null
+  }
+
+  /** MST bölge kimliği: ad, revizyon ve 802.1s yapılandırma özeti (onaltılık). */
+  mstRegion(dev: string): { name: string; revision: number; digest: string } {
+    const m = mstOf(this.d.cfgs[dev]!)
+    return { name: m.name, revision: m.revision, digest: mstDigest(m) }
   }
 
   etherchannel(dev: string, id: number) {
