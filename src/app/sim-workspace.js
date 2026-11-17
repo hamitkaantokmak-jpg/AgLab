@@ -671,6 +671,8 @@
     'ospf-alan-ariza': 'ospfadv',
     'ospf-sorun-ileri': 'ospftshoot',
     'ospf-dagitim': 'redistribution',
+    'statik-yedek': 'svctshoot',
+    'hsrp-sla-track': 'telemetry',
   };
   function academyCourse(id) {
     const n = Number(String(id).replace(/\D/g, ''));

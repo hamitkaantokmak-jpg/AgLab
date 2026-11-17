@@ -332,19 +332,19 @@ var AgLabSim = (() => {
 
   // src/sim/topology.ts
   var pk = (dev, port) => `${dev}|${port}`;
-  function buildTopo(lab17) {
+  function buildTopo(lab19) {
     const devices = {};
-    for (const d of lab17.devices) devices[d.id] = d;
+    for (const d of lab19.devices) devices[d.id] = d;
     const peer = {};
-    for (const l of lab17.links) {
+    for (const l of lab19.links) {
       peer[pk(l.a[0], l.a[1])] = { dev: l.b[0], port: l.b[1] };
       peer[pk(l.b[0], l.b[1])] = { dev: l.a[0], port: l.a[1] };
     }
-    const switches = lab17.devices.filter((d) => d.kind === "switch");
-    const pcs = lab17.devices.filter((d) => d.kind === "pc");
+    const switches = lab19.devices.filter((d) => d.kind === "switch");
+    const pcs = lab19.devices.filter((d) => d.kind === "pc");
     const pcAttach = {};
     for (const pc of pcs) pcAttach[pc.id] = peer[pk(pc.id, "eth0")] ?? null;
-    return { lab: lab17, devices, switches, pcs, peer, pcAttach };
+    return { lab: lab19, devices, switches, pcs, peer, pcAttach };
   }
 
   // src/sim/engine.ts
@@ -386,16 +386,16 @@ var AgLabSim = (() => {
       }
       return false;
     };
-    for (const sw of topo.switches) {
-      for (const port of sw.ports) {
-        const key = pk(sw.id, port);
+    for (const sw2 of topo.switches) {
+      for (const port of sw2.ports) {
+        const key = pk(sw2.id, port);
         const peer = topo.peer[key] ?? null;
         const peerIsPc = !!peer && topo.devices[peer.dev]?.kind === "pc";
-        const down = adminDown(sw.id, port);
+        const down = adminDown(sw2.id, port);
         const err = errdis.has(key);
         const peerUp = !!peer && endPowered(peer.dev, peer.port) && (peerIsPc || !adminDown(peer.dev, peer.port) && !errdis.has(pk(peer.dev, peer.port)));
-        const up = !down && !err && endPowered(sw.id, port) && peerUp;
-        phys[key] = { dev: sw.id, port, peer, peerIsPc, adminDown: down, errDisabled: err, up };
+        const up = !down && !err && endPowered(sw2.id, port) && peerUp;
+        phys[key] = { dev: sw2.id, port, peer, peerIsPc, adminDown: down, errDisabled: err, up };
       }
     }
     const chanOf = (dev, port) => isRoutedPort(cfgs, dev, port) ? null : cfgs[dev]?.ifaces[port]?.channel ?? null;
@@ -412,21 +412,21 @@ var AgLabSim = (() => {
     }
     for (let iter = 0; iter < 6; iter++) {
       let changed = false;
-      for (const sw of topo.switches) {
+      for (const sw2 of topo.switches) {
         const groups = /* @__PURE__ */ new Map();
-        for (const port of sw.ports) {
-          const ps = phys[pk(sw.id, port)];
+        for (const port of sw2.ports) {
+          const ps = phys[pk(sw2.id, port)];
           if (ps.ec) groups.set(ps.ec.id, [...groups.get(ps.ec.id) ?? [], ps]);
         }
         for (const [id, members] of groups) {
-          const poCfg = cfgs[sw.id].pos[String(id)];
+          const poCfg = cfgs[sw2.id].pos[String(id)];
           const poSig = poCfg ? l2Signature(poCfg) : null;
           let ref = null;
           for (const m of members) {
             if (m.ec.flag !== "P") continue;
             const peerPs = phys[pk(m.peer.dev, m.peer.port)];
             const peerRef = peerPs?.ec ? `${m.peer.dev}#${peerPs.ec.id}` : null;
-            const memberCfg = cfgs[sw.id].ifaces[m.port];
+            const memberCfg = cfgs[sw2.id].ifaces[m.port];
             let bad = false;
             if (!peerPs?.ec || peerPs.ec.flag !== "P") bad = true;
             if (poSig !== null && l2Signature(memberCfg) !== poSig) bad = true;
@@ -446,34 +446,34 @@ var AgLabSim = (() => {
     const lportOfPhys = {};
     const ec = {};
     const speedOf = (port) => ifType(port)?.speed ?? 100;
-    const portIndex = (sw, port) => sw.ports.indexOf(port) + 1;
-    for (const sw of topo.switches) {
-      const cfg = cfgs[sw.id];
+    const portIndex = (sw2, port) => sw2.ports.indexOf(port) + 1;
+    for (const sw2 of topo.switches) {
+      const cfg = cfgs[sw2.id];
       const list = [];
       const groups = [];
       const ids = new Set(Object.keys(cfg.pos).map(Number));
-      for (const port of sw.ports) {
-        const ch = chanOf(sw.id, port);
+      for (const port of sw2.ports) {
+        const ch = chanOf(sw2.id, port);
         if (ch) ids.add(ch.id);
       }
       for (const id of [...ids].sort((a, b) => a - b)) {
-        const members = sw.ports.filter((p) => chanOf(sw.id, p)?.id === id);
-        const memberStates = members.map((p) => ({ port: p, flag: phys[pk(sw.id, p)].ec.flag }));
+        const members = sw2.ports.filter((p) => chanOf(sw2.id, p)?.id === id);
+        const memberStates = members.map((p) => ({ port: p, flag: phys[pk(sw2.id, p)].ec.flag }));
         const bundled = memberStates.filter((m) => m.flag === "P").map((m) => m.port);
         const firstMode = members.length ? cfg.ifaces[members[0]].channel.mode : "on";
-        groups.push({ dev: sw.id, id, protocol: protoOf(firstMode), members: memberStates, up: bundled.length > 0 });
+        groups.push({ dev: sw2.id, id, protocol: protoOf(firstMode), members: memberStates, up: bundled.length > 0 });
         const poCfg = cfg.pos[String(id)];
         if (!poCfg) continue;
         let peerDev = null;
         let peerPort = null;
         if (bundled.length) {
-          const peer = phys[pk(sw.id, bundled[0])].peer;
+          const peer = phys[pk(sw2.id, bundled[0])].peer;
           const peerEc = phys[pk(peer.dev, peer.port)].ec;
           peerDev = peer.dev;
           peerPort = "Port-channel" + peerEc.id;
         }
         const lp = {
-          dev: sw.id,
+          dev: sw2.id,
           name: "Port-channel" + id,
           isPo: true,
           routed: false,
@@ -490,14 +490,14 @@ var AgLabSim = (() => {
           status: poCfg.shutdown ? "disabled" : bundled.length ? "connected" : "notconnect"
         };
         list.push(lp);
-        for (const p of bundled) lportOfPhys[pk(sw.id, p)] = lp;
+        for (const p of bundled) lportOfPhys[pk(sw2.id, p)] = lp;
       }
-      for (const port of sw.ports) {
-        const ps = phys[pk(sw.id, port)];
+      for (const port of sw2.ports) {
+        const ps = phys[pk(sw2.id, port)];
         if (ps.ec?.flag === "P") continue;
         const suspended = ps.ec?.flag === "s";
         const lp = {
-          dev: sw.id,
+          dev: sw2.id,
           name: port,
           isPo: false,
           routed: !!cfg.ifaces[port].routed,
@@ -510,15 +510,15 @@ var AgLabSim = (() => {
           opMode: "access",
           inactive: false,
           cost: speedCost(speedOf(port)),
-          portNum: portIndex(sw, port),
+          portNum: portIndex(sw2, port),
           status: ps.adminDown ? "disabled" : ps.errDisabled ? "err-disabled" : suspended ? "suspended" : ps.up ? "connected" : "notconnect"
         };
         list.push(lp);
-        lportOfPhys[pk(sw.id, port)] = lp;
+        lportOfPhys[pk(sw2.id, port)] = lp;
       }
-      for (const lp of list) lportByName[pk(sw.id, lp.name)] = lp;
-      lports[sw.id] = list;
-      ec[sw.id] = groups;
+      for (const lp of list) lportByName[pk(sw2.id, lp.name)] = lp;
+      lports[sw2.id] = list;
+      ec[sw2.id] = groups;
     }
     const peerLp = (lp) => lp.peerDev && !lp.peerIsPc ? lportByName[pk(lp.peerDev, lp.peerPort)] ?? null : null;
     for (const list of Object.values(lports)) {
@@ -568,26 +568,26 @@ var AgLabSim = (() => {
     for (const c of Object.values(cfgs))
       for (const v of Object.keys(c.vlans)) if (Number(v) < 1002 || Number(v) > 1005) allVlans.add(Number(v));
     for (const v of [...allVlans].sort((a, b) => a - b)) d.stp[v] = computeStp(d, v);
-    for (const sw of topo.switches) {
-      const cfg = cfgs[sw.id];
+    for (const sw2 of topo.switches) {
+      const cfg = cfgs[sw2.id];
       const out = [];
       for (const [vs, svi2] of Object.entries(cfg.svis)) {
         const v = Number(vs);
-        const hasFwd = (d.lports[sw.id] ?? []).some((lp) => portForwards(d, sw.id, lp, v));
-        const up = !svi2.shutdown && vlanExists(cfg, v) && hasFwd && !hw.off.has(sw.id);
+        const hasFwd = (d.lports[sw2.id] ?? []).some((lp) => portForwards(d, sw2.id, lp, v));
+        const up = !svi2.shutdown && vlanExists(cfg, v) && hasFwd && !hw.off.has(sw2.id);
         out.push({
-          dev: sw.id,
+          dev: sw2.id,
           vlan: v,
           adminDown: svi2.shutdown,
           up,
           status: svi2.shutdown ? "administratively down" : vlanExists(cfg, v) ? "up" : "down",
           ip: svi2.ip?.addr ?? null,
           mask: svi2.ip?.mask ?? null,
-          mac: macAdd(sw.mac, 64 + 0)
+          mac: macAdd(sw2.mac, 64 + 0)
         });
       }
       out.sort((a, b) => a.vlan - b.vlan);
-      d.svis[sw.id] = out;
+      d.svis[sw2.id] = out;
     }
     const nativeOf = (lp) => lp.opMode === "trunk" ? lp.cfg.nativeVlan : lp.cfg.accessVlan;
     for (const ps of Object.values(phys)) {
@@ -640,14 +640,14 @@ var AgLabSim = (() => {
   function computeStp(d, v) {
     const bridges = {};
     const edges = {};
-    for (const sw of d.topo.switches) {
-      const cfg = d.cfgs[sw.id];
-      if (!vlanExists(cfg, v) || d.hw.off.has(sw.id)) continue;
+    for (const sw2 of d.topo.switches) {
+      const cfg = d.cfgs[sw2.id];
+      if (!vlanExists(cfg, v) || d.hw.off.has(sw2.id)) continue;
       const prio = (cfg.stpPriority[String(v)] ?? 32768) + v;
-      const mac = sw.mac;
+      const mac = sw2.mac;
       const b = { prio, mac, rootPrio: prio, rootMac: mac, rootCost: 0, rootPort: null, isRoot: true, ports: {} };
-      edges[sw.id] = [];
-      for (const lp of d.lports[sw.id] ?? []) {
+      edges[sw2.id] = [];
+      for (const lp of d.lports[sw2.id] ?? []) {
         if (!egress(d, lp, v)) continue;
         const port = { role: "Desg", state: "FWD", cost: lp.cost, portNum: lp.portNum, edge: lp.peerIsPc };
         b.ports[lp.name] = port;
@@ -660,9 +660,9 @@ var AgLabSim = (() => {
           port.inconsistent = "PVID_Inc";
           continue;
         }
-        edges[sw.id].push({ lp, peerDev: p.dev, peerLp: p });
+        edges[sw2.id].push({ lp, peerDev: p.dev, peerLp: p });
       }
-      bridges[sw.id] = b;
+      bridges[sw2.id] = b;
     }
     for (const [dev, b] of Object.entries(bridges)) {
       for (const e of edges[dev]) {
@@ -1092,8 +1092,8 @@ var AgLabSim = (() => {
     "Max Addresses limit in System (excluding one mac per port) : 4096"
   ];
   function securePorts(rt, dev) {
-    const sw = rt.topo.devices[dev];
-    return sw.ports.flatMap((p) => {
+    const sw2 = rt.topo.devices[dev];
+    return sw2.ports.flatMap((p) => {
       const ps = activePs(rt.running[dev], p);
       return ps ? [[p, ps]] : [];
     });
@@ -1161,8 +1161,8 @@ var AgLabSim = (() => {
   var nk = (n) => `${n.dev}|${n.vlan}`;
   var ROUTED_TAG = 1e3;
   function routedNode(d, dev, port, tag = 0) {
-    const sw = d.topo.devices[dev];
-    return { dev, vlan: -(tag * ROUTED_TAG + sw.ports.indexOf(port) + 1) };
+    const sw2 = d.topo.devices[dev];
+    return { dev, vlan: -(tag * ROUTED_TAG + sw2.ports.indexOf(port) + 1) };
   }
   function routedPortOf(d, n) {
     if (n.vlan >= 0) return null;
@@ -1246,19 +1246,19 @@ var AgLabSim = (() => {
       out.push({ dev, kind: "svi", name: "Vlan" + s.vlan, ip: s.ip, prefix: maskToPrefix(s.mask), mac: s.mac, node: { dev, vlan: s.vlan } });
     }
     const cfg = d.cfgs[dev];
-    const sw = def;
-    for (const port of sw.ports) {
+    const sw2 = def;
+    for (const port of sw2.ports) {
       const c = cfg.ifaces[port];
       if (!c.routed || !c.ip) continue;
       const lp = d.lportByName[pk(dev, port)];
       if (!lp?.active) continue;
-      out.push({ dev, kind: "routed", name: port, ip: c.ip.addr, prefix: maskToPrefix(c.ip.mask), mac: macAdd(sw.mac, sw.ports.indexOf(port) + 1), node: routedNode(d, dev, port) });
+      out.push({ dev, kind: "routed", name: port, ip: c.ip.addr, prefix: maskToPrefix(c.ip.mask), mac: macAdd(sw2.mac, sw2.ports.indexOf(port) + 1), node: routedNode(d, dev, port) });
     }
     for (const [name, si] of Object.entries(cfg.subifs ?? {})) {
       if (si.shutdown || !si.ip || si.vlan === null) continue;
       const lp = d.lportByName[pk(dev, si.parent)];
       if (!lp?.active) continue;
-      out.push({ dev, kind: "routed", name, ip: si.ip.addr, prefix: maskToPrefix(si.ip.mask), mac: macAdd(sw.mac, sw.ports.indexOf(si.parent) + 1), node: routedNode(d, dev, si.parent, si.native ? 0 : si.vlan) });
+      out.push({ dev, kind: "routed", name, ip: si.ip.addr, prefix: maskToPrefix(si.ip.mask), mac: macAdd(sw2.mac, sw2.ports.indexOf(si.parent) + 1), node: routedNode(d, dev, si.parent, si.native ? 0 : si.vlan) });
     }
     for (const [n, l] of Object.entries(cfg.loopbacks ?? {})) {
       if (l.shutdown || !l.ip) continue;
@@ -1606,10 +1606,10 @@ var AgLabSim = (() => {
     const c = d.cfgs[dev];
     return def?.kind === "switch" && !!(def.l3 || def.router) && !!c?.ipRouting && !!c.ospf && !d.hw.off.has(dev);
   }
-  function configuredL3(cfg, sw) {
+  function configuredL3(cfg, sw2) {
     const out = [];
     for (const [v, s] of Object.entries(cfg.svis)) if (s.ip) out.push({ name: "Vlan" + v, ip: s.ip, l3: s.l3 ?? {} });
-    for (const p of sw.ports) {
+    for (const p of sw2.ports) {
       const c = cfg.ifaces[p];
       if (c.routed && c.ip) out.push({ name: p, ip: c.ip, l3: c.l3 ?? {} });
     }
@@ -1641,13 +1641,13 @@ var AgLabSim = (() => {
   function computeOspf(d) {
     const out = {};
     const devs = d.topo.switches.filter((s) => ospfRunning(d, s.id));
-    for (const sw of devs) {
-      const cfg = d.cfgs[sw.id];
+    for (const sw2 of devs) {
+      const cfg = d.cfgs[sw2.id];
       const o = cfg.ospf;
       const rid = o.activeRid ?? null;
-      const up = new Map(l3Ifs(d, sw.id).map((i) => [i.name, i]));
+      const up = new Map(l3Ifs(d, sw2.id).map((i) => [i.name, i]));
       const ifs = [];
-      for (const c of configuredL3(cfg, sw)) {
+      for (const c of configuredL3(cfg, sw2)) {
         const area = areaFor(o, c.ip.addr, c.l3);
         if (area === null) continue;
         const isLoop = c.name.startsWith("Loopback");
@@ -1656,7 +1656,7 @@ var AgLabSim = (() => {
         const bw = ifBandwidth(c.name, c.l3.bandwidth);
         const l3 = up.get(c.name) ?? null;
         ifs.push({
-          dev: sw.id,
+          dev: sw2.id,
           name: c.name,
           ip: c.ip.addr,
           prefix: maskToPrefix(c.ip.mask),
@@ -1676,7 +1676,7 @@ var AgLabSim = (() => {
         });
       }
       const areas = [...new Set(ifs.filter((i) => i.up).map((i) => i.area))].sort((a, b) => a - b);
-      out[sw.id] = { pid: o.pid, rid, ifs, nbrs: [], routes: [], areas, abr: areas.includes(0) && areas.length > 1, asbr: false, mismatches: [] };
+      out[sw2.id] = { pid: o.pid, rid, ifs, nbrs: [], routes: [], areas, abr: areas.includes(0) && areas.length > 1, asbr: false, mismatches: [] };
     }
     const talkers = Object.values(out).flatMap((s) => s.ifs.filter((i) => i.up && !i.passive && i.net !== "loopback" && i.l3?.node));
     const domCache = /* @__PURE__ */ new Map();
@@ -2170,20 +2170,20 @@ var AgLabSim = (() => {
   var rank = (a, b) => b.priority - a.priority || (ipToInt(b.ip) ?? 0) - (ipToInt(a.ip) ?? 0);
   function computeFhrp(d, prevActive) {
     const members = [];
-    for (const sw of d.topo.switches) {
-      const up = new Map(l3Ifs(d, sw.id).map((i) => [i.name, i]));
-      for (const [ifname, l3] of l3Configs(d, sw.id)) {
+    for (const sw2 of d.topo.switches) {
+      const up = new Map(l3Ifs(d, sw2.id).map((i) => [i.name, i]));
+      for (const [ifname, l3] of l3Configs(d, sw2.id)) {
         const iface = up.get(ifname);
         const node = iface?.node ?? null;
         for (const proto of ["hsrp", "vrrp"]) {
           for (const g of (proto === "hsrp" ? l3?.hsrp : l3?.vrrp) ?? []) {
-            const tracks = proto === "hsrp" ? trackStates(d, sw.id, g.tracks) : [];
+            const tracks = proto === "hsrp" ? trackStates(d, sw2.id, g.tracks) : [];
             const cfgPriority = g.priority ?? 100;
             const owner = proto === "vrrp" && !!iface && g.ip === iface.ip;
             const priority = owner ? 255 : Math.max(0, cfgPriority - tracks.filter((t) => !t.up).reduce((s, t) => s + t.decrement, 0));
             const m = {
               proto,
-              dev: sw.id,
+              dev: sw2.id,
               ifname,
               group: g.group,
               vip: g.ip,
@@ -2843,7 +2843,7 @@ var AgLabSim = (() => {
   }
 
   // src/sim/cli/show.ts
-  var sortIfs = (sw, names) => [...names].sort((a, b) => sw.ports.indexOf(a) - sw.ports.indexOf(b));
+  var sortIfs = (sw2, names) => [...names].sort((a, b) => sw2.ports.indexOf(a) - sw2.ports.indexOf(b));
   var modeLine = (c) => c.mode === "access" ? "access" : c.mode === "trunk" ? "trunk" : c.mode === "dynamic-desirable" ? "dynamic desirable" : null;
   function l2Lines(c, needsEncap) {
     const out = [];
@@ -2934,7 +2934,7 @@ var AgLabSim = (() => {
     if (c.lldpRx === false) o.push(" no lldp receive");
     return o;
   }
-  function routerRunningConfig(sw, c) {
+  function routerRunningConfig(sw2, c) {
     const o = [];
     o.push("!", "version 15.4", "service timestamps debug datetime msec", "service timestamps log datetime msec", "no service password-encryption", "!");
     o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", "no aaa new-model");
@@ -2948,7 +2948,7 @@ var AgLabSim = (() => {
       if (l.shutdown) o.push(" shutdown");
       o.push("!");
     }
-    for (const p of sw.ports) {
+    for (const p of sw2.ports) {
       const ic = c.ifaces[p];
       o.push("interface " + p);
       if (ic.description) o.push(" description " + ic.description);
@@ -3005,8 +3005,8 @@ var AgLabSim = (() => {
     o.push("!");
     return o;
   }
-  function runningConfig(sw, c) {
-    if (sw.router) return routerRunningConfig(sw, c);
+  function runningConfig(sw2, c) {
+    if (sw2.router) return routerRunningConfig(sw2, c);
     const o = [];
     o.push("!", "version 15.2", "no service pad", "service timestamps debug datetime msec", "service timestamps log datetime msec", "no service password-encryption", "!");
     o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", "no aaa new-model");
@@ -3037,9 +3037,9 @@ var AgLabSim = (() => {
       o.push("!");
     }
     for (const id of Object.keys(c.pos).map(Number).sort((a, b) => a - b)) {
-      o.push("interface Port-channel" + id, ...l2Lines(c.pos[String(id)], !!sw.needsEncap), "!");
+      o.push("interface Port-channel" + id, ...l2Lines(c.pos[String(id)], !!sw2.needsEncap), "!");
     }
-    for (const p of sw.ports) {
+    for (const p of sw2.ports) {
       const ic = c.ifaces[p];
       if (ic.routed) {
         o.push("interface " + p);
@@ -3047,7 +3047,7 @@ var AgLabSim = (() => {
         o.push(" no switchport", ...l3Lines(ic.ip, ic.l3, true));
         if (ic.shutdown) o.push(" shutdown");
       } else {
-        const l2 = l2Lines(ic, !!sw.needsEncap);
+        const l2 = l2Lines(ic, !!sw2.needsEncap);
         const at = l2.findIndex((l) => l === " shutdown" || l.startsWith(" spanning-tree"));
         l2.splice(at < 0 ? l2.length : at, 0, ...psConfigLines(ic.portSecurity));
         o.push("interface " + p, ...l2);
@@ -3073,20 +3073,20 @@ var AgLabSim = (() => {
     return o;
   }
   function showRun(rt, dev, which) {
-    const sw = rt.topo.devices[dev];
+    const sw2 = rt.topo.devices[dev];
     const c = which === "running" ? rt.running[dev] : rt.startup[dev];
     if (!c) return ["startup-config is not present"];
-    const body = runningConfig(sw, c);
+    const body = runningConfig(sw2, c);
     const bytes = body.join("\n").length + 1;
     return which === "running" ? ["Building configuration...", "", `Current configuration : ${bytes} bytes`, ...body] : [`Using ${bytes} out of 524288 bytes`, ...body];
   }
   function showVlan(rt, dev, brief) {
     const d = rt.derived;
     const c = rt.running[dev];
-    const sw = rt.topo.devices[dev];
+    const sw2 = rt.topo.devices[dev];
     const o = ["", "VLAN Name                             Status    Ports", "---- -------------------------------- --------- -------------------------------"];
     const accessPorts2 = (v) => sortIfs(
-      sw,
+      sw2,
       (d.lports[dev] ?? []).filter((lp) => !lp.isPo && !lp.routed && lp.opMode === "access" && lp.cfg.accessVlan === v).map((lp) => lp.name)
     ).map(shortIf);
     for (const vs of Object.keys(c.vlans).map(Number).sort((a, b) => a - b)) {
@@ -3113,10 +3113,10 @@ var AgLabSim = (() => {
   }
   function showIntStatus(rt, dev) {
     const d = rt.derived;
-    const sw = rt.topo.devices[dev];
+    const sw2 = rt.topo.devices[dev];
     const o = ["", "Port      Name               Status       Vlan       Duplex  Speed Type"];
     const row = (name, desc, status, vlan, speed, type, up) => pad(shortIf(name), 10) + pad(desc.slice(0, 18), 19) + pad(status, 13) + pad(vlan, 11) + pad(up ? "a-full" : "auto", 8) + padL(up ? speed : "auto", 5) + " " + type;
-    for (const p of sw.ports) {
+    for (const p of sw2.ports) {
       const ps = d.phys[pk(dev, p)];
       const lp = d.lportOfPhys[pk(dev, p)];
       const cfg = rt.running[dev].ifaces[p];
@@ -3162,9 +3162,9 @@ var AgLabSim = (() => {
   }
   function showIntSwitchport(rt, dev, only) {
     const d = rt.derived;
-    const sw = rt.topo.devices[dev];
+    const sw2 = rt.topo.devices[dev];
     const c = rt.running[dev];
-    const names = only ? [only] : [...sw.ports, ...Object.keys(c.pos).map((n) => "Port-channel" + n)];
+    const names = only ? [only] : [...sw2.ports, ...Object.keys(c.pos).map((n) => "Port-channel" + n)];
     const o = [];
     for (const name of names) {
       const isPo = name.startsWith("Port-channel");
@@ -3207,13 +3207,13 @@ var AgLabSim = (() => {
   }
   function showIpIntBrief(rt, dev) {
     const d = rt.derived;
-    const sw = rt.topo.devices[dev];
+    const sw2 = rt.topo.devices[dev];
     const c = rt.running[dev];
     const o = ["Interface              IP-Address      OK? Method Status                Protocol"];
     const row = (n, ip2, status, proto) => pad(n, 23) + pad(ip2, 16) + "YES " + pad(ip2 === "unassigned" ? "unset" : "manual", 7) + pad(status, 22) + proto;
     for (const s of d.svis[dev] ?? [])
       o.push(row("Vlan" + s.vlan, s.ip ?? "unassigned", s.status, s.up ? "up" : "down"));
-    for (const p of sw.ports) {
+    for (const p of sw2.ports) {
       const ps = d.phys[pk(dev, p)];
       const proto = ps.up && ps.ec?.flag !== "s" ? "up" : "down";
       const ip2 = c.ifaces[p].routed ? c.ifaces[p].ip?.addr ?? "unassigned" : "unassigned";
@@ -3234,8 +3234,8 @@ var AgLabSim = (() => {
   function showIpRoute(rt, dev, only) {
     const d = rt.derived;
     const c = rt.running[dev];
-    const sw = rt.topo.devices[dev];
-    if (!(sw.l3 || sw.router) || !c.ipRouting) {
+    const sw2 = rt.topo.devices[dev];
+    if (!(sw2.l3 || sw2.router) || !c.ipRouting) {
       return [c.defaultGateway ? `Default gateway is ${c.defaultGateway}` : "Default gateway is not set", "", "Host               Gateway           Last Use    Total Uses  Interface", "ICMP redirect cache is empty"];
     }
     const o = [
@@ -3279,8 +3279,8 @@ var AgLabSim = (() => {
   }
   function showIpRouteFor(rt, dev, ip2) {
     const c = rt.running[dev];
-    const sw = rt.topo.devices[dev];
-    if (!(sw.l3 || sw.router) || !c.ipRouting) return ["% Network not in table"];
+    const sw2 = rt.topo.devices[dev];
+    if (!(sw2.l3 || sw2.router) || !c.ipRouting) return ["% Network not in table"];
     const dn = ipToInt(ip2);
     let best = null;
     for (const e2 of routeTable(rt.derived, dev)) {
@@ -3429,9 +3429,9 @@ var AgLabSim = (() => {
   }
   function showErrDisabled(rt, dev) {
     const d = rt.derived;
-    const sw = rt.topo.devices[dev];
+    const sw2 = rt.topo.devices[dev];
     const o = ["", "Port      Name               Status       Reason               Err-disabled Vlans"];
-    for (const p of sw.ports) {
+    for (const p of sw2.ports) {
       if (!d.phys[pk(dev, p)]?.errDisabled) continue;
       o.push(pad(shortIf(p), 10) + pad(rt.running[dev].ifaces[p].description.slice(0, 18), 19) + pad("err-disabled", 13) + (rt.errCause.get(pk(dev, p)) ?? "bpduguard"));
     }
@@ -3439,13 +3439,13 @@ var AgLabSim = (() => {
   }
   function showErrRecovery(rt, dev) {
     const c = rt.running[dev];
-    const sw = rt.topo.devices[dev];
+    const sw2 = rt.topo.devices[dev];
     const o = ["ErrDisable Reason            Timer Status", "-----------------            --------------"];
     for (const r of ["arp-inspection", "bpduguard", "channel-misconfig (STP)", "dhcp-rate-limit", "link-flap", "psecure-violation", "udld"])
       o.push(pad(r, 29) + (r === "bpduguard" && c.errRecoveryBpdu ? "Enabled" : "Disabled"));
     o.push("", `Timer interval: ${c.errRecoveryInterval ?? 300} seconds`, "", "Interfaces that will be enabled at the next timeout:", "");
     if (c.errRecoveryBpdu) {
-      const ports2 = sw.ports.filter((p) => rt.derived.phys[pk(dev, p)]?.errDisabled);
+      const ports2 = sw2.ports.filter((p) => rt.derived.phys[pk(dev, p)]?.errDisabled);
       if (ports2.length) {
         o.push("Interface       Errdisable reason       Time left(sec)", "---------       -----------------       --------------");
         for (const p of ports2) o.push(pad(shortIf(p), 16) + pad("bpduguard", 24) + (c.errRecoveryInterval ?? 300));
@@ -3476,8 +3476,8 @@ var AgLabSim = (() => {
       o.push(`  Bridge ID  Priority    ${sysPrio}  (priority ${sysPrio - v} sys-id-ext ${v})`, `             Address     ${b.mac}`);
       o.push("             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec", "             Aging Time  300 sec", "");
       o.push("Interface           Role Sts Cost      Prio.Nbr Type", "------------------- ---- --- --------- -------- --------------------------------");
-      const sw = rt.topo.devices[dev];
-      const order = (n) => n.startsWith("Port-channel") ? 1e3 + Number(n.slice(12)) : sw.ports.indexOf(n);
+      const sw2 = rt.topo.devices[dev];
+      const order = (n) => n.startsWith("Port-channel") ? 1e3 + Number(n.slice(12)) : sw2.ports.indexOf(n);
       for (const [name, p] of ports2.sort((a, b2) => order(a[0]) - order(b2[0]))) {
         const type = (p.edge ? "P2p Edge" : "P2p") + (p.inconsistent ? " *PVID_Inc" : "");
         o.push(pad(shortIf(name), 20) + pad(p.role, 5) + pad(p.state === "BKN" ? "BKN*" : p.state, 4) + pad(p.cost, 10) + pad("128." + p.portNum, 9) + type);
@@ -3528,11 +3528,11 @@ var AgLabSim = (() => {
     return o;
   }
   function showVersion(rt, dev) {
-    const sw = rt.topo.devices[dev];
-    const fa = sw.ports.filter((p) => p.startsWith("Fast")).length;
-    const gi = sw.ports.filter((p) => p.startsWith("Gigabit")).length;
+    const sw2 = rt.topo.devices[dev];
+    const fa = sw2.ports.filter((p) => p.startsWith("Fast")).length;
+    const gi = sw2.ports.filter((p) => p.startsWith("Gigabit")).length;
     return [
-      `Cisco IOS Software, ${sw.model} Software (Labber Simulated), Version 15.2(7)E, RELEASE SOFTWARE`,
+      `Cisco IOS Software, ${sw2.model} Software (Labber Simulated), Version 15.2(7)E, RELEASE SOFTWARE`,
       "Technical Support: http://www.cisco.com/techsupport",
       "",
       "ROM: Bootstrap program is simulated",
@@ -3540,12 +3540,12 @@ var AgLabSim = (() => {
       `${rt.hostname(dev)} uptime is 1 hour, 2 minutes`,
       'System image file is "flash:labber-sim.bin"',
       "",
-      `cisco ${sw.model} (simulated) processor with 524288K bytes of memory.`,
+      `cisco ${sw2.model} (simulated) processor with 524288K bytes of memory.`,
       ...fa ? [`${fa} FastEthernet interfaces`] : [],
       ...gi ? [`${gi} Gigabit Ethernet interfaces`] : [],
       "",
-      `Base ethernet MAC Address       : ${sw.mac.replace(/\./g, "").match(/../g).join(":").toUpperCase()}`,
-      `Model number                    : ${sw.model}`,
+      `Base ethernet MAC Address       : ${sw2.mac.replace(/\./g, "").match(/../g).join(":").toUpperCase()}`,
+      `Model number                    : ${sw2.model}`,
       "",
       "Configuration register is 0xF"
     ];
@@ -3581,12 +3581,12 @@ var AgLabSim = (() => {
     const ps = d.phys[pk(dev, name)];
     const isPo = name.startsWith("Port-channel");
     if (!lp && !ps) return [];
-    const sw = rt.topo.devices[dev];
+    const sw2 = rt.topo.devices[dev];
     const admin = isPo ? lp.cfg.shutdown : ps.adminDown;
     const up = isPo ? lp.active : ps.up;
     const proto = isPo ? lp.active : ps.up && ps.ec?.flag !== "s";
-    const idx = isPo ? 60 + Number(name.slice(12)) : sw.ports.indexOf(name) + 1;
-    const mac = macAdd(sw.mac, idx);
+    const idx = isPo ? 60 + Number(name.slice(12)) : sw2.ports.indexOf(name) + 1;
+    const mac = macAdd(sw2.mac, idx);
     const speed = isPo ? (lp.members.length * 1e3 || 1e3) * 1e3 : (ifType(name)?.speed ?? 100) * 1e3;
     const out = [
       `${name} is ${admin ? "administratively down" : up ? "up" : "down"}, line protocol is ${proto ? "up (connected)" : admin ? "down (disabled)" : ps?.errDisabled ? "down (err-disabled)" : ps?.ec?.flag === "s" ? "down (suspended)" : "down (notconnect)"}`,
@@ -3647,13 +3647,13 @@ var AgLabSim = (() => {
   function showIpInterface(rt, dev, only) {
     const d = rt.derived;
     const c = rt.running[dev];
-    const sw = rt.topo.devices[dev];
+    const sw2 = rt.topo.devices[dev];
     const rows = [];
     for (const s of d.svis[dev] ?? []) {
       const cfg = c.svis[String(s.vlan)];
       rows.push({ name: "Vlan" + s.vlan, ip: cfg.ip, l3: cfg.l3, status: s.status === "administratively down" ? "administratively down" : s.up ? "up" : "down", proto: s.up });
     }
-    for (const p of sw.ports) {
+    for (const p of sw2.ports) {
       const ic = c.ifaces[p];
       const ps = d.phys[pk(dev, p)];
       if (ic.routed || only === p)
@@ -3697,10 +3697,10 @@ var AgLabSim = (() => {
   var lldpTx = (c) => !!c && c.lldpTx !== false;
   var lldpRx = (c) => !!c && c.lldpRx !== false;
   function upLinks(d, dev) {
-    const sw = d.topo.devices[dev];
-    if (!sw || sw.kind !== "switch" || d.hw.off.has(dev)) return [];
+    const sw2 = d.topo.devices[dev];
+    if (!sw2 || sw2.kind !== "switch" || d.hw.off.has(dev)) return [];
     const out = [];
-    for (const port of sw.ports) {
+    for (const port of sw2.ports) {
       const ps = d.phys[pk(dev, port)];
       if (!ps?.up || !ps.peer || ps.peerIsPc) continue;
       out.push({ port, dev: ps.peer.dev, peerPort: ps.peer.port });
@@ -3734,21 +3734,21 @@ var AgLabSim = (() => {
     if (!m) return name;
     return m[1].slice(0, 3) + " " + m[2];
   }
-  function cdpCaps(sw) {
-    return sw.router ? "R I" : sw.l3 ? "R S I" : "S I";
+  function cdpCaps(sw2) {
+    return sw2.router ? "R I" : sw2.l3 ? "R S I" : "S I";
   }
-  function cdpCapWords(sw) {
-    return sw.router ? "Router IGMP" : sw.l3 ? "Router Switch IGMP" : "Switch IGMP";
+  function cdpCapWords(sw2) {
+    return sw2.router ? "Router IGMP" : sw2.l3 ? "Router Switch IGMP" : "Switch IGMP";
   }
-  function lldpCaps(sw) {
-    return sw.router ? "R" : sw.l3 ? "B,R" : "B";
+  function lldpCaps(sw2) {
+    return sw2.router ? "R" : sw2.l3 ? "B,R" : "B";
   }
   function mgmtIp(rt, dev, port) {
     const ifs = l3Ifs(rt.derived, dev);
     return ifs.find((i) => i.name === port)?.ip ?? ifs.find((i) => i.kind === "svi")?.ip ?? null;
   }
-  function versionLine(sw) {
-    return sw.router ? `Cisco IOS Software, ISR Software (${sw.model}), Version 15.4(3)M (Labber Simulated), RELEASE SOFTWARE` : `Cisco IOS Software, ${sw.model} Software (Labber Simulated), Version 15.2(7)E, RELEASE SOFTWARE`;
+  function versionLine(sw2) {
+    return sw2.router ? `Cisco IOS Software, ISR Software (${sw2.model}), Version 15.4(3)M (Labber Simulated), RELEASE SOFTWARE` : `Cisco IOS Software, ${sw2.model} Software (Labber Simulated), Version 15.2(7)E, RELEASE SOFTWARE`;
   }
   var CDP_HEADER = [
     "Capability Codes: R - Router, T - Trans Bridge, B - Source Route Bridge",
@@ -3798,11 +3798,11 @@ var AgLabSim = (() => {
   function showCdpInterface(rt, dev, only) {
     const c = rt.running[dev];
     if (!cdpOn(c)) return ["% CDP is not enabled"];
-    const sw = rt.topo.devices[dev];
+    const sw2 = rt.topo.devices[dev];
     const o = [];
     let up = 0;
     let total = 0;
-    for (const port of sw.ports) {
+    for (const port of sw2.ports) {
       if (only && port !== only) continue;
       if (!cdpPort(c.ifaces[port])) continue;
       const ps = rt.derived.phys[pk(dev, port)];
@@ -5610,12 +5610,12 @@ var AgLabSim = (() => {
       ];
       return names.flatMap((n) => [...showInterface(this.rt, this.dev, n)]);
     }
-    showOneIf(a, sw) {
+    showOneIf(a, sw2) {
       const name = this.resolveIf(a[2], a[3], 2, false);
       if (name.includes(".")) throw new InvalidAt(3);
       if (name.startsWith("Port-channel") && !this.cfg.pos[ifNum(name)]) throw new InvalidAt(3);
       if (name.startsWith("Vlan") && !this.cfg.svis[ifNum(name)]) throw new InvalidAt(3);
-      return sw ? showIntSwitchport(this.rt, this.dev, name) : showInterface(this.rt, this.dev, name);
+      return sw2 ? showIntSwitchport(this.rt, this.dev, name) : showInterface(this.rt, this.dev, name);
     }
     showRunIf(a) {
       const name = this.resolveIf(a[3], a[4], 3, false);
@@ -5781,8 +5781,8 @@ var AgLabSim = (() => {
     return defaultBlocks(rt, dev, out);
   }
   function defaultBlocks(rt, dev, lines) {
-    const sw = rt.topo.devices[dev];
-    if (!sw || sw.kind !== "switch" || !sw.router) return lines;
+    const sw2 = rt.topo.devices[dev];
+    if (!sw2 || sw2.kind !== "switch" || !sw2.router) return lines;
     for (let i = 0; i < lines.length; i++) {
       const l = lines[i];
       if (l.status !== "unmodeled" || !/^interface\s+vlan\s*1$/i.test(l.command)) continue;
@@ -6253,6 +6253,12 @@ var AgLabSim = (() => {
       const name = this.canon(iface);
       return (this.d.fhrp?.groups ?? []).some((g) => g.group === Number(group) && g.active?.dev === dev && g.active.ifname === name);
     }
+    /** FHRP: priority in use on this router's interface for the group (track decrements applied); null if not a member. */
+    fhrpPriority(dev, iface, group) {
+      const name = this.canon(iface);
+      const m = (this.d.fhrp?.members ?? []).find((x) => x.dev === dev && x.ifname === name && x.group === Number(group));
+      return m ? m.priority : null;
+    }
     vlanExists(dev, vlan) {
       return vlanExists(this.d.cfgs[dev], vlan);
     }
@@ -6447,9 +6453,9 @@ var AgLabSim = (() => {
     }
     /** Factory defaults plus the lab's initial config; nothing saved. */
     reset() {
-      for (const sw of this.topo.switches) {
-        this.running[sw.id] = defaultSwitchConfig(sw);
-        this.running[sw.id].hostname = sw.id;
+      for (const sw2 of this.topo.switches) {
+        this.running[sw2.id] = defaultSwitchConfig(sw2);
+        this.running[sw2.id].hostname = sw2.id;
       }
       for (const pc of this.topo.pcs) this.pcs[pc.id] = clone(this.def.initialPcs?.[pc.id] ?? { ip: null, prefix: 24, gw: null });
       this.errdis.clear();
@@ -6475,7 +6481,7 @@ var AgLabSim = (() => {
       this.applyInitial(this);
       this.fhrpActive.clear();
       this.derived = this.recompute();
-      for (const sw of this.topo.switches) this.startup[sw.id] = clone(this.running[sw.id]);
+      for (const sw2 of this.topo.switches) this.startup[sw2.id] = clone(this.running[sw2.id]);
       this.seen.clear();
       this.clearedOn.clear();
       this.arp.clear();
@@ -6542,10 +6548,10 @@ var AgLabSim = (() => {
           this.log(dev, `%PM-4-ERR_RECOVER: Attempting to recover from bpduguard err-disable state on ${shortIf(port)}`);
           changed = true;
         }
-        for (const sw of this.topo.switches) {
-          const o = this.running[sw.id].ospf;
-          if (!o || o.activeRid || !d.ospf[sw.id]) continue;
-          const rid = candidateRid(d, sw.id);
+        for (const sw2 of this.topo.switches) {
+          const o = this.running[sw2.id].ospf;
+          if (!o || o.activeRid || !d.ospf[sw2.id]) continue;
+          const rid = candidateRid(d, sw2.id);
           if (rid) {
             o.activeRid = rid;
             changed = true;
@@ -6885,9 +6891,9 @@ var AgLabSim = (() => {
     }
     load(s) {
       if (s?.v !== 1) return false;
-      for (const sw of this.topo.switches) {
-        if (!s.running[sw.id]) return false;
-        for (const p of sw.ports) if (!s.running[sw.id].ifaces[p]) return false;
+      for (const sw2 of this.topo.switches) {
+        if (!s.running[sw2.id]) return false;
+        for (const p of sw2.ports) if (!s.running[sw2.id].ifaces[p]) return false;
       }
       this.running = clone(s.running);
       this.startup = clone(s.startup);
@@ -7009,19 +7015,19 @@ var AgLabSim = (() => {
   function createLab(def, opts = {}) {
     return new LabRuntime(def, (rt) => {
       if (opts.lenient) rt.configReport = [];
-      for (const sw of rt.topo.switches) {
-        const text = def.initialConfig?.[sw.id];
+      for (const sw2 of rt.topo.switches) {
+        const text = def.initialConfig?.[sw2.id];
         if (!text) continue;
         if (opts.lenient) {
-          rt.configReport.push(...applyConfigText(rt, sw.id, text));
+          rt.configReport.push(...applyConfigText(rt, sw2.id, text));
           continue;
         }
-        const s = new IosSession(rt, sw.id);
+        const s = new IosSession(rt, sw2.id);
         s.mode = "config";
         for (const line of text.split("\n")) {
           const out = s.exec(line);
           if (out.some((l) => l.startsWith("%") && /Invalid|Incomplete|Ambiguous/.test(l)))
-            throw new Error(`initial config for ${sw.id} failed at "${line}": ${out.join(" ")}`);
+            throw new Error(`initial config for ${sw2.id} failed at "${line}": ${out.join(" ")}`);
         }
       }
     });
@@ -9395,8 +9401,288 @@ write memory`
   };
   var ospf_redistribution_default = lab16;
 
+  // src/labs/sla-static-backup.ts
+  var sw = (id, mac, x, y) => ({
+    id,
+    kind: "switch",
+    model: "WS-C3560-24PS",
+    mac,
+    ports: ports("Fa0/1-2", "Gi0/1-2"),
+    l3: true,
+    needsEncap: true,
+    x,
+    y
+  });
+  var routed6 = (port, ip2, extra = "") => `interface ${port}
+ no switchport
+ ip address ${ip2} 255.255.255.252${extra}
+exit`;
+  var lab17 = {
+    id: "statik-yedek",
+    title: "IP SLA + track: birincil hat koptuğunda yedek internete geçmek",
+    summary: "Şubenin iki internet çıkışı var. ISP-A'nın ötesi koptu ama R1'in ISP-A arayüzü up/up; trafik kara deliğe gidiyor, yedek rota hiç devreye girmiyor. Birincil rotayı gerçek erişilebilirliğe bağla.",
+    level: "İleri",
+    tags: ["ENARSI", "ENCOR", "IP SLA", "Track", "Statik rota", "Floating static", "Arıza giderme"],
+    brief: [
+      "R1 şube kenar router'ı: Gi0/1 ISP-A'ya (10.1.1.2), Gi0/2 ISP-B'ye (10.2.2.2). LAN 192.168.10.0/24 (PC1). İnternetteki sunucu SRV 203.0.113.10; ISP-A'nın izleme adresi DNS-A 203.0.113.53.",
+      "Varsayılan rotalar: birincil ip route 0.0.0.0 0.0.0.0 10.1.1.2, yedek ip route 0.0.0.0 0.0.0.0 10.2.2.2 250 (floating static). ISP router'larına ve CORE'a dokunma: arıza operatör tarafında.",
+      "Belirti: ISP-A'nın çekirdeğe bağlantısı koptu. R1'de Gi0/1 up/up, birincil rota tabloda; PC1 internete çıkamıyor.",
+      "Hedef: IP SLA 1 (icmp-echo 203.0.113.53) + track 1 ile birincil rotayı izle. Yoklama birincil hat ölünce yedek hattan dolaşıp başarılı olmasın (dalgalanma): yoklamayı Gi0/1 kaynağıyla gönder ve hedef için ISP-A üzerinden track'siz bir host rotası (/32) ekle.",
+      "Kontrol: show ip sla statistics, show track 1, show ip route static, PC1'den ping ve trace 203.0.113.10."
+    ],
+    view: { w: 980, h: 520 },
+    devices: [
+      sw("R1", "5254.00b0.0001", 140, 250),
+      sw("ISP-A", "5254.00b0.0002", 440, 120),
+      sw("ISP-B", "5254.00b0.0003", 440, 380),
+      sw("CORE", "5254.00b0.0004", 740, 250),
+      { id: "PC1", kind: "pc", mac: "0050.7966.b001", x: 140, y: 450 },
+      { id: "SRV", kind: "pc", mac: "0050.7966.b010", x: 900, y: 160 },
+      { id: "DNS-A", kind: "pc", mac: "0050.7966.b053", x: 900, y: 360 }
+    ],
+    links: [
+      { a: ["R1", "GigabitEthernet0/1"], b: ["ISP-A", "GigabitEthernet0/1"] },
+      { a: ["R1", "GigabitEthernet0/2"], b: ["ISP-B", "GigabitEthernet0/1"] },
+      { a: ["ISP-A", "GigabitEthernet0/2"], b: ["CORE", "GigabitEthernet0/1"] },
+      { a: ["ISP-B", "GigabitEthernet0/2"], b: ["CORE", "GigabitEthernet0/2"] },
+      { a: ["PC1", "eth0"], b: ["R1", "FastEthernet0/1"] },
+      { a: ["SRV", "eth0"], b: ["CORE", "FastEthernet0/1"] },
+      { a: ["DNS-A", "eth0"], b: ["CORE", "FastEthernet0/2"] }
+    ],
+    initialConfig: {
+      R1: `ip routing
+vlan 10
+ name LAN
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+exit
+interface vlan 10
+ ip address 192.168.10.1 255.255.255.0
+exit
+${routed6("gi0/1", "10.1.1.1")}
+${routed6("gi0/2", "10.2.2.1")}
+ip route 0.0.0.0 0.0.0.0 10.1.1.2
+ip route 0.0.0.0 0.0.0.0 10.2.2.2 250`,
+      // operatör tarafı: ISP-A'nın çekirdek bağlantısı kopuk (Gi0/2 kapalı)
+      "ISP-A": `ip routing
+${routed6("gi0/1", "10.1.1.2")}
+${routed6("gi0/2", "10.10.1.1", "\n shutdown")}
+ip route 0.0.0.0 0.0.0.0 10.10.1.2
+ip route 192.168.10.0 255.255.255.0 10.1.1.1`,
+      "ISP-B": `ip routing
+${routed6("gi0/1", "10.2.2.2")}
+${routed6("gi0/2", "10.20.2.1")}
+ip route 0.0.0.0 0.0.0.0 10.20.2.2
+ip route 192.168.10.0 255.255.255.0 10.2.2.1`,
+      CORE: `ip routing
+vlan 10
+ name INTERNET
+exit
+interface range fa0/1 - 2
+ switchport mode access
+ switchport access vlan 10
+exit
+interface vlan 10
+ ip address 203.0.113.1 255.255.255.0
+exit
+${routed6("gi0/1", "10.10.1.2")}
+${routed6("gi0/2", "10.20.2.2")}
+ip route 192.168.10.0 255.255.255.0 10.10.1.1
+ip route 192.168.10.0 255.255.255.0 10.20.2.1 250
+ip route 10.1.1.0 255.255.255.252 10.10.1.1
+ip route 10.2.2.0 255.255.255.252 10.20.2.1`
+    },
+    initialPcs: {
+      PC1: { ip: "192.168.10.10", prefix: 24, gw: "192.168.10.1" },
+      SRV: { ip: "203.0.113.10", prefix: 24, gw: "203.0.113.1" },
+      "DNS-A": { ip: "203.0.113.53", prefix: 24, gw: "203.0.113.1" }
+    },
+    objectives: [
+      {
+        id: "sla",
+        title: "R1'de IP SLA 1 tanımlı ve zamanlanmış",
+        hint: "ip sla 1 → icmp-echo 203.0.113.53 source-interface gi0/1 → exit → ip sla schedule 1 life forever start-time now",
+        check: (q) => {
+          const s = q.ipSla("R1", 1);
+          return { ok: s.configured && s.scheduled, detail: !s.configured ? "SLA 1 yok" : !s.scheduled ? "zamanlanmamış" : void 0 };
+        }
+      },
+      {
+        id: "track",
+        title: "Birincil varsayılan rota track 1'e (IP SLA 1) bağlı; yedek devrede",
+        hint: "track 1 ip sla 1 reachability → ip route 0.0.0.0 0.0.0.0 10.1.1.2 track 1. Track Down iken AD 250'lik yedek kurulur.",
+        check: (q) => {
+          const t = q.track("R1", 1);
+          const r = q.route("R1", "0.0.0.0", 0);
+          const ok = t.type === "ip sla" && !t.up && r?.nh === "10.2.2.2";
+          return { ok, detail: t.type !== "ip sla" ? "track 1 IP SLA'ya bağlı değil" : r ? `varsayılan via ${r.nh}` : "varsayılan rota yok" };
+        }
+      },
+      {
+        id: "noflap",
+        title: "Yoklama yedek yola düşmüyor (dalgalanma yok)",
+        hint: `icmp-echo 203.0.113.53 source-interface gi0/1 ve ip route 203.0.113.53 255.255.255.255 10.1.1.2 (track'siz). Kaynak verilmezse yoklama birincil rota çıkınca ISP-B'den, ISP-B adresiyle çıkar ve başarılı olur; show track 1'de "flapping" satırı görünür.`,
+        check: (q) => {
+          const s = q.ipSla("R1", 1);
+          const h = q.route("R1", "203.0.113.53", 32);
+          return { ok: s.scheduled && !s.flapping && h?.nh === "10.1.1.2", detail: s.flapping ? "yoklama yedek hattan başarılı: dalgalanır" : !h ? "yoklama hedefi için host rotası yok" : void 0 };
+        }
+      },
+      {
+        id: "e2e",
+        title: "PC1 → SRV ping (yedek hattan)",
+        hint: "PC1'de: ping 203.0.113.10, trace 203.0.113.10 → ikinci atlama 10.2.2.2 olmalı.",
+        check: (q) => q.ping("PC1", "203.0.113.10").ok
+      }
+    ],
+    solution: {
+      R1: `configure terminal
+ip sla 1
+ icmp-echo 203.0.113.53 source-interface gi0/1
+exit
+ip sla schedule 1 life forever start-time now
+track 1 ip sla 1 reachability
+exit
+ip route 0.0.0.0 0.0.0.0 10.1.1.2 track 1
+ip route 203.0.113.53 255.255.255.255 10.1.1.2
+end
+write memory`
+    }
+  };
+  var sla_static_backup_default = lab17;
+
+  // src/labs/sla-hsrp-track.ts
+  var router = (id, mac, x, y) => ({
+    id,
+    kind: "switch",
+    router: true,
+    model: "ISR4331",
+    mac,
+    ports: ports("Gi0/0-2"),
+    x,
+    y
+  });
+  var ifc = (name, ip2, mask = "255.255.255.252", extra = []) => [`interface ${name}`, ` ip address ${ip2} ${mask}`, ...extra.map((l) => " " + l), " no shutdown", "exit"].join("\n");
+  var lab18 = {
+    id: "hsrp-sla-track",
+    title: "IP SLA + track ile HSRP: ağ geçidi internetini kaybedince devretmek",
+    summary: "İki ağ geçidi HSRP ile çalışıyor. GW1'in ISP'sinin ötesi koptu ama LAN arayüzü sağlam olduğu için GW1 Active kalıyor ve kullanıcılar internetsiz. GW1'in önceliğini gerçek internet erişimine bağla, GW2'nin devralmasını sağla.",
+    level: "İleri",
+    tags: ["ENCOR", "IP SLA", "Track", "HSRP", "Preempt", "Arıza giderme"],
+    brief: [
+      "LAN 192.168.1.0/24, sanal ağ geçidi 192.168.1.254 (HSRP grup 1). GW1 (192.168.1.2, öncelik 110, preempt) ISP-A'ya; GW2 (192.168.1.3, öncelik 100) ISP-B'ye bağlı. İnternetteki sunucu SRV 203.0.113.10.",
+      "Her ağ geçidinin varsayılan rotası kendi ISP'sine bakıyor. ISP router'larına ve CORE'a dokunma: arıza operatör tarafında.",
+      "Belirti: ISP-A'nın çekirdek bağlantısı koptu. GW1 Active; PC1 internete çıkamıyor. GW1'in LAN ve ISP arayüzleri up/up.",
+      "Hedef: GW1'de IP SLA 1 (icmp-echo 203.0.113.10, kaynak Gi0/1) + track 1; HSRP önceliği track 1 düşünce 20 azalsın (110 → 90). GW2 daha yüksek öncelikle devralabilmeli: bunun için GW2'de preempt gerekli.",
+      "Kontrol: show track 1, show standby brief (iki ağ geçidinde), PC1'den ping ve trace 203.0.113.10."
+    ],
+    view: { w: 980, h: 520 },
+    devices: [
+      { id: "SW", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.00c0.0000", ports: ports("Fa0/1-24", "Gi0/1-2"), x: 120, y: 260 },
+      router("GW1", "5254.00c0.0001", 330, 130),
+      router("GW2", "5254.00c0.0002", 330, 390),
+      router("ISP-A", "5254.00c0.0003", 560, 130),
+      router("ISP-B", "5254.00c0.0004", 560, 390),
+      router("CORE", "5254.00c0.0005", 780, 260),
+      { id: "PC1", kind: "pc", mac: "0050.7966.c001", x: 120, y: 450 },
+      { id: "SRV", kind: "pc", mac: "0050.7966.c010", x: 920, y: 260 }
+    ],
+    links: [
+      { a: ["PC1", "eth0"], b: ["SW", "FastEthernet0/1"] },
+      { a: ["GW1", "GigabitEthernet0/0"], b: ["SW", "FastEthernet0/2"] },
+      { a: ["GW2", "GigabitEthernet0/0"], b: ["SW", "FastEthernet0/3"] },
+      { a: ["GW1", "GigabitEthernet0/1"], b: ["ISP-A", "GigabitEthernet0/1"] },
+      { a: ["GW2", "GigabitEthernet0/1"], b: ["ISP-B", "GigabitEthernet0/1"] },
+      { a: ["ISP-A", "GigabitEthernet0/2"], b: ["CORE", "GigabitEthernet0/1"] },
+      { a: ["ISP-B", "GigabitEthernet0/2"], b: ["CORE", "GigabitEthernet0/2"] },
+      { a: ["CORE", "GigabitEthernet0/0"], b: ["SRV", "eth0"] }
+    ],
+    initialConfig: {
+      SW: "interface range fa0/1 - 3\n switchport mode access\nexit",
+      GW1: [
+        ifc("g0/0", "192.168.1.2", "255.255.255.0", ["standby 1 ip 192.168.1.254", "standby 1 priority 110", "standby 1 preempt"]),
+        ifc("g0/1", "10.1.1.1"),
+        "ip route 0.0.0.0 0.0.0.0 10.1.1.2"
+      ].join("\n"),
+      // fault: GW2 preempt yok
+      GW2: [ifc("g0/0", "192.168.1.3", "255.255.255.0", ["standby 1 ip 192.168.1.254"]), ifc("g0/1", "10.2.2.1"), "ip route 0.0.0.0 0.0.0.0 10.2.2.2"].join(
+        "\n"
+      ),
+      // operatör tarafı: ISP-A'nın çekirdek bağlantısı kopuk
+      "ISP-A": [ifc("g0/1", "10.1.1.2"), ifc("g0/2", "10.10.1.1", "255.255.255.252", ["shutdown"]).replace(" no shutdown\n", ""), "ip route 0.0.0.0 0.0.0.0 10.10.1.2", "ip route 192.168.1.0 255.255.255.0 10.1.1.1"].join("\n"),
+      "ISP-B": [ifc("g0/1", "10.2.2.2"), ifc("g0/2", "10.20.2.1"), "ip route 0.0.0.0 0.0.0.0 10.20.2.2", "ip route 192.168.1.0 255.255.255.0 10.2.2.1"].join("\n"),
+      CORE: [
+        ifc("g0/0", "203.0.113.1", "255.255.255.0"),
+        ifc("g0/1", "10.10.1.2"),
+        ifc("g0/2", "10.20.2.2"),
+        "ip route 192.168.1.0 255.255.255.0 10.10.1.1",
+        "ip route 192.168.1.0 255.255.255.0 10.20.2.1 250",
+        "ip route 10.1.1.0 255.255.255.252 10.10.1.1",
+        "ip route 10.2.2.0 255.255.255.252 10.20.2.1"
+      ].join("\n")
+    },
+    initialPcs: {
+      PC1: { ip: "192.168.1.10", prefix: 24, gw: "192.168.1.254" },
+      SRV: { ip: "203.0.113.10", prefix: 24, gw: "203.0.113.1" }
+    },
+    objectives: [
+      {
+        id: "sla",
+        title: "GW1'de IP SLA 1 zamanlanmış ve track 1 ona bağlı",
+        hint: "ip sla 1 → icmp-echo 203.0.113.10 source-interface g0/1 → exit → ip sla schedule 1 life forever start-time now → track 1 ip sla 1 reachability",
+        check: (q) => {
+          const s = q.ipSla("GW1", 1);
+          const t = q.track("GW1", 1);
+          return { ok: s.scheduled && t.type === "ip sla", detail: !s.configured ? "SLA 1 yok" : !s.scheduled ? "zamanlanmamış" : t.type !== "ip sla" ? "track 1 SLA'ya bağlı değil" : void 0 };
+        }
+      },
+      {
+        id: "decrement",
+        title: "GW1'in HSRP önceliği track 1'e bağlı (Down iken 90)",
+        hint: 'GW1 g0/0: standby 1 track 1 decrement 20. show standby → "Priority 90 (configured 110)".',
+        check: (q) => {
+          const p = q.fhrpPriority("GW1", "GigabitEthernet0/0", 1);
+          return { ok: p === 90, detail: p === null ? "HSRP üyesi yok" : `öncelik ${p}` };
+        }
+      },
+      {
+        id: "takeover",
+        title: "GW2 Active (preempt ile devraldı)",
+        hint: "GW2 g0/0: standby 1 preempt. Öncelik 100 > 90 olsa da preempt olmadan Standby router devralmaz.",
+        check: (q) => q.fhrpActive("GW2", "GigabitEthernet0/0", 1)
+      },
+      {
+        id: "e2e",
+        title: "PC1 → SRV ping",
+        hint: "PC1'de: ping 203.0.113.10, trace 203.0.113.10 → ilk atlama 192.168.1.3 (GW2).",
+        check: (q) => q.ping("PC1", "203.0.113.10").ok
+      }
+    ],
+    solution: {
+      GW1: `configure terminal
+ip sla 1
+ icmp-echo 203.0.113.10 source-interface g0/1
+exit
+ip sla schedule 1 life forever start-time now
+track 1 ip sla 1 reachability
+exit
+interface g0/0
+ standby 1 track 1 decrement 20
+end
+write memory`,
+      GW2: `configure terminal
+interface g0/0
+ standby 1 preempt
+end
+write memory`
+    }
+  };
+  var sla_hsrp_track_default = lab18;
+
   // src/labs/index.ts
-  var LABS = [vlan_basics_default, trunk_troubleshoot_default, trunk_hardening_default, campus_l2_l3_default, stp_load_balancing_default, etherchannel_troubleshoot_default, l3_static_routing_default, mgmt_vlan_default, ospf_single_area_default, routed_access_default, bpdu_guard_default, ospf_troubleshoot_default, ospf_multiarea_default, ospf_area_troubleshoot_default, ospf_advanced_troubleshoot_default, ospf_redistribution_default];
+  var LABS = [vlan_basics_default, trunk_troubleshoot_default, trunk_hardening_default, campus_l2_l3_default, stp_load_balancing_default, etherchannel_troubleshoot_default, l3_static_routing_default, mgmt_vlan_default, ospf_single_area_default, routed_access_default, bpdu_guard_default, ospf_troubleshoot_default, ospf_multiarea_default, ospf_area_troubleshoot_default, ospf_advanced_troubleshoot_default, ospf_redistribution_default, sla_static_backup_default, sla_hsrp_track_default];
 
   // src/labs/hint-tiers.ts
   var HINT_TIERS = {
@@ -9786,6 +10072,42 @@ write memory`
         "Gidiş için R3’ün dış rotası, dönüş için eski router’ın varsayılan rotası ve R1’in OSPF rotası gerekir."
       ]
     },
+    "statik-yedek": {
+      sla: [
+        "R1, ISP-A’nın ötesine ulaşılıp ulaşılamadığını şu an nasıl biliyor? Arayüzün up/up olması yetiyor mu?",
+        "Router’ın kendisi düzenli olarak uzaktaki bir adrese deneme paketi gönderip sonucu tutabilir; bu deneme ancak zamanlandığında çalışır."
+      ],
+      track: [
+        "Deneme başarısız olduğunda birincil rotanın tablodan çıkması için rota neye bağlı olmalı?",
+        "Bir rota izlenen bir nesneye bağlanabilir; nesne düşünce rota çıkar ve daha yüksek AD’li yedek rota kurulur."
+      ],
+      noflap: [
+        "Birincil rota çıkınca deneme paketleri hangi hattan, hangi kaynak adresle gidiyor? İzlenen nesnenin durumu kararlı mı?",
+        "Deneme hedefine birincil hattan giden, izlenmeyen sabit bir yol olursa deneme yedek hatta düşmez."
+      ],
+      e2e: [
+        "PC1’den sunucuya trace: ikinci atlama hangi ISP?",
+        "Birincil rota çıktığında varsayılan rota yedek ISP’ye döner; dönüş de çekirdekteki yedek rotayla gelir."
+      ]
+    },
+    "hsrp-sla-track": {
+      sla: [
+        "GW1, ISP-A’nın ötesinin koptuğunu nereden bilebilir? LAN arayüzü sağlamken HSRP neyi izliyor?",
+        "Ağ geçidi internetteki bir adrese düzenli deneme gönderebilir; sonucu izlenen bir nesneye bağlanınca başka özellikler onu kullanabilir."
+      ],
+      decrement: [
+        "GW1’in HSRP önceliği internet kopunca değişiyor mu?",
+        "HSRP önceliği izlenen bir nesneye bağlanabilir; nesne düşünce öncelik belirtilen kadar azalır. Azalan öncelik diğerininkinin altına inmeli."
+      ],
+      takeover: [
+        "GW2’nin önceliği artık daha yüksek; yine de neden Standby kalıyor?",
+        "Çalışan bir Active router’ı yalnız daha yüksek öncelikle devralmak için devralma izni (preempt) gerekir."
+      ],
+      e2e: [
+        "PC1’in sanal ağ geçidine giden paketleri şimdi hangi router karşılıyor? trace’in ilk atlaması ne?",
+        "Sanal adres Active router’dadır; Active GW2 olunca trafik ISP-B’den çıkar, dönüş çekirdeğin yedek rotasıyla gelir."
+      ]
+    },
     "ospf-sorun-ileri": {
       nettype: [
         "R1, R2’yi FULL görüyor ama tablosunda OSPF rotası yok. İki uçta arayüz ayarlarından biri farklı mı?",
@@ -10105,7 +10427,7 @@ write memory`
       canonByDevice[id] = Object.fromEntries(Object.entries(portMap).map(([c, o]) => [o, c]));
       report.portNames[id] = portMap;
       const pktModel = typeof d.config?.packetTracerModel === "string" ? d.config.packetTracerModel : "";
-      const sw = {
+      const sw2 = {
         id,
         kind: "switch",
         router: true,
@@ -10117,10 +10439,10 @@ write memory`
         y: Number(d.y ?? 0),
         ...off ? { off: true } : {}
       };
-      if (resolveMac) sw.mac = intToDotted(0x02n << 40n | (macToInt(resolveMac(d)) & 0xffffffffn) << 8n);
-      claimMac(id, sw.mac);
-      def.devices.push(sw);
-      const cfg = defaultSwitchConfig(sw);
+      if (resolveMac) sw2.mac = intToDotted(0x02n << 40n | (macToInt(resolveMac(d)) & 0xffffffffn) << 8n);
+      claimMac(id, sw2.mac);
+      def.devices.push(sw2);
+      const cfg = defaultSwitchConfig(sw2);
       cfg.hostname = d.name || id;
       for (const c of canonPorts) cfg.ifaces[c].shutdown = false;
       const fhrpLater = [];
@@ -10440,7 +10762,7 @@ write memory`
       }
       canonByDevice[id] = Object.fromEntries(Object.entries(portMap).map(([c, o]) => [o, c]));
       report.portNames[id] = portMap;
-      const sw = {
+      const sw2 = {
         id,
         kind: "switch",
         model,
@@ -10454,11 +10776,11 @@ write memory`
       };
       if (resolveMac) {
         const v = macToInt(resolveMac(d));
-        sw.mac = intToDotted(0x02n << 40n | (v & 0xffffffffn) << 8n);
+        sw2.mac = intToDotted(0x02n << 40n | (v & 0xffffffffn) << 8n);
       }
-      claimMac(id, sw.mac);
-      def.devices.push(sw);
-      const cfg = defaultSwitchConfig(sw);
+      claimMac(id, sw2.mac);
+      def.devices.push(sw2);
+      const cfg = defaultSwitchConfig(sw2);
       cfg.hostname = d.name || id;
       for (const v of d.vlans ?? [1]) {
         const n = vlanId(v);
@@ -10546,7 +10868,7 @@ write memory`
         const allowed = (iface.allowed ?? []).map(vlanId);
         if (allowed.some((x) => x === null)) reject(id, `${name}.allowed`, "Geçersiz izinli VLAN listesi");
         else phys.allowed = [...new Set(allowed)].sort(sortNum);
-        if (mode === "trunk" && sw.needsEncap) phys.encapDot1q = true;
+        if (mode === "trunk" && sw2.needsEncap) phys.encapDot1q = true;
         if (iface.portSecurity !== void 0) {
           const ps = iface.portSecurity;
           const macs = Array.isArray(ps?.["macs"]) ? ps["macs"].map((m) => typeof m === "string" ? normalizeMac(m) : null) : null;
@@ -10606,7 +10928,7 @@ write memory`
           accessVlan: access,
           nativeVlan: native,
           allowed: [...new Set(allowed)].sort(sortNum),
-          encapDot1q: mode === "trunk" && !!sw.needsEncap
+          encapDot1q: mode === "trunk" && !!sw2.needsEncap
         };
       }
       for (const [c, phys] of Object.entries(cfg.ifaces)) {
@@ -11132,16 +11454,16 @@ write memory`
       const [x, y] = fwd ? [link.a, link.b] : [link.b, link.a];
       steps.push({ from: x[0], out: x[1], to: y[0], in: y[1], vlan: nodeVlan(c.to) });
     }
-    for (const [ifc, atStart] of [
+    for (const [ifc2, atStart] of [
       [a, true],
       [b, false]
     ]) {
-      if (ifc.kind !== "pc") continue;
-      const at = rt.topo.pcAttach[ifc.dev];
-      if (!at || !rt.cableIntact(ifc.dev, "eth0")) return null;
-      const vlan = nodeVlan(ifc.node);
-      if (atStart) steps.unshift({ from: ifc.dev, out: "eth0", to: at.dev, in: at.port, vlan });
-      else steps.push({ from: at.dev, out: at.port, to: ifc.dev, in: "eth0", vlan });
+      if (ifc2.kind !== "pc") continue;
+      const at = rt.topo.pcAttach[ifc2.dev];
+      if (!at || !rt.cableIntact(ifc2.dev, "eth0")) return null;
+      const vlan = nodeVlan(ifc2.node);
+      if (atStart) steps.unshift({ from: ifc2.dev, out: "eth0", to: at.dev, in: at.port, vlan });
+      else steps.push({ from: at.dev, out: at.port, to: ifc2.dev, in: "eth0", vlan });
     }
     return steps;
   }
@@ -11180,7 +11502,7 @@ write memory`
     };
     let frameNo = 0;
     let l2 = true;
-    const ifOf = (dev, ip2) => l3Ifs(d, dev).find((i) => i.ip === ip2) ?? null;
+    const ifOf = (dev, ip2) => l3Ifs(d, dev).find((i) => i.ip === ip2) ?? (fhrpOwns(d, dev, ip2) ? fhrpTarget(d, ip2, () => true) : null);
     const walk2 = (kind, start, hops, srcIp, dstIp, baseTtl) => {
       let ttl = baseTtl;
       let sender = start;
@@ -11293,13 +11615,13 @@ write memory`
     const lines = [];
     const runtime = new LabRuntime(bridge.def, (rt) => {
       for (const [id, pc] of Object.entries(bridge.pcs)) rt.pcs[id] = clone(pc);
-      for (const sw of rt.topo.switches) {
-        const text = texts[sw.id];
+      for (const sw2 of rt.topo.switches) {
+        const text = texts[sw2.id];
         if (text === void 0) {
-          if (bridge.running[sw.id]) rt.running[sw.id] = clone(bridge.running[sw.id]);
+          if (bridge.running[sw2.id]) rt.running[sw2.id] = clone(bridge.running[sw2.id]);
           continue;
         }
-        lines.push(...applyConfigText(rt, sw.id, text));
+        lines.push(...applyConfigText(rt, sw2.id, text));
       }
       rt.natTable = clone(bridge.nat ?? []);
       rt.configReport = lines;

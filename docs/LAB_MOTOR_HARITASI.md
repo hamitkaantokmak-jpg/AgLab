@@ -193,6 +193,8 @@ köprü kullanılmadan doğrudan Labber'da kurulur; terminal Labber oturumudur, 
 | `ospf-alan-ariza` | Çok alanlı OSPF arıza giderme: stub bayrağı ve omurgasız ABR | İleri | 6/5 | 5 | ENCOR, OSPF, Multi-area, Stub area, ABR, Arıza giderme | **Labber** — LabDef doğrudan |
 | `ospf-sorun-ileri` | İleri OSPF sorun giderme: ağ tipi, çift router-id ve DR seçimi | İleri | 6/5 | 5 | ENARSI, OSPF, Arıza giderme, Ağ tipi, Router-id, DR/BDR | **Labber** — LabDef doğrudan |
 | `ospf-dagitim` | Redistribution: statik ve bağlı ağları OSPF'e aktarmak | İleri | 7/6 | 5 | ENARSI, OSPF, Redistribution, ASBR, E2, subnets | **Labber** — LabDef doğrudan |
+| `statik-yedek` | IP SLA + track: birincil hat koptuğunda yedek internete geçmek | İleri | 7/7 | 4 | ENARSI, ENCOR, IP SLA, Track, Statik rota, Floating static, Arıza giderme | **Labber** — LabDef doğrudan |
+| `hsrp-sla-track` | IP SLA + track ile HSRP: ağ geçidi internetini kaybedince devretmek | İleri | 8/8 | 4 | ENCOR, IP SLA, Track, HSRP, Preempt, Arıza giderme | **Labber** — LabDef doğrudan |
 
 ## Motor kullanmayan eski içerik (L6)
 
@@ -264,8 +266,8 @@ gerekçesiyle gösterilir (terminal ve değerlendirme açık hata verir).
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
 | Ortak senaryolar | 116 | 0 | 116 |
-| Labber labları | 16 | 0 | 16 |
-| Toplam | 172 | 0 | 172 |
+| Labber labları | 18 | 0 | 18 |
+| Toplam | 174 | 0 | 174 |
 
 | Simüle edilememe gerekçesi | İçerik sayısı |
 |---|---|

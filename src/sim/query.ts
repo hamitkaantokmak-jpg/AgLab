@@ -167,6 +167,13 @@ export class LabQuery {
     return (this.d.fhrp?.groups ?? []).some((g) => g.group === Number(group) && g.active?.dev === dev && g.active.ifname === name)
   }
 
+  /** FHRP: priority in use on this router's interface for the group (track decrements applied); null if not a member. */
+  fhrpPriority(dev: string, iface: string, group: number): number | null {
+    const name = this.canon(iface)
+    const m = (this.d.fhrp?.members ?? []).find((x) => x.dev === dev && x.ifname === name && x.group === Number(group))
+    return m ? m.priority : null
+  }
+
   vlanExists(dev: string, vlan: number): boolean {
     return vlanExists(this.d.cfgs[dev]!, vlan)
   }

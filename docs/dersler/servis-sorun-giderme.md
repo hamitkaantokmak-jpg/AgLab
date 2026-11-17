@@ -175,7 +175,7 @@ Track 1
 
 ## 4. Yönlendirmeli lab
 
-> **Kısmen simülatörde:** DHCP sunucusu, havuz ve relay adımları Labber'da denenebilir (Konu #9 görevleri); NTP, SNMP, Syslog ve IP SLA adımlarını Bölüm 3'teki çıktılarla kâğıt üstünde karşılaştır.
+> **Kısmen simülatörde:** DHCP sunucusu, havuz ve relay adımları Labber'da denenebilir (Konu #9 görevleri); IP SLA + track (8. adım) Simülatör'deki **statik-yedek** labıdır (Pratik adımında). NTP, SNMP ve Syslog adımlarını Bölüm 3'teki çıktılarla kâğıt üstünde karşılaştır.
 
 Topoloji: R1 merkez (DHCP sunucusu 10.0.100.10 arkasında, NTP 10.0.100.1, syslog 10.0.100.40, NMS 10.0.100.50); SW1 şube switch'i, VLAN 20 (10.20.0.0/24) geçidi SW1 SVI; R1'in iki internet çıkışı.
 
@@ -343,4 +343,5 @@ Kaynaklar: INE ENCOR IP Services (NTP) ve Network Assurance (Syslog, SNMP, IP SL
 
 **Motor gereksinimleri**
 
-- [ ] DHCP sunucusu ve relay Labber'da var: S1 (helper eksik) `svct-*` kimliğiyle Sorun Çöz'e eklenebilir. DHCP snooping'in option 82 davranışı, NTP, SNMPv3, Syslog seviyeleri, IP SLA ve track motorda yok; Faz D ile eklenince S2–S5 eklenir.
+- [x] IP SLA, track ve track'li statik rota Labber'da var: S5 Simülatör'deki **statik-yedek** labıdır (yoklama kaynağı ve host rotasıyla dalgalanmayı önleme dahil).
+- [ ] DHCP sunucusu ve relay Labber'da var: S1 (helper eksik) `svct-*` kimliğiyle Sorun Çöz'e eklenebilir. DHCP snooping'in option 82 davranışı, NTP, SNMPv3 ve Syslog seviyeleri motorda yok; eklenince S2–S4 eklenir.
