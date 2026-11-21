@@ -36,7 +36,7 @@ ACADEMY_DOCS = [
     "docs/AKADEMI.md",
     "academy/ADAPTATION.md",
     "academy/adaptation-audit.json",
-    "docs/ENTEGRE_SURUM_RAPORU.md",
+    "docs/arsiv/ENTEGRE_SURUM_RAPORU.md",
 ]
 
 # Gerçek Lab kontrolleri arasında test_ adı taşımayanlar ve özel çalışma dizinleri.
@@ -96,7 +96,7 @@ ARTIFACTS = [
     "docs/ORTAK_GERCEK_LAB.md",
     "docs/GELISMIS_MOTOR_ENTEGRASYON.md",
     "docs/UYUMLULUK_MATRISI.md",
-    "docs/HAZIR_MOTOR_ENTEGRASYON.md",
+    "docs/arsiv/HAZIR_MOTOR_ENTEGRASYON.md",
     # Simülatör modülleri (HTML'ye gömülür) ve Node test yardımcıları.
     "simulator/mac-address.js",
     "simulator/switch-management.js",

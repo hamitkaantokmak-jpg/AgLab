@@ -1,5 +1,7 @@
 # AğLab Unified RC1 — entegrasyon raporu
 
+> **Arşiv (2026-11-21'de taşındı).** 9 Kasım 2026 tarihli Unified RC1 sürüm adayı raporu. Eski AğLab JS motoru, MIT NetSim ve Gerçek Lab'ın yan yana çalıştığı dönemi anlatır; L7b'de eski motorlar kaldırıldı ve Labber tek simülasyon motoru oldu. Güncel durum: [DEVIR_NOTU](../DEVIR_NOTU.md), [UYUMLULUK_MATRISI](../UYUMLULUK_MATRISI.md). Doğrulanmış ZIP'e kayıt olarak eklenmeye devam eder (`tools/verify_packages.py`).
+
 Bu dosya sürüm adayı hazırlığıdır; git etiketi veya resmî release değildir.
 `main` dalına birleştirme kullanıcı onayı gerektirir. Entegrasyon PR’ı taslak kalır.
 

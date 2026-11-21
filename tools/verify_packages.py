@@ -54,7 +54,7 @@ def verify_release_packages(package_path):
         "docs/AKADEMI.md",
         "academy/ADAPTATION.md",
         "academy/adaptation-audit.json",
-        "docs/ENTEGRE_SURUM_RAPORU.md",
+        "docs/arsiv/ENTEGRE_SURUM_RAPORU.md",
     }
 
     def read_json(archive, name):

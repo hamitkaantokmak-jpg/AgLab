@@ -1,5 +1,7 @@
 # AğLab motorlarını açık kaynakla hızlandırma kararı (4 Kasım 2026)
 
+> **Arşiv (2026-11-21'de taşındı).** 4 Kasım 2026 kararı: mevcut motorları protokol protokol açık kaynakla hızlandırmak. Yerine Labber'ın tek ağ motoru olması kararı geçti ([YENIDEN_YAPILANMA](../YENIDEN_YAPILANMA.md), #47); NetSim L7b'de kaldırıldı.
+
 > 5 Kasım güncellemesi: Aşağıdaki bağımsız prototip geçmişi korunur. Artık
 > Michael Borck NetSim'in özgün MIT motoru gerçekten çalıştırılıyor; güncel
 > seçim, kaynak incelemesi, lisans, kapsam ve testler için

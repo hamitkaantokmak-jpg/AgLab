@@ -1,5 +1,7 @@
 # AğLab — Açık kaynak entegrasyon başlangıç çalışması
 
+> **Arşiv (2026-11-21'de taşındı).** 30 Ekim 2026 araştırma notu (açık kaynak alternatifleri, grader sözleşmesi). Sonraki kararlar: [MOTOR_ACIK_KAYNAK_KARSILASTIRMA](MOTOR_ACIK_KAYNAK_KARSILASTIRMA.md) (arşiv) ve güncel [YENIDEN_YAPILANMA](../YENIDEN_YAPILANMA.md) (Labber tek motor).
+
 Durum: **araştırma / entegrasyon tasarımı**, henüz kod aktarımı veya işlevsel değişiklik yok. Tarih: 2026-10-30.
 
 ## Karar
