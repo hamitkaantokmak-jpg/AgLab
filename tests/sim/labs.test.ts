@@ -360,3 +360,18 @@ describe('MST region lab (Konu #29)', () => {
     expect(solved.query().mstRoot('ASW1', 0)?.dev).toBe('DSW1')
   })
 })
+
+describe('EIGRP troubleshooting lab (Konu #41)', () => {
+  it('eigrp-ariza: auto-summary, K values and variance each block a separate objective', () => {
+    const def = findLab('eigrp-ariza')!
+    const rt = createLab(def)
+    expect(rt.query().route('R2', '10.0.0.0', 8)?.code).toBe('D')
+    expect(rt.query().eigrp('R4')!.nbrs.filter((n) => n.ok)).toEqual([])
+    const solved = solve(def)
+    expect(solved.query().route('R2', '10.0.0.0', 8)).toBeFalsy()
+    expect(solved.query().eigrpTopo('R2', '10.3.3.0', 24)!.feasibleSuccessors.map((p) => p.nh)).toEqual(['172.16.24.4'])
+    expect(solved.query().route('R2', '10.3.3.0', 24)!.paths!.map((p) => p.nh).sort()).toEqual(['172.16.23.3', '172.16.24.4'])
+    cfg(solved, 'R2', 'router eigrp 100\nno variance')
+    expect(solved.query().route('R2', '10.3.3.0', 24)!.paths!.length).toBe(1)
+  })
+})

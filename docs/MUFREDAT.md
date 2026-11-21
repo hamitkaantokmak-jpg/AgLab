@@ -109,7 +109,7 @@ Kaynak karşılaştırmasıyla eklenen: **#49 Multicast** (IGMP, PIM, RP kavraml
 
 | # | Konu | Pratik | Motor / Gerçek Lab durumu | Öncelik |
 | --- | --- | --- | --- | --- |
-| 41 | EIGRP (named mode, metrik, stub; ENCOR v1.0'da da var) | Okuma, ileride motor | Motor yok; FRR desteği sınırlı. Okuma dersi var (`docs/dersler/eigrp.md`, `eigrp`; 7 şema, 4 kâğıt üstü vaka) | P3 |
+| 41 | EIGRP (named mode, metrik, stub; ENCOR v1.0'da da var) | Motor + okuma | Klasik EIGRP Labber'da (#107). Okuma dersi (`docs/dersler/eigrp.md`, `eigrp`) ve Simülatör labı **eigrp-ariza** var | P3 |
 | 42 | İleri OSPF sorun giderme | Gerçek Lab + motor | FRR destekler. Okuma dersi var (`docs/dersler/ospf-sorun-giderme.md`, `ospftshoot`; 7 şema, 5 kâğıt üstü vaka) | P2 |
 | 43 | İleri BGP: iBGP, route reflector, attribute'lar, politika | Gerçek Lab | FRR destekler. Okuma dersi var (`docs/dersler/bgp-ileri.md`, `bgpadv`; 7 şema, 5 kâğıt üstü vaka) | P2 |
 | 44 | Redistribution ve rota filtreleme (prefix-list, route-map) | Gerçek Lab | FRR destekler. Okuma dersi var (`docs/dersler/redistribution.md`, `redistribution`; 7 şema, 4 kâğıt üstü vaka) | P2 |

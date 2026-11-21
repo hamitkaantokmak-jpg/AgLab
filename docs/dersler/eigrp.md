@@ -107,7 +107,7 @@ R1#show ip protocols | section eigrp
 
 ## 4. Yönlendirmeli lab
 
-> **Simülatörde yok:** Lab'ı kâğıt üstünde yürüt; her adımda Bölüm 3'teki beklenen çıktıyla karşılaştır.
+> **Simülatörde:** Komşuluk, metrik, feasible successor, variance ve auto-summary adımları Simülatör'deki **eigrp-ariza** labında denenir (Pratik adımında). Sorgu/yanıt (SIA) ve karşılıklı aktarım adımlarını kâğıt üstünde Bölüm 3'teki çıktılarla karşılaştır.
 
 Topoloji: g4'teki gibi; R1'den 10.9.0.0/24'e R2, R3, R4 üzerinden üç yol.
 
@@ -263,4 +263,5 @@ Kaynaklar: INE ENCOR (EIGRP Fundamentals) ve CCNP ENCOR v1.0 (yalnız kapsam kon
 
 **Motor gereksinimleri**
 
-- [ ] EIGRP Labber'da yok ve FRR desteği sınırlı (eigrpd deneysel). Okuma dersi olarak kalır; ileride motor desteği gelirse S1–S4 `eigrp-*` kimlikleriyle eklenir.
+- [x] Klasik EIGRP (AS kipi) Labber'da var: komşuluk şartları, bileşik metrik, FD/RD, feasible successor, variance, auto-summary (12.2 varsayılanı), summary-address, stub, redistribute static/connected. Simülatör'deki **eigrp-ariza** labı (auto-summary ile süreksiz ağ, K değeri uyuşmazlığı, variance).
+- [ ] DUAL sorgu/yanıt ve stuck-in-active, named mode, IPv6 EIGRP ve OSPF ↔ EIGRP karşılıklı aktarımı yok. Gerekirse kalan vakalar `eigrp-*` kimlikleriyle eklenir.
