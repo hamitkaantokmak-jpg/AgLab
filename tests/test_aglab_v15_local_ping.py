@@ -4,7 +4,7 @@ from playwright.sync_api import sync_playwright
 from aglab_test_support import ROOT, launch_chromium
 
 B = ROOT
-base = json.loads((B / "static-routing-two-routers.aglab.json").read_text())
+base = json.loads((B / "tests/fixtures/pkt/static-routing-two-routers.aglab.json").read_text())
 with sync_playwright() as p:
     browser = launch_chromium(p, args=["--no-sandbox"])
     page = browser.new_page()

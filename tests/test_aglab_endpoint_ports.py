@@ -12,9 +12,9 @@ from playwright.sync_api import sync_playwright
 
 base = ET.fromstring(
     base64.b64decode(
-        json.loads((ROOT / "static-routing-two-routers.aglab.json").read_text())["sourceArchive"][
-            "decodedXmlBase64"
-        ]
+        json.loads((ROOT / "tests/fixtures/pkt/static-routing-two-routers.aglab.json").read_text())[
+            "sourceArchive"
+        ]["decodedXmlBase64"]
     )
 )
 

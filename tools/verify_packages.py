@@ -51,7 +51,7 @@ def build_release_manifest(root):
 def verify_release_packages(package_path):
     ids = {f"AGL-{i:03d}" for i in range(1, 41)}
     docs = {
-        "AKADEMI.md",
+        "docs/AKADEMI.md",
         "academy/ADAPTATION.md",
         "academy/adaptation-audit.json",
         "docs/ENTEGRE_SURUM_RAPORU.md",
@@ -202,5 +202,7 @@ def verify_release_packages(package_path):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        raise SystemExit("Usage: python verify_packages.py AgLab_Otomatik_Dogrulanmis_Paket.zip")
+        raise SystemExit(
+            "Usage: python tools/verify_packages.py AgLab_Otomatik_Dogrulanmis_Paket.zip"
+        )
     print(json.dumps(verify_release_packages(sys.argv[1]), ensure_ascii=False))

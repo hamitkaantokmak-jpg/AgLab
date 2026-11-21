@@ -7,7 +7,7 @@ Güncel plan `docs/SONRAKI_ISLER.md` (iş sırası), `docs/YENIDEN_YAPILANMA.md`
 1. Görevi kullanıcının verdiği plandan ya da yukarıdaki belgelerden al (dar kapsamlı tut); mevcut kodu ve ilgili testleri oku.
 2. Hatanın yeniden üretilebildiği bir otomatik test ekle; testin önceden başarısız olduğunu doğrula.
 3. Labber motoru (`src/sim`) / dönüştürücü / HTML simülatörü / CLI için en küçük güvenilir düzeltmeyi uygula.
-4. `python run_pipeline.py` çalıştır (Playwright Chromium kurulmuş olmalı).
+4. `python tools/run_pipeline.py` çalıştır (Playwright Chromium kurulmuş olmalı).
 5. Bütün mevcut regresyonlar geçmeden PR'ı tamamlanmış sayma. CI'da doğrulanmış ZIP üretimini kontrol et.
 6. Pull request açıklamasında değişen senaryoları, testleri, desteklenmeyen davranışları ve doğrulanamayanları belirt.
 7. Varsayılan `main` dalını doğrudan değiştirmek yerine ayrı dal ve PR kullan; test hatasında birleştirme yapma.
@@ -34,7 +34,7 @@ Güncel plan `docs/SONRAKI_ISLER.md` (iş sırası), `docs/YENIDEN_YAPILANMA.md`
 ```bash
 python -m pip install playwright
 python -m playwright install --with-deps chromium
-python run_pipeline.py
+python tools/run_pipeline.py
 ```
 
 ## Güvenlik

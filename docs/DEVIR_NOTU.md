@@ -31,7 +31,7 @@ PR 1:
 - Müfredat bloğundaki sabit koyu renkler token'a bağlandı (açık temada okunmuyordu; main'de de).
 - Adlandırma: ürün metinlerinde "Lab" (bölüm) → Simülatör, "Gerçek Lab" → Canlı Lab; "lab"
   yalnız alıştırma anlamında (Akademi labı, yönlendirmeli lab). Kayıt anahtarları aynı.
-- Tek paket: `run_pipeline.py`, `verify_packages.py` (tek argüman), CI'daki öğretmen ZIP adımı
+- Tek paket: `tools/run_pipeline.py`, `tools/verify_packages.py` (tek argüman), CI'daki öğretmen ZIP adımı
   kaldırıldı; çözümler ve kaynaklar aynı ZIP'te, HTML'e yalnız öğrenci alanları gömülür.
 - Test: yeni `test_aglab_shell.py`; `network_features` (Gelişmiş), `advanced_engines` (Canlı Lab)
   gezinmesi.
@@ -48,7 +48,7 @@ PR 2 (dal `claude/arayuz-2-simulator`):
 - Çözüm kilidi (kullanıcı kararı uygulandı): `tools/build_academy_solutions.py` →
   `academy/solution-data.js` (`.prettierignore`'da, `run_pipeline` `--check`); kilit 3 başarısız
   kontrol ya da bütün ipuçları (`aglab-solution-lock-v1`); çözüm yalnız düğmeyle DOM'a eklenir.
-  `verify_packages.py` yasak yerine gömülü çözüm = öğretmen JSON denetimi. Labber labının
+  `tools/verify_packages.py` yasak yerine gömülü çözüm = öğretmen JSON denetimi. Labber labının
   `#labberLabSolution` kutusu kaldırıldı. **Ortak senaryoların ipucu/çözüm kutusu PR 3'te aynı
   kilide bağlanmalı** (`test_aglab_scenario_cause` o kutuyu bekliyor; PR 3'te uyarlanır).
 - Simülatör açıkken `scroll-behavior: auto` (üst çubuk ⇄ katalog arası yumuşak kaydırma testleri
@@ -132,7 +132,7 @@ Kalan (PR 3–4; PR 3 → `claude/arayuz-2b-simulator` dalından), bir öncekini
   (`#ptTerminal`, `#ptCliDevice`, `#ptCliInput`) ve yanında Simulation Mode zaman çizelgesi
   (`simulation-ui.js`). "Çözümü göster": birkaç başarısız Kontrol et ya da bütün ipuçlarından sonra
   **Kullanıcı kararı (PR 2'de uygulanacak): öğretmen çözümleri HTML'e gömülür.**
-  `verify_packages.py`'deki "Teacher fields embedded in HTML" yasağı PR 2'de gerekçesiyle
+  `tools/verify_packages.py`'deki "Teacher fields embedded in HTML" yasağı PR 2'de gerekçesiyle
   kaldırılır — gerekçe: öğrenci/öğretmen ayrımı kalktı (`SONRAKI_ISLER.md`), uygulama kendi kendine
   öğrenme içindir, Sorun Çöz senaryolarının çözümleri (`network-scenarios.json` `solution`) zaten
   gömülüdür. Yasağın yerine gelecek denetimler (test + paket doğrulaması):
@@ -271,7 +271,7 @@ L7b+c PR'ının tabanı `main`'e çevrilmeli. Arayüz yenilemesine başlanmadı.
   (`tests/aglab_test_support.py` `legacy_engine`); L7'de eski motorla silinir.
 - `test_aglab_simulation_mode`: `freeze()` `pause_at` yarışı giderildi; 5 seri + yük altında 5
   paralel koşu geçti.
-- Yerel: `python run_pipeline.py` 91/91, vitest 566/566, `tsc`, Prettier, black, Python 3.11
+- Yerel: `python tools/run_pipeline.py` 91/91, vitest 566/566, `tsc`, Prettier, black, Python 3.11
   derlemesi temiz.
 
 ### FHRP (#82) özeti
@@ -696,7 +696,7 @@ Testler: `test_aglab_simulation_mode`, `test_aglab_frame_forwarding`, `test_pack
 - **Dönüştürücü ve Labber düzeltmeleri**: UYUMLULUK_MATRISI "L5-h" (trunk `except`, port-security
   access/H.H.H, access VLAN oluşturma, range tam ad bitişi, port-security maximum 1–1024).
 - **Testler**: `tests/sim/cli-import.test.ts`; Python kabul testleri her dönüşümde
-  `assert_cli_path_matches` (Node: `tests/sim_node_runner.cjs`); `pkt-sample-matrix.json`
+  `assert_cli_path_matches` (Node: `tests/sim_node_runner.cjs`); `tests/fixtures/pkt/pkt-sample-matrix.json`
   yeni vaka `synthetic-port-security-dynamic-port`.
 
 ## L5-i — TTL, Time Exceeded, traceroute, extended ping (yapıldı, PR açık)

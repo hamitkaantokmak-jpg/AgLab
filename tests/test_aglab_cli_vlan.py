@@ -11,7 +11,7 @@ with sync_playwright() as p:
     errs = []
     page.on("pageerror", lambda e: errs.append(str(e)))
     page.set_content((B / "AgLab_Final_PKT_Import.html").read_text(), wait_until="domcontentloaded")
-    import_topology(page, B / "static-routing-two-routers.aglab.json")
+    import_topology(page, B / "tests/fixtures/pkt/static-routing-two-routers.aglab.json")
 
     def cmd(c):
         page.evaluate(

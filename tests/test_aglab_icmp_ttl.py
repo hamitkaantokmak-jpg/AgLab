@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 from aglab_test_support import ROOT, launch_chromium
 
 # L7b: eski motorun modülü (ürüne gömülü olduğu denetlenirdi) kaldırıldı; davranış Labber'da sınanır.
-base = json.loads((ROOT / "static-routing-two-routers.aglab.json").read_text())
+base = json.loads((ROOT / "tests/fixtures/pkt/static-routing-two-routers.aglab.json").read_text())
 with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
     browser = launch_chromium(pw)
     page = browser.new_page()

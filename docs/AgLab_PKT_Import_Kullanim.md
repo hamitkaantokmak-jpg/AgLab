@@ -2,7 +2,7 @@
 
 ## Kapsam
 
-Bu paket `.pkt` dosyasını doğrudan AğLab içinde çözmez. Önce `convert_pkt_to_aglab.py` ile AğLab JSON biçimine dönüştürür; ardından HTML içindeki **İçe aktar (JSON)** düğmesiyle yüklenir. Kaynak `.pkt` dosyası değiştirilmez.
+Bu paket `.pkt` dosyasını doğrudan AğLab içinde çözmez. Önce `tools/convert_pkt_to_aglab.py` ile AğLab JSON biçimine dönüştürür; ardından HTML içindeki **İçe aktar (JSON)** düğmesiyle yüklenir. Kaynak `.pkt` dosyası değiştirilmez.
 
 ## Gereksinimler
 
@@ -13,9 +13,9 @@ Bu paket `.pkt` dosyasını doğrudan AğLab içinde çözmez. Önce `convert_pk
 ## Kullanım
 
 ```bash
-python convert_pkt_to_aglab.py "static-routing-two-routers.pkt" \
-  -o static-routing-two-routers.aglab.json \
-  --report static-routing-two-routers-import-report.json
+python tools/convert_pkt_to_aglab.py "static-routing-two-routers.pkt" \
+  -o tests/fixtures/pkt/static-routing-two-routers.aglab.json \
+  --report tests/fixtures/pkt/static-routing-two-routers-import-report.json
 ```
 
 Sonra `AgLab_Final_PKT_Import.html` dosyasını açıp **İçe aktar (JSON)** ile `.aglab.json` dosyasını seçin.
@@ -42,7 +42,7 @@ Dönüştürücü, oluşturulan JSON içine kaynak `.pkt` dosyasının özgün b
 JSON içindeki orijinal `.pkt` dosyasını geri çıkarmak için:
 
 ```bash
-python restore_pkt_from_aglab_json.py static-routing-two-routers.aglab.json -o restored-original.pkt
+python tools/restore_pkt_from_aglab_json.py tests/fixtures/pkt/static-routing-two-routers.aglab.json -o restored-original.pkt
 ```
 
 Betik SHA-256 değerini doğrular. Geri çıkarılan dosya kaynak `.pkt` ile bayt bazında aynı olmalıdır. `importReport.unmodeledConfigLines` alanı, simülasyon modeline eşlenmeyen CLI satırlarını ve kaynak satır numaralarını listeler.

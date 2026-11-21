@@ -42,12 +42,11 @@ Bu sırada kayıt kurtarma ve belirsiz PT cihaz kimliği audit bulguları da ba�
 
 ## Kaynak ve derleme
 
-`simulator/switch-management.js` switch yönetim CLI/model/operasyon kurallarını içerir. `build_simulator.py` bu kaynağı mevcut motor closure'ı içine gömer. Mevcut genel CLI ve motorun geri kalanı henüz tek HTML'dedir; kademeli modülerleştirme yapılır. `academy/` kaynakları ve Öğren/Test/Sorun Çöz akışları korunur.
+`simulator/switch-management.js` switch yönetim CLI/model/operasyon kurallarını içerir. `tools/build_html.py` bu kaynağı mevcut motor closure'ı içine gömer. Mevcut genel CLI ve motorun geri kalanı henüz tek HTML'dedir; kademeli modülerleştirme yapılır. `academy/` kaynakları ve Öğren/Test/Sorun Çöz akışları korunur.
 
 ```bash
-python build_simulator.py
-python build_academy.py
-python run_pipeline.py
+python tools/build_html.py
+python tools/run_pipeline.py
 ```
 
 SVI testi gömülü kaynağın modülle aynı olduğunu doğrular. Nihai HTML harici JS veya sunucu gerektirmez. Açıklanan STP autostate deterministik mevcut ağaç modelidir; BPDU timer/RSTP yakınsaması veya donanıma özgü IOS davranışı garantisi verilmez.

@@ -1,11 +1,11 @@
 # PKT örnek ve doğrulama matrisi
 
-Makine tarafından çalıştırılan tanım: `pkt-sample-matrix.json`.
+Makine tarafından çalıştırılan tanım: `tests/fixtures/pkt/pkt-sample-matrix.json`.
 `test_aglab_pkt_matrix.py` her satırın beklenen alanlarını doğrular; sonuçlar ana pipeline raporunda yer alır. Gerçek şifreli PKT ile sentetik XML senaryoları ayrı kaynak türleridir. Bu matris genel Packet Tracer uyumluluk sertifikası değildir.
 
 | Örnek | Kaynak | Doğrulanan kapsam | Sınır |
 | --- | --- | --- | --- |
-| real-static-routing | Depodaki izinli `static-routing-two-routers(1).pkt` | SHA-256, bütünlük doğrulamalı şifre çözme, XML/arşiv eşitliği, 9 kaynak/8 aktarılan cihaz, 7/7 bağlantı, statik rotalar | Güç dağıtım cihazı modellenmez; tüm IOS komutları simüle edilmez |
+| real-static-routing | Depodaki izinli `tests/fixtures/pkt/static-routing-two-routers(1).pkt` | SHA-256, bütünlük doğrulamalı şifre çözme, XML/arşiv eşitliği, 9 kaynak/8 aktarılan cihaz, 7/7 bağlantı, statik rotalar | Güç dağıtım cihazı modellenmez; tüm IOS komutları simüle edilmez |
 | synthetic-switch-state | Özgün sentetik PT XML | VLAN 20, trunk izinleri/native VLAN alanı, shutdown, STP priority alanı | Tam STP zamanlaması ve Cisco donanım davranışı doğrulanmaz |
 | synthetic-router-route | Özgün sentetik PT XML | Fiziksel IPv4/mask/shutdown, next-hop ve administrative distance | Tek başına uçtan uca paket iletimini doğrulamaz |
 | synthetic-switch-interface-range | Özgün sentetik PT XML | Fiziksel port listesi/aralığı, VLAN/shutdown ve tek port override | Router/SVI range, eksik prefixli liste üyesi yok |

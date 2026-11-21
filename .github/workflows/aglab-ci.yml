@@ -69,11 +69,9 @@ jobs:
       - name: Simülatör ve Akademi HTML derlemesini doğrula
         run: |
           python tools/build_html.py --check
-          python build_simulator.py
-          python build_academy.py
+          python tools/build_html.py
           cp AgLab_Final_PKT_Import.html "$RUNNER_TEMP/aglab-first.html"
-          python build_simulator.py
-          python build_academy.py
+          python tools/build_html.py
           cmp AgLab_Final_PKT_Import.html "$RUNNER_TEMP/aglab-first.html"
           sha256sum -c html-build.sha256
       - name: Chromium ve Playwright kur
@@ -84,7 +82,7 @@ jobs:
       - name: Ortak motor senaryoları ve erişilebilirliği doğrula
         run: python tests/test_aglab_network_features.py
       - name: Testleri çalıştır ve başarılıysa ZIP üret
-        run: python run_pipeline.py
+        run: python tools/run_pipeline.py
       - name: Test raporlarını sakla
         if: always()
         uses: actions/upload-artifact@v4

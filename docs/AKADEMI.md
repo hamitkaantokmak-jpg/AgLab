@@ -3,11 +3,11 @@
 Ortak motor senaryoları Lab'da kapalı menülerin dışında görünür. Sorun Çöz'deki
 OSPF, BGP, port güvenliği ve alt arayüz görevleri aynı cihaz/CLI/iletim motoruna
 yönlenir. Özellik kapsamı, desteklenmeyen ileri komutlar ve erişilebilirlik
-denetimi için [ortak motor belgesine](docs/ORTAK_MOTOR.md) bakın. Senaryolar genel
+denetimi için [ortak motor belgesine](ORTAK_MOTOR.md) bakın. Senaryolar genel
 eğitim örnekleridir; şubede yaşanmış olay olarak sunulmaz.
 
 AGL-006–040 uyarlaması ve motor sınırlarının denetimi için
-[uyarlama raporuna](academy/ADAPTATION.md) bakın. Aşağıdaki v1 notları
+[uyarlama raporuna](../academy/ADAPTATION.md) bakın. Aşağıdaki v1 notları
 ilk beş görevin kapsamını anlatır.
 
 HTML dosyasını aç, Laboratuvar alanında Akademi bölümünden görev seç ve başlat.
@@ -35,7 +35,7 @@ Bu, iki router ve iki PC'lik ayrı gerçek örnek topolojiye erişimdir; seçili
 görevini otomatik olarak gerçek cihazlara kurmaz. Mevcut 40 görevin simülatör
 topolojisi, cevapları, ipuçları ve ilerlemesi Akademi sekmesinde kalır. Öğrenci
 servisi çalışmıyorsa yeni sekme bağlantı kuramaz; kurulum için
-[Gerçek Lab belgesine](real-lab/README.md) bak.
+[Gerçek Lab belgesine](../real-lab/README.md) bak.
 
 ## Kaldığın yerden devam etme
 
@@ -86,13 +86,13 @@ Tek paket üretilir (öğrenci/öğretmen ayrımı kalktı; uygulama şube içi 
 öğrenci JSON'larını, öğretmen çözümlerini (`academy/teacher/`) ve özgün kaynakları
 (`academy/source/`) içerir. Pipeline arşivin CRC'sini, 40 laboratuvar envanterini, HTML/öğrenci
 JSON eşitliğini, özgün kaynak özetlerini ve çözüm/kaynak tutarlılığını doğrular; HTML'e yalnız
-öğrenci alanları gömülür. Paket indirilince `python verify_packages.py
+öğrenci alanları gömülür. Paket indirilince `python tools/verify_packages.py
 AgLab_Otomatik_Dogrulanmis_Paket.zip` ile denetim tekrarlanabilir. Her labın öğretmen
 çözümüyle 100/100 aldığı testler sürer.
 
-`academy/academy.js` ve `academy/student-data.js` HTML içine `python build_academy.py`
+`academy/academy.js` ve `academy/student-data.js` HTML içine `python tools/build_html.py`
 ile gömülür. HTML tek başına çevrimdışı açılabilir. Kaynak JS değişince yeniden
-derleyin. `python run_pipeline.py` mevcut regresyonları ve Akademi Chromium testlerini birlikte çalıştırır. ZIP yalnız tüm testler geçerse oluşturulur.
+derleyin. `python tools/run_pipeline.py` mevcut regresyonları ve Akademi Chromium testlerini birlikte çalıştırır. ZIP yalnız tüm testler geçerse oluşturulur.
 Testler özgün veri özetlerini, başlangıç/çözüm, ters/sırasız kablolar, bozuk ağ,
 cevaplar, ipuçları, sıfırlama ve eksik kapsamı kontrol eder.
 

@@ -31,9 +31,9 @@ from dataclasses import dataclass
 
 from verify_packages import build_release_manifest, verify_release_packages
 
-ROOT = pathlib.Path(__file__).resolve().parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 ACADEMY_DOCS = [
-    "AKADEMI.md",
+    "docs/AKADEMI.md",
     "academy/ADAPTATION.md",
     "academy/adaptation-audit.json",
     "docs/ENTEGRE_SURUM_RAPORU.md",
@@ -79,17 +79,17 @@ REAL_LAB_FILES = [
 ARTIFACTS = [
     "AgLab_Final_PKT_Import.html",
     "html-build.sha256",
-    "convert_pkt_to_aglab.py",
-    "restore_pkt_from_aglab_json.py",
-    "verify_packages.py",
-    "run_pipeline.py",
-    "static-routing-two-routers.aglab.json",
-    "static-routing-two-routers-import-report.json",
-    "AgLab_PKT_Import_Kullanim.md",
-    "static-routing-two-routers(1).pkt",
-    "pkt-sample-matrix.json",
-    "PKT_ORNEK_MATRISI.md",
-    "SIMULATOR_PLAN.md",
+    "tools/convert_pkt_to_aglab.py",
+    "tools/restore_pkt_from_aglab_json.py",
+    "tools/verify_packages.py",
+    "tools/run_pipeline.py",
+    "tests/fixtures/pkt/static-routing-two-routers.aglab.json",
+    "tests/fixtures/pkt/static-routing-two-routers-import-report.json",
+    "docs/AgLab_PKT_Import_Kullanim.md",
+    "tests/fixtures/pkt/static-routing-two-routers(1).pkt",
+    "tests/fixtures/pkt/pkt-sample-matrix.json",
+    "docs/PKT_ORNEK_MATRISI.md",
+    "docs/SIMULATOR_PLAN.md",
     "docs/SIMULATION_MODE_V1.md",
     "docs/ORTAK_MOTOR.md",
     "docs/LAB_MOTOR_HARITASI.md",
@@ -114,8 +114,6 @@ ARTIFACTS = [
     "simulator/lab-evidence.js",
     "simulator/lab-evidence-ui.js",
     # Derleme araçları ve yapılandırması.
-    "build_simulator.py",
-    "build_academy.py",
     "tools/build_html.py",
     "tools/build_academy_solutions.py",
     "tools/build_lab_engine_map.py",
@@ -321,7 +319,9 @@ def run() -> int:
     (out / "AgLab_Akademi_Ogretmen.zip").unlink(missing_ok=True)
     if report["passed"]:
         source = json.loads(
-            (ROOT / "static-routing-two-routers.aglab.json").read_text(encoding="utf-8")
+            (ROOT / "tests/fixtures/pkt/static-routing-two-routers.aglab.json").read_text(
+                encoding="utf-8"
+            )
         )
         (out / "html-build-manifest.json").write_text(
             json.dumps(build_release_manifest(ROOT), indent=2), encoding="utf-8"

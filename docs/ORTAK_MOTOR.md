@@ -42,7 +42,7 @@ görevlerinin çözüm tariflerini içerir. Genel yeni örnek için bir kaydı k
 alanlarını doldurmak yeterlidir; JavaScript çözüm kodu yazılmaz. `solution` cihaz
 adı ve gerçek CLI komutlarından oluşur. `$SOURCE_MAC` yalnızca kaynak cihazın MAC
 adresiyle değiştirilir; veri JavaScript olarak çalıştırılmaz. HTML'yi tekrar
-üretmek için `python build_simulator.py` ve `python build_academy.py` çalıştırılır.
+üretmek için `python tools/build_html.py` çalıştırılır.
 Ping şablonlarında kaynak `PC-01`, hedef `PC-02` adları kullanılır; IP, VLAN ve
 ara cihazlar veri dosyasında değiştirilebilir. Denetim kayıt sayısını dosyadan
 okur; yeni genel örnek eklemek için test betiğine kimlik veya sayı eklenmez.

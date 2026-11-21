@@ -148,7 +148,7 @@ Bu entegrasyon maliyeti ölçümüdür; genel hız üstünlüğü iddiası yapı
 ```sh
 npm ci --ignore-scripts
 npm run build:engine
-python run_pipeline.py
+python tools/run_pipeline.py
 # Yalnız yetkili Linux/Docker hostunda:
 sudo python3 real-lab/advanced_smoke.py l2 --execute
 sudo python3 real-lab/advanced_smoke.py routing --execute
@@ -161,7 +161,7 @@ Native protokol başarısı mock unit sonuçlarından çıkarılmaz. Koşu rapor
 başarı/başarısızlık, cleanup ve kanıt snapshot'larını saklar.
 
 Kök hazır HTML güncel motor seçimi, NetSim ve kanıt modüllerini içerir.
-`run_pipeline.py` HTML'yi testlerden önce yeniden üretir. CI, depodaki HTML ile
+`tools/run_pipeline.py` HTML'yi testlerden önce yeniden üretir. CI, depodaki HTML ile
 kaynaklardan üretilen çıktının eşitliğini zorunlu tutar; güncel CI ZIP'i ayrıca
 commit ve modül hash'lerini içeren manifest sunar. Release
 doğrulaması gömülü modüllerin paket kaynaklarıyla eşitliğini denetler. Adaptör

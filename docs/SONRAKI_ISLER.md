@@ -49,8 +49,8 @@ Arayüz yenilemesiyle birlikte uygulanır.
 Uygulama şube içi kendi kendine öğrenme için; çözümü saklayıp notlandıran bir öğretmen
 yok.
 
-- Tek paket üretilir; `AgLab_Akademi_Ogretmen.zip` ayrımı kalkar (`run_pipeline.py`,
-  `verify_packages.py`).
+- Tek paket üretilir; `AgLab_Akademi_Ogretmen.zip` ayrımı kalkar (`tools/run_pipeline.py`,
+  `tools/verify_packages.py`).
 - Lab ve arıza senaryosunda **"Çözümü göster"** düğmesi olur. Hemen açık değildir:
   birkaç başarısız "Kontrol et" denemesinden ya da bütün ipuçları kullanıldıktan sonra
   açılır. İpuçlarının kademeli açılmasının son basamağıdır.
