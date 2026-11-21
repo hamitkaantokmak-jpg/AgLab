@@ -112,7 +112,7 @@ PR 3 ön adımı (kullanıcı isteği "PR 3'e ek, önce bunlar"; dal `claude/dre
     yalnız Simülatör açıkken; yan şerit düğmeleri `#agSimTaskToggle`, `#agSimInspectToggle`;
     terminal yükseklik tutamağı `#agSimDockGrip` (`--ag-dock-h`, ↑/↓). Kayıt
     `aglab-sim-wide-v1` ({wide, task, inspect}), `aglab-sim-dock-h-v1`. ≤ 760 px kapta yalnız
-    gezinme gizlenir. Test `test_aglab_sim_wide.py`; görüntüler `docs/arayuz/pr3/genis-*.png`
+    gezinme gizlenir. Test `test_aglab_sim_wide.py`; görüntüler `test-results/arayuz-genis/genis-*.png`
     (yoksa ya da `AGLAB_UPDATE_SHOTS=1` ile yazılır).
   - Canlı Lab üst gezinmeden ve şeritten kalktı: `#area-live` yok; Gelişmiş'te `#advancedLive`
     "Canlı Lab (operatör)" (`#liveLabPanel`: rapor, dışa aktarım, `#academyRealLab`). Eski
@@ -165,7 +165,7 @@ Uygulama notları (PR 1'de öğrenilenler):
 - `data-area` yalnız `#areaTabs`'ta olmalı (testler `[data-area="lab"]` tıklar; ikinci eşleşme
   Playwright strict mode hatası verir). Şerit `data-rail` kullanır.
 - Ekran görüntüleri: 1280 px, `localStorage aglab-theme` ile tema; taslakla yan yana görüntü
-  PIL ile (`docs/arayuz/pr1/`). PR açıklamasında raw.githubusercontent bağlantıları.
+  PIL ile. PR ekran görüntüleri depoya commit'lenmez (`docs/arayuz/pr*/` `.gitignore`'da); `test-results/` altına yazılır, PR açıklamasına eklenir.
 
 ## Birleşen ve açık işler
 
