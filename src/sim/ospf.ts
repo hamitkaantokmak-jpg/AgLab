@@ -1,6 +1,7 @@
 // OSPFv2 model: neighbours, DR/BDR, SPF per area, inter-area summaries, stub areas, external default.
 // Computed from config + derived L2/L3 state; nothing is scripted per lab.
 
+import { computeEigrp } from './eigrp'
 import { derive, type Derived } from './engine'
 import { duplicateIps, ifBandwidth, l2Domain, l3Ifs, routeTable, type L3If, type RouteCode } from './net'
 import type { Topo } from './topology'
@@ -92,6 +93,8 @@ export function computeState(
 ): Derived {
   const d = derive(topo, cfgs, pcs, errdis, hw)
   d.ospf = computeOspf(d)
+  // EIGRP, OSPF'ten sonra: aynı önekte AD seçimi rota tablosunda (OSPF ↔ EIGRP aktarımı yok)
+  d.eigrp = computeEigrp(d)
   d.dups = duplicateIps(d)
   return d
 }

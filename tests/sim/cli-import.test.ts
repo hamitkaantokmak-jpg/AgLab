@@ -103,10 +103,10 @@ describe('PKT IOS metin yolu (cliImport)', () => {
   it('içe aktarma raporu: reddedilen satırlar unmodeledConfigLines, zararsızlar ayrı; dönüştürücü listesi korunur', () => {
     const t = SAMPLE()
     const text = (t.devices.find((d) => d.name === 'R1')!.config as { runningConfig: string }).runningConfig
-    ;(t.devices.find((d) => d.name === 'R1')!.config as { runningConfig: string }).runningConfig = text.replace('ip classless', 'ip classless\nip sla responder\nrouter eigrp 10')
+    ;(t.devices.find((d) => d.name === 'R1')!.config as { runningConfig: string }).runningConfig = text.replace('ip classless', 'ip classless\nip sla responder\nrouter rip')
     const r = cliImport(t)
     const rep = importReportWithCli(t.importReport as Record<string, unknown>, t, r.lines)
-    expect((rep['unmodeledConfigLines'] as { command: string }[]).map((x) => x.command)).toEqual(['ip sla responder', 'router eigrp 10'])
+    expect((rep['unmodeledConfigLines'] as { command: string }[]).map((x) => x.command)).toEqual(['ip sla responder', 'router rip'])
     expect(rep['unmodeledConfigLineCount']).toBe(2)
     expect(rep['ignoredConfigLineCount']).toBe(r.lines.filter((l) => l.status === 'ignored').length)
     expect(rep['converterUnmodeledConfigLines']).toEqual((t.importReport as { unmodeledConfigLines: unknown[] }).unmodeledConfigLines)

@@ -1080,6 +1080,8 @@ export function toAglab(
     }
     if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail('Loopback')
     if (cfg.ospf) fail('OSPF')
+    if (cfg.eigrp) fail('EIGRP yapılandırması (desteklenmiyor)')
+    if (Object.keys(cfg.keyChains ?? {}).length) fail('key chain (desteklenmiyor)')
     if (cfg.routes.length) fail('statik rota')
     if (Object.keys(cfg.tracks ?? {}).length) fail('track (izlenen nesne; switch üzerinde desteklenmiyor)')
     if (Object.keys(cfg.ipSla ?? {}).length) fail('IP SLA (desteklenmiyor)')
@@ -1223,6 +1225,9 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
     if (t.delayUp !== undefined || t.delayDown !== undefined) fail(`track ${n} delay (desteklenmiyor)`)
   }
   for (const n of Object.keys(cfg.ipSla ?? {})) fail(`IP SLA ${n} (desteklenmiyor)`)
+  // EIGRP ve key chain AğLab modelinde yok: sessizce düşürülmez, raporlanır
+  if (cfg.eigrp) fail(`EIGRP yapılandırması (router eigrp ${cfg.eigrp.as}; desteklenmiyor)`)
+  if (Object.keys(cfg.keyChains ?? {}).length) fail('key chain (desteklenmiyor)')
   {
     const ids = Object.keys(cfg.tracks ?? {}).map(Number).sort((a, b) => a - b)
     const list = ids.map((n) => ({ id: n, interface: aglabIf(cfg.tracks![String(n)]!.iface!) }))

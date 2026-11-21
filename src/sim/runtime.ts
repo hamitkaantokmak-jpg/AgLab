@@ -11,6 +11,7 @@ import { apipaFor, dhcpDiscover, isApipa, type DhcpResult } from './dhcp'
 import { bpduViolations, type Derived } from './engine'
 import { l3Ifs, macTable, type Delivery, type Hop } from './net'
 import { candidateRid, computeState } from './ospf'
+import { eigrpTag } from './eigrp'
 import { LabQuery } from './query'
 import { buildTopo, pk, type Topo } from './topology'
 import { noHardwareFaults, type DhcpBinding, type Hardware, type LabDef, type ObjectiveResult, type PcConfig, type SwitchConfig } from './types'
@@ -737,6 +738,28 @@ export class LabRuntime {
         if (oldMm.has(mk(m))) continue
         if (m.kind === 'area') this.log(dev, `%OSPF-4-ERRRCV: Received invalid packet: mismatched area ID from ${m.peerIp}, ${m.ifname}`)
         if (m.kind === 'rid') this.log(dev, `%OSPF-4-DUP_RTRID_NBR: OSPF detected duplicate router-id ${b.ospf[dev]!.rid} from ${m.peerIp} on interface ${m.ifname}`)
+      }
+    }
+    // EIGRP komşulukları ve hello sorunları (IOS 15: EIGRP-IPv4 <AS>; 12.2: IP-EIGRP(0) <AS>)
+    for (const dev of new Set([...Object.keys(a.eigrp ?? {}), ...Object.keys(b.eigrp ?? {})])) {
+      const as = b.eigrp[dev]?.as ?? a.eigrp[dev]!.as
+      const tag = eigrpTag(b, dev, as)
+      const key = (n: { ifname: string; ip: string }) => `${n.ifname}|${n.ip}`
+      const oldNb = new Map((a.eigrp[dev]?.nbrs ?? []).map((n) => [key(n), n]))
+      const newNb = new Map((b.eigrp[dev]?.nbrs ?? []).map((n) => [key(n), n]))
+      const why: Record<string, string> = { k: 'K-value mismatch', auth: 'Authentication failure' }
+      for (const [k, n] of newNb) {
+        const was = oldNb.get(k)
+        if (n.ok && !was?.ok) this.log(dev, `%DUAL-5-NBRCHANGE: ${tag}: Neighbor ${n.ip} (${n.ifname}) is up: new adjacency`)
+        if (n.ok || (was && !was.ok && was.reason === n.reason)) continue
+        if (n.reason === 'k' || n.reason === 'auth') this.log(dev, `%DUAL-5-NBRCHANGE: ${tag}: Neighbor ${n.ip} (${n.ifname}) is down: ${why[n.reason]}`)
+        else if (n.reason === 'subnet') this.log(dev, `%DUAL-6-NBRINFO: ${tag}: Neighbor ${n.ip} not on common subnet for ${n.ifname}`)
+        else if (was?.ok) this.log(dev, `%DUAL-5-NBRCHANGE: ${tag}: Neighbor ${n.ip} (${n.ifname}) is down: ${n.reason === 'passive' ? 'interface passive' : 'peer restarted'}`)
+      }
+      for (const [k, n] of oldNb) {
+        if (!n.ok || newNb.has(k)) continue
+        const ifUp = b.eigrp[dev]?.ifs.some((i) => i.name === n.ifname)
+        this.log(dev, `%DUAL-5-NBRCHANGE: ${tag}: Neighbor ${n.ip} (${n.ifname}) is down: ${ifUp ? 'holding time expired' : 'interface down'}`)
       }
     }
     // duplicate addresses: a switch reports another device using its own address

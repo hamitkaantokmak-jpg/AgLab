@@ -910,6 +910,7 @@ var AgLabSim = (() => {
       errdis,
       hw,
       ospf: {},
+      eigrp: {},
       dups: []
     };
     const allVlans = /* @__PURE__ */ new Set();
@@ -1630,6 +1631,7 @@ var AgLabSim = (() => {
     return def.kind === "switch" && !!(def.l3 || def.router) && d.cfgs[dev].ipRouting;
   }
   var OSPF_AD = 110;
+  var NULL0 = "Null0";
   var inPrefix = (ip2, net, prefix) => {
     const m = prefixMaskInt(prefix);
     return (ipToInt(ip2) & m) >>> 0 === (ipToInt(net) & m) >>> 0;
@@ -1651,14 +1653,19 @@ var AgLabSim = (() => {
       return [{ code: "S", net: r.net, prefix, ad: r.ad ?? 1, idx, nh: r.nh, ifname: "" }];
     });
     const ospf2 = (d.ospf[dev]?.routes ?? []).filter((r) => r.paths.length).map((r) => ({ code: r.code, net: r.net, prefix: r.prefix, ad: OSPF_AD, nh: r.paths[0].nh, ifname: r.paths[0].ifname, metric: r.metric, paths: r.paths }));
+    const eigrp = (d.eigrp?.[dev]?.routes ?? []).map(
+      (r) => r.paths.length ? { code: r.code, net: r.net, prefix: r.prefix, ad: r.ad, nh: r.paths[0].nh, ifname: r.paths[0].ifname, metric: r.metric, paths: r.paths } : { code: r.code, net: r.net, prefix: r.prefix, ad: r.ad, nh: null, ifname: NULL0, metric: r.metric }
+    );
+    const dynamic = [...ospf2, ...eigrp];
     const lookupFor = (dst, seen) => {
       const matches = [
         ...connected.filter((c) => inPrefix(dst, c.net, c.prefix)).map((c) => ({ ...c, ad: 0 })),
         ...statics.filter((c) => !seen.has(c.idx) && inPrefix(dst, c.net, c.prefix)),
-        ...ospf2.filter((c) => inPrefix(dst, c.net, c.prefix))
+        ...dynamic.filter((c) => inPrefix(dst, c.net, c.prefix))
       ].sort((a, b) => b.prefix - a.prefix || a.ad - b.ad || (a.code === "S" ? 0 : 1) - (b.code === "S" ? 0 : 1));
       for (const m of matches) {
         if (m.code === "C") return { ifname: m.ifname, via: dst };
+        if (m.ifname === NULL0) return null;
         if (m.code !== "S") return { ifname: m.ifname, via: m.nh };
         const r = resolve(m, seen);
         if (r) return r;
@@ -1682,7 +1689,8 @@ var AgLabSim = (() => {
       if (!r) continue;
       consider({ code: "S", net: s.net, prefix: s.prefix, nh: s.nh, ifname: r.ifname, ...s.ad !== 1 ? { ad: s.ad } : {}, via: r.via }, s.ad * 2);
     }
-    for (const r of ospf2) consider({ code: r.code, net: r.net, prefix: r.prefix, nh: r.nh, ifname: r.ifname, metric: r.metric, paths: r.paths }, r.ad * 2 + 1);
+    for (const r of dynamic)
+      consider({ code: r.code, net: r.net, prefix: r.prefix, nh: r.nh, ifname: r.ifname, metric: r.metric, ...r.paths ? { paths: r.paths } : {}, ...r.code.startsWith("D") ? { ad: r.ad } : {} }, r.ad * 2 + 1);
     for (const e of best.values()) {
       const { rank: _rank, ...entry } = e;
       out.push(entry);
@@ -1712,10 +1720,9 @@ var AgLabSim = (() => {
     for (const e of routeTable(d, dev)) {
       if (e.code === "L" || !inPrefix(dst, e.net, e.prefix)) continue;
       if (best && best.e.prefix >= e.prefix) continue;
-      const out = ifs.find((i) => i.name === e.ifname);
-      best = { e, out };
+      best = { e, out: ifs.find((i) => i.name === e.ifname) };
     }
-    if (!best) return null;
+    if (!best || !best.out) return null;
     return { out: best.out, nh: best.e.code === "C" ? dst : best.e.via ?? best.e.nh };
   }
   function owns(d, dev, ip2) {
@@ -1928,10 +1935,489 @@ var AgLabSim = (() => {
     return out.sort((a, b) => a.vlan - b.vlan || a.mac.localeCompare(b.mac));
   }
 
+  // src/sim/eigrp.ts
+  var EIGRP_AD = 90;
+  var EIGRP_EX_AD = 170;
+  var EIGRP_SUMMARY_AD = 5;
+  var DEFAULT_K = [1, 0, 1, 0, 0];
+  function ifDelay(name, override) {
+    if (override !== void 0) return override;
+    if (name.startsWith("Loopback")) return 500;
+    if (name.startsWith("Vlan")) return 1;
+    const bw = ifBandwidth(name);
+    return bw >= 1e6 ? 1 : bw >= 1e5 ? 10 : 100;
+  }
+  function compositeMetric(bw, delay, k = DEFAULT_K, load = 1, rel = 255) {
+    const [k1, k2, k3, k4, k5] = k;
+    const b = Math.floor(1e7 / Math.max(1, bw));
+    let m = k1 * b + Math.floor(k2 * b / (256 - load)) + k3 * delay;
+    if (k5) m = Math.floor(m * k5 / (rel + k4));
+    return m * 256;
+  }
+  function classfulPrefix(net) {
+    const first = Number(net.split(".")[0]);
+    return first < 128 ? 8 : first < 192 ? 16 : first < 224 ? 24 : 32;
+  }
+  var majorOf = (net) => {
+    const p = classfulPrefix(net);
+    return { net: networkOf(net, p), prefix: p };
+  };
+  var pkey = (net, prefix) => `${net}/${prefix}`;
+  var ipInt = (ip2) => ipToInt(ip2) ?? 0;
+  var within = (net, prefix, sNet, sPrefix) => prefix >= sPrefix && (ipInt(net) & prefixMaskInt(sPrefix)) >>> 0 === ipInt(sNet);
+  function eigrpNetMatches(n, ip2) {
+    const a = ipInt(ip2);
+    if (n.wildcard === null) {
+      const p = classfulPrefix(n.addr);
+      return networkOf(ip2, p) === networkOf(n.addr, p);
+    }
+    const care = ~ipInt(n.wildcard) >>> 0;
+    return (a & care) >>> 0 === (ipInt(n.addr) & care) >>> 0;
+  }
+  function eigrpL3Opts(cfg, ifname) {
+    if (ifname.startsWith("Vlan")) return cfg.svis[ifname.slice(4)]?.l3;
+    if (ifname.startsWith("Loopback")) return cfg.loopbacks?.[ifname.slice(8)]?.l3;
+    if (ifname.includes(".")) return cfg.subifs?.[ifname]?.l3;
+    return cfg.ifaces[ifname]?.l3;
+  }
+  function eigrpRunning(d, dev) {
+    const def = d.topo.devices[dev];
+    const c = d.cfgs[dev];
+    return def?.kind === "switch" && !!(def.l3 || def.router) && !!c?.ipRouting && !!c.eigrp && !d.hw.off.has(dev);
+  }
+  var isPassive = (e, name) => e.passiveDefault ? !e.passive.includes(name) : e.passive.includes(name);
+  function eigrpRid(d, dev) {
+    const e = d.cfgs[dev].eigrp;
+    if (e.routerId) return e.routerId;
+    const ifs = l3Ifs(d, dev);
+    const pick = (list) => list.length ? list.map((i) => i.ip).sort((a, b) => ipInt(b) - ipInt(a))[0] : null;
+    return pick(ifs.filter((i) => i.kind === "loop")) ?? pick(ifs);
+  }
+  function sendKey(cfg, chain) {
+    const c = chain ? cfg.keyChains?.[chain] : void 0;
+    if (!c) return null;
+    const id = Object.keys(c).filter((k) => c[k] !== null).sort((a, b) => Number(a) - Number(b))[0];
+    return id === void 0 ? null : { id, str: c[id] };
+  }
+  function authOk(d, rx, tx) {
+    if (!rx.i.md5 && !tx.i.md5) return true;
+    if (rx.i.md5 !== tx.i.md5) return false;
+    const k = sendKey(d.cfgs[tx.dev], tx.i.keyChain);
+    if (!k) return false;
+    const mine = rx.i.keyChain ? d.cfgs[rx.dev].keyChains?.[rx.i.keyChain] : void 0;
+    return !!mine && mine[k.id] === k.str;
+  }
+  function recomputeEigrp(d) {
+    d.eigrp = {};
+    d.eigrp = computeEigrp(d);
+  }
+  function eigrpExternalsFromTable(d, dev) {
+    return !!d.cfgs[dev]?.eigrp?.redistribute.static;
+  }
+  function computeEigrp(d) {
+    const out = {};
+    const devs = d.topo.switches.filter((s) => eigrpRunning(d, s.id)).map((s) => s.id);
+    for (const dev of devs) {
+      const cfg = d.cfgs[dev];
+      const e = cfg.eigrp;
+      const ifs = [];
+      for (const l3 of l3Ifs(d, dev)) {
+        if (!e.networks.some((n) => eigrpNetMatches(n, l3.ip))) continue;
+        const o = eigrpL3Opts(cfg, l3.name) ?? {};
+        const forAs = (x) => x && x.as === e.as ? x : void 0;
+        ifs.push({
+          name: l3.name,
+          ip: l3.ip,
+          prefix: l3.prefix,
+          bw: ifBandwidth(l3.name, o.bandwidth),
+          delay: ifDelay(l3.name, o.delay),
+          passive: isPassive(e, l3.name),
+          hello: forAs(o.eigrpHello)?.sec ?? 5,
+          hold: forAs(o.eigrpHold)?.sec ?? 15,
+          md5: !!forAs(o.eigrpAuthMd5),
+          keyChain: forAs(o.eigrpKeyChain)?.name ?? null,
+          l3
+        });
+      }
+      out[dev] = { as: e.as, rid: eigrpRid(d, dev), ifs, nbrs: [], topo: [], routes: [] };
+    }
+    const talkers = Object.entries(out).flatMap(([dev, s]) => s.ifs.filter((i) => i.l3.node && i.l3.kind !== "loop").map((i) => ({ dev, i })));
+    const nk4 = (t) => `${t.i.l3.node.dev}|${t.i.l3.node.vlan}`;
+    const domOf = /* @__PURE__ */ new Map();
+    for (const t of talkers) domOf.set(t, /* @__PURE__ */ new Set([...l2Domain(d, t.i.l3.node).nodes.keys()]));
+    const cfgOf = (dev) => d.cfgs[dev].eigrp;
+    const reject = (a, b) => {
+      if (a.i.passive || b.i.passive) return "passive";
+      if (cfgOf(a.dev).as !== cfgOf(b.dev).as) return "as";
+      if (cfgOf(a.dev).k.join() !== cfgOf(b.dev).k.join()) return "k";
+      if (!sameSubnet(a.i.ip, b.i.ip, a.i.prefix)) return "subnet";
+      if (!authOk(d, a, b)) return "auth";
+      return null;
+    };
+    const adj = [];
+    for (const a of talkers) {
+      for (const b of talkers) {
+        if (b.dev === a.dev || !domOf.get(a).has(nk4(b))) continue;
+        const reason = reject(a, b) ?? reject(b, a);
+        out[a.dev].nbrs.push({ peerDev: b.dev, ifname: a.i.name, peerIf: b.i.name, ip: b.i.ip, ok: !reason, ...reason ? { reason } : {}, hold: b.i.hold });
+        if (!reason) adj.push({ a, b });
+      }
+    }
+    const origins = /* @__PURE__ */ new Map();
+    for (const dev of devs) {
+      const e = cfgOf(dev);
+      const s = out[dev];
+      const m = /* @__PURE__ */ new Map();
+      const rid = s.rid ?? "0.0.0.0";
+      for (const i of s.ifs) {
+        const net = networkOf(i.ip, i.prefix);
+        if (!m.has(pkey(net, i.prefix)))
+          m.set(pkey(net, i.prefix), { net, prefix: i.prefix, bw: i.bw, delay: i.delay, hops: 0, external: false, origin: rid, kind: "connected", stubType: "connected", ifname: i.name });
+      }
+      const table = e.redistribute.static || e.redistribute.connected ? routeTable(d, dev) : [];
+      const own = new Set(s.ifs.map((i) => i.name));
+      for (const src of ["static", "connected"]) {
+        const rd = e.redistribute[src];
+        const seed2 = rd?.metric ?? e.defaultMetric;
+        if (!rd || !seed2) continue;
+        for (const r of table) {
+          if (src === "static" ? r.code !== "S" : r.code !== "C" || own.has(r.ifname)) continue;
+          const k = pkey(r.net, r.prefix);
+          if (!m.has(k)) m.set(k, { net: r.net, prefix: r.prefix, bw: seed2.bw, delay: seed2.delay, hops: 0, external: true, origin: rid, kind: "redistributed", stubType: src });
+        }
+      }
+      origins.set(dev, m);
+    }
+    const metricOf = (dev, v) => compositeMetric(v.bw, v.delay, cfgOf(dev).k);
+    const best = /* @__PURE__ */ new Map();
+    for (const dev of devs) {
+      const m = /* @__PURE__ */ new Map();
+      for (const [k, o] of origins.get(dev)) m.set(k, { vec: o, metric: metricOf(dev, o), ifs: /* @__PURE__ */ new Set(), local: true });
+      best.set(dev, m);
+    }
+    const advertise = (dev, i) => {
+      const e = cfgOf(dev);
+      const adv = /* @__PURE__ */ new Map();
+      const summaries = /* @__PURE__ */ new Map();
+      const rid = out[dev].rid ?? "0.0.0.0";
+      if (e.stub?.receiveOnly) return { adv, summaries };
+      const ifSum = (eigrpL3Opts(d.cfgs[dev], i.name)?.eigrpSummaries ?? []).filter((x) => x.as === e.as).map((x) => ({ net: x.net, prefix: maskToPrefix(x.mask) ?? 32 }));
+      const ifMajor = majorOf(networkOf(i.ip, i.prefix));
+      const addSum = (k, v) => {
+        const prev2 = summaries.get(k);
+        if (!prev2 || metricOf(dev, v) < metricOf(dev, prev2)) summaries.set(k, { ...v, external: false, origin: rid });
+      };
+      for (const [k, b] of best.get(dev)) {
+        const [net, p] = k.split("/");
+        const prefix = Number(p);
+        if (e.stub) {
+          if (!b.local) continue;
+          const o = origins.get(dev).get(k);
+          if (o.stubType === "connected" ? !e.stub.connected : !e.stub.static) continue;
+        }
+        if (!b.local && b.ifs.has(i.name)) continue;
+        const s = ifSum.find((x) => within(net, prefix, x.net, x.prefix));
+        if (s) {
+          if (s.prefix !== prefix) {
+            addSum(pkey(s.net, s.prefix), b.vec);
+            continue;
+          }
+        }
+        if (e.autoSummary && !b.vec.external && prefix > classfulPrefix(net)) {
+          const mj = majorOf(net);
+          if (mj.net !== ifMajor.net) {
+            addSum(pkey(mj.net, mj.prefix), b.vec);
+            continue;
+          }
+        }
+        adv.set(k, b.vec);
+      }
+      if (!e.stub || e.stub.summary) for (const [k, v] of summaries) adv.set(k, v);
+      return { adv, summaries };
+    };
+    const advs = /* @__PURE__ */ new Map();
+    const recv = (dev) => {
+      const m = /* @__PURE__ */ new Map();
+      for (const { a, b } of adj) {
+        if (a.dev !== dev) continue;
+        const adv = advs.get(`${b.dev}|${b.i.name}`);
+        if (!adv) continue;
+        for (const [k, v] of adv) {
+          const vec = { bw: Math.min(v.bw, a.i.bw), delay: v.delay + a.i.delay, hops: v.hops + 1, external: v.external, origin: v.origin };
+          const list = m.get(k) ?? [];
+          list.push({ a, b, vec, rd: metricOf(b.dev, v) });
+          m.set(k, list);
+        }
+      }
+      return m;
+    };
+    const sig = () => JSON.stringify([...best].map(([dev, m]) => [dev, [...m].map(([k, b]) => [k, b.metric, b.vec.external, [...b.ifs].sort()])]));
+    let prev = "";
+    for (let round = 0; round < 128; round++) {
+      advs.clear();
+      for (const dev of devs) for (const i of out[dev].ifs) advs.set(`${dev}|${i.name}`, advertise(dev, i).adv);
+      for (const dev of devs) {
+        const m = /* @__PURE__ */ new Map();
+        for (const [k, o] of origins.get(dev)) m.set(k, { vec: o, metric: metricOf(dev, o), ifs: /* @__PURE__ */ new Set(), local: true });
+        for (const [k, list] of recv(dev)) {
+          if (m.has(k)) continue;
+          const pool = list.some((x) => !x.vec.external) ? list.filter((x) => !x.vec.external) : list;
+          const min = Math.min(...pool.map((x) => metricOf(dev, x.vec)));
+          const win = pool.filter((x) => metricOf(dev, x.vec) === min);
+          m.set(k, { vec: win[0].vec, metric: min, ifs: new Set(win.map((x) => x.a.i.name)), local: false });
+        }
+        best.set(dev, m);
+      }
+      const now = sig();
+      if (now === prev) break;
+      prev = now;
+    }
+    for (const dev of devs) {
+      const e = cfgOf(dev);
+      const s = out[dev];
+      const got = recv(dev);
+      const entries = /* @__PURE__ */ new Map();
+      const pathOf = (x) => ({
+        nh: x.b.i.ip,
+        ifname: x.a.i.name,
+        peerDev: x.b.dev,
+        metric: metricOf(dev, x.vec),
+        rd: x.rd,
+        bw: x.vec.bw,
+        delay: x.vec.delay,
+        hops: x.vec.hops,
+        external: x.vec.external,
+        origin: x.vec.origin
+      });
+      const byMetric = (p, q) => p.metric - q.metric || ipInt(p.nh) - ipInt(q.nh);
+      for (const [k, b] of best.get(dev)) {
+        const [net, p] = k.split("/");
+        const all = (got.get(k) ?? []).map(pathOf).sort(byMetric);
+        const pool = all.some((x) => !x.external) ? all.filter((x) => !x.external) : all;
+        if (b.local) {
+          const o = origins.get(dev).get(k);
+          entries.set(k, { net, prefix: Number(p), external: o.external, fd: b.metric, successors: [], feasibleSuccessors: [], all, local: { kind: o.kind, ...o.ifname ? { ifname: o.ifname } : {}, bw: o.bw, delay: o.delay } });
+          continue;
+        }
+        const successors = pool.filter((x) => x.metric === b.metric).slice(0, e.maxPaths);
+        const fs = pool.filter((x) => !successors.includes(x) && x.rd < b.metric);
+        entries.set(k, { net, prefix: Number(p), external: b.vec.external, fd: b.metric, successors, feasibleSuccessors: fs, all });
+        const extra = e.variance > 1 ? fs.filter((x) => x.metric < e.variance * b.metric) : [];
+        const paths = [...successors, ...extra].slice(0, e.maxPaths).map((x) => ({ nh: x.nh, ifname: x.ifname, metric: x.metric }));
+        s.routes.push({ code: b.vec.external ? "D EX" : "D", net, prefix: Number(p), metric: b.metric, ad: b.vec.external ? EIGRP_EX_AD : EIGRP_AD, paths });
+      }
+      const sums = /* @__PURE__ */ new Map();
+      for (const i of s.ifs)
+        for (const [k, v] of advertise(dev, i).summaries) {
+          const pv = sums.get(k);
+          if (!pv || metricOf(dev, v) < metricOf(dev, pv)) sums.set(k, v);
+        }
+      for (const [k, v] of sums) {
+        const [net, p] = k.split("/");
+        const metric = metricOf(dev, v);
+        const learned = entries.get(k);
+        entries.set(k, { net, prefix: Number(p), external: false, fd: metric, successors: [], feasibleSuccessors: [], all: learned?.all ?? [], local: { kind: "summary", bw: v.bw, delay: v.delay } });
+        s.routes = s.routes.filter((r) => pkey(r.net, r.prefix) !== k);
+        s.routes.push({ code: "D", net, prefix: Number(p), metric, ad: EIGRP_SUMMARY_AD, paths: [] });
+      }
+      s.topo = [...entries.values()].sort((x, y) => ipInt(x.net) - ipInt(y.net) || x.prefix - y.prefix);
+      s.routes.sort((x, y) => ipInt(x.net) - ipInt(y.net) || x.prefix - y.prefix);
+    }
+    return out;
+  }
+  function eigrpTag(d, dev, as) {
+    return d.topo.devices[dev].router ? `EIGRP-IPv4 ${as}` : `IP-EIGRP(0) ${as}`;
+  }
+  var kLine = (k) => `K1=${k[0]}, K2=${k[1]}, K3=${k[2]}, K4=${k[3]}, K5=${k[4]}`;
+  var isRouterDev = (d, dev) => !!d.topo.devices[dev].router;
+  function showEigrpNeighbors(d, dev, detail) {
+    const s = d.eigrp[dev];
+    if (!s) return [];
+    const o = [isRouterDev(d, dev) ? `EIGRP-IPv4 Neighbors for AS(${s.as})` : `IP-EIGRP neighbors for process ${s.as}`];
+    o.push("H   Address                 Interface              Hold Uptime   SRTT   RTO  Q  Seq", "                                                   (sec)         (ms)       Cnt Num");
+    s.nbrs.filter((n) => n.ok).forEach((n, h) => {
+      o.push(pad(h, 4) + pad(n.ip, 24) + pad(shortIf(n.ifname), 23) + padL(Math.max(1, n.hold - 2), 4) + " 00:12:34    1   100  0  " + (h + 3));
+      if (!detail) return;
+      const peer = d.cfgs[n.peerDev]?.eigrp;
+      const pfx = d.eigrp[n.peerDev] ? s.topo.filter((t) => t.successors.some((x) => x.peerDev === n.peerDev) || t.all.some((x) => x.peerDev === n.peerDev)).length : 0;
+      o.push("   Version 11.0/2.0, Retrans: 0, Retries: 0, Prefixes: " + pfx);
+      if (peer?.stub) {
+        const st = peer.stub;
+        const kinds = st.receiveOnly ? "RECEIVE-ONLY" : [st.connected ? "CONNECTED" : "", st.static ? "STATIC" : "", st.summary ? "SUMMARY" : ""].filter(Boolean).join(" ");
+        o.push(`   Stub Peer Advertising (${kinds} ) Routes`, "   Suppressing queries");
+      }
+    });
+    return o;
+  }
+  function showEigrpInterfaces(d, dev, detail) {
+    const s = d.eigrp[dev];
+    if (!s) return [];
+    const o = [
+      isRouterDev(d, dev) ? `EIGRP-IPv4 Interfaces for AS(${s.as})` : `IP-EIGRP interfaces for process ${s.as}`,
+      "",
+      "                              Xmit Queue   PeerQ        Mean   Pacing Time   Multicast    Pending",
+      "Interface              Peers  Un/Reliable  Un/Reliable  SRTT   Un/Reliable   Flow Timer   Routes"
+    ];
+    for (const i of s.ifs) {
+      if (i.passive) continue;
+      const peers = s.nbrs.filter((n) => n.ok && n.ifname === i.name).length;
+      o.push(pad(shortIf(i.name), 23) + padL(peers, 5) + "        0/0       0/0           1       0/0           50           0");
+      if (detail) {
+        o.push(`  Hello-interval is ${i.hello}, Hold-time is ${i.hold}`, "  Split-horizon is enabled", "  Next xmit serial <none>");
+        o.push(i.md5 ? `  Authentication mode is md5,  key-chain is "${i.keyChain ?? ""}"` : "  Authentication mode is not set");
+      }
+    }
+    return o;
+  }
+  var sumHead = (d, dev, s) => isRouterDev(d, dev) ? `EIGRP-IPv4 Topology Table for AS(${s.as})/ID(${s.rid ?? "0.0.0.0"})` : `IP-EIGRP Topology Table for AS(${s.as})/ID(${s.rid ?? "0.0.0.0"})`;
+  function showEigrpTopology(d, dev, allLinks) {
+    const s = d.eigrp[dev];
+    if (!s) return [];
+    const o = [sumHead(d, dev, s), "", "Codes: P - Passive, A - Active, U - Update, Q - Query, R - Reply,", "       r - reply Status, s - sia Status ", ""];
+    for (const t of s.topo) {
+      const n = t.local ? 1 : t.successors.length;
+      o.push(`P ${t.net}/${t.prefix}, ${n} successors, FD is ${t.fd}`);
+      if (t.local?.kind === "connected") o.push(`        via Connected, ${t.local.ifname}`);
+      else if (t.local?.kind === "redistributed") o.push(`        via Rstatic (${t.fd}/0)`);
+      else if (t.local?.kind === "summary") o.push(`        via Summary (${t.fd}/0), Null0`);
+      const shown = allLinks ? t.all : [...t.successors, ...t.feasibleSuccessors];
+      for (const p of shown) o.push(`        via ${p.nh} (${p.metric}/${p.rd}), ${p.ifname}`);
+    }
+    return o;
+  }
+  function showEigrpTopologyEntry(d, dev, net, mask) {
+    const s = d.eigrp[dev];
+    if (!s) return [];
+    const prefix = maskToPrefix(mask) ?? 32;
+    const t = s.topo.find((x) => x.net === net && x.prefix === prefix);
+    if (!t) return ["% Route not in topology table"];
+    const o = [
+      `${isRouterDev(d, dev) ? "EIGRP-IPv4" : "IP-EIGRP"} Topology Entry for AS(${s.as})/ID(${s.rid ?? "0.0.0.0"}) for ${t.net}/${t.prefix}`,
+      `  State is Passive, Query origin flag is 1, ${t.local ? 1 : t.successors.length} Successor(s), FD is ${t.fd}`,
+      "  Descriptor Blocks:"
+    ];
+    const vec = (bw, delay, hops, ext, origin, rd, metric) => [
+      `      Composite metric is (${metric}/${rd}), route is ${ext ? "External" : "Internal"}`,
+      "      Vector metric:",
+      `        Minimum bandwidth is ${bw} Kbit`,
+      `        Total delay is ${delay * 10} microseconds`,
+      "        Reliability is 255/255",
+      "        Load is 1/255",
+      "        Minimum MTU is 1500",
+      `        Hop count is ${hops}`,
+      `        Originating router is ${origin}`
+    ];
+    if (t.local) {
+      o.push(`  ${t.local.kind === "summary" ? "0.0.0.0 (Null0)" : t.local.kind === "connected" ? `0.0.0.0 (${t.local.ifname})` : "0.0.0.0"}, from ${t.local.kind === "summary" ? "0.0.0.0" : "Connected"}, Send flag is 0x0`);
+      o.push(...vec(t.local.bw, t.local.delay, 0, t.external, s.rid ?? "0.0.0.0", 0, t.fd));
+    }
+    for (const p of [...t.successors, ...t.feasibleSuccessors]) {
+      o.push(`  ${p.nh} (${p.ifname}), from ${p.nh}, Send flag is 0x0`);
+      o.push(...vec(p.bw, p.delay, p.hops, p.external, p.origin, p.rd, p.metric));
+    }
+    return o;
+  }
+  function eigrpProtocolLines(d, dev) {
+    const s = d.eigrp[dev];
+    const e = d.cfgs[dev]?.eigrp;
+    if (!s || !e) return [];
+    const o = [
+      `Routing Protocol is "eigrp ${e.as}"`,
+      "  Outgoing update filter list for all interfaces is not set",
+      "  Incoming update filter list for all interfaces is not set",
+      "  Default networks flagged in outgoing updates",
+      "  Default networks accepted from incoming updates"
+    ];
+    if (e.redistribute.static || e.redistribute.connected)
+      o.push(`  Redistributing: ${["connected", "static"].filter((x) => e.redistribute[x]).join(", ")}`);
+    o.push(`  ${isRouterDev(d, dev) ? "EIGRP-IPv4" : "IP-EIGRP"} Protocol for AS(${e.as})`);
+    o.push(`    EIGRP metric weight ${kLine(e.k)}`);
+    o.push(`    Router-ID: ${s.rid ?? "0.0.0.0"}`);
+    if (e.stub) {
+      const st = e.stub;
+      o.push(`    Stub, ${st.receiveOnly ? "receive-only" : [st.connected ? "connected" : "", st.static ? "static" : "", st.summary ? "summary" : ""].filter(Boolean).join(", ")}`);
+    }
+    o.push("    Topology : 0 (base) ");
+    o.push("      Active Timer: 3 min");
+    o.push(`      Distance: internal ${EIGRP_AD} external ${EIGRP_EX_AD}`);
+    o.push(`      Maximum path: ${e.maxPaths}`);
+    o.push("      Maximum hopcount 100");
+    o.push(`      Maximum metric variance ${e.variance}`);
+    o.push("");
+    o.push(`  Automatic network summarization is ${e.autoSummary ? "" : "not "}in effect`);
+    if (e.autoSummary)
+      for (const r of s.routes.filter((x) => !x.paths.length && classfulPrefix(x.net) === x.prefix)) o.push(`    ${r.net}/${r.prefix} for ${s.ifs.filter((i) => majorOf(networkOf(i.ip, i.prefix)).net !== r.net).map((i) => shortIf(i.name)).join(", ")}`);
+    o.push("  Routing for Networks:");
+    for (const n of e.networks) o.push(`    ${n.addr}${n.wildcard !== null ? "/" + (32 - popcount(ipInt(n.wildcard))) : ""}`);
+    const passive = s.ifs.filter((i) => i.passive).map((i) => i.name);
+    if (passive.length) {
+      o.push("  Passive Interface(s):");
+      for (const p of passive) o.push(`    ${p}`);
+    }
+    o.push("  Routing Information Sources:", "    Gateway         Distance      Last Update");
+    for (const ip2 of [...new Set(s.nbrs.filter((n) => n.ok).map((n) => n.ip))].sort((a, b) => ipInt(a) - ipInt(b))) o.push(`    ${pad(ip2, 16)}${padL(EIGRP_AD, 8)}      00:12:34`);
+    o.push(`  Distance: internal ${EIGRP_AD} external ${EIGRP_EX_AD}`, "");
+    return o;
+  }
+  function popcount(n) {
+    let c = 0;
+    for (let x = n >>> 0; x; x >>>= 1) c += x & 1;
+    return c;
+  }
+  function eigrpConfigLines(c) {
+    const e = c.eigrp;
+    if (!e) return [];
+    const m = (x) => `${x.bw} ${x.delay} ${x.rel} ${x.load} ${x.mtu}`;
+    const o = ["router eigrp " + e.as];
+    if (e.k.join() !== DEFAULT_K.join()) o.push(` metric weights 0 ${e.k.join(" ")}`);
+    if (e.variance !== 1) o.push(" variance " + e.variance);
+    for (const src of ["connected", "static"]) {
+      const r = e.redistribute[src];
+      if (r) o.push(` redistribute ${src}${r.metric ? " metric " + m(r.metric) : ""}`);
+    }
+    if (e.passiveDefault) o.push(" passive-interface default");
+    for (const p of e.passive) o.push(`${e.passiveDefault ? " no" : ""} passive-interface ${p}`);
+    for (const n of e.networks) o.push(` network ${n.addr}${n.wildcard !== null ? " " + n.wildcard : ""}`);
+    if (e.defaultMetric) o.push(" default-metric " + m(e.defaultMetric));
+    if (e.maxPaths !== 4) o.push(" maximum-paths " + e.maxPaths);
+    o.push(e.autoSummary ? " auto-summary" : " no auto-summary");
+    if (e.routerId) o.push(" eigrp router-id " + e.routerId);
+    if (e.stub) {
+      const st = e.stub;
+      o.push(" eigrp stub" + (st.receiveOnly ? " receive-only" : [st.connected ? " connected" : "", st.summary ? " summary" : "", st.static ? " static" : ""].join("")));
+    }
+    o.push("!");
+    return o;
+  }
+  function keyChainLines(c) {
+    const o = [];
+    for (const name of Object.keys(c.keyChains ?? {}).sort()) {
+      o.push("key chain " + name);
+      const ch = c.keyChains[name];
+      for (const id of Object.keys(ch).sort((a, b) => Number(a) - Number(b))) {
+        o.push(" key " + id);
+        if (ch[id] !== null) o.push("  key-string " + ch[id]);
+      }
+      o.push("!");
+    }
+    return o;
+  }
+  function eigrpIfLines(l) {
+    const o = [];
+    if (!l) return o;
+    if (l.eigrpAuthMd5) o.push(` ip authentication mode eigrp ${l.eigrpAuthMd5.as} md5`);
+    if (l.eigrpKeyChain) o.push(` ip authentication key-chain eigrp ${l.eigrpKeyChain.as} ${l.eigrpKeyChain.name}`);
+    if (l.eigrpHello) o.push(` ip hello-interval eigrp ${l.eigrpHello.as} ${l.eigrpHello.sec}`);
+    if (l.eigrpHold) o.push(` ip hold-time eigrp ${l.eigrpHold.as} ${l.eigrpHold.sec}`);
+    for (const s of l.eigrpSummaries ?? []) o.push(` ip summary-address eigrp ${s.as} ${s.net} ${s.mask}`);
+    return o;
+  }
+
   // src/sim/ospf.ts
   function computeState(topo, cfgs, pcs, errdis, hw) {
     const d = derive(topo, cfgs, pcs, errdis, hw);
     d.ospf = computeOspf(d);
+    d.eigrp = computeEigrp(d);
     d.dups = duplicateIps(d);
     return d;
   }
@@ -1974,17 +2460,17 @@ var AgLabSim = (() => {
       const wc = ipToInt(n.wildcard);
       const care = ~wc >>> 0;
       if ((a & care) >>> 0 !== (ipToInt(n.addr) & care) >>> 0) continue;
-      const bits = popcount(wc);
+      const bits = popcount2(wc);
       if (!best || bits < best.bits) best = { bits, area: n.area };
     }
     return best?.area ?? null;
   }
-  function popcount(n) {
+  function popcount2(n) {
     let c = 0;
     for (let x = n >>> 0; x; x >>>= 1) c += x & 1;
     return c;
   }
-  function isPassive(o, name) {
+  function isPassive2(o, name) {
     return o.passiveDefault ? !o.passive.includes(name) : o.passive.includes(name);
   }
   var isStub = (o, area) => !!o.stubs[String(area)];
@@ -2016,7 +2502,7 @@ var AgLabSim = (() => {
           dead: c.l3.ospfDead ?? hello * 4,
           prio: c.l3.ospfPrio ?? 1,
           net: isLoop && net === "broadcast" ? "loopback" : net,
-          passive: isPassive(o, c.name),
+          passive: isPassive2(o, c.name),
           mtu: c.l3.mtu ?? 1500,
           up: !!l3 && !!rid,
           role: "DOWN",
@@ -2148,7 +2634,7 @@ var AgLabSim = (() => {
       }
       return dist2;
     };
-    const pkey = (net, prefix) => `${net}/${prefix}`;
+    const pkey2 = (net, prefix) => `${net}/${prefix}`;
     const asbrKey = (dev) => `asbr:${dev}`;
     const externals = /* @__PURE__ */ new Map();
     for (const dev of Object.keys(out)) {
@@ -2163,7 +2649,7 @@ var AgLabSim = (() => {
         if (!rd) continue;
         for (const e of table) {
           if (e.prefix === 0 || (src === "static" ? e.code !== "S" : e.code !== "C" || ospfIfs.has(e.ifname))) continue;
-          if (!rd.subnets && e.prefix !== classfulPrefix(e.net)) continue;
+          if (!rd.subnets && e.prefix !== classfulPrefix2(e.net)) continue;
           if (!list.some((x) => x.net === e.net && x.prefix === e.prefix)) list.push({ net: e.net, prefix: e.prefix, metric: rd.metric ?? 20 });
         }
       }
@@ -2185,7 +2671,7 @@ var AgLabSim = (() => {
             const host = i.net === "loopback";
             const net = host ? i.ip : networkOf(i.ip, i.prefix);
             const prefix = host ? 32 : i.prefix;
-            addReach(pm, pkey(net, prefix), { cost: r.cost + i.cost, paths: r.paths });
+            addReach(pm, pkey2(net, prefix), { cost: r.cost + i.cost, paths: r.paths });
           }
           if (out[x].asbr) addReach(pm, asbrKey(x), { cost: r.cost, paths: r.paths });
         }
@@ -2196,11 +2682,11 @@ var AgLabSim = (() => {
     const summariesInto = (abr, area, backboneInter) => {
       const m = /* @__PURE__ */ new Map();
       const stub = stubCfg(abr, area);
-      if (stub) m.set(pkey("0.0.0.0", 0), 1);
+      if (stub) m.set(pkey2("0.0.0.0", 0), 1);
       if (stub?.noSummary) return m;
       const put = (k, c) => {
         if (stub && k.startsWith("asbr:")) return;
-        if (k === pkey("0.0.0.0", 0)) return;
+        if (k === pkey2("0.0.0.0", 0)) return;
         if (!m.has(k) || m.get(k) > c) m.set(k, c);
       };
       for (const y of out[abr].areas) {
@@ -2239,7 +2725,7 @@ var AgLabSim = (() => {
     for (const dev of Object.keys(out)) {
       const s = out[dev];
       if (!s.rid) continue;
-      const connected = new Set(l3Ifs(d, dev).map((i) => pkey(networkOf(i.ip, i.prefix), i.prefix)));
+      const connected = new Set(l3Ifs(d, dev).map((i) => pkey2(networkOf(i.ip, i.prefix), i.prefix)));
       const best = /* @__PURE__ */ new Map();
       for (const area of s.areas) {
         for (const [k, r] of intra[dev][area]) {
@@ -2269,7 +2755,7 @@ var AgLabSim = (() => {
           if (!toAsbr) toAsbr = inter.get(asbrKey(asbr));
           if (!toAsbr || !toAsbr.paths.length) continue;
           for (const e of list) {
-            const k = pkey(e.net, e.prefix);
+            const k = pkey2(e.net, e.prefix);
             const prev = ext.get(k);
             if (!prev || e.metric < prev.metric || e.metric === prev.metric && toAsbr.cost < prev.fwd)
               ext.set(k, { metric: e.metric, fwd: toAsbr.cost, paths: [...toAsbr.paths] });
@@ -2312,7 +2798,7 @@ var AgLabSim = (() => {
     if (!prev || prev.code !== code || r.cost < prev.r.cost) best.set(k, { code, r: { cost: r.cost, paths: [...r.paths] } });
     else if (r.cost === prev.r.cost) prev.r.paths = mergePaths(prev.r.paths, r.paths);
   }
-  function classfulPrefix(net) {
+  function classfulPrefix2(net) {
     const first = Number(net.split(".")[0]);
     return first < 128 ? 8 : first < 192 ? 16 : first < 224 ? 24 : 32;
   }
@@ -2377,6 +2863,10 @@ var AgLabSim = (() => {
       (dev) => ospfExternalsFromTable(d, dev) && d.cfgs[dev].routes.some((r) => r.track !== void 0 && !objects[dev]?.[String(r.track)]?.up)
     );
     if (ospfStale) recomputeOspf(d);
+    const eigrpStale = devs.some(
+      (dev) => eigrpExternalsFromTable(d, dev) && d.cfgs[dev].routes.some((r) => r.track !== void 0 && !objects[dev]?.[String(r.track)]?.up)
+    );
+    if (eigrpStale) recomputeEigrp(d);
     for (const dev of devs)
       for (const [n, r] of Object.entries(sla[dev])) {
         if (!r.scheduled || r.ok) continue;
@@ -2821,6 +3311,26 @@ var AgLabSim = (() => {
     static: "Static routes",
     connected: "Connected networks",
     Loopback: "Loopback interface",
+    // EIGRP
+    eigrp: "Enhanced Interior Gateway Routing Protocol (EIGRP)",
+    metric: "Modify metrics and parameters for advertisement",
+    weights: "Modify metric coefficients",
+    variance: "Control load balancing variance",
+    "maximum-paths": "Forward packets over multiple paths",
+    "auto-summary": "Enable automatic network number summarization",
+    "default-metric": "Set metric of redistributed routes",
+    redistribute: "Redistribute information from another routing protocol",
+    "summary-address": "Perform address summarization",
+    "hold-time": "Configures IP-EIGRP hold time",
+    authentication: "authentication subcommands",
+    "key-chain": "key-chain",
+    key: "Key management",
+    chain: "Key-chain management",
+    "key-string": "Set key string",
+    md5: "Keyed message digest",
+    "receive-only": "Set receive only neighbor",
+    topology: "IP-EIGRP Topology Table",
+    "all-links": "Show all links in topology table",
     // STP protection / errdisable
     bpduguard: "Don't accept BPDUs on this interface",
     errdisable: "Error disable",
@@ -3240,6 +3750,8 @@ var AgLabSim = (() => {
     if (o?.ospfPrio !== void 0) out.push(" ip ospf priority " + o.ospfPrio);
     if (o?.ospfArea) out.push(` ip ospf ${o.ospfArea.pid} area ${o.ospfArea.area}`);
     if (o?.ospfCost) out.push(" ip ospf cost " + o.ospfCost);
+    out.push(...eigrpIfLines(o));
+    if (o?.delay !== void 0) out.push(" delay " + o.delay);
     out.push(...fhrpLines(o));
     return out;
   }
@@ -3304,7 +3816,7 @@ var AgLabSim = (() => {
     o.push("!", "version 15.4", "service timestamps debug datetime msec", "service timestamps log datetime msec", "no service password-encryption", "!");
     o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", "no aaa new-model");
     if (!c.ipRouting) o.push("no ip routing");
-    o.push("!", ...dhcpLines(c), "!", ...trackLines(c));
+    o.push("!", ...dhcpLines(c), "!", ...trackLines(c), ...keyChainLines(c));
     for (const n of Object.keys(c.loopbacks ?? {}).map(Number).sort((a, b) => a - b)) {
       const l = c.loopbacks[String(n)];
       o.push("interface Loopback" + n);
@@ -3329,6 +3841,7 @@ var AgLabSim = (() => {
         o.push("!");
       }
     }
+    o.push(...eigrpConfigLines(c));
     if (c.ospf) o.push(...ospfLines(c));
     o.push("ip forward-protocol nd", "no ip http server", "!");
     o.push(...natConfigLines(c));
@@ -3377,7 +3890,7 @@ var AgLabSim = (() => {
     o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", "no aaa new-model");
     o.push("system mtu routing 1500");
     if (c.ipRouting) o.push("ip routing");
-    o.push("!", ...dhcpLines(c), "!", ...trackLines(c), "vtp mode transparent", "!");
+    o.push("!", ...dhcpLines(c), "!", ...trackLines(c), ...keyChainLines(c), "vtp mode transparent", "!");
     o.push("spanning-tree mode " + c.stpMode, "spanning-tree extend system-id");
     const byPrio = /* @__PURE__ */ new Map();
     for (const [v, p] of Object.entries(c.stpPriority)) byPrio.set(p, [...byPrio.get(p) ?? [], Number(v)]);
@@ -3430,6 +3943,7 @@ var AgLabSim = (() => {
       if (s.shutdown) o.push(" shutdown");
       o.push("!");
     }
+    o.push(...eigrpConfigLines(c));
     if (c.ospf) o.push(...ospfLines(c));
     if (c.defaultGateway) o.push("ip default-gateway " + c.defaultGateway);
     o.push("ip forward-protocol nd", "no ip http server", "!");
@@ -3623,11 +4137,14 @@ var AgLabSim = (() => {
       const head = `${codeCol.padEnd(width)}${e.net}/${e.prefix}`;
       if (e.code === "S") return [`${head} [${e.ad ?? 1}/0] via ${e.nh}`];
       if (e.code === "C" || e.code === "L") return [`${head} is directly connected, ${e.ifname}`];
+      if (e.code.startsWith("D") && e.ifname === "Null0") return [`${head} is a summary, 00:12:34, Null0`];
       const paths = e.paths ?? [{ nh: e.nh, ifname: e.ifname }];
       const pad0 = " ".repeat(head.length + 1);
-      return paths.map((p, i) => `${i === 0 ? head + " " : pad0}[110/${e.metric}] via ${p.nh}, 00:12:34, ${p.ifname}`);
+      const ad = e.code.startsWith("D") ? e.ad : 110;
+      return paths.map((p, i) => `${i === 0 ? head + " " : pad0}[${ad}/${p.metric ?? e.metric}] via ${p.nh}, 00:12:34, ${p.ifname}`);
     };
-    if (def && keep(def)) o.push(...line(def, def.code === "S" ? "S*" : def.code === "O E2" ? "O*E2" : def.code === "O IA" ? "O*IA" : def.code + "*", 6));
+    const starred = { S: "S*", "O E2": "O*E2", "O IA": "O*IA", "D EX": "D*EX" };
+    if (def && keep(def)) o.push(...line(def, starred[def.code] ?? def.code + "*", 6));
     const sorted = all.filter((e) => e !== def && keep(e)).sort((a, b) => a.net.localeCompare(b.net, void 0, { numeric: true }) || a.prefix - b.prefix);
     const majors = /* @__PURE__ */ new Map();
     for (const e of sorted) {
@@ -3638,6 +4155,10 @@ var AgLabSim = (() => {
     }
     for (const [cls, list] of majors) {
       const masks = new Set(list.map((e) => e.prefix)).size;
+      if (list.length === 1 && `${list[0].net}/${list[0].prefix}` === cls) {
+        o.push(...line(list[0], list[0].code));
+        continue;
+      }
       o.push(masks > 1 ? `      ${cls} is variably subnetted, ${list.length} subnets, ${masks} masks` : `      ${cls.split("/")[0]}/${list[0].prefix} is subnetted, ${list.length} subnets`);
       for (const e of list) o.push(...line(e, e.code));
     }
@@ -3665,6 +4186,26 @@ var AgLabSim = (() => {
     }
     if (e.code === "S") {
       o.push(`  Known via "static", distance ${e.ad ?? 1}, metric 0` + (e.prefix === 0 ? ", candidate default path" : ""), "  Routing Descriptor Blocks:", `  * ${e.nh}`, "      Route metric is 0, traffic share count is 1");
+      return o;
+    }
+    if (e.code.startsWith("D")) {
+      const as = rt.running[dev].eigrp?.as ?? 1;
+      o.push(`  Known via "eigrp ${as}", distance ${e.ad}, metric ${e.metric}, type ${e.code === "D EX" ? "external" : "internal"}${e.prefix === 0 ? ", candidate default path" : ""}`);
+      o.push(`  Redistributing via eigrp ${as}`);
+      if (e.ifname === "Null0") {
+        o.push("  Routing Descriptor Blocks:", "  * directly connected, via Null0", `      Route metric is ${e.metric}, traffic share count is 1`);
+        return o;
+      }
+      const t = rt.derived.eigrp[dev]?.topo.find((x) => x.net === e.net && x.prefix === e.prefix);
+      o.push(`  Last update from ${e.nh} on ${e.ifname}, 00:12:34 ago`, "  Routing Descriptor Blocks:");
+      const paths = e.paths ?? [];
+      const worst = Math.max(...paths.map((p) => p.metric ?? e.metric));
+      paths.forEach((p, i) => {
+        const m = p.metric ?? e.metric;
+        const v = t?.all.find((x) => x.nh === p.nh && x.ifname === p.ifname);
+        o.push(`  ${i === 0 ? "*" : " "} ${p.nh}, from ${p.nh}, 00:12:34 ago, via ${p.ifname}`, `      Route metric is ${m}, traffic share count is ${Math.max(1, Math.round(worst / m))}`);
+        if (v) o.push(`      Total delay is ${v.delay * 10} microseconds, minimum bandwidth is ${v.bw} Kbit`, "      Reliability 255/255, minimum MTU 1500 bytes", `      Loading 1/255, Hops ${v.hops}`);
+      });
       return o;
     }
     const type = e.code === "O" ? "intra area" : e.code === "O IA" ? "inter area" : "extern 2, forward metric 1";
@@ -3766,11 +4307,16 @@ var AgLabSim = (() => {
     return o;
   }
   function showIpProtocols(rt, dev) {
+    const head = ["*** IP Routing is NSF aware ***", ""];
+    const eigrp = eigrpProtocolLines(rt.derived, dev);
+    return [...head, ...eigrp, ...ospfProtocolLines(rt, dev)];
+  }
+  function ospfProtocolLines(rt, dev) {
     const s = ospfOf(rt, dev);
     const c = rt.running[dev];
-    if (!s || !c.ospf) return ["*** IP Routing is NSF aware ***", ""];
+    if (!s || !c.ospf) return [];
     const r = c.ospf;
-    const o = ["*** IP Routing is NSF aware ***", "", `Routing Protocol is "ospf ${s.pid}"`, "  Outgoing update filter list for all interfaces is not set", "  Incoming update filter list for all interfaces is not set", `  Router ID ${s.rid ?? "0.0.0.0"}`];
+    const o = [`Routing Protocol is "ospf ${s.pid}"`, "  Outgoing update filter list for all interfaces is not set", "  Incoming update filter list for all interfaces is not set", `  Router ID ${s.rid ?? "0.0.0.0"}`];
     if (s.abr) o.push("  It is an area border router");
     if (s.asbr) o.push("  It is an autonomous system boundary router");
     o.push(`  Number of areas in this router is ${s.areas.length}. ${s.areas.filter((a) => !r.stubs[String(a)]).length} normal ${s.areas.filter((a) => r.stubs[String(a)]).length} stub 0 nssa`, "  Maximum path: 4", "  Routing for Networks:");
@@ -4393,6 +4939,17 @@ var AgLabSim = (() => {
       { p: "show ip interface brief", run: (x) => showIpIntBrief(x.rt, x.dev) },
       { p: "show ip route", run: (x) => showIpRoute(x.rt, x.dev) },
       { p: "show ip route ospf", run: (x) => showIpRoute(x.rt, x.dev, "O") },
+      { p: "show ip route eigrp", run: (x) => showIpRoute(x.rt, x.dev, "D") },
+      { p: "show ip eigrp neighbors", run: (x) => showEigrpNeighbors(x.rt.derived, x.dev, false) },
+      { p: "show ip eigrp neighbors detail", run: (x) => showEigrpNeighbors(x.rt.derived, x.dev, true) },
+      { p: "show ip eigrp interfaces", run: (x) => showEigrpInterfaces(x.rt.derived, x.dev, false) },
+      { p: "show ip eigrp interfaces detail", run: (x) => showEigrpInterfaces(x.rt.derived, x.dev, true) },
+      { p: "show ip eigrp topology", run: (x) => showEigrpTopology(x.rt.derived, x.dev, false) },
+      { p: "show ip eigrp topology all-links", run: (x) => showEigrpTopology(x.rt.derived, x.dev, true) },
+      {
+        p: "show ip eigrp topology <A.B.C.D:Network to display information about> <A.B.C.D:Network mask>",
+        run: (x, a) => showEigrpTopologyEntry(x.rt.derived, x.dev, a[4], a[5])
+      },
       { p: "show ip route <A.B.C.D:Network to display information about or host>", run: (x, a) => showIpRouteFor(x.rt, x.dev, a[3]) },
       { p: "show ip route static", run: (x) => showIpRoute(x.rt, x.dev, "S") },
       { p: "show ip route connected", run: (x) => showIpRoute(x.rt, x.dev, "C") },
@@ -4659,9 +5216,26 @@ var AgLabSim = (() => {
           run: (x) => {
             x.cfg.ipRouting = false;
             x.cfg.ospf = null;
+            x.cfg.eigrp = null;
           }
         },
         { p: "router ospf <1-65535:Process ID>", run: (x, a) => x.enterOspf(Number(a[2])) },
+        { p: "router eigrp <1-65535:Autonomous System>", run: (x, a) => x.enterEigrp(Number(a[2])) },
+        {
+          p: "no router eigrp <1-65535:Autonomous System>",
+          run: (x, a) => {
+            if (x.cfg.eigrp?.as === Number(a[3])) x.cfg.eigrp = null;
+          }
+        },
+        { p: "key chain <WORD:Key-chain name>", run: (x, a) => x.enterKeyChain(a[2]) },
+        {
+          p: "no key chain <WORD:Key-chain name>",
+          run: (x, a) => {
+            if (!x.cfg.keyChains?.[a[3]]) return [`% Key-chain ${a[3]} is not defined`];
+            delete x.cfg.keyChains[a[3]];
+            if (!Object.keys(x.cfg.keyChains).length) delete x.cfg.keyChains;
+          }
+        },
         {
           p: "no router ospf <1-65535:Process ID>",
           run: (x, a) => {
@@ -4794,6 +5368,7 @@ var AgLabSim = (() => {
     { p: "no ip mtu", run: (x) => x.eachL3((o) => void delete o.mtu) },
     { p: "bandwidth <1-10000000:Bandwidth in kilobits>", run: (x, a) => x.eachL3((o) => void (o.bandwidth = Number(a[1]))) },
     { p: "no bandwidth", run: (x) => x.eachL3((o) => void delete o.bandwidth) },
+    ...eigrpIfPatterns(),
     // L5-b: DHCP relay
     {
       p: "ip helper-address <A.B.C.D:IP destination address>",
@@ -4884,6 +5459,105 @@ var AgLabSim = (() => {
       }
     }
   ];
+  var EM = "<1-4294967295:Bandwidth metric in Kbits per second> <0-4294967295:EIGRP delay metric, in 10 microsecond units> <0-255:EIGRP reliability metric where 255 is 100% reliable> <1-255:EIGRP Effective bandwidth metric (Loading) where 255 is 100% loaded> <1-65535:EIGRP MTU of the path>";
+  var seed = (a, i) => ({ bw: Number(a[i]), delay: Number(a[i + 1]), rel: Number(a[i + 2]), load: Number(a[i + 3]), mtu: Number(a[i + 4]) });
+  var EIGRP_IFS = ["FastEthernet", "GigabitEthernet", "Vlan", "Loopback"];
+  function stubPatterns() {
+    const opts = ["connected", "summary", "static"];
+    const perms = [[]];
+    const grow = (cur) => {
+      for (const o of opts) {
+        if (cur.includes(o)) continue;
+        const n = [...cur, o];
+        perms.push(n);
+        grow(n);
+      }
+    };
+    grow([]);
+    return [
+      ...perms.map((k) => ({ p: ["eigrp stub", ...k].join(" "), run: (x) => x.eigrpStub(k) })),
+      { p: "eigrp stub receive-only", run: (x) => x.eigrpStub(["receive-only"]) },
+      { p: "no eigrp stub", run: (x) => void (x.eigrp.stub = null) }
+    ];
+  }
+  var eigrpPatterns = [
+    ...commonSub,
+    { p: "network <A.B.C.D:Network number>", run: (x, a) => x.eigrpNetwork(a[1], null, true) },
+    { p: "network <A.B.C.D:Network number> <A.B.C.D:EIGRP wild card bits>", run: (x, a) => x.eigrpNetwork(a[1], a[2], true) },
+    { p: "no network <A.B.C.D:Network number>", run: (x, a) => x.eigrpNetwork(a[2], null, false) },
+    { p: "no network <A.B.C.D:Network number> <A.B.C.D:EIGRP wild card bits>", run: (x, a) => x.eigrpNetwork(a[2], a[3], false) },
+    { p: "eigrp router-id <A.B.C.D:EIGRP Router-ID in IP address format>", run: (x, a) => void (x.eigrp.routerId = a[2]) },
+    { p: "no eigrp router-id", run: (x) => void (x.eigrp.routerId = null) },
+    { p: "passive-interface default", run: (x) => void Object.assign(x.eigrp, { passiveDefault: true, passive: [] }) },
+    { p: "no passive-interface default", run: (x) => void Object.assign(x.eigrp, { passiveDefault: false, passive: [] }) },
+    { p: "passive-interface <if>", run: (x, a) => x.eigrpPassive(x.resolveName(a[1], a[2], 1), true), ifTypes: EIGRP_IFS },
+    { p: "no passive-interface <if>", run: (x, a) => x.eigrpPassive(x.resolveName(a[2], a[3], 2), false), ifTypes: EIGRP_IFS },
+    { p: "auto-summary", run: (x) => void (x.eigrp.autoSummary = true) },
+    { p: "no auto-summary", run: (x) => void (x.eigrp.autoSummary = false) },
+    {
+      p: "metric weights <0-8:Type Of Service (Only TOS 0 supported)> <0-255:K1> <0-255:K2> <0-255:K3> <0-255:K4> <0-255:K5>",
+      run: (x, a) => x.eigrpWeights(Number(a[2]), a.slice(3, 8).map(Number))
+    },
+    { p: "no metric weights", run: (x) => void (x.eigrp.k = [...DEFAULT_K]) },
+    { p: "variance <1-128:Metric variance multiplier>", run: (x, a) => void (x.eigrp.variance = Number(a[1])) },
+    { p: "no variance", run: (x) => void (x.eigrp.variance = 1) },
+    { p: "maximum-paths <1-16:Number of paths>", run: (x, a) => void (x.eigrp.maxPaths = Number(a[1])) },
+    { p: "no maximum-paths", run: (x) => void (x.eigrp.maxPaths = 4) },
+    ...stubPatterns(),
+    { p: "redistribute static", run: (x) => x.eigrpRedist("static") },
+    { p: `redistribute static metric ${EM}`, run: (x, a) => x.eigrpRedist("static", seed(a, 3)) },
+    { p: "no redistribute static", run: (x) => void delete x.eigrp.redistribute.static },
+    { p: "redistribute connected", run: (x) => x.eigrpRedist("connected") },
+    { p: `redistribute connected metric ${EM}`, run: (x, a) => x.eigrpRedist("connected", seed(a, 3)) },
+    { p: "no redistribute connected", run: (x) => void delete x.eigrp.redistribute.connected },
+    { p: `default-metric ${EM}`, run: (x, a) => void (x.eigrp.defaultMetric = seed(a, 1)) },
+    { p: "no default-metric", run: (x) => void (x.eigrp.defaultMetric = null) }
+  ];
+  var keyChainPatterns = [
+    ...commonSub,
+    { p: "key <0-2147483647:Key identifier>", run: (x, a) => x.enterKey(Number(a[1])) },
+    {
+      p: "no key <0-2147483647:Key identifier>",
+      run: (x, a) => void delete x.cfg.keyChains?.[x.keyChain]?.[String(Number(a[2]))]
+    }
+  ];
+  var keyChainKeyPatterns = [
+    ...commonSub,
+    { p: "key-string <LINE:The unencrypted (cleartext) user password>", run: (x, a) => x.setKeyString(a[1].trim()) },
+    { p: "no key-string", run: (x) => x.setKeyString(null) },
+    { p: "key <0-2147483647:Key identifier>", run: (x, a) => x.enterKey(Number(a[1])) }
+  ];
+  function eigrpIfPatterns() {
+    const AS = "<1-65535:Autonomous system number>";
+    const forAs = (as) => (v) => !!v && v.as === as;
+    return [
+      { p: "delay <1-16777215:Throughput delay (tens of microseconds)>", run: (x, a) => x.eachL3((o) => void (o.delay = Number(a[1]))) },
+      { p: "no delay", run: (x) => x.eachL3((o) => void delete o.delay) },
+      {
+        p: `ip summary-address eigrp ${AS} <A.B.C.D:IP address> <A.B.C.D:IP network mask>`,
+        run: (x, a) => x.eigrpSummary(Number(a[3]), a[4], a[5], true)
+      },
+      {
+        p: `no ip summary-address eigrp ${AS} <A.B.C.D:IP address> <A.B.C.D:IP network mask>`,
+        run: (x, a) => x.eigrpSummary(Number(a[4]), a[5], a[6], false)
+      },
+      { p: `ip hello-interval eigrp ${AS} <1-65535:Seconds between hello transmissions>`, run: (x, a) => x.eachL3((o) => void (o.eigrpHello = { as: Number(a[3]), sec: Number(a[4]) })) },
+      { p: `no ip hello-interval eigrp ${AS}`, run: (x, a) => x.eachL3((o) => void (forAs(Number(a[4]))(o.eigrpHello) && delete o.eigrpHello)) },
+      { p: `ip hold-time eigrp ${AS} <1-65535:Seconds before neighbor is considered down>`, run: (x, a) => x.eachL3((o) => void (o.eigrpHold = { as: Number(a[3]), sec: Number(a[4]) })) },
+      { p: `no ip hold-time eigrp ${AS}`, run: (x, a) => x.eachL3((o) => void (forAs(Number(a[4]))(o.eigrpHold) && delete o.eigrpHold)) },
+      { p: `ip authentication mode eigrp ${AS} md5`, run: (x, a) => x.eachL3((o) => void (o.eigrpAuthMd5 = { as: Number(a[4]) })) },
+      { p: `no ip authentication mode eigrp ${AS} md5`, run: (x, a) => x.eachL3((o) => void (forAs(Number(a[5]))(o.eigrpAuthMd5) && delete o.eigrpAuthMd5)) },
+      {
+        p: `ip authentication key-chain eigrp ${AS} <LINE:name of key-chain>`,
+        run: (x, a) => x.eachL3((o) => void (o.eigrpKeyChain = { as: Number(a[4]), name: a[5].trim() }))
+      },
+      { p: `no ip authentication key-chain eigrp ${AS}`, run: (x, a) => x.eachL3((o) => void (forAs(Number(a[5]))(o.eigrpKeyChain) && delete o.eigrpKeyChain)) },
+      {
+        p: `no ip authentication key-chain eigrp ${AS} <LINE:name of key-chain>`,
+        run: (x, a) => x.eachL3((o) => void (forAs(Number(a[5]))(o.eigrpKeyChain) && delete o.eigrpKeyChain))
+      }
+    ];
+  }
   var discoveryIfPatterns = [
     { p: "cdp enable", run: (x) => x.eachPhys((c) => void delete c.cdp) },
     { p: "no cdp enable", run: (x) => x.eachPhys((c) => void (c.cdp = false)) },
@@ -5065,7 +5739,10 @@ var AgLabSim = (() => {
         track: buildTrie(trackPatterns),
         ipsla: buildTrie(ipSlaPatterns),
         ipslaEcho: buildTrie(ipSlaEchoPatterns),
-        mst: buildTrie(mstPatterns)
+        mst: buildTrie(mstPatterns),
+        eigrp: buildTrie(eigrpPatterns),
+        keychain: buildTrie(keyChainPatterns),
+        keychainKey: buildTrie(keyChainKeyPatterns)
       };
       trieCache.set(def, t);
     }
@@ -5088,6 +5765,9 @@ var AgLabSim = (() => {
       __publicField(this, "slaNo", 0);
       /** `(config-mst)` altında bekleyen bölge yapılandırması (exit ile uygulanır) */
       __publicField(this, "mstPending", null);
+      /** `(config-keychain)` / `(config-keychain-key)` altında düzenlenen zincir ve anahtar */
+      __publicField(this, "keyChain", "");
+      __publicField(this, "keyId", "");
       __publicField(this, "history", []);
       __publicField(this, "pending", null);
       __publicField(this, "starts", []);
@@ -5124,12 +5804,18 @@ var AgLabSim = (() => {
           return h + "(config-ip-sla-echo)#";
         case "mst":
           return h + "(config-mst)#";
+        case "eigrp":
+          return h + "(config-router)#";
+        case "keychain":
+          return h + "(config-keychain)#";
+        case "keychainKey":
+          return h + "(config-keychain-key)#";
         case "acl":
           return h + (this.cfg.acls?.[this.aclName]?.type === "extended" ? "(config-ext-nacl)#" : "(config-std-nacl)#");
       }
     }
     get inConfig() {
-      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho" || this.mode === "mst";
+      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho" || this.mode === "mst" || this.mode === "eigrp" || this.mode === "keychain" || this.mode === "keychainKey";
     }
     trie() {
       const t = tries(this.def);
@@ -5172,7 +5858,7 @@ var AgLabSim = (() => {
     }
     run(cmd) {
       let r = parse(this.trie(), cmd);
-      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho") && r.err !== "empty") {
+      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho" || this.mode === "eigrp" || this.mode === "keychain" || this.mode === "keychainKey") && r.err !== "empty") {
         const g = parse(tries(this.def).config, cmd);
         if (g.ok) {
           this.mode = "config";
@@ -5239,6 +5925,10 @@ var AgLabSim = (() => {
       return ["", `${this.cfg.hostname} con0 is now available`, "", "", "", "", "", "Press RETURN to get started.", ""];
     }
     exitMode() {
+      if (this.mode === "keychainKey") {
+        this.mode = "keychain";
+        return;
+      }
       if (this.mode === "config") {
         this.mode = "priv";
         this.rt.log(this.dev, "%SYS-5-CONFIG_I: Configured from console by console");
@@ -5860,6 +6550,88 @@ var AgLabSim = (() => {
         list.splice(i, 1);
       }
       if (!list.length) delete this.cfg.dhcpExcluded;
+    }
+    // ---- EIGRP ----
+    get eigrp() {
+      return this.cfg.eigrp;
+    }
+    enterEigrp(as) {
+      if (!this.cfg.ipRouting) return ["% IP routing not enabled"];
+      if (this.cfg.eigrp && this.cfg.eigrp.as !== as) return [`% Only one EIGRP process is modelled; remove "router eigrp ${this.cfg.eigrp.as}" first.`];
+      if (!this.cfg.eigrp)
+        this.cfg.eigrp = {
+          as,
+          routerId: null,
+          networks: [],
+          passiveDefault: false,
+          passive: [],
+          // Catalyst 3560 (IOS 12.2) varsayılanı açık, ISR (IOS 15) kapalı
+          autoSummary: !this.def.router,
+          k: [...DEFAULT_K],
+          variance: 1,
+          maxPaths: 4,
+          stub: null,
+          redistribute: {},
+          defaultMetric: null
+        };
+      this.mode = "eigrp";
+    }
+    /** `network <ağ> [<wildcard>]`: adres ağa indirgenir (wildcard yoksa sınıflı ağ). */
+    eigrpNetwork(addr, wildcard, add) {
+      const a = ipToInt(addr);
+      const net = wildcard === null ? networkOf(addr, classfulPrefix(addr)) : intToIp((a & ~ipToInt(wildcard)) >>> 0);
+      const e = this.eigrp;
+      const i = e.networks.findIndex((n) => n.addr === net && n.wildcard === wildcard);
+      if (add) {
+        if (i < 0) e.networks.push({ addr: net, wildcard });
+      } else if (i >= 0) e.networks.splice(i, 1);
+    }
+    eigrpPassive(name, on) {
+      const e = this.eigrp;
+      const set = new Set(e.passive);
+      if (on !== e.passiveDefault) set.add(name);
+      else set.delete(name);
+      e.passive = [...set];
+    }
+    eigrpWeights(tos, k) {
+      if (tos !== 0) return ["% Only TOS 0 is supported"];
+      this.eigrp.k = k;
+    }
+    eigrpStub(kinds) {
+      const has = (k) => kinds.includes(k);
+      this.eigrp.stub = kinds.length ? { connected: has("connected"), summary: has("summary"), static: has("static"), receiveOnly: has("receive-only") } : { connected: true, summary: true, static: false, receiveOnly: false };
+    }
+    eigrpRedist(src, metric) {
+      this.eigrp.redistribute[src] = metric ? { metric } : {};
+    }
+    /** `ip summary-address eigrp <AS> <ağ> <maske>` */
+    eigrpSummary(as, net, mask, add) {
+      const len = maskToPrefix(mask);
+      if (len === null || networkOf(net, len) !== net) return ["% Invalid address/mask combination"];
+      return this.eachL3((o) => {
+        const list = (o.eigrpSummaries ?? []).filter((s) => !(s.as === as && s.net === net && s.mask === mask));
+        if (add) list.push({ as, net, mask });
+        if (list.length) o.eigrpSummaries = list;
+        else delete o.eigrpSummaries;
+      });
+    }
+    enterKeyChain(name) {
+      var _a, _b;
+      ;
+      (_b = (_a = this.cfg).keyChains ?? (_a.keyChains = {}))[name] ?? (_b[name] = {});
+      this.keyChain = name;
+      this.mode = "keychain";
+    }
+    enterKey(id) {
+      var _a, _b, _c;
+      const ch = (_b = (_a = this.cfg).keyChains ?? (_a.keyChains = {}))[_c = this.keyChain] ?? (_b[_c] = {});
+      if (!(String(id) in ch)) ch[String(id)] = null;
+      this.keyId = String(id);
+      this.mode = "keychainKey";
+    }
+    setKeyString(str) {
+      const ch = this.cfg.keyChains?.[this.keyChain];
+      if (ch) ch[this.keyId] = str;
     }
     // ---- OSPF ----
     get ospf() {
@@ -6820,6 +7592,27 @@ var AgLabSim = (() => {
     ospf(dev) {
       return this.d.ospf[dev];
     }
+    /**
+     * EIGRP durumu: AS, router ID, komşu adayları (`ok`: komşuluk kuruldu; değilse `reason`:
+     * 'as' | 'k' | 'subnet' | 'auth' | 'passive'), arayüzler, topoloji ve rotalar; EIGRP yoksa null.
+     */
+    eigrp(dev) {
+      const s = this.d.eigrp[dev];
+      if (!s) return null;
+      return {
+        as: s.as,
+        rid: s.rid,
+        nbrs: s.nbrs.map((n) => ({ peerDev: n.peerDev, ifname: n.ifname, ip: n.ip, ok: n.ok, ...n.reason ? { reason: n.reason } : {} })),
+        ifs: s.ifs.map((i) => ({ name: i.name, passive: i.passive, bw: i.bw, delay: i.delay })),
+        topo: s.topo,
+        routes: s.routes
+      };
+    }
+    /** EIGRP topoloji girdisi: FD, successor'lar ve feasible successor'lar (yollar: nh, ifname, metric, rd); yoksa null. */
+    eigrpTopo(dev, net, prefix) {
+      const t = this.d.eigrp[dev]?.topo.find((x) => x.net === net && x.prefix === prefix);
+      return t ? { fd: t.fd, external: t.external, local: t.local?.kind ?? null, successors: t.successors, feasibleSuccessors: t.feasibleSuccessors } : null;
+    }
     /** OSPF neighbours in FULL state on this router. */
     ospfFull(dev) {
       return (this.d.ospf[dev]?.nbrs ?? []).filter((n) => n.state === "FULL");
@@ -6859,8 +7652,9 @@ var AgLabSim = (() => {
      * — code, net, nh, ifname, paths, via — korunur):
      * - `prefix`: "ağ/uzunluk" (ör. "10.20.0.0/24"); `prefixLength` sayı olarak
      * - `nextHop`: yapılandırılmış next-hop (bağlı ağda null)
-     * - `ad`: yönetimsel uzaklık (bağlı 0, statik yapılandırılan ya da 1, OSPF 110)
-     * - `source`: 'C' | 'S' | 'O' | 'default' (0.0.0.0/0 ne kaynaktan gelirse gelsin 'default')
+     * - `ad`: yönetimsel uzaklık (bağlı 0, statik yapılandırılan ya da 1, OSPF 110, EIGRP 90 /
+     *   dış 170 / özet Null0 5)
+     * - `source`: 'C' | 'S' | 'O' | 'D' | 'default' (0.0.0.0/0 ne kaynaktan gelirse gelsin 'default')
      */
     routeFor(dev, dst) {
       const n = ipToInt(dst);
@@ -6873,8 +7667,8 @@ var AgLabSim = (() => {
         if (!best || e.prefix > best.prefix) best = e;
       }
       if (!best) return null;
-      const source = best.prefix === 0 ? "default" : best.code === "C" ? "C" : best.code === "S" ? "S" : "O";
-      const ad = best.code === "C" ? 0 : best.code === "S" ? best.ad ?? 1 : OSPF_AD2;
+      const source = best.prefix === 0 ? "default" : best.code === "C" ? "C" : best.code === "S" ? "S" : best.code.startsWith("D") ? "D" : "O";
+      const ad = best.code === "C" ? 0 : best.code === "S" ? best.ad ?? 1 : best.code.startsWith("D") ? best.ad : OSPF_AD2;
       return { ...best, prefix: `${best.net}/${best.prefix}`, prefixLength: best.prefix, nextHop: best.code === "C" ? null : best.nh, ad, source };
     }
     errDisabled(dev, port) {
@@ -7638,6 +8432,27 @@ var AgLabSim = (() => {
           if (oldMm2.has(mk(m))) continue;
           if (m.kind === "area") this.log(dev, `%OSPF-4-ERRRCV: Received invalid packet: mismatched area ID from ${m.peerIp}, ${m.ifname}`);
           if (m.kind === "rid") this.log(dev, `%OSPF-4-DUP_RTRID_NBR: OSPF detected duplicate router-id ${b.ospf[dev].rid} from ${m.peerIp} on interface ${m.ifname}`);
+        }
+      }
+      for (const dev of /* @__PURE__ */ new Set([...Object.keys(a.eigrp ?? {}), ...Object.keys(b.eigrp ?? {})])) {
+        const as = b.eigrp[dev]?.as ?? a.eigrp[dev].as;
+        const tag = eigrpTag(b, dev, as);
+        const key = (n) => `${n.ifname}|${n.ip}`;
+        const oldNb = new Map((a.eigrp[dev]?.nbrs ?? []).map((n) => [key(n), n]));
+        const newNb = new Map((b.eigrp[dev]?.nbrs ?? []).map((n) => [key(n), n]));
+        const why = { k: "K-value mismatch", auth: "Authentication failure" };
+        for (const [k, n] of newNb) {
+          const was = oldNb.get(k);
+          if (n.ok && !was?.ok) this.log(dev, `%DUAL-5-NBRCHANGE: ${tag}: Neighbor ${n.ip} (${n.ifname}) is up: new adjacency`);
+          if (n.ok || was && !was.ok && was.reason === n.reason) continue;
+          if (n.reason === "k" || n.reason === "auth") this.log(dev, `%DUAL-5-NBRCHANGE: ${tag}: Neighbor ${n.ip} (${n.ifname}) is down: ${why[n.reason]}`);
+          else if (n.reason === "subnet") this.log(dev, `%DUAL-6-NBRINFO: ${tag}: Neighbor ${n.ip} not on common subnet for ${n.ifname}`);
+          else if (was?.ok) this.log(dev, `%DUAL-5-NBRCHANGE: ${tag}: Neighbor ${n.ip} (${n.ifname}) is down: ${n.reason === "passive" ? "interface passive" : "peer restarted"}`);
+        }
+        for (const [k, n] of oldNb) {
+          if (!n.ok || newNb.has(k)) continue;
+          const ifUp = b.eigrp[dev]?.ifs.some((i) => i.name === n.ifname);
+          this.log(dev, `%DUAL-5-NBRCHANGE: ${tag}: Neighbor ${n.ip} (${n.ifname}) is down: ${ifUp ? "holding time expired" : "interface down"}`);
         }
       }
       const dupKeys = (x) => new Map(
@@ -11920,6 +12735,8 @@ write memory`
       }
       if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail("Loopback");
       if (cfg.ospf) fail("OSPF");
+      if (cfg.eigrp) fail("EIGRP yapılandırması (desteklenmiyor)");
+      if (Object.keys(cfg.keyChains ?? {}).length) fail("key chain (desteklenmiyor)");
       if (cfg.routes.length) fail("statik rota");
       if (Object.keys(cfg.tracks ?? {}).length) fail("track (izlenen nesne; switch üzerinde desteklenmiyor)");
       if (Object.keys(cfg.ipSla ?? {}).length) fail("IP SLA (desteklenmiyor)");
@@ -12038,6 +12855,8 @@ write memory`
       if (t.delayUp !== void 0 || t.delayDown !== void 0) fail(`track ${n} delay (desteklenmiyor)`);
     }
     for (const n of Object.keys(cfg.ipSla ?? {})) fail(`IP SLA ${n} (desteklenmiyor)`);
+    if (cfg.eigrp) fail(`EIGRP yapılandırması (router eigrp ${cfg.eigrp.as}; desteklenmiyor)`);
+    if (Object.keys(cfg.keyChains ?? {}).length) fail("key chain (desteklenmiyor)");
     {
       const ids = Object.keys(cfg.tracks ?? {}).map(Number).sort((a, b) => a - b);
       const list2 = ids.map((n) => ({ id: n, interface: aglabIf(cfg.tracks[String(n)].iface) }));

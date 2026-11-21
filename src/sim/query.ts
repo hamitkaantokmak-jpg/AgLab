@@ -18,7 +18,7 @@ export type RouteLookup = Omit<RouteEntry, 'prefix' | 'ad'> & {
   prefixLength: number
   nextHop: string | null
   ad: number
-  source: 'C' | 'S' | 'O' | 'default'
+  source: 'C' | 'S' | 'O' | 'D' | 'default'
 }
 
 export class LabQuery {
@@ -89,6 +89,29 @@ export class LabQuery {
     return this.d.ospf[dev]
   }
 
+  /**
+   * EIGRP durumu: AS, router ID, komşu adayları (`ok`: komşuluk kuruldu; değilse `reason`:
+   * 'as' | 'k' | 'subnet' | 'auth' | 'passive'), arayüzler, topoloji ve rotalar; EIGRP yoksa null.
+   */
+  eigrp(dev: string) {
+    const s = this.d.eigrp[dev]
+    if (!s) return null
+    return {
+      as: s.as,
+      rid: s.rid,
+      nbrs: s.nbrs.map((n) => ({ peerDev: n.peerDev, ifname: n.ifname, ip: n.ip, ok: n.ok, ...(n.reason ? { reason: n.reason } : {}) })),
+      ifs: s.ifs.map((i) => ({ name: i.name, passive: i.passive, bw: i.bw, delay: i.delay })),
+      topo: s.topo,
+      routes: s.routes,
+    }
+  }
+
+  /** EIGRP topoloji girdisi: FD, successor'lar ve feasible successor'lar (yollar: nh, ifname, metric, rd); yoksa null. */
+  eigrpTopo(dev: string, net: string, prefix: number) {
+    const t = this.d.eigrp[dev]?.topo.find((x) => x.net === net && x.prefix === prefix)
+    return t ? { fd: t.fd, external: t.external, local: t.local?.kind ?? null, successors: t.successors, feasibleSuccessors: t.feasibleSuccessors } : null
+  }
+
   /** OSPF neighbours in FULL state on this router. */
   ospfFull(dev: string) {
     return (this.d.ospf[dev]?.nbrs ?? []).filter((n) => n.state === 'FULL')
@@ -134,8 +157,9 @@ export class LabQuery {
    * — code, net, nh, ifname, paths, via — korunur):
    * - `prefix`: "ağ/uzunluk" (ör. "10.20.0.0/24"); `prefixLength` sayı olarak
    * - `nextHop`: yapılandırılmış next-hop (bağlı ağda null)
-   * - `ad`: yönetimsel uzaklık (bağlı 0, statik yapılandırılan ya da 1, OSPF 110)
-   * - `source`: 'C' | 'S' | 'O' | 'default' (0.0.0.0/0 ne kaynaktan gelirse gelsin 'default')
+   * - `ad`: yönetimsel uzaklık (bağlı 0, statik yapılandırılan ya da 1, OSPF 110, EIGRP 90 /
+   *   dış 170 / özet Null0 5)
+   * - `source`: 'C' | 'S' | 'O' | 'D' | 'default' (0.0.0.0/0 ne kaynaktan gelirse gelsin 'default')
    */
   routeFor(dev: string, dst: string): RouteLookup | null {
     const n = ipToInt(dst)
@@ -148,8 +172,9 @@ export class LabQuery {
       if (!best || e.prefix > best.prefix) best = e
     }
     if (!best) return null
-    const source: RouteLookup['source'] = best.prefix === 0 ? 'default' : best.code === 'C' ? 'C' : best.code === 'S' ? 'S' : 'O'
-    const ad = best.code === 'C' ? 0 : best.code === 'S' ? (best.ad ?? 1) : OSPF_AD
+    const source: RouteLookup['source'] =
+      best.prefix === 0 ? 'default' : best.code === 'C' ? 'C' : best.code === 'S' ? 'S' : best.code.startsWith('D') ? 'D' : 'O'
+    const ad = best.code === 'C' ? 0 : best.code === 'S' ? (best.ad ?? 1) : best.code.startsWith('D') ? best.ad! : OSPF_AD
     return { ...best, prefix: `${best.net}/${best.prefix}`, prefixLength: best.prefix, nextHop: best.code === 'C' ? null : best.nh, ad, source }
   }
 

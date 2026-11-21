@@ -176,7 +176,7 @@ export function isRouter(d: Derived, dev: string): boolean {
   return def.kind === 'switch' && !!(def.l3 || def.router) && d.cfgs[dev]!.ipRouting
 }
 
-export type RouteCode = 'C' | 'S' | 'L' | 'O' | 'O IA' | 'O E2'
+export type RouteCode = 'C' | 'S' | 'L' | 'O' | 'O IA' | 'O E2' | 'D' | 'D EX'
 
 export interface RouteEntry {
   code: RouteCode
@@ -184,16 +184,19 @@ export interface RouteEntry {
   prefix: number
   nh: string | null
   ifname: string
-  /** OSPF: [110/metric] and all equal-cost paths */
+  /** OSPF: [110/metric] and all equal-cost paths; EIGRP: FD and the installed paths
+   *  (variance: each path carries its own metric) */
   metric?: number
-  paths?: { nh: string; ifname: string }[]
-  /** static: administrative distance (undefined = 1) */
+  paths?: { nh: string; ifname: string; metric?: number }[]
+  /** static: administrative distance (undefined = 1); EIGRP: 90 / 170 / 5 (Null0 summary) */
   ad?: number
   /** static: directly connected next hop the packet is handed to (recursive resolution) */
   via?: string
 }
 
 const OSPF_AD = 110
+/** EIGRP özet rotasının çıkışı (paket atılır) */
+export const NULL0 = 'Null0'
 
 interface Candidate {
   code: RouteCode
@@ -205,7 +208,7 @@ interface Candidate {
   nh: string | null
   ifname: string
   metric?: number
-  paths?: { nh: string; ifname: string }[]
+  paths?: { nh: string; ifname: string; metric?: number }[]
 }
 
 const inPrefix = (ip: string, net: string, prefix: number) => {
@@ -243,6 +246,13 @@ export function routeTable(d: Derived, dev: string): RouteEntry[] {
   const ospf: Candidate[] = (d.ospf[dev]?.routes ?? [])
     .filter((r) => r.paths.length)
     .map((r) => ({ code: r.code, net: r.net, prefix: r.prefix, ad: OSPF_AD, nh: r.paths[0]!.nh, ifname: r.paths[0]!.ifname, metric: r.metric, paths: r.paths }))
+  // EIGRP: D 90, D EX 170; özet (yolsuz) Null0, AD 5
+  const eigrp: Candidate[] = (d.eigrp?.[dev]?.routes ?? []).map((r) =>
+    r.paths.length
+      ? { code: r.code, net: r.net, prefix: r.prefix, ad: r.ad, nh: r.paths[0]!.nh, ifname: r.paths[0]!.ifname, metric: r.metric, paths: r.paths }
+      : { code: r.code, net: r.net, prefix: r.prefix, ad: r.ad, nh: null, ifname: NULL0, metric: r.metric },
+  )
+  const dynamic = [...ospf, ...eigrp]
 
   // next hop → (outgoing interface, directly connected next hop)
   type Res = { ifname: string; via: string }
@@ -250,10 +260,11 @@ export function routeTable(d: Derived, dev: string): RouteEntry[] {
     const matches: Candidate[] = [
       ...connected.filter((c) => inPrefix(dst, c.net, c.prefix)).map((c) => ({ ...c, ad: 0 }) as Candidate),
       ...statics.filter((c) => !seen.has(c.idx!) && inPrefix(dst, c.net, c.prefix)),
-      ...ospf.filter((c) => inPrefix(dst, c.net, c.prefix)),
+      ...dynamic.filter((c) => inPrefix(dst, c.net, c.prefix)),
     ].sort((a, b) => b.prefix - a.prefix || a.ad - b.ad || (a.code === 'S' ? 0 : 1) - (b.code === 'S' ? 0 : 1))
     for (const m of matches) {
       if (m.code === 'C') return { ifname: m.ifname, via: dst }
+      if (m.ifname === NULL0) return null
       if (m.code !== 'S') return { ifname: m.ifname, via: m.nh! }
       const r = resolve(m, seen)
       if (r) return r
@@ -279,7 +290,8 @@ export function routeTable(d: Derived, dev: string): RouteEntry[] {
     // equal distance: static before OSPF, earlier configuration line first (strict <)
     consider({ code: 'S', net: s.net, prefix: s.prefix, nh: s.nh, ifname: r.ifname, ...(s.ad !== 1 ? { ad: s.ad } : {}), via: r.via }, s.ad * 2)
   }
-  for (const r of ospf) consider({ code: r.code, net: r.net, prefix: r.prefix, nh: r.nh, ifname: r.ifname, metric: r.metric, paths: r.paths }, r.ad * 2 + 1)
+  for (const r of dynamic)
+    consider({ code: r.code, net: r.net, prefix: r.prefix, nh: r.nh, ifname: r.ifname, metric: r.metric, ...(r.paths ? { paths: r.paths } : {}), ...(r.code.startsWith('D') ? { ad: r.ad } : {}) }, r.ad * 2 + 1)
   for (const e of best.values()) {
     const { rank: _rank, ...entry } = e
     out.push(entry)
@@ -308,14 +320,14 @@ function lookup(d: Derived, dev: string, dst: string): { out: L3If; nh: string }
     return gw && gi ? { out: gi, nh: gw } : null
   }
   // one installed entry per prefix (connected before anything else): plain LPM
-  let best: { e: RouteEntry; out: L3If } | null = null
+  let best: { e: RouteEntry; out: L3If | undefined } | null = null
   for (const e of routeTable(d, dev)) {
     if (e.code === 'L' || !inPrefix(dst, e.net, e.prefix)) continue
     if (best && best.e.prefix >= e.prefix) continue
-    const out = ifs.find((i) => i.name === e.ifname)!
-    best = { e, out }
+    best = { e, out: ifs.find((i) => i.name === e.ifname) }
   }
-  if (!best) return null
+  // EIGRP özeti (Null0): eşleşen paket atılır
+  if (!best || !best.out) return null
   return { out: best.out, nh: best.e.code === 'C' ? dst : (best.e.via ?? best.e.nh!) }
 }
 

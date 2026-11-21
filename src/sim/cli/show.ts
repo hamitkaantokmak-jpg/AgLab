@@ -10,6 +10,7 @@ import { aclConfigLines } from '../acl'
 import { natConfigLines } from '../nat'
 import { pk } from '../topology'
 import type { IpAddr, L2IfConfig, L3Opts, MstConfig, PhysIfConfig, SwitchConfig, SwitchDef } from '../types'
+import { eigrpConfigLines, eigrpIfLines, eigrpProtocolLines, keyChainLines } from '../eigrp'
 import { formatVlans, instanceIds, instanceOf, mstDigest as mstDigestOf, mstOf, vlansOf, type MstInstanceState } from '../mst'
 import { formatVlanList, ifType, intToIp, ipToInt, macAdd, maskToPrefix, pad, padL, prefixMaskInt, shortIf } from '../util'
 
@@ -57,6 +58,8 @@ function l3Lines(ip: IpAddr | null | undefined, o: L3Opts | undefined, noIpLine:
   if (o?.ospfPrio !== undefined) out.push(' ip ospf priority ' + o.ospfPrio)
   if (o?.ospfArea) out.push(` ip ospf ${o.ospfArea.pid} area ${o.ospfArea.area}`)
   if (o?.ospfCost) out.push(' ip ospf cost ' + o.ospfCost)
+  out.push(...eigrpIfLines(o))
+  if (o?.delay !== undefined) out.push(' delay ' + o.delay)
   out.push(...fhrpLines(o))
   return out
 }
@@ -138,7 +141,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   o.push('!', 'version 15.4', 'service timestamps debug datetime msec', 'service timestamps log datetime msec', 'no service password-encryption', '!')
   o.push('hostname ' + c.hostname, '!', 'boot-start-marker', 'boot-end-marker', '!', 'no aaa new-model')
   if (!c.ipRouting) o.push('no ip routing')
-  o.push('!', ...dhcpLines(c), '!', ...trackLines(c))
+  o.push('!', ...dhcpLines(c), '!', ...trackLines(c), ...keyChainLines(c))
   for (const n of Object.keys(c.loopbacks ?? {}).map(Number).sort((a, b) => a - b)) {
     const l = c.loopbacks![String(n)]!
     o.push('interface Loopback' + n)
@@ -163,6 +166,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
       o.push('!')
     }
   }
+  o.push(...eigrpConfigLines(c))
   if (c.ospf) o.push(...ospfLines(c))
   o.push('ip forward-protocol nd', 'no ip http server', '!')
   o.push(...natConfigLines(c))
@@ -219,7 +223,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   o.push('hostname ' + c.hostname, '!', 'boot-start-marker', 'boot-end-marker', '!', 'no aaa new-model')
   o.push('system mtu routing 1500')
   if (c.ipRouting) o.push('ip routing')
-  o.push('!', ...dhcpLines(c), '!', ...trackLines(c), 'vtp mode transparent', '!')
+  o.push('!', ...dhcpLines(c), '!', ...trackLines(c), ...keyChainLines(c), 'vtp mode transparent', '!')
   o.push('spanning-tree mode ' + c.stpMode, 'spanning-tree extend system-id')
   const byPrio = new Map<number, number[]>()
   for (const [v, p] of Object.entries(c.stpPriority)) byPrio.set(p, [...(byPrio.get(p) ?? []), Number(v)])
@@ -273,6 +277,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
     if (s.shutdown) o.push(' shutdown')
     o.push('!')
   }
+  o.push(...eigrpConfigLines(c))
   if (c.ospf) o.push(...ospfLines(c))
   if (c.defaultGateway) o.push('ip default-gateway ' + c.defaultGateway)
   o.push('ip forward-protocol nd', 'no ip http server', '!')
@@ -463,7 +468,7 @@ export function showIpIntBrief(rt: LabRuntime, dev: string): string[] {
   return o
 }
 
-export function showIpRoute(rt: LabRuntime, dev: string, only?: 'O' | 'S' | 'C'): string[] {
+export function showIpRoute(rt: LabRuntime, dev: string, only?: 'O' | 'S' | 'C' | 'D'): string[] {
   const d = rt.derived
   const c = rt.running[dev]!
   const sw = rt.topo.devices[dev] as SwitchDef
@@ -489,11 +494,15 @@ export function showIpRoute(rt: LabRuntime, dev: string, only?: 'O' | 'S' | 'C')
     const head = `${codeCol.padEnd(width)}${e.net}/${e.prefix}`
     if (e.code === 'S') return [`${head} [${e.ad ?? 1}/0] via ${e.nh}`]
     if (e.code === 'C' || e.code === 'L') return [`${head} is directly connected, ${e.ifname}`]
-    const paths = e.paths ?? [{ nh: e.nh!, ifname: e.ifname }]
+    // EIGRP özeti (Null0)
+    if (e.code.startsWith('D') && e.ifname === 'Null0') return [`${head} is a summary, 00:12:34, Null0`]
+    const paths: { nh: string; ifname: string; metric?: number }[] = e.paths ?? [{ nh: e.nh!, ifname: e.ifname }]
     const pad0 = ' '.repeat(head.length + 1)
-    return paths.map((p, i) => `${i === 0 ? head + ' ' : pad0}[110/${e.metric}] via ${p.nh}, 00:12:34, ${p.ifname}`)
+    const ad = e.code.startsWith('D') ? e.ad : 110
+    return paths.map((p, i) => `${i === 0 ? head + ' ' : pad0}[${ad}/${p.metric ?? e.metric}] via ${p.nh}, 00:12:34, ${p.ifname}`)
   }
-  if (def && keep(def)) o.push(...line(def, def.code === 'S' ? 'S*' : def.code === 'O E2' ? 'O*E2' : def.code === 'O IA' ? 'O*IA' : def.code + '*', 6))
+  const starred: Record<string, string> = { S: 'S*', 'O E2': 'O*E2', 'O IA': 'O*IA', 'D EX': 'D*EX' }
+  if (def && keep(def)) o.push(...line(def, starred[def.code] ?? def.code + '*', 6))
   const sorted = all
     .filter((e) => e !== def && keep(e))
     .sort((a, b) => a.net.localeCompare(b.net, undefined, { numeric: true }) || a.prefix - b.prefix)
@@ -506,6 +515,11 @@ export function showIpRoute(rt: LabRuntime, dev: string, only?: 'O' | 'S' | 'C')
   }
   for (const [cls, list] of majors) {
     const masks = new Set(list.map((e) => e.prefix)).size
+    // sınıflı ağın kendisi (ör. auto-summary ile öğrenilen 10.0.0.0/8) başlıksız yazılır
+    if (list.length === 1 && `${list[0]!.net}/${list[0]!.prefix}` === cls) {
+      o.push(...line(list[0]!, list[0]!.code))
+      continue
+    }
     o.push(masks > 1 ? `      ${cls} is variably subnetted, ${list.length} subnets, ${masks} masks` : `      ${cls.split('/')[0]}/${list[0]!.prefix} is subnetted, ${list.length} subnets`)
     for (const e of list) o.push(...line(e, e.code))
   }
@@ -536,6 +550,26 @@ export function showIpRouteFor(rt: LabRuntime, dev: string, ip: string): string[
   }
   if (e.code === 'S') {
     o.push(`  Known via "static", distance ${e.ad ?? 1}, metric 0` + (e.prefix === 0 ? ', candidate default path' : ''), '  Routing Descriptor Blocks:', `  * ${e.nh}`, '      Route metric is 0, traffic share count is 1')
+    return o
+  }
+  if (e.code.startsWith('D')) {
+    const as = rt.running[dev]!.eigrp?.as ?? 1
+    o.push(`  Known via "eigrp ${as}", distance ${e.ad}, metric ${e.metric}, type ${e.code === 'D EX' ? 'external' : 'internal'}${e.prefix === 0 ? ', candidate default path' : ''}`)
+    o.push(`  Redistributing via eigrp ${as}`)
+    if (e.ifname === 'Null0') {
+      o.push('  Routing Descriptor Blocks:', '  * directly connected, via Null0', `      Route metric is ${e.metric}, traffic share count is 1`)
+      return o
+    }
+    const t = rt.derived.eigrp[dev]?.topo.find((x) => x.net === e.net && x.prefix === e.prefix)
+    o.push(`  Last update from ${e.nh} on ${e.ifname}, 00:12:34 ago`, '  Routing Descriptor Blocks:')
+    const paths = e.paths ?? []
+    const worst = Math.max(...paths.map((p) => p.metric ?? e.metric!))
+    paths.forEach((p, i) => {
+      const m = p.metric ?? e.metric!
+      const v = t?.all.find((x) => x.nh === p.nh && x.ifname === p.ifname)
+      o.push(`  ${i === 0 ? '*' : ' '} ${p.nh}, from ${p.nh}, 00:12:34 ago, via ${p.ifname}`, `      Route metric is ${m}, traffic share count is ${Math.max(1, Math.round(worst / m))}`)
+      if (v) o.push(`      Total delay is ${v.delay * 10} microseconds, minimum bandwidth is ${v.bw} Kbit`, '      Reliability 255/255, minimum MTU 1500 bytes', `      Loading 1/255, Hops ${v.hops}`)
+    })
     return o
   }
   const type = e.code === 'O' ? 'intra area' : e.code === 'O IA' ? 'inter area' : 'extern 2, forward metric 1'
@@ -650,11 +684,18 @@ export function showIpOspf(rt: LabRuntime, dev: string): string[] {
 }
 
 export function showIpProtocols(rt: LabRuntime, dev: string): string[] {
+  const head = ['*** IP Routing is NSF aware ***', '']
+  // EIGRP bölümü (IOS: süreçler yapılandırma sırasıyla; burada EIGRP önce)
+  const eigrp = eigrpProtocolLines(rt.derived, dev)
+  return [...head, ...eigrp, ...ospfProtocolLines(rt, dev)]
+}
+
+function ospfProtocolLines(rt: LabRuntime, dev: string): string[] {
   const s = ospfOf(rt, dev)
   const c = rt.running[dev]!
-  if (!s || !c.ospf) return ['*** IP Routing is NSF aware ***', '']
+  if (!s || !c.ospf) return []
   const r = c.ospf
-  const o = ['*** IP Routing is NSF aware ***', '', `Routing Protocol is "ospf ${s.pid}"`, '  Outgoing update filter list for all interfaces is not set', '  Incoming update filter list for all interfaces is not set', `  Router ID ${s.rid ?? '0.0.0.0'}`]
+  const o = [`Routing Protocol is "ospf ${s.pid}"`, '  Outgoing update filter list for all interfaces is not set', '  Incoming update filter list for all interfaces is not set', `  Router ID ${s.rid ?? '0.0.0.0'}`]
   if (s.abr) o.push('  It is an area border router')
   if (s.asbr) o.push('  It is an autonomous system boundary router')
   o.push(`  Number of areas in this router is ${s.areas.length}. ${s.areas.filter((a) => !r.stubs[String(a)]).length} normal ${s.areas.filter((a) => r.stubs[String(a)]).length} stub 0 nssa`, '  Maximum path: 4', '  Routing for Networks:')
