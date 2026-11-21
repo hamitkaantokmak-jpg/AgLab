@@ -346,3 +346,17 @@ describe('IP SLA + track labs (Konu #37, #48)', () => {
     expect(rt.query().fhrpActive('GW1', 'g0/0', 1)).toBe(true)
   })
 })
+
+describe('MST region lab (Konu #29)', () => {
+  it('mst-bolge: a region mismatch puts the switch behind a boundary and loses load balancing', () => {
+    const def = findLab('mst-bolge')!
+    const rt = createLab(def)
+    expect(rt.query().mstRegion('ASW2').digest).toBe(rt.query().mstRegion('DSW1').digest)
+    expect(rt.query().mstRegion('ASW2').revision).not.toBe(rt.query().mstRegion('DSW1').revision)
+    expect(rt.query().stpState('ASW2', 'Gi0/2', 20)).not.toBe('FWD')
+    const solved = solve(def)
+    expect(solved.query().stpState('ASW2', 'Gi0/2', 20)).toBe('FWD')
+    expect(solved.query().stpState('ASW2', 'Gi0/1', 20)).toBe('BLK')
+    expect(solved.query().mstRoot('ASW1', 0)?.dev).toBe('DSW1')
+  })
+})

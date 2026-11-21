@@ -115,7 +115,7 @@ Current bidirectional state: Unidirectional
 
 ## 4. Yönlendirmeli lab
 
-> **Simülatörde yok:** Lab'ı kâğıt üstünde yürüt; her adımda Bölüm 3'teki beklenen çıktıyla karşılaştır.
+> **Kısmen simülatörde:** MST bölgesi, örnek kökleri ve sınır davranışı Simülatör'deki **mst-bolge** labında denenir (Pratik adımında). Loop Guard ve UDLD adımlarını kâğıt üstünde Bölüm 3'teki çıktılarla karşılaştır.
 
 Topoloji: CORE1, CORE2, ACC1–ACC3; VLAN 10–19 kullanıcı, 20–29 ses ve kamera.
 
@@ -270,4 +270,5 @@ Kaynaklar: INE ENCOR (Advanced STP: MST, tuning, Loop Guard, UDLD) ve CCNP ENCOR
 
 **Motor gereksinimleri**
 
-- [ ] MST bölgesi, örnek başına kök, Loop Guard ve UDLD Labber'da yok (motor işi). Hazır olunca S1–S4 `mst-*` kimlikleriyle Sorun Çöz'e eklenir.
+- [x] MST bölgesi (ad, revizyon, eşleme özeti), örnek başına kök, CIST ve bölge sınırı Labber'da var: Simülatör'deki **mst-bolge** labı (bölge uyuşmazlığı, kaybolan yük dengeleme, CIST kökü).
+- [ ] Loop Guard ve UDLD Labber'da yok. Hazır olunca ilgili vakalar `mst-*` kimlikleriyle Sorun Çöz'e eklenir.

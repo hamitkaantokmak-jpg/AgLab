@@ -334,19 +334,19 @@ var AgLabSim = (() => {
 
   // src/sim/topology.ts
   var pk = (dev, port) => `${dev}|${port}`;
-  function buildTopo(lab19) {
+  function buildTopo(lab20) {
     const devices = {};
-    for (const d of lab19.devices) devices[d.id] = d;
+    for (const d of lab20.devices) devices[d.id] = d;
     const peer = {};
-    for (const l of lab19.links) {
+    for (const l of lab20.links) {
       peer[pk(l.a[0], l.a[1])] = { dev: l.b[0], port: l.b[1] };
       peer[pk(l.b[0], l.b[1])] = { dev: l.a[0], port: l.a[1] };
     }
-    const switches = lab19.devices.filter((d) => d.kind === "switch");
-    const pcs = lab19.devices.filter((d) => d.kind === "pc");
+    const switches = lab20.devices.filter((d) => d.kind === "switch");
+    const pcs = lab20.devices.filter((d) => d.kind === "pc");
     const pcAttach = {};
     for (const pc of pcs) pcAttach[pc.id] = peer[pk(pc.id, "eth0")] ?? null;
-    return { lab: lab19, devices, switches, pcs, peer, pcAttach };
+    return { lab: lab20, devices, switches, pcs, peer, pcAttach };
   }
 
   // src/sim/mst.ts
@@ -478,7 +478,7 @@ var AgLabSim = (() => {
     }
     return 0;
   };
-  function computeMst(d, devs, vlans3) {
+  function computeMst(d, devs, vlans4) {
     var _a;
     const links = l2Links(d);
     const nodes = [...devs].filter((x) => links[x]);
@@ -490,22 +490,22 @@ var AgLabSim = (() => {
       digest[x] = mstDigest(cfgM(x));
       key[x] = isMst(x) ? `${cfgM(x).name}|${cfgM(x).revision}|${digest[x]}` : "#" + x;
     }
-    const region = {};
+    const region2 = {};
     for (const x of nodes) {
-      if (region[x]) continue;
-      region[x] = x;
+      if (region2[x]) continue;
+      region2[x] = x;
       if (!isMst(x)) continue;
       const stack = [x];
       while (stack.length) {
         const y = stack.pop();
         for (const l of links[y])
-          if (!region[l.peer] && isMst(l.peer) && key[l.peer] === key[x]) {
-            region[l.peer] = x;
+          if (!region2[l.peer] && isMst(l.peer) && key[l.peer] === key[x]) {
+            region2[l.peer] = x;
             stack.push(l.peer);
           }
       }
     }
-    const same = (a, b) => region[a] === region[b];
+    const same = (a, b) => region2[a] === region2[b];
     const mac = (x) => d.topo.devices[x].mac;
     const portPrio = (x, lp, inst) => isMst(x) ? lp.cfg.mstPortPriority?.[String(inst)] ?? 128 : 128;
     const portId = (x, lp, inst) => portPrio(x, lp, inst) * 4096 + lp.portNum;
@@ -577,7 +577,7 @@ var AgLabSim = (() => {
     }
     const msti = {};
     const regions = /* @__PURE__ */ new Map();
-    for (const x of nodes) if (isMst(x)) regions.set(region[x], [...regions.get(region[x]) ?? [], x]);
+    for (const x of nodes) if (isMst(x)) regions.set(region2[x], [...regions.get(region2[x]) ?? [], x]);
     for (const members of regions.values()) {
       const ids = instanceIds(cfgM(members[0])).filter((i) => i !== 0);
       for (const inst of ids) {
@@ -657,7 +657,7 @@ var AgLabSim = (() => {
         };
       }
       const cfg = d.cfgs[x];
-      for (const v of vlans3) {
+      for (const v of vlans4) {
         if (!vlanExists(cfg, v)) continue;
         const inst = isMst(x) ? instanceOf(cfgM(x), v) : 0;
         const src = inst === 0 ? cist[x] : msti[x][inst];
@@ -3503,11 +3503,11 @@ var AgLabSim = (() => {
   }
   function showIntTrunk(rt, dev) {
     const d = rt.derived;
-    const trunks2 = (d.lports[dev] ?? []).filter((lp) => lp.active && lp.opMode === "trunk");
-    if (!trunks2.length) return [""];
+    const trunks3 = (d.lports[dev] ?? []).filter((lp) => lp.active && lp.opMode === "trunk");
+    if (!trunks3.length) return [""];
     const c = rt.running[dev];
     const o = ["", "Port        Mode             Encapsulation  Status        Native vlan"];
-    for (const lp of trunks2)
+    for (const lp of trunks3)
       o.push(pad(shortIf(lp.name), 12) + pad(trunkMode(lp.cfg), 17) + pad("802.1q", 15) + pad("trunking", 14) + lp.cfg.nativeVlan);
     const allowedList = (lp) => lp.cfg.allowed === null ? "1-4094" : lp.cfg.allowed.length ? formatVlanList(lp.cfg.allowed) : "none";
     const active = (lp) => {
@@ -3519,11 +3519,11 @@ var AgLabSim = (() => {
       return vs.length ? formatVlanList(vs) : "none";
     };
     o.push("", "Port        Vlans allowed on trunk");
-    for (const lp of trunks2) o.push(pad(shortIf(lp.name), 12) + allowedList(lp));
+    for (const lp of trunks3) o.push(pad(shortIf(lp.name), 12) + allowedList(lp));
     o.push("", "Port        Vlans allowed and active in management domain");
-    for (const lp of trunks2) o.push(pad(shortIf(lp.name), 12) + active(lp));
+    for (const lp of trunks3) o.push(pad(shortIf(lp.name), 12) + active(lp));
     o.push("", "Port        Vlans in spanning tree forwarding state and not pruned");
-    for (const lp of trunks2) o.push(pad(shortIf(lp.name), 12) + fwd(lp));
+    for (const lp of trunks3) o.push(pad(shortIf(lp.name), 12) + fwd(lp));
     return o;
   }
   function showIntSwitchport(rt, dev, only) {
@@ -3861,11 +3861,11 @@ var AgLabSim = (() => {
       for (const x of st.instances) if (want === null || x.id === want) o2.push(...stpBlock(rt, dev, "MST" + x.id, "mstp", instBridge(x), x.id));
       return o2;
     }
-    const vlans3 = Object.keys(d.stp).map(Number).filter((v) => d.stp[v][dev] && (only === void 0 || v === only));
-    if (only !== void 0 && !vlans3.length) return [`Spanning tree instance(s) for vlan ${only} does not exist.`];
-    if (!vlans3.length) return ["No spanning tree instance exists."];
+    const vlans4 = Object.keys(d.stp).map(Number).filter((v) => d.stp[v][dev] && (only === void 0 || v === only));
+    if (only !== void 0 && !vlans4.length) return [`Spanning tree instance(s) for vlan ${only} does not exist.`];
+    if (!vlans4.length) return ["No spanning tree instance exists."];
     const o = [];
-    for (const v of vlans3) {
+    for (const v of vlans4) {
       const b = d.stp[v][dev];
       if (!Object.keys(b.ports).length && only === void 0) continue;
       o.push(...stpBlock(rt, dev, `VLAN${String(v).padStart(4, "0")}`, c.stpMode === "rapid-pvst" ? "rstp" : "ieee", b, v));
@@ -8141,9 +8141,9 @@ write memory`
         title: "Tüm trunk'larda native VLAN 99, uyuşmazlık yok",
         hint: "switchport trunk native vlan 99 (Po1 üzerinde de). Uyuşmazlık syslog'da CDP-4-NATIVE_VLAN_MISMATCH olarak görünür.",
         check: (q) => {
-          const trunks2 = q.trunks();
-          if (!trunks2.length) return { ok: false, detail: "Henüz kurulu trunk yok" };
-          const bad = trunks2.filter((t) => t.cfg.nativeVlan !== 99).map((t) => `${t.dev} ${t.name}`);
+          const trunks3 = q.trunks();
+          if (!trunks3.length) return { ok: false, detail: "Henüz kurulu trunk yok" };
+          const bad = trunks3.filter((t) => t.cfg.nativeVlan !== 99).map((t) => `${t.dev} ${t.name}`);
           const mm = q.nativeMismatches().length;
           return { ok: !bad.length && !mm && q.vlanExists("SW1", 99), detail: bad.length ? "Native ≠ 99: " + bad.join(", ") : mm ? "Native VLAN uyuşmazlığı var" : void 0 };
         }
@@ -10335,8 +10335,163 @@ write memory`
   };
   var sla_hsrp_track_default = lab18;
 
+  // src/labs/mst-region.ts
+  var ALL3 = ["DSW1", "DSW2", "ASW1", "ASW2"];
+  var ACCESS2 = ["ASW1", "ASW2"];
+  var pingBoth8 = (q, a, b) => q.ping(a, q.pcIp(b) ?? "0.0.0.0").ok && q.ping(b, q.pcIp(a) ?? "0.0.0.0").ok;
+  var trunks2 = (list) => `interface range ${list}
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20
+exit`;
+  var vlans3 = `vlan 10
+ name SES
+vlan 20
+ name VERI
+exit`;
+  var region = (rev, map) => `spanning-tree mode mst
+spanning-tree mst configuration
+ name KAMPUS
+ revision ${rev}
+${map}exit`;
+  var MAP = " instance 1 vlan 10\n instance 2 vlan 20\n";
+  var access = `interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+ spanning-tree portfast
+interface fa0/2
+ switchport mode access
+ switchport access vlan 20
+ spanning-tree portfast
+exit`;
+  var lab19 = {
+    id: "mst-bolge",
+    title: "MST: bölge uyuşmazlığı ve kaybolan yük dengeleme",
+    summary: "Kampüs MST'ye geçti: VLAN 10 MST1'de (kök DSW1), VLAN 20 MST2'de (kök DSW2). Ama erişim switch'leri yük dengelemiyor ve CIST kökü bir erişim switch'i. Bölge kimliğini eşitle, CIST kökünü dağıtıma taşı.",
+    level: "İleri",
+    tags: ["ENCOR", "STP", "MST", "802.1s", "Bölge", "CIST", "Arıza giderme"],
+    brief: [
+      "Tasarım: dört switch tek MST bölgesi KAMPUS, revizyon 1; instance 1 = VLAN 10, instance 2 = VLAN 20. DSW1 MST1 kökü ve MST2 yedeği, DSW2 MST2 kökü ve MST1 yedeği. Trunk'lar ve VLAN'lar hazır.",
+      "Belirti: ASW1 ve ASW2 iki VLAN'ı da aynı uplink'ten iletiyor; show spanning-tree mst'de sınır (Bound) portları görünüyor. Ayrıca MST0 (CIST) kökü ASW1.",
+      "Kurallar: bir bölgedeki bütün switch'lerde ad, revizyon ve VLAN → instance eşlemesi birebir aynı olmalı (show spanning-tree mst configuration digest ile karşılaştır). Değişiklik (config-mst) kipinden exit ile çıkınca uygulanır.",
+      "CIST kökü dağıtım katmanında olmalı: DSW1 instance 0 için kök.",
+      "Bitince: her erişim switch'i VLAN 10'u Gi0/1'den (DSW1), VLAN 20'yi Gi0/2'den (DSW2) iletir; diğer uplink o VLAN için BLK. PC1 ↔ PC3 ve PC2 ↔ PC4 ping."
+    ],
+    view: { w: 820, h: 500 },
+    devices: [
+      { id: "DSW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0003.0010", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 230, y: 80 },
+      { id: "DSW2", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0003.0011", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 590, y: 80 },
+      { id: "ASW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0003.0001", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 150, y: 300 },
+      { id: "ASW2", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0003.0002", ports: ports("Fa0/1-4", "Gi0/1-4"), x: 670, y: 300 },
+      { id: "PC1", kind: "pc", mac: "0050.7966.0301", x: 70, y: 450 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.0302", x: 250, y: 450 },
+      { id: "PC3", kind: "pc", mac: "0050.7966.0303", x: 570, y: 450 },
+      { id: "PC4", kind: "pc", mac: "0050.7966.0304", x: 750, y: 450 }
+    ],
+    links: [
+      { a: ["DSW1", "GigabitEthernet0/1"], b: ["DSW2", "GigabitEthernet0/1"] },
+      { a: ["DSW1", "GigabitEthernet0/2"], b: ["ASW1", "GigabitEthernet0/1"] },
+      { a: ["DSW1", "GigabitEthernet0/3"], b: ["ASW2", "GigabitEthernet0/1"] },
+      { a: ["DSW2", "GigabitEthernet0/2"], b: ["ASW1", "GigabitEthernet0/2"] },
+      { a: ["DSW2", "GigabitEthernet0/3"], b: ["ASW2", "GigabitEthernet0/2"] },
+      { a: ["PC1", "eth0"], b: ["ASW1", "FastEthernet0/1"] },
+      { a: ["PC2", "eth0"], b: ["ASW1", "FastEthernet0/2"] },
+      { a: ["PC3", "eth0"], b: ["ASW2", "FastEthernet0/1"] },
+      { a: ["PC4", "eth0"], b: ["ASW2", "FastEthernet0/2"] }
+    ],
+    initialPcs: {
+      PC1: { ip: "10.1.10.11", prefix: 24, gw: null },
+      PC2: { ip: "10.1.20.11", prefix: 24, gw: null },
+      PC3: { ip: "10.1.10.12", prefix: 24, gw: null },
+      PC4: { ip: "10.1.20.12", prefix: 24, gw: null }
+    },
+    initialConfig: {
+      DSW1: `${vlans3}
+${trunks2("gi0/1 - 3")}
+${region(1, MAP)}
+spanning-tree mst 1 root primary
+spanning-tree mst 2 root secondary`,
+      DSW2: `${vlans3}
+${trunks2("gi0/1 - 3")}
+${region(1, MAP)}
+spanning-tree mst 2 root primary
+spanning-tree mst 1 root secondary`,
+      // fault: VLAN 20 eşlemesi eksik (VLAN 20 IST'de kalıyor) → özet farklı, ayrı bölge
+      ASW1: `${vlans3}
+${trunks2("gi0/1 - 2")}
+${access}
+${region(1, " instance 1 vlan 10\n")}`,
+      // fault: revizyon farklı → ayrı bölge
+      ASW2: `${vlans3}
+${trunks2("gi0/1 - 2")}
+${access}
+${region(2, MAP)}`
+    },
+    objectives: [
+      {
+        id: "region",
+        title: "Dört switch aynı MST bölgesinde (ad, revizyon, eşleme)",
+        hint: "ASW1: spanning-tree mst configuration → instance 2 vlan 20 → exit. ASW2: spanning-tree mst configuration → revision 1 → exit. Kontrol: show spanning-tree mst configuration digest (dördünde aynı).",
+        check: (q) => {
+          const ref = q.mstRegion("DSW1");
+          const bad = ALL3.filter((s) => {
+            const r = q.mstRegion(s);
+            return r.name !== ref.name || r.revision !== ref.revision || r.digest !== ref.digest;
+          });
+          return { ok: !bad.length, detail: bad.length ? "Farklı bölge: " + bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "cist",
+        title: "CIST (MST0) kökü DSW1",
+        hint: 'DSW1: spanning-tree mst 0 root primary (ya da priority 24576). show spanning-tree mst 0 → "This bridge is the root".',
+        check: (q) => {
+          const r = q.mstRoot("ASW2", 0);
+          return { ok: r?.dev === "DSW1", detail: `MST0 kökü: ${r?.dev ?? "-"}` };
+        }
+      },
+      {
+        id: "balance",
+        title: "Erişim switch'leri: VLAN 10 Gi0/1'den, VLAN 20 Gi0/2'den",
+        hint: "show spanning-tree mst 1 ve mst 2 (ASW1'de): MST1'de Gi0/1 Root FWD, Gi0/2 Altn BLK; MST2'de tersi. Sınır (Bound) portu kalmamalı.",
+        check: (q) => {
+          const bad = [];
+          for (const s of ACCESS2) {
+            if (q.stpState(s, "Gi0/1", 10) !== "FWD" || q.stpState(s, "Gi0/2", 10) !== "BLK") bad.push(`${s} v10`);
+            if (q.stpState(s, "Gi0/2", 20) !== "FWD" || q.stpState(s, "Gi0/1", 20) !== "BLK") bad.push(`${s} v20`);
+          }
+          return { ok: !bad.length, detail: bad.length ? "Beklenmeyen: " + bad.join(", ") : void 0 };
+        }
+      },
+      {
+        id: "ping",
+        title: "PC1 ↔ PC3 (VLAN 10) ve PC2 ↔ PC4 (VLAN 20) ping",
+        hint: "Bölge düzeltmesi bağlantıyı koparmamalı. PC1 konsolunda: ping 10.1.10.12",
+        check: (q) => pingBoth8(q, "PC1", "PC3") && pingBoth8(q, "PC2", "PC4")
+      }
+    ],
+    solution: {
+      DSW1: `configure terminal
+spanning-tree mst 0 root primary
+end
+write memory`,
+      ASW1: `configure terminal
+spanning-tree mst configuration
+ instance 2 vlan 20
+exit
+end
+write memory`,
+      ASW2: `configure terminal
+spanning-tree mst configuration
+ revision 1
+exit
+end
+write memory`
+    }
+  };
+  var mst_region_default = lab19;
+
   // src/labs/index.ts
-  var LABS = [vlan_basics_default, trunk_troubleshoot_default, trunk_hardening_default, campus_l2_l3_default, stp_load_balancing_default, etherchannel_troubleshoot_default, l3_static_routing_default, mgmt_vlan_default, ospf_single_area_default, routed_access_default, bpdu_guard_default, ospf_troubleshoot_default, ospf_multiarea_default, ospf_area_troubleshoot_default, ospf_advanced_troubleshoot_default, ospf_redistribution_default, sla_static_backup_default, sla_hsrp_track_default];
+  var LABS = [vlan_basics_default, trunk_troubleshoot_default, trunk_hardening_default, campus_l2_l3_default, stp_load_balancing_default, etherchannel_troubleshoot_default, l3_static_routing_default, mgmt_vlan_default, ospf_single_area_default, routed_access_default, bpdu_guard_default, ospf_troubleshoot_default, ospf_multiarea_default, ospf_area_troubleshoot_default, ospf_advanced_troubleshoot_default, ospf_redistribution_default, sla_static_backup_default, sla_hsrp_track_default, mst_region_default];
 
   // src/labs/hint-tiers.ts
   var HINT_TIERS = {
@@ -10760,6 +10915,24 @@ write memory`
       e2e: [
         "PC1’in sanal ağ geçidine giden paketleri şimdi hangi router karşılıyor? trace’in ilk atlaması ne?",
         "Sanal adres Active router’dadır; Active GW2 olunca trafik ISP-B’den çıkar, dönüş çekirdeğin yedek rotasıyla gelir."
+      ]
+    },
+    "mst-bolge": {
+      region: [
+        "Erişim switch’leri dağıtım switch’leriyle aynı MST bölgesinde mi? Sınır portları ne söylüyor?",
+        "İki MST switch’i ancak bölge adı, revizyon numarası ve VLAN → örnek eşlemesi birebir aynıysa aynı bölgededir; eşlemenin özeti karşılaştırılabilir."
+      ],
+      cist: [
+        "Ortak ağacın (örnek 0) kökü hangi switch? Bu tasarım için doğru katman mı?",
+        "Örnek 0 da diğer örnekler gibi kendi önceliğiyle kök seçer; ayar yapılmazsa en düşük MAC adresli switch kök olur."
+      ],
+      balance: [
+        "Erişim switch’inde VLAN 10 ve VLAN 20 hangi uplink’ten iletiliyor? İkisi aynı mı?",
+        "Bölge içinde her örnek kendi köküne göre ayrı ağaç kurar; bölge sınırında ise bütün VLAN’lar ortak ağacı izler."
+      ],
+      ping: [
+        "Aynı VLAN’daki iki PC birbirine ulaşıyor mu?",
+        "Bölge ve kök düzeltmeleri döngüsüz bir ağaç bırakır; her VLAN kendi örneğinin yolundan akar."
       ]
     },
     "ospf-sorun-ileri": {
@@ -11513,9 +11686,9 @@ write memory`
         }
         phys.mode = mode;
         phys.shutdown = iface.enabled === false;
-        const access = vlanId(iface.vlan ?? 1);
-        if (access === null) reject(id, `${name}.vlan`, "Geçersiz access VLAN");
-        else phys.accessVlan = access;
+        const access2 = vlanId(iface.vlan ?? 1);
+        if (access2 === null) reject(id, `${name}.vlan`, "Geçersiz access VLAN");
+        else phys.accessVlan = access2;
         const native = vlanId(iface.nativeVlan ?? 1);
         if (native === null) reject(id, `${name}.nativeVlan`, "Geçersiz native VLAN");
         else phys.nativeVlan = native;
@@ -11568,10 +11741,10 @@ write memory`
           reject(id, `${name}.mode`, "Bilinmeyen port modu: " + mode);
           continue;
         }
-        const access = vlanId(iface.vlan ?? 1);
+        const access2 = vlanId(iface.vlan ?? 1);
         const native = vlanId(iface.nativeVlan ?? 1);
         const allowed = (iface.allowed ?? []).map(vlanId);
-        if (access === null || native === null || allowed.some((x) => x === null)) {
+        if (access2 === null || native === null || allowed.some((x) => x === null)) {
           reject(id, name, "Geçersiz Port-channel VLAN değeri");
           continue;
         }
@@ -11579,7 +11752,7 @@ write memory`
           ...defaultL2(),
           shutdown: iface.enabled === false,
           mode,
-          accessVlan: access,
+          accessVlan: access2,
           nativeVlan: native,
           allowed: [...new Set(allowed)].sort(sortNum),
           encapDot1q: mode === "trunk" && !!sw2.needsEncap
@@ -11760,10 +11933,10 @@ write memory`
       const gw = cfg.defaultGateway ?? "";
       if (d.gateway !== void 0 || gw) d.gateway = gw;
       const hadOne = (original.devices.find((x) => String(x.id) === id)?.vlans ?? [1]).map(Number).includes(1);
-      const vlans3 = Object.keys(cfg.vlans).map(Number).filter((v) => !RESERVED_VLANS.slice(1).includes(v) && (v !== 1 || hadOne)).sort(sortNum);
-      if (d.vlans !== void 0 || vlans3.join() !== "1") d.vlans = vlans3;
+      const vlans4 = Object.keys(cfg.vlans).map(Number).filter((v) => !RESERVED_VLANS.slice(1).includes(v) && (v !== 1 || hadOne)).sort(sortNum);
+      if (d.vlans !== void 0 || vlans4.join() !== "1") d.vlans = vlans4;
       const names = {};
-      for (const v of vlans3) {
+      for (const v of vlans4) {
         const n = cfg.vlans[String(v)];
         const keep = d.vlanNames !== void 0 && Object.prototype.hasOwnProperty.call(d.vlanNames, String(v));
         if (keep || n !== defaultVlanName(v) && !(v === 1 && n === "default")) names[String(v)] = n;

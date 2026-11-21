@@ -18,8 +18,9 @@ import ospfAreaTrouble from './ospf-area-troubleshoot'
 import ospfRedist from './ospf-redistribution'
 import slaStatic from './sla-static-backup'
 import slaHsrp from './sla-hsrp-track'
+import mstRegion from './mst-region'
 
-export const LABS: LabDef[] = [vlanBasics, troubleshoot, hardening, campus, stpLb, ecTrouble, l3Static, mgmt, ospfSingle, routedAccess, bpduGuard, ospfTrouble, ospfMulti, ospfAreaTrouble, ospfAdvTrouble, ospfRedist, slaStatic, slaHsrp]
+export const LABS: LabDef[] = [vlanBasics, troubleshoot, hardening, campus, stpLb, ecTrouble, l3Static, mgmt, ospfSingle, routedAccess, bpduGuard, ospfTrouble, ospfMulti, ospfAreaTrouble, ospfAdvTrouble, ospfRedist, slaStatic, slaHsrp, mstRegion]
 
 export function findLab(id: string): LabDef | undefined {
   return LABS.find((l) => l.id === id)
