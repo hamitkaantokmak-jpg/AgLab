@@ -11355,8 +11355,8 @@ exit`;
     brief: [
       "S1 ve S3 Catalyst 3560 (IOS 12.2) L3 switch'ler: S1 LAN 10.1.1.0/24 (PC1), S3 LAN 10.3.3.0/24 (PC3). R2 merkez, R4 yedek router (ISR). Hepsi EIGRP AS 100.",
       "Bağlantılar: S1–R2 172.16.12.0/24, R2–S3 172.16.23.0/24 (birincil), R2–R4 172.16.24.0/24 ve R4–S3 172.16.34.0/24 (yedek yol). R2'deki delay değerleri tasarımın parçası: değiştirme.",
-      "Belirti 1: PC1, PC3'e ulaşamıyor; R2'nin tablosunda iki şube LAN'ı yerine tek bir 10.0.0.0/8 rotası var. Belirti 2: R4 hiçbir komşu görmüyor; log'da K-value mismatch. Belirti 3: R4 düzelince de R2, 10.3.3.0/24'e yalnız birincil yoldan gidiyor.",
-      "Kurallar: 12.2 sürümlü IOS'ta EIGRP sınıflı sınırda otomatik özetler (auto-summary varsayılan açık). Komşular aynı K değerlerini kullanmalı. Feasible successor yalnız RD < FD ise olur; variance yalnız feasible successor'ları eşit olmayan maliyetle tabloya ekler.",
+      "Belirti 1: PC1, PC3'e ulaşamıyor; R2'nin tablosunda iki şube LAN'ı yerine tek bir 10.0.0.0/8 rotası var. Belirti 2: R4 hiçbir komşu görmüyor: show ip eigrp neighbors boş. show ip protocols'ta R4'ün K değerlerini R2 ve S3'tekilerle karşılaştır; istersen R4'te arayüzü kapatıp aç (shutdown, no shutdown) ve log'da ne yazdığına bak. Belirti 3: R4 düzelince de R2, 10.3.3.0/24'e yalnız birincil yoldan gidiyor.",
+      "Kurallar: 12.2 sürümlü IOS'ta EIGRP sınıflı sınırda otomatik özetler (auto-summary varsayılan açık). Tek tarafta (yalnız S1'de) no auto-summary PC1 ↔ PC3 ping'ini düzeltir, ama R2'deki 10.0.0.0/8 özeti kalır: özet hedefi iki tarafı da ister. Komşular aynı K değerlerini kullanmalı. Feasible successor yalnız RD < FD ise olur; variance yalnız feasible successor'ları eşit olmayan maliyetle tabloya ekler.",
       "Kontrol: show ip protocols, show ip eigrp neighbors, show ip eigrp topology, show ip route eigrp. PC1 ↔ PC3 ping."
     ],
     view: { w: 960, h: 520 },
@@ -11936,7 +11936,7 @@ write memory`
         "Eski sürümlerde EIGRP, sınıflı ağ sınırını geçerken alt ağları kendiliğinden sınıflı ağa özetler; aynı sınıflı ağ iki yerde olunca hangisinin nerede olduğu kaybolur."
       ],
       kvalue: [
-        "R4 neden kimseyle komşu olmuyor? Log’da ne yazıyor?",
+        "R4 neden kimseyle komşu olmuyor? show ip eigrp neighbors boş; show ip protocols’ta R4’ün K değerleri R2 ve S3’tekilerle aynı mı? (İstersen R4’te arayüzü kapatıp aç ve log’a bak.)",
         "EIGRP komşuları metrik formülünün ağırlıklarını (K değerleri) karşılaştırır; farklıysa komşuluk kurulmaz."
       ],
       fs: [

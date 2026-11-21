@@ -1,6 +1,6 @@
 # AğLab Konu #41: EIGRP: DUAL, metrik, feasible successor, stub ve variance
 
-> Uygulamadaki `eigrp` dersi bu belgeyle uyumludur. **Okuma dersi (Seviye 3, CCNP):** EIGRP Labber'da yok; FRR desteği sınırlı. Kavramlar ve topoloji tablosu kâğıt üstünde çalışılır.
+> Uygulamadaki `eigrp` dersi bu belgeyle uyumludur. **Seviye 3, CCNP.** Klasik EIGRP (IPv4, AS kipi) Labber'da modelleniyor: komşuluk şartları, bileşik metrik, FD/RD, successor ve feasible successor, variance, auto-summary, `ip summary-address`, stub, `redistribute static|connected`. Simülatör'de `eigrp-ariza` labı var; S1–S4 vakalarının kalanı kâğıt üstünde. **Modellenmeyenler:** named mode, DUAL sorgu/yanıt ve stuck-in-active, zamanlayıcılar (hello/hold yalnız saklanır), IPv6 EIGRP, OSPF↔EIGRP karşılıklı aktarım. `show ip eigrp neighbors` çıktısındaki Uptime, SRTT/RTO ve Seq sabittir.
 > Ön koşul: Statik routing (Konu #8), OSPF (Konu #15), OSPF çok alan (Konu #31) karşılaştırma için. Şemalar: `docs/dersler/gorseller/eigrp.py`.
 
 Bu konu bittiğinde öğrenci EIGRP'yi OSPF'ten ayıran özellikleri (gelişmiş uzaklık vektörü, DUAL, AD 90/170) açıklar. Komşuluk şartlarını sayar ve neden komşu olunmadığını bulur. Varsayılan K değerleriyle metriğin bant genişliği ve gecikmeden nasıl hesaplandığını gösterir. FD, RD, successor ve feasible successor kavramlarını yapılabilirlik şartıyla uygular. Stub ile sorgu alanını küçültür, variance ile eşit olmayan yük paylaşımı yapar. Süre yaklaşık 55 dakika.
@@ -132,7 +132,7 @@ Topoloji: g4'teki gibi; R1'den 10.9.0.0/24'e R2, R3, R4 üzerinden üç yol.
 
 ## 6. Arıza senaryoları
 
-> **Uygulamada:** Kâğıt üstü vakalar; motor ya da Gerçek Lab desteği gelince Sorun Çöz'e `eigrp-*` kimlikleriyle eklenecek. Önce kendin çöz; neden ve çözüm kapalı kutularda.
+> **Uygulamada:** Motor hazır; Simülatör'de `eigrp-ariza` labı (auto-summary, K değerleri, feasible successor ve variance) var. Aşağıdaki S1–S4 vakaları Sorun Çöz'e henüz eklenmedi; şimdilik kâğıt üstünde. Önce kendin çöz; neden ve çözüm kapalı kutularda.
 
 ### S1 · Başlangıç · Yeni router komşu olmuyor (E1/E2)
 

@@ -1,16 +1,22 @@
 # AğLab — Kodlama ajanı çalışma kuralları
 
 ## Ana hedef
-Öncelik Packet Tracer `.pkt` içe aktarma doğruluğudur. Kullanıcı adına küçük kozmetik değişiklikler yerine birbiriyle ilişkili işlevsel düzeltmeleri grupla. Desteklenmeyen Cisco/PT özelliklerini kesinlikle çalışıyormuş gibi sunma.
+Güncel plan `docs/SONRAKI_ISLER.md` (iş sırası), `docs/YENIDEN_YAPILANMA.md` (mimari: Labber tek ağ motoru), `docs/DEVIR_NOTU.md` (motor entegrasyonunun durumu) ve `docs/MUFREDAT.md` (konu ve seviye sırası) belgelerindedir; çelişkide bunlar esastır. Packet Tracer `.pkt` içe aktarma doğruluğu korunur ama tek öncelik değildir. Küçük kozmetik değişiklikler yerine birbiriyle ilişkili işlevsel düzeltmeleri grupla. Desteklenmeyen Cisco/PT özelliklerini kesinlikle çalışıyormuş gibi sunma: modellenmeyen davranış ders, lab ve belgede açıkça yazılır.
 
 ## İş döngüsü
-1. GitHub Issues'daki dar kapsamlı görevi al, mevcut kodu ve ilgili testleri oku.
+1. Görevi kullanıcının verdiği plandan ya da yukarıdaki belgelerden al (dar kapsamlı tut); mevcut kodu ve ilgili testleri oku.
 2. Hatanın yeniden üretilebildiği bir otomatik test ekle; testin önceden başarısız olduğunu doğrula.
-3. Dönüştürücü / HTML simülatörü / CLI için en küçük güvenilir düzeltmeyi uygula.
+3. Labber motoru (`src/sim`) / dönüştürücü / HTML simülatörü / CLI için en küçük güvenilir düzeltmeyi uygula.
 4. `python run_pipeline.py` çalıştır (Playwright Chromium kurulmuş olmalı).
 5. Bütün mevcut regresyonlar geçmeden PR'ı tamamlanmış sayma. CI'da doğrulanmış ZIP üretimini kontrol et.
-6. Pull request açıklamasında değişen PKT senaryolarını, testleri ve desteklenmeyen davranışları belirt.
+6. Pull request açıklamasında değişen senaryoları, testleri, desteklenmeyen davranışları ve doğrulanamayanları belirt.
 7. Varsayılan `main` dalını doğrudan değiştirmek yerine ayrı dal ve PR kullan; test hatasında birleştirme yapma.
+
+## Motor ve pratik PR'ları
+- Motor işi (`motor/<konu>`) ve pratik işi (`pratik/<konu>`: lab, arıza senaryosu, ipucu) ayrı PR'lardır. Motor PR'ı `src/labs`'a lab eklemez; pratik PR'ı motoru değiştirmez.
+- Motora yeni özellik eklenince aynı iş kapsamında ilgili ders (`docs/dersler/`), `docs/MUFREDAT.md`, `docs/UYUMLULUK_MATRISI.md` ve `docs/LAB_MOTOR_HARITASI.md` birlikte güncellenir; "motorda yok" diyen eski ifade bırakılmaz.
+- Modellenmeyen davranış (ör. zamanlayıcılar, sorgu/yanıt, sabit show alanları) belgede ve PR açıklamasında açıkça yazılır.
+- Lab brief'inde ve ipuçlarında anılan her belirti lab başlangıcında gerçekten görülebilmeli. Lab açılışında günlük (`rt.logs`) temizlenir ve `show logging` yoktur: yalnız bir geçişte üretilen log'a dayanan belirti yazılmaz ya da nasıl üretileceği söylenir; bunu bir testle doğrula.
 
 ## Kaynak kuralı
 - `AgLab_Final_PKT_Import.html` derleme çıktısıdır; doğrudan düzenleme. Değişikliği `src/`, `simulator/` veya `academy/` altında yap, sonra `python tools/build_html.py` çalıştırıp HTML ve `html-build.sha256` dosyasını birlikte commit et.

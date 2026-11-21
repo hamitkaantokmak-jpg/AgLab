@@ -452,7 +452,7 @@ export const HINT_TIERS: Record<string, Record<string, [string, string]>> = {
       'Eski sürümlerde EIGRP, sınıflı ağ sınırını geçerken alt ağları kendiliğinden sınıflı ağa özetler; aynı sınıflı ağ iki yerde olunca hangisinin nerede olduğu kaybolur.',
     ],
     kvalue: [
-      'R4 neden kimseyle komşu olmuyor? Log’da ne yazıyor?',
+      'R4 neden kimseyle komşu olmuyor? show ip eigrp neighbors boş; show ip protocols’ta R4’ün K değerleri R2 ve S3’tekilerle aynı mı? (İstersen R4’te arayüzü kapatıp aç ve log’a bak.)',
       'EIGRP komşuları metrik formülünün ağırlıklarını (K değerleri) karşılaştırır; farklıysa komşuluk kurulmaz.',
     ],
     fs: [
