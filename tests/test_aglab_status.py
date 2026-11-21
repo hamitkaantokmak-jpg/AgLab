@@ -10,7 +10,7 @@ with sync_playwright() as p:
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.set_content((B / "AgLab_Final_PKT_Import.html").read_text(), wait_until="domcontentloaded")
-    import_topology(page, B / "static-routing-two-routers.aglab.json")
+    import_topology(page, B / "tests/fixtures/pkt/static-routing-two-routers.aglab.json")
 
     def command(device, cmd):
         page.evaluate(
@@ -22,7 +22,7 @@ with sync_playwright() as p:
     # Find a connected router port and an unused port from imported topology
     import json
 
-    topo = json.loads((B / "static-routing-two-routers.aglab.json").read_text())
+    topo = json.loads((B / "tests/fixtures/pkt/static-routing-two-routers.aglab.json").read_text())
     r = next(d for d in topo["devices"] if d["name"] == "R1")
     print("Router", r["id"], list(r["interfaces"]))
     out = command(r["id"], "show ip interface brief")
@@ -35,7 +35,9 @@ with sync_playwright() as p:
     # Reimport a topology with the cable administratively disabled in the link model.
     import tempfile
 
-    broken = json.loads((B / "static-routing-two-routers.aglab.json").read_text())
+    broken = json.loads(
+        (B / "tests/fixtures/pkt/static-routing-two-routers.aglab.json").read_text()
+    )
     link = next(
         l
         for l in broken["links"]

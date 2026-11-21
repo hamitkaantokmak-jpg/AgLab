@@ -34,7 +34,7 @@ Laboratuvar tanımı ile simülatör durumunu ayır:
 2. VLAN/trunk kapatılınca daha önce başarılı hedef başarısız olur; düzeltmeyle tekrar geçer.
 3. Aynı girdiler için skor deterministiktir, değerlendirme cihaz konfigürasyonunu ve mevcut .pkt/JSON kaynak arşivini değiştirmez.
 4. Geçersiz lab şeması ve tanınmayan hedefler açıkça hata verir.
-5. Öğrenci akışı, import/kayıt ve tüm mevcut 30 regresyon grubu `python run_pipeline.py` ile PASS; CI sonucu gözlenmeden merge edilmez.
+5. Öğrenci akışı, import/kayıt ve tüm mevcut 30 regresyon grubu `python tools/run_pipeline.py` ile PASS; CI sonucu gözlenmeden merge edilmez.
 6. Öğrencinin terminalden yaptığı değişiklikler yeniden değerlendirilebilir; yalnızca UI üzerinden yapılmış değişikliklere bağımlı değildir.
 
 ## Uygulama sınırları

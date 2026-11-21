@@ -137,7 +137,7 @@ describe('kabul paritesi: test_aglab_next_hop.py (Labber)', () => {
 })
 
 // ---- static-routing-two-routers.aglab.json (v11, v13, traceroute, icmp_*) ----
-const sample = (): AglabTopology => JSON.parse(readFileSync(join(ROOT, 'static-routing-two-routers.aglab.json'), 'utf8'))
+const sample = (): AglabTopology => JSON.parse(readFileSync(join(ROOT, 'tests', 'fixtures', 'pkt', 'static-routing-two-routers.aglab.json'), 'utf8'))
 
 describe('kabul paritesi: iki router örneği (v11, v13, traceroute, icmp)', () => {
   it('v11: kopan bağlantının bağlı rotası tablodan çıkar', () => {

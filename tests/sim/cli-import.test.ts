@@ -10,7 +10,7 @@ import type { AglabTopology } from '../../src/sim-bridge/aglab'
 import type { LabDef } from '../../src/sim/types'
 import { ports } from '../../src/sim/util'
 
-const SAMPLE = (): AglabTopology => JSON.parse(readFileSync(join(__dirname, '..', '..', 'static-routing-two-routers.aglab.json'), 'utf8'))
+const SAMPLE = (): AglabTopology => JSON.parse(readFileSync(join(__dirname, '..', '..', 'tests', 'fixtures', 'pkt', 'static-routing-two-routers.aglab.json'), 'utf8'))
 
 function lab(r1: string, sw1 = ''): LabDef {
   return {

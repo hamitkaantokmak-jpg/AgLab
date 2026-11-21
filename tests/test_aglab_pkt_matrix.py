@@ -8,7 +8,9 @@ import xml.etree.ElementTree as ET
 from aglab_test_support import ROOT, assert_cli_path_matches
 from convert_pkt_to_aglab import convert, decrypt_pkt
 
-matrix = json.loads((ROOT / "pkt-sample-matrix.json").read_text())
+# Matrisin dosya yolları kendi dizinine (tests/fixtures/pkt/) görelidir.
+FIX = ROOT / "tests/fixtures/pkt"
+matrix = json.loads((FIX / "pkt-sample-matrix.json").read_text())
 assert matrix["schemaVersion"] == 1
 assert matrix["cases"] and len({case["id"] for case in matrix["cases"]}) == len(matrix["cases"])
 
@@ -24,16 +26,16 @@ def subset(actual, expected):
 for case in matrix["cases"]:
     assert case["coverage"] and case["limitations"], case["id"]
     if case["sourceKind"] == "pkt":
-        raw = (ROOT / case["file"]).read_bytes()
+        raw = (FIX / case["file"]).read_bytes()
         assert hashlib.sha256(raw).hexdigest() == case["sha256"]
-        archived = json.loads((ROOT / case["archive"]).read_text())
+        archived = json.loads((FIX / case["archive"]).read_text())
         xml = decrypt_pkt(raw)  # Verify the real encrypted sample, not only cached XML.
         assert xml == base64.b64decode(archived["sourceArchive"]["decodedXmlBase64"])
         obj, report = convert(xml, raw)
         assert_cli_path_matches(obj)
         assert obj == archived, "Cached normalized topology is stale: " + case["id"]
         if case.get("report"):
-            assert report == json.loads((ROOT / case["report"]).read_text()), (
+            assert report == json.loads((FIX / case["report"]).read_text()), (
                 "Cached import report is stale: " + case["id"]
             )
         subset(report, case["expected"])

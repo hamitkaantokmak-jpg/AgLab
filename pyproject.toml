@@ -2,4 +2,6 @@
 line-length = 100
 # Yalnızca yeniden yapılanmada elden geçen Python dosyaları biçimlenir;
 # .pkt dönüştürücüleri ve real-lab/ ayrı adımlarda ele alınacak.
-include = '^/(tests/.*|tools/.*|run_pipeline|verify_packages)\.pyi?$'
+include = '^/(tests/.*|tools/.*)\.pyi?$'
+# .pkt dönüştürücüleri tools/ altına taşındı ama henüz Black biçiminde değil.
+extend-exclude = '^/tools/(convert_pkt_to_aglab|restore_pkt_from_aglab_json)\.py$'

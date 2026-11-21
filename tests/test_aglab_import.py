@@ -17,8 +17,10 @@ from playwright.sync_api import sync_playwright
 
 BASE = ROOT
 html = BASE / "AgLab_Final_PKT_Import.html"
-jsonpath = BASE / "static-routing-two-routers.aglab.json"
-report = json.loads((BASE / "static-routing-two-routers-import-report.json").read_text())
+jsonpath = BASE / "tests/fixtures/pkt/static-routing-two-routers.aglab.json"
+report = json.loads(
+    (BASE / "tests/fixtures/pkt/static-routing-two-routers-import-report.json").read_text()
+)
 topo = json.loads(jsonpath.read_text())
 
 assert report["sourceDeviceCount"] == 9, report
@@ -45,7 +47,7 @@ assert all(
     if d["type"] in ("Router", "Switch")
 )
 archive = topo["sourceArchive"]
-source_pkt = (BASE / "static-routing-two-routers(1).pkt").read_bytes()
+source_pkt = (BASE / "tests/fixtures/pkt/static-routing-two-routers(1).pkt").read_bytes()
 source_xml = decoded_source_xml()
 assert base64.b64decode(archive["originalPacketBase64"]) == source_pkt
 assert archive["originalPacketSha256"] == hashlib.sha256(source_pkt).hexdigest()

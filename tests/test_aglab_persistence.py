@@ -19,7 +19,9 @@ from aglab_test_support import ROOT
 
 KEY = "aglab-topology-v24"
 LEGACY_KEY = "aglab-topology-v23"
-fixture = json.loads((ROOT / "static-routing-two-routers.aglab.json").read_text())
+fixture = json.loads(
+    (ROOT / "tests/fixtures/pkt/static-routing-two-routers.aglab.json").read_text()
+)
 expected_report = fixture["importReport"]
 expected_archive = fixture["sourceArchive"]
 switch_id = next(d["id"] for d in fixture["devices"] if d["name"] == "SW1")
@@ -86,7 +88,7 @@ try:
 
         context, page = open_context()
         page.locator("#ptImportFile").set_input_files(
-            str(ROOT / "static-routing-two-routers.aglab.json")
+            str(ROOT / "tests/fixtures/pkt/static-routing-two-routers.aglab.json")
         )
         expect(page.locator("#ptTerminal")).to_contain_text("8 cihaz, 7 bağlantı")
         assert saved(page).get("importReport") == expected_report, "Import report not persisted"
@@ -170,7 +172,7 @@ try:
         scenario = saved(page)
         assert "importReport" not in scenario and "sourceArchive" not in scenario
         page.locator("#ptImportFile").set_input_files(
-            str(ROOT / "static-routing-two-routers.aglab.json")
+            str(ROOT / "tests/fixtures/pkt/static-routing-two-routers.aglab.json")
         )
         expect(page.locator("#ptTerminal")).to_contain_text("8 cihaz, 7 bağlantı")
         page.locator("#uxMoreLabActions").click()

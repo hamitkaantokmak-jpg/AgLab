@@ -2,8 +2,8 @@
 """Build the single offline AğLab HTML from the sources under src/.
 
 The committed ``AgLab_Final_PKT_Import.html`` is a build *output* only. Edit the
-files under ``src/``, ``simulator/`` and ``academy/`` and run this script (or the
-compatibility wrappers ``build_simulator.py`` / ``build_academy.py``).
+files under ``src/``, ``simulator/`` and ``academy/`` and run this script
+(``python tools/build_html.py``).
 
 Two kinds of placeholders are expanded:
 

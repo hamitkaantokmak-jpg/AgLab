@@ -94,15 +94,14 @@ olduğu genel iddiası yapılmaz.
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund
 npm run build:engine
-python build_simulator.py
-python build_academy.py
+python tools/build_html.py
 node tests/node/test_borck_engine.cjs
 python tests/test_aglab_borck_engine.py
-python run_pipeline.py
+python tools/run_pipeline.py
 ```
 
 CI, derlenmiş bundle'ın kaynaklara eşitliğini ve iki ardışık HTML üretiminin
-byte eşitliğini denetler. `run_pipeline.py` HTML'yi testlerden önce kaynaklardan
+byte eşitliğini denetler. `tools/run_pipeline.py` HTML'yi testlerden önce kaynaklardan
 yeniler; başarılı ZIP güncel HTML'yi içerir. Depodaki hazır HTML de NetSim,
 motor seçimi ve tanı modüllerini içerir. CI, yeniden üretilen HTML ile kaydedilmiş
 HTML arasında fark varsa başarısız olur; hazır çevrimdışı dosya kaynaklardan geri kalamaz.
@@ -110,7 +109,7 @@ Yeni motor testleri, karşılaştırma ve ölçüm pipeline'a dahildir. ZIP doğ
 lisans, özgün kaynak hashleri, yeni bağımlılıklar, 40 lab ve öğrenci/öğretmen
 ayrımını kontrol eder. Geçmeyen koşuda doğrulanmış ZIP üretilmez.
 
-Geri alma: `build_simulator.py` içindeki BORCK ENGINE/BORCK UI gömme girdilerini
+Geri alma: `tools/build_html.py` içindeki BORCK ENGINE/BORCK UI gömme girdilerini
 ve ilgili generated blokları kaldırmak karşılaştırmayı çıkarır; varsayılan
 ping/CLI/puanlama zaten değiştirilmemiştir. FRR, admin token ve öğrenci API'si
 bu entegrasyona taşınmaz. Şube senaryosu ve gelecek fikirleri uygulanmadı.

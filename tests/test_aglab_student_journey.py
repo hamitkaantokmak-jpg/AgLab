@@ -151,7 +151,7 @@ try:
         expect(page.locator("#ptTerminal")).to_contain_text("İçe aktarma başarısız:")
         assert page.evaluate("localStorage.getItem('aglab-topology-v24')") == snapshot
         page.locator("#ptImportFile").set_input_files(
-            str(ROOT / "static-routing-two-routers.aglab.json")
+            str(ROOT / "tests/fixtures/pkt/static-routing-two-routers.aglab.json")
         )
         expect(page.locator("#academyCheck")).to_be_disabled()
         expect(page.locator("#academyProgress")).to_contain_text("2/40")

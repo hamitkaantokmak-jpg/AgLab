@@ -52,11 +52,10 @@ SVG etiketinin metni yalnız değiştiğinde güncellenir. Böylece mevcut iste�
 ## Derleme ve doğrulama
 
 ```sh
-python build_simulator.py
-python build_academy.py
+python tools/build_html.py
 node tests/node/test_simulation_playback.cjs
 python tests/test_aglab_simulation_mode.py
-python run_pipeline.py
+python tools/run_pipeline.py
 ```
 
 Değişiklik sonrası sabit `html-build.sha256` gerçek derleme çıktısından güncellenmelidir; CI iki derleme/cmp ve sabit hash’i denetler. Paket manifesti yeni modülleri ve değişen Ethernet/routed/ICMP gözlem kaynaklarını kapsar. Güncel tek dosya, tüm kapıları geçen CI artifact’inden alınır; eski raw taban HTML son modülleri garanti etmez.

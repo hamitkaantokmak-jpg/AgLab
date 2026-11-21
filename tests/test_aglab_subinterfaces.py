@@ -4,7 +4,7 @@ import json, re, tempfile
 from aglab_test_support import ROOT, launch_chromium, import_topology
 
 B = ROOT
-topo = json.loads((B / "static-routing-two-routers.aglab.json").read_text())
+topo = json.loads((B / "tests/fixtures/pkt/static-routing-two-routers.aglab.json").read_text())
 r = next(d for d in topo["devices"] if d["name"] == "R1")
 r["interfaces"]["g0/0.20"] = {
     "ip": "192.168.20.1",

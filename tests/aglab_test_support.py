@@ -26,11 +26,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TESTS_DIR = ROOT / "tests"
 HTML = ROOT / "AgLab_Final_PKT_Import.html"
-SAMPLE_JSON = ROOT / "static-routing-two-routers.aglab.json"
+SAMPLE_JSON = ROOT / "tests/fixtures/pkt/static-routing-two-routers.aglab.json"
 
-# Kök modüller (convert_pkt_to_aglab, verify_packages, ...) testlerden içe aktarılabilsin.
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# tools/ altındaki modüller (convert_pkt_to_aglab, verify_packages, ...) testlerden içe aktarılabilsin.
+for _p in (ROOT / "tools", ROOT):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 
 def artifact_dir() -> Path:
