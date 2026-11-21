@@ -18084,7 +18084,7 @@ write memory`
         "Eski sürümlerde EIGRP, sınıflı ağ sınırını geçerken alt ağları kendiliğinden sınıflı ağa özetler; aynı sınıflı ağ iki yerde olunca hangisinin nerede olduğu kaybolur."
       ],
       kvalue: [
-        "R4 neden kimseyle komşu olmuyor? show ip eigrp neighbors boş; show ip protocols’ta R4’ün K değerleri R2 ve S3’tekilerle aynı mı? (İstersen R4’te arayüzü kapatıp aç ve log’a bak.)",
+        "R4 neden kimseyle komşu olmuyor? Komşu tablosu boş; R4’ün EIGRP süreç ayarlarını R2 ve S3’tekilerle yan yana koy. (Log bu durumu ancak komşuluk yeniden denenirken yazar.)",
         "EIGRP komşuları metrik formülünün ağırlıklarını (K değerleri) karşılaştırır; farklıysa komşuluk kurulmaz."
       ],
       fs: [

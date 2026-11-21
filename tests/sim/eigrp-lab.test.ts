@@ -42,8 +42,10 @@ describe('eigrp-ariza: brief belirtileri', () => {
     expect(text).not.toMatch(/log'da K-value mismatch/)
     expect(text).toMatch(/show ip eigrp neighbors/)
     expect(text).toMatch(/yalnız S1/)
+    // ilk basamak komut vermez (test_aglab_sim_workspace.py kuralı) ve açılışta boş log'u sormaz
     const kv = HINT_TIERS['eigrp-ariza']!['kvalue']![0]!
-    expect(kv).toMatch(/show ip protocols/)
-    expect(kv).not.toMatch(/^R4 neden kimseyle komşu olmuyor\? Log’da ne yazıyor\?$/)
+    expect(kv).not.toMatch(/Log’da ne yazıyor\?/)
+    expect(kv).not.toMatch(/\bshow /i)
+    expect(kv).toMatch(/yeniden denenirken/)
   })
 })
