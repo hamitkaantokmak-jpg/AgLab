@@ -65,6 +65,18 @@ export interface L3Opts {
   hsrp?: HsrpGroup[]
   /** FHRP: VRRP groups (`vrrp <grp> …`), in group order */
   vrrp?: VrrpGroup[]
+  /** EIGRP: `delay` (onlarca µs); undefined = arayüz türünün varsayılanı */
+  delay?: number
+  /** EIGRP: `ip summary-address eigrp <AS> <ağ> <maske>` (yapılandırma sırasıyla) */
+  eigrpSummaries?: { as: number; net: string; mask: string }[]
+  /** EIGRP: `ip hello-interval eigrp <AS> <s>` (komşuluk şartı değil) */
+  eigrpHello?: { as: number; sec: number }
+  /** EIGRP: `ip hold-time eigrp <AS> <s>` (komşuluk şartı değil) */
+  eigrpHold?: { as: number; sec: number }
+  /** EIGRP: `ip authentication mode eigrp <AS> md5` */
+  eigrpAuthMd5?: { as: number }
+  /** EIGRP: `ip authentication key-chain eigrp <AS> <ad>` */
+  eigrpKeyChain?: { as: number; name: string }
 }
 
 /** FHRP: `standby <grp> track <obj> [decrement N]` or `standby <grp> track <if> [N]` */
@@ -262,6 +274,43 @@ export interface OspfRedist {
   metric?: number
 }
 
+/** EIGRP vektör metriği tohum değeri: `default-metric` / `redistribute … metric` */
+export interface EigrpSeedMetric {
+  /** kbit/s */
+  bw: number
+  /** onlarca µs */
+  delay: number
+  rel: number
+  load: number
+  mtu: number
+}
+
+/** Klasik EIGRP (IPv4, AS kipi): `router eigrp <AS>`. */
+export interface EigrpConfig {
+  as: number
+  /** `eigrp router-id` */
+  routerId: string | null
+  /** `network <ağ> [<wildcard>]`; wildcard null = sınıflı ağ */
+  networks: { addr: string; wildcard: string | null }[]
+  passiveDefault: boolean
+  /** passiveDefault=false: passive arayüzler; true: `no passive-interface` istisnaları */
+  passive: string[]
+  /** `auto-summary` (oluşturulurken model varsayılanı: Catalyst 12.2 açık, ISR IOS 15 kapalı) */
+  autoSummary: boolean
+  /** `metric weights 0 k1 k2 k3 k4 k5`; varsayılan [1, 0, 1, 0, 0] */
+  k: [number, number, number, number, number]
+  /** `variance` (varsayılan 1) */
+  variance: number
+  /** `maximum-paths` (varsayılan 4) */
+  maxPaths: number
+  /** `eigrp stub …`; null = stub değil */
+  stub: { connected: boolean; summary: boolean; static: boolean; receiveOnly: boolean } | null
+  /** `redistribute static|connected [metric …]` */
+  redistribute: { static?: { metric?: EigrpSeedMetric }; connected?: { metric?: EigrpSeedMetric } }
+  /** `default-metric` */
+  defaultMetric: EigrpSeedMetric | null
+}
+
 export interface StaticRoute {
   net: string
   mask: string
@@ -318,6 +367,10 @@ export interface SwitchConfig {
   /** L5-a, routers only: full subinterface name (e.g. GigabitEthernet0/0.10) -> config */
   subifs?: Record<string, SubIfConfig>
   ospf?: OspfConfig | null
+  /** klasik EIGRP (tek AS modellenir) */
+  eigrp?: EigrpConfig | null
+  /** `key chain <ad>` → anahtar no → `key-string` (null: anahtar var, metin yok) */
+  keyChains?: Record<string, Record<string, string | null>>
   /** L5-d: NAT (`ip nat inside source …`, `ip nat pool`) */
   nat?: NatConfig
   /** L5-c: access lists by number or name */

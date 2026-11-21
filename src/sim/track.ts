@@ -15,13 +15,14 @@
 //   (c) nesne durumları belirlenir,
 //   (d) Derived.track yazılır: Down nesneye bağlı rotalar tablodan çıkar. Böyle bir rota OSPF dış
 //       rotasını tablodan okuyan bir ASBR'deyse (default-information originate `always`'siz,
-//       redistribute static) OSPF bir kez yeniden hesaplanır: duyuru çekilir, komşular başka
+//       redistribute static; EIGRP redistribute static) OSPF/EIGRP bir kez yeniden hesaplanır: duyuru çekilir, komşular başka
 //       ASBR'nin duyurusuna geçer. SLA'lar yeniden yoklanmaz, nesne durumları değişmez.
 //       Başarısız yoklama bu (OSPF'i güncel) tabloyla bir kez daha denenir; şimdi (yedek yoldan) başarılı oluyorsa gerçek IOS'ta
 //       nesne Up/Down arasında gidip gelir (dalgalanma). Model rotayı kapalı tutar ve nesnede
 //       `flapping` işaretini saklar (show track'te görünür). Yoklama hedefine birincil hattan
 //       giden bir host rotası (/32, track'siz) varsa yoklama yedek yola düşmez, dalgalanma olmaz.
 
+import { eigrpExternalsFromTable, recomputeEigrp } from './eigrp'
 import type { Derived } from './engine'
 import { l3Ifs, ping } from './net'
 import { ospfExternalsFromTable, recomputeOspf } from './ospf'
@@ -133,6 +134,13 @@ export function computeTrack(d: Derived): TrackState {
       d.cfgs[dev]!.routes.some((r) => r.track !== undefined && !objects[dev]?.[String(r.track)]?.up),
   )
   if (ospfStale) recomputeOspf(d)
+  // EIGRP `redistribute static` de tabloyu okur: aynı kural (duyuru kalkar, komşular günceller)
+  const eigrpStale = devs.some(
+    (dev) =>
+      eigrpExternalsFromTable(d, dev) &&
+      d.cfgs[dev]!.routes.some((r) => r.track !== undefined && !objects[dev]?.[String(r.track)]?.up),
+  )
+  if (eigrpStale) recomputeEigrp(d)
   // (d2) dalgalanma yoklaması: Down rotalar çıkmış (ve gerekirse OSPF yeniden hesaplanmış) tabloyla
   for (const dev of devs)
     for (const [n, r] of Object.entries(sla[dev]!)) {

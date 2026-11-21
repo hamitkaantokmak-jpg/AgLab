@@ -128,6 +128,8 @@ export interface Derived {
   hw: Hardware
   /** filled by computeState() in ospf.ts */
   ospf: Record<string, OspfState>
+  /** klasik EIGRP (eigrp.ts; computeState() doldurur) */
+  eigrp: Record<string, import('./eigrp').EigrpState>
   /** duplicate addresses; filled by computeState() in ospf.ts */
   dups: DupIp[]
   /** L5-d: dynamic NAT translations (owned by the runtime; read by deliver()) */
@@ -394,6 +396,7 @@ export function derive(
     errdis,
     hw,
     ospf: {},
+    eigrp: {},
     dups: [],
   }
 

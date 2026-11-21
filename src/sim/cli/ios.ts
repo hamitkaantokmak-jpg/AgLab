@@ -2,12 +2,13 @@
 
 import * as fhrp from '../fhrp'
 import * as tracking from '../track'
+import * as eigrp from '../eigrp'
 import { defaultMst, mstOf } from '../mst'
 import { defaultSvi, defaultSwitchConfig, defaultVlanName, pickL2, RESERVED_VLANS } from '../config'
 import { arpMac, deliver, l3Ifs, ping, traceProbe } from '../net'
 import type { LabRuntime } from '../runtime'
-import type { ChannelMode, DhcpPool, FhrpTrack, HsrpGroup, IpSlaConfig, MstConfig, TrackConfig, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
-import { canonIf, clone, ifNum, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
+import type { ChannelMode, DhcpPool, EigrpConfig, EigrpSeedMetric, FhrpTrack, HsrpGroup, IpSlaConfig, MstConfig, TrackConfig, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
+import { canonIf, clone, ifNum, intToIp, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
 import * as disc from '../discovery'
@@ -20,7 +21,7 @@ const SLA = '<1-2147483647:Entry number>'
 /** MST örnek listesi (0-4094; ör. 0-3,5) */
 const MI = '<WORD:MST instance range, example: 0-3,5,7-9>'
 
-export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl' | 'track' | 'ipsla' | 'ipslaEcho' | 'mst'
+export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl' | 'track' | 'ipsla' | 'ipslaEcho' | 'mst' | 'eigrp' | 'keychain' | 'keychainKey'
 
 type P = Pattern<IosSession>
 type Out = string[] | void
@@ -51,6 +52,17 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show ip interface brief', run: (x) => show.showIpIntBrief(x.rt, x.dev) },
     { p: 'show ip route', run: (x) => show.showIpRoute(x.rt, x.dev) },
     { p: 'show ip route ospf', run: (x) => show.showIpRoute(x.rt, x.dev, 'O') },
+    { p: 'show ip route eigrp', run: (x) => show.showIpRoute(x.rt, x.dev, 'D') },
+    { p: 'show ip eigrp neighbors', run: (x) => eigrp.showEigrpNeighbors(x.rt.derived, x.dev, false) },
+    { p: 'show ip eigrp neighbors detail', run: (x) => eigrp.showEigrpNeighbors(x.rt.derived, x.dev, true) },
+    { p: 'show ip eigrp interfaces', run: (x) => eigrp.showEigrpInterfaces(x.rt.derived, x.dev, false) },
+    { p: 'show ip eigrp interfaces detail', run: (x) => eigrp.showEigrpInterfaces(x.rt.derived, x.dev, true) },
+    { p: 'show ip eigrp topology', run: (x) => eigrp.showEigrpTopology(x.rt.derived, x.dev, false) },
+    { p: 'show ip eigrp topology all-links', run: (x) => eigrp.showEigrpTopology(x.rt.derived, x.dev, true) },
+    {
+      p: 'show ip eigrp topology <A.B.C.D:Network to display information about> <A.B.C.D:Network mask>',
+      run: (x, a) => eigrp.showEigrpTopologyEntry(x.rt.derived, x.dev, a[4]!, a[5]!),
+    },
     { p: 'show ip route <A.B.C.D:Network to display information about or host>', run: (x, a) => show.showIpRouteFor(x.rt, x.dev, a[3]!) },
     { p: 'show ip route static', run: (x) => show.showIpRoute(x.rt, x.dev, 'S') },
     { p: 'show ip route connected', run: (x) => show.showIpRoute(x.rt, x.dev, 'C') },
@@ -323,9 +335,26 @@ const configPatterns = (def: SwitchDef): P[] => {
           // IOS drops routing protocol configuration together with ip routing
           x.cfg.ipRouting = false
           x.cfg.ospf = null
+          x.cfg.eigrp = null
         },
       },
       { p: 'router ospf <1-65535:Process ID>', run: (x, a) => x.enterOspf(Number(a[2])) },
+      { p: 'router eigrp <1-65535:Autonomous System>', run: (x, a) => x.enterEigrp(Number(a[2])) },
+      {
+        p: 'no router eigrp <1-65535:Autonomous System>',
+        run: (x, a) => {
+          if (x.cfg.eigrp?.as === Number(a[3])) x.cfg.eigrp = null
+        },
+      },
+      { p: 'key chain <WORD:Key-chain name>', run: (x, a) => x.enterKeyChain(a[2]!) },
+      {
+        p: 'no key chain <WORD:Key-chain name>',
+        run: (x, a) => {
+          if (!x.cfg.keyChains?.[a[3]!]) return [`% Key-chain ${a[3]} is not defined`]
+          delete x.cfg.keyChains[a[3]!]
+          if (!Object.keys(x.cfg.keyChains).length) delete x.cfg.keyChains
+        },
+      },
       {
         p: 'no router ospf <1-65535:Process ID>',
         run: (x, a) => {
@@ -466,6 +495,7 @@ const l3OptPatterns: P[] = [
   { p: 'no ip mtu', run: (x) => x.eachL3((o) => void delete o.mtu) },
   { p: 'bandwidth <1-10000000:Bandwidth in kilobits>', run: (x, a) => x.eachL3((o) => void (o.bandwidth = Number(a[1]))) },
   { p: 'no bandwidth', run: (x) => x.eachL3((o) => void delete o.bandwidth) },
+  ...eigrpIfPatterns(),
   // L5-b: DHCP relay
   {
     p: 'ip helper-address <A.B.C.D:IP destination address>',
@@ -559,6 +589,118 @@ const routerPatterns: P[] = [
     },
   },
 ]
+
+/** EIGRP vektör metriği argümanları (`default-metric`, `redistribute … metric`). */
+const EM =
+  '<1-4294967295:Bandwidth metric in Kbits per second> <0-4294967295:EIGRP delay metric, in 10 microsecond units> <0-255:EIGRP reliability metric where 255 is 100% reliable> <1-255:EIGRP Effective bandwidth metric (Loading) where 255 is 100% loaded> <1-65535:EIGRP MTU of the path>'
+const seed = (a: string[], i: number): EigrpSeedMetric => ({ bw: Number(a[i]), delay: Number(a[i + 1]), rel: Number(a[i + 2]), load: Number(a[i + 3]), mtu: Number(a[i + 4]) })
+const EIGRP_IFS = ['FastEthernet', 'GigabitEthernet', 'Vlan', 'Loopback']
+
+/** `eigrp stub` seçenekleri: connected / summary / static her sırada; receive-only tek başına. */
+function stubPatterns(): P[] {
+  const opts = ['connected', 'summary', 'static']
+  const perms: string[][] = [[]]
+  const grow = (cur: string[]) => {
+    for (const o of opts) {
+      if (cur.includes(o)) continue
+      const n = [...cur, o]
+      perms.push(n)
+      grow(n)
+    }
+  }
+  grow([])
+  return [
+    ...perms.map((k): P => ({ p: ['eigrp stub', ...k].join(' '), run: (x) => x.eigrpStub(k) })),
+    { p: 'eigrp stub receive-only', run: (x) => x.eigrpStub(['receive-only']) },
+    { p: 'no eigrp stub', run: (x) => void (x.eigrp.stub = null) },
+  ]
+}
+
+/** `router eigrp <AS>` alt kipi (config-router). */
+const eigrpPatterns: P[] = [
+  ...commonSub,
+  { p: 'network <A.B.C.D:Network number>', run: (x, a) => x.eigrpNetwork(a[1]!, null, true) },
+  { p: 'network <A.B.C.D:Network number> <A.B.C.D:EIGRP wild card bits>', run: (x, a) => x.eigrpNetwork(a[1]!, a[2]!, true) },
+  { p: 'no network <A.B.C.D:Network number>', run: (x, a) => x.eigrpNetwork(a[2]!, null, false) },
+  { p: 'no network <A.B.C.D:Network number> <A.B.C.D:EIGRP wild card bits>', run: (x, a) => x.eigrpNetwork(a[2]!, a[3]!, false) },
+  { p: 'eigrp router-id <A.B.C.D:EIGRP Router-ID in IP address format>', run: (x, a) => void (x.eigrp.routerId = a[2]!) },
+  { p: 'no eigrp router-id', run: (x) => void (x.eigrp.routerId = null) },
+  { p: 'passive-interface default', run: (x) => void Object.assign(x.eigrp, { passiveDefault: true, passive: [] }) },
+  { p: 'no passive-interface default', run: (x) => void Object.assign(x.eigrp, { passiveDefault: false, passive: [] }) },
+  { p: 'passive-interface <if>', run: (x, a) => x.eigrpPassive(x.resolveName(a[1]!, a[2]!, 1), true), ifTypes: EIGRP_IFS },
+  { p: 'no passive-interface <if>', run: (x, a) => x.eigrpPassive(x.resolveName(a[2]!, a[3]!, 2), false), ifTypes: EIGRP_IFS },
+  { p: 'auto-summary', run: (x) => void (x.eigrp.autoSummary = true) },
+  { p: 'no auto-summary', run: (x) => void (x.eigrp.autoSummary = false) },
+  {
+    p: 'metric weights <0-8:Type Of Service (Only TOS 0 supported)> <0-255:K1> <0-255:K2> <0-255:K3> <0-255:K4> <0-255:K5>',
+    run: (x, a) => x.eigrpWeights(Number(a[2]), a.slice(3, 8).map(Number)),
+  },
+  { p: 'no metric weights', run: (x) => void (x.eigrp.k = [...eigrp.DEFAULT_K]) },
+  { p: 'variance <1-128:Metric variance multiplier>', run: (x, a) => void (x.eigrp.variance = Number(a[1])) },
+  { p: 'no variance', run: (x) => void (x.eigrp.variance = 1) },
+  { p: 'maximum-paths <1-16:Number of paths>', run: (x, a) => void (x.eigrp.maxPaths = Number(a[1])) },
+  { p: 'no maximum-paths', run: (x) => void (x.eigrp.maxPaths = 4) },
+  ...stubPatterns(),
+  { p: 'redistribute static', run: (x) => x.eigrpRedist('static') },
+  { p: `redistribute static metric ${EM}`, run: (x, a) => x.eigrpRedist('static', seed(a, 3)) },
+  { p: 'no redistribute static', run: (x) => void delete x.eigrp.redistribute.static },
+  { p: 'redistribute connected', run: (x) => x.eigrpRedist('connected') },
+  { p: `redistribute connected metric ${EM}`, run: (x, a) => x.eigrpRedist('connected', seed(a, 3)) },
+  { p: 'no redistribute connected', run: (x) => void delete x.eigrp.redistribute.connected },
+  { p: `default-metric ${EM}`, run: (x, a) => void (x.eigrp.defaultMetric = seed(a, 1)) },
+  { p: 'no default-metric', run: (x) => void (x.eigrp.defaultMetric = null) },
+]
+
+/** `key chain <ad>` alt kipi. */
+const keyChainPatterns: P[] = [
+  ...commonSub,
+  { p: 'key <0-2147483647:Key identifier>', run: (x, a) => x.enterKey(Number(a[1])) },
+  {
+    p: 'no key <0-2147483647:Key identifier>',
+    run: (x, a) => void delete x.cfg.keyChains?.[x.keyChain]?.[String(Number(a[2]))],
+  },
+]
+
+/** `key <n>` alt kipi (config-keychain-key). */
+const keyChainKeyPatterns: P[] = [
+  ...commonSub,
+  { p: 'key-string <LINE:The unencrypted (cleartext) user password>', run: (x, a) => x.setKeyString(a[1]!.trim()) },
+  { p: 'no key-string', run: (x) => x.setKeyString(null) },
+  { p: 'key <0-2147483647:Key identifier>', run: (x, a) => x.enterKey(Number(a[1])) },
+]
+
+/** Arayüz EIGRP komutları (routed port, alt arayüz, SVI, loopback). */
+function eigrpIfPatterns(): P[] {
+  const AS = '<1-65535:Autonomous system number>'
+  const forAs = (as: number) => (v: { as: number } | undefined) => !!v && v.as === as
+  return [
+    { p: 'delay <1-16777215:Throughput delay (tens of microseconds)>', run: (x, a) => x.eachL3((o) => void (o.delay = Number(a[1]))) },
+    { p: 'no delay', run: (x) => x.eachL3((o) => void delete o.delay) },
+    {
+      p: `ip summary-address eigrp ${AS} <A.B.C.D:IP address> <A.B.C.D:IP network mask>`,
+      run: (x, a) => x.eigrpSummary(Number(a[3]), a[4]!, a[5]!, true),
+    },
+    {
+      p: `no ip summary-address eigrp ${AS} <A.B.C.D:IP address> <A.B.C.D:IP network mask>`,
+      run: (x, a) => x.eigrpSummary(Number(a[4]), a[5]!, a[6]!, false),
+    },
+    { p: `ip hello-interval eigrp ${AS} <1-65535:Seconds between hello transmissions>`, run: (x, a) => x.eachL3((o) => void (o.eigrpHello = { as: Number(a[3]), sec: Number(a[4]) })) },
+    { p: `no ip hello-interval eigrp ${AS}`, run: (x, a) => x.eachL3((o) => void (forAs(Number(a[4]))(o.eigrpHello) && delete o.eigrpHello)) },
+    { p: `ip hold-time eigrp ${AS} <1-65535:Seconds before neighbor is considered down>`, run: (x, a) => x.eachL3((o) => void (o.eigrpHold = { as: Number(a[3]), sec: Number(a[4]) })) },
+    { p: `no ip hold-time eigrp ${AS}`, run: (x, a) => x.eachL3((o) => void (forAs(Number(a[4]))(o.eigrpHold) && delete o.eigrpHold)) },
+    { p: `ip authentication mode eigrp ${AS} md5`, run: (x, a) => x.eachL3((o) => void (o.eigrpAuthMd5 = { as: Number(a[4]) })) },
+    { p: `no ip authentication mode eigrp ${AS} md5`, run: (x, a) => x.eachL3((o) => void (forAs(Number(a[5]))(o.eigrpAuthMd5) && delete o.eigrpAuthMd5)) },
+    {
+      p: `ip authentication key-chain eigrp ${AS} <LINE:name of key-chain>`,
+      run: (x, a) => x.eachL3((o) => void (o.eigrpKeyChain = { as: Number(a[4]), name: a[5]!.trim() })),
+    },
+    { p: `no ip authentication key-chain eigrp ${AS}`, run: (x, a) => x.eachL3((o) => void (forAs(Number(a[5]))(o.eigrpKeyChain) && delete o.eigrpKeyChain)) },
+    {
+      p: `no ip authentication key-chain eigrp ${AS} <LINE:name of key-chain>`,
+      run: (x, a) => x.eachL3((o) => void (forAs(Number(a[5]))(o.eigrpKeyChain) && delete o.eigrpKeyChain)),
+    },
+  ]
+}
 
 /** L5-f: CDP/LLDP per physical port (switch and router). */
 const discoveryIfPatterns: P[] = [
@@ -760,6 +902,9 @@ function tries(def: SwitchDef) {
       ipsla: buildTrie(ipSlaPatterns),
       ipslaEcho: buildTrie(ipSlaEchoPatterns),
       mst: buildTrie(mstPatterns),
+      eigrp: buildTrie(eigrpPatterns),
+      keychain: buildTrie(keyChainPatterns),
+      keychainKey: buildTrie(keyChainKeyPatterns),
     }
     trieCache.set(def, t)
   }
@@ -782,6 +927,9 @@ export class IosSession {
   slaNo = 0
   /** `(config-mst)` altında bekleyen bölge yapılandırması (exit ile uygulanır) */
   mstPending: MstConfig | null = null
+  /** `(config-keychain)` / `(config-keychain-key)` altında düzenlenen zincir ve anahtar */
+  keyChain = ''
+  keyId = ''
   history: string[] = []
   private pending: { prompt: string; fn: (line: string) => Out } | null = null
   private starts: number[] = []
@@ -824,13 +972,19 @@ export class IosSession {
         return h + '(config-ip-sla-echo)#'
       case 'mst':
         return h + '(config-mst)#'
+      case 'eigrp':
+        return h + '(config-router)#'
+      case 'keychain':
+        return h + '(config-keychain)#'
+      case 'keychainKey':
+        return h + '(config-keychain-key)#'
       case 'acl':
         return h + (this.cfg.acls?.[this.aclName]?.type === 'extended' ? '(config-ext-nacl)#' : '(config-std-nacl)#')
     }
   }
 
   get inConfig() {
-    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho' || this.mode === 'mst'
+    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho' || this.mode === 'mst' || this.mode === 'eigrp' || this.mode === 'keychain' || this.mode === 'keychainKey'
   }
 
   private trie(): TrieNode<IosSession> {
@@ -879,7 +1033,7 @@ export class IosSession {
   private run(cmd: string): string[] {
     let r = parse(this.trie(), cmd)
     // in a sub-mode, a global config command drops back to config mode (as IOS does)
-    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho') && r.err !== 'empty') {
+    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho' || this.mode === 'eigrp' || this.mode === 'keychain' || this.mode === 'keychainKey') && r.err !== 'empty') {
       const g = parse(tries(this.def).config, cmd)
       if (g.ok) {
         this.mode = 'config'
@@ -956,6 +1110,11 @@ export class IosSession {
   }
 
   exitMode(): Out {
+    if (this.mode === 'keychainKey') {
+      // IOS: anahtar kipinden zincir kipine
+      this.mode = 'keychain'
+      return
+    }
     if (this.mode === 'config') {
       this.mode = 'priv'
       this.rt.log(this.dev, '%SYS-5-CONFIG_I: Configured from console by console')
@@ -1648,6 +1807,100 @@ export class IosSession {
       list.splice(i, 1)
     }
     if (!list.length) delete this.cfg.dhcpExcluded
+  }
+
+  // ---- EIGRP ----
+
+  get eigrp(): EigrpConfig {
+    return this.cfg.eigrp!
+  }
+
+  enterEigrp(as: number): Out {
+    if (!this.cfg.ipRouting) return ['% IP routing not enabled']
+    if (this.cfg.eigrp && this.cfg.eigrp.as !== as) return [`% Only one EIGRP process is modelled; remove "router eigrp ${this.cfg.eigrp.as}" first.`]
+    if (!this.cfg.eigrp)
+      this.cfg.eigrp = {
+        as,
+        routerId: null,
+        networks: [],
+        passiveDefault: false,
+        passive: [],
+        // Catalyst 3560 (IOS 12.2) varsayılanı açık, ISR (IOS 15) kapalı
+        autoSummary: !this.def.router,
+        k: [...eigrp.DEFAULT_K],
+        variance: 1,
+        maxPaths: 4,
+        stub: null,
+        redistribute: {},
+        defaultMetric: null,
+      }
+    this.mode = 'eigrp'
+  }
+
+  /** `network <ağ> [<wildcard>]`: adres ağa indirgenir (wildcard yoksa sınıflı ağ). */
+  eigrpNetwork(addr: string, wildcard: string | null, add: boolean): Out {
+    const a = ipToInt(addr)!
+    const net = wildcard === null ? networkOf(addr, eigrp.classfulPrefix(addr)) : intToIp((a & ~ipToInt(wildcard)!) >>> 0)
+    const e = this.eigrp
+    const i = e.networks.findIndex((n) => n.addr === net && n.wildcard === wildcard)
+    if (add) {
+      if (i < 0) e.networks.push({ addr: net, wildcard })
+    } else if (i >= 0) e.networks.splice(i, 1)
+  }
+
+  eigrpPassive(name: string, on: boolean): Out {
+    const e = this.eigrp
+    const set = new Set(e.passive)
+    if (on !== e.passiveDefault) set.add(name)
+    else set.delete(name)
+    e.passive = [...set]
+  }
+
+  eigrpWeights(tos: number, k: number[]): Out {
+    if (tos !== 0) return ['% Only TOS 0 is supported']
+    this.eigrp.k = k as EigrpConfig['k']
+  }
+
+  eigrpStub(kinds: string[]): Out {
+    const has = (k: string) => kinds.includes(k)
+    // yalnız `eigrp stub`: connected + summary
+    this.eigrp.stub = kinds.length
+      ? { connected: has('connected'), summary: has('summary'), static: has('static'), receiveOnly: has('receive-only') }
+      : { connected: true, summary: true, static: false, receiveOnly: false }
+  }
+
+  eigrpRedist(src: 'static' | 'connected', metric?: EigrpSeedMetric): Out {
+    this.eigrp.redistribute[src] = metric ? { metric } : {}
+  }
+
+  /** `ip summary-address eigrp <AS> <ağ> <maske>` */
+  eigrpSummary(as: number, net: string, mask: string, add: boolean): Out {
+    const len = maskToPrefix(mask)
+    if (len === null || networkOf(net, len) !== net) return ['% Invalid address/mask combination']
+    return this.eachL3((o) => {
+      const list = (o.eigrpSummaries ?? []).filter((s) => !(s.as === as && s.net === net && s.mask === mask))
+      if (add) list.push({ as, net, mask })
+      if (list.length) o.eigrpSummaries = list
+      else delete o.eigrpSummaries
+    })
+  }
+
+  enterKeyChain(name: string): Out {
+    ;(this.cfg.keyChains ??= {})[name] ??= {}
+    this.keyChain = name
+    this.mode = 'keychain'
+  }
+
+  enterKey(id: number): Out {
+    const ch = (this.cfg.keyChains ??= {})[this.keyChain] ??= {}
+    if (!(String(id) in ch)) ch[String(id)] = null
+    this.keyId = String(id)
+    this.mode = 'keychainKey'
+  }
+
+  setKeyString(str: string | null): Out {
+    const ch = this.cfg.keyChains?.[this.keyChain]
+    if (ch) ch[this.keyId] = str
   }
 
   // ---- OSPF ----
