@@ -45,8 +45,8 @@ GitHub Actions her push ve pull request'te tüm regresyon gruplarını çalışt
 
 Testler `tests/` (Python/Playwright) ve `tests/node/` (Node) altındadır; pipeline bunları keşifle toplar. JS kaynakları Prettier, test/araç Python dosyaları Black ile biçimlenir. Detaylı kurulum, test düzeni ve biçim kuralları: `docs/OTOMASYON.md`.
 
-Deneysel gerçek üçüncü taraf motor karşılaştırması: [kapsam, lisans ve testler](docs/HAZIR_MOTOR_ENTEGRASYON.md).
-HTML çevrimdışı çalışır; kaynak motoru yeniden derlemek için `npm ci --ignore-scripts` ve `npm run build:engine` kullanılır.
+Belgelerin içindekiler ve hangisinin güncel olduğu: [docs/README.md](docs/README.md). Geçmiş üçüncü taraf motor denemesi (NetSim; L7b'de kaldırıldı): [arşiv](docs/arsiv/HAZIR_MOTOR_ENTEGRASYON.md).
+HTML çevrimdışı çalışır; Labber motorunu yeniden derlemek için `npm ci --ignore-scripts` ve `npm run build:sim` kullanılır.
 Yeni entegrasyonu içeren HTML, `python tools/run_pipeline.py` tarafından kaynak modüllerden üretilir ve başarılı CI ZIP'ine eklenir. Depodaki hazır HTML de aynı modüllerle günceldir. CI hem iki ardışık derlemenin hem de kaydedilmiş HTML ile yeniden üretilen çıktının eşitliğini doğrular.
 
 [Motor uyumluluk matrisi](docs/UYUMLULUK_MATRISI.md) · [Gerçek VLAN/STP ve FRR testleri, ortak motor yönetimi](docs/GELISMIS_MOTOR_ENTEGRASYON.md). ZIP içindeki `html-build-manifest.json` HTML/modül bütünlüğünü doğrular; native protokoller ayrı Linux/Docker lablarında çalışır.

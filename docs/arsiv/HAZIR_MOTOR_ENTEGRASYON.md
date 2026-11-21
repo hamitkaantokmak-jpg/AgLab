@@ -1,5 +1,7 @@
 # Hazır motor entegrasyonu — 5 Kasım 2026
 
+> **Arşiv (2026-11-21'de taşındı).** 5 Kasım 2026: Michael Borck NetSim motorunun çevrimdışı HTML'ye gömülmesi. L7b'de NetSim ve motor yöneticisi kaldırıldı; ürünün tek simülasyon motoru Labber'dır ([YENIDEN_YAPILANMA](../YENIDEN_YAPILANMA.md), [UYUMLULUK_MATRISI](../UYUMLULUK_MATRISI.md) "L7b"). Aşağıdaki komutlar ve dosyalar artık geçerli değildir.
+
 ## Karar ve doğrulanmış kapsam
 
 Michael Borck NetSim'in **gerçek, değiştirilmemiş MIT TypeScript motoru** AğLab'ın
