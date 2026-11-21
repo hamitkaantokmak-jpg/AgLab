@@ -4,7 +4,7 @@ Genişken çalışma alanı pencereyi kaplar: üst gezinme, ikon şeridi ve Gör
 tuval ortada büyür, altta terminal + Simulation şeridi görünür kalır. Görev (hedefler) ve İnceleme
 daraltılabilir yan şerittir. Üst çubuk düğmeleri erişilebilir kalır. Esc ve Alt+Shift+F;
 seçim, yan şeritler ve terminal yüksekliği tarayıcıda hatırlanır; tuval yeni boyuta sığdırılır.
-Ekran görüntüleri: docs/arayuz/pr3/genis-{1280,1920}-{light,dark}.png.
+Ekran görüntüleri: test-results/arayuz-genis/genis-{1280,1920}-{light,dark}.png (commit'lenmez).
 """
 
 import os
@@ -14,7 +14,7 @@ from playwright.sync_api import expect, sync_playwright
 
 from aglab_test_support import HTML, ROOT, launch_chromium
 
-SHOTS = ROOT / "docs/arayuz/pr3"
+SHOTS = ROOT / "test-results/arayuz-genis"
 
 NODES_INSIDE = """() => {
   const svg = document.getElementById('ptCanvas'),

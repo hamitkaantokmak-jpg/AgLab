@@ -8,3 +8,5 @@ playwright-report/
 test-results/
 .DS_Store
 node_modules/
+# PR önce/sonra ekran görüntüleri depoya girmez (test çıktısı test-results/ altında)
+docs/arayuz/pr*/
