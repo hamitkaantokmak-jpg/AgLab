@@ -446,6 +446,28 @@ export const HINT_TIERS: Record<string, Record<string, [string, string]>> = {
       'Bölge ve kök düzeltmeleri döngüsüz bir ağaç bırakır; her VLAN kendi örneğinin yolundan akar.',
     ],
   },
+  'eigrp-ariza': {
+    summary: [
+      'R2’nin tablosunda şube LAN’ları nasıl görünüyor? Tek bir büyük ağ mı, iki ayrı alt ağ mı?',
+      'Eski sürümlerde EIGRP, sınıflı ağ sınırını geçerken alt ağları kendiliğinden sınıflı ağa özetler; aynı sınıflı ağ iki yerde olunca hangisinin nerede olduğu kaybolur.',
+    ],
+    kvalue: [
+      'R4 neden kimseyle komşu olmuyor? Log’da ne yazıyor?',
+      'EIGRP komşuları metrik formülünün ağırlıklarını (K değerleri) karşılaştırır; farklıysa komşuluk kurulmaz.',
+    ],
+    fs: [
+      'R2’nin topoloji tablosunda 10.3.3.0/24 için kaç yol var? Yedek yolun bildirilen uzaklığı ne?',
+      'Yedek bir yol, komşunun bildirdiği uzaklık en iyi uzaklıktan küçükse döngüsüz kabul edilir ve hazır yedek olur.',
+    ],
+    variance: [
+      'Yedek yol hazırda bekliyor; rota tablosunda neden görünmüyor?',
+      'EIGRP eşit olmayan maliyetli yolları ancak bir çarpanla izin verilirse ve yalnız hazır yedekler (feasible successor) için kullanır.',
+    ],
+    e2e: [
+      'PC1’den PC3’e paket R2’de hangi rotaya düşüyor?',
+      'İki şube LAN’ı ayrı rotalar olarak bilinince iki yönde de doğru yol kurulur.',
+    ],
+  },
   'ospf-sorun-ileri': {
     nettype: [
       'R1, R2’yi FULL görüyor ama tablosunda OSPF rotası yok. İki uçta arayüz ayarlarından biri farklı mı?',

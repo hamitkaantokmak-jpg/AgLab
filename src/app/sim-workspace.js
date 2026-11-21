@@ -674,6 +674,7 @@
     'statik-yedek': 'svctshoot',
     'hsrp-sla-track': 'telemetry',
     'mst-bolge': 'mst',
+    'eigrp-ariza': 'eigrp',
   };
   function academyCourse(id) {
     const n = Number(String(id).replace(/\D/g, ''));
