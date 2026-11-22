@@ -334,19 +334,19 @@ var AgLabSim = (() => {
 
   // src/sim/topology.ts
   var pk = (dev, port) => `${dev}|${port}`;
-  function buildTopo(lab26) {
+  function buildTopo(lab27) {
     const devices = {};
-    for (const d of lab26.devices) devices[d.id] = d;
+    for (const d of lab27.devices) devices[d.id] = d;
     const peer = {};
-    for (const l of lab26.links) {
+    for (const l of lab27.links) {
       peer[pk(l.a[0], l.a[1])] = { dev: l.b[0], port: l.b[1] };
       peer[pk(l.b[0], l.b[1])] = { dev: l.a[0], port: l.a[1] };
     }
-    const switches = lab26.devices.filter((d) => d.kind === "switch");
-    const pcs = lab26.devices.filter((d) => d.kind === "pc");
+    const switches = lab27.devices.filter((d) => d.kind === "switch");
+    const pcs = lab27.devices.filter((d) => d.kind === "pc");
     const pcAttach = {};
     for (const pc of pcs) pcAttach[pc.id] = peer[pk(pc.id, "eth0")] ?? null;
-    return { lab: lab26, devices, switches, pcs, peer, pcAttach };
+    return { lab: lab27, devices, switches, pcs, peer, pcAttach };
   }
 
   // src/sim/mst.ts
@@ -12526,10 +12526,172 @@ write memory`
   };
   var eigrp_troubleshoot_default = lab20;
 
+  // src/labs/bgp-two-isp.ts
+  var router3 = (id, mac, x, y) => ({
+    id,
+    kind: "switch",
+    router: true,
+    model: "ISR4331",
+    mac,
+    ports: ports("Gi0/0-3"),
+    x,
+    y
+  });
+  var ifc2 = (port, ip2, mask = "255.255.255.252") => `interface ${port}
+ ip address ${ip2} ${mask}
+ no shutdown
+exit`;
+  var LAN = "255.255.255.0";
+  var lab21 = {
+    id: "bgp-iki-isp",
+    title: "eBGP arıza giderme: iki ISP'li şube (oturum, önek duyurma, politika)",
+    summary: "Şube R1 (AS 65010) iki ISP'ye eBGP ile bağlı. Birincil ISP-A oturumu kurulmuyor, şirketin /23 bloğu internette görünmüyor ve çıkış trafiği yedek hattan gidiyor. Üç sorunu BGP tablolarından okuyarak bul; sonra gelen trafiği de birincil hatta çek.",
+    level: "İleri",
+    tags: ["ENCOR", "ENARSI", "BGP", "eBGP", "Local Preference", "AS_PATH prepend", "route-map", "Arıza giderme"],
+    brief: [
+      "R1 şube kenar router'ı, AS 65010. LAN'lar 198.51.100.0/24 (PC1) ve 198.51.101.0/24 (PC2); şirketin bloğu 198.51.100.0/23. ISP-A AS 64500 (203.0.113.1, birincil), ISP-B AS 64600 (192.0.2.1, yedek). İnternet tarafı INET AS 64700; sunucu SRV 203.0.114.10. Yalnız R1'i düzelt: ISP'ler ve INET operatör tarafı.",
+      "Belirti 1: show ip bgp summary'de ISP-A sürekli Active. show ip bgp neighbors 203.0.113.1 son hatayı söyler. İstersen R1'de Gi0/1'i kapatıp aç (shutdown, no shutdown) ve log'daki BGP NOTIFICATION satırına bak: sondaki onaltılı sayı karşı tarafın gerçek AS'idir.",
+      "Belirti 2: PC1 SRV'ye ping atamıyor. R1'de show ip bgp: 198.51.100.0/23 tabloda yok; INET'te show ip route 198.51.100.0 de boş.",
+      "Belirti 3: show ip bgp'de ISP-B'den gelen yolların LocPrf sütununda 200 var; ISP-A düzelince de 203.0.114.0/24'e çıkış ISP-B'den kalıyor. Birincil hat ISP-A: çıkış ondan olmalı.",
+      "Görev: Gelen trafik de ISP-A'dan gelsin: INET 198.51.100.0/23'e ISP-A üzerinden gitmeli. Bunu R1'den, ISP-B'ye giden duyuruyu uzatarak yap.",
+      "Kurallar: network satırı RIB'de birebir aynı önek/maske ister. Politika (route-map) değişikliği oturum kurulu iken kendiliğinden uygulanmaz: clear ip bgp <komşu> soft in|out (ya da soft) gerekir. LP girişte (in), prepend çıkışta (out) işe yarar.",
+      "Kontrol: show ip bgp summary, show ip bgp, show ip bgp 203.0.114.0, show ip bgp neighbors <ip> [advertised-routes], show route-map, INET'te show ip bgp 198.51.100.0 255.255.254.0. PC1 ve PC2'den ping ve trace 203.0.114.10."
+    ],
+    view: { w: 980, h: 540 },
+    devices: [
+      router3("R1", "5254.00e0.0001", 200, 270),
+      router3("ISP-A", "5254.00e0.0002", 500, 130),
+      router3("ISP-B", "5254.00e0.0003", 500, 410),
+      router3("INET", "5254.00e0.0004", 780, 270),
+      { id: "PC1", kind: "pc", mac: "0050.7966.e001", x: 60, y: 150 },
+      { id: "PC2", kind: "pc", mac: "0050.7966.e002", x: 60, y: 400 },
+      { id: "SRV", kind: "pc", mac: "0050.7966.e010", x: 920, y: 270 }
+    ],
+    links: [
+      { a: ["PC1", "eth0"], b: ["R1", "GigabitEthernet0/0"] },
+      { a: ["PC2", "eth0"], b: ["R1", "GigabitEthernet0/3"] },
+      { a: ["R1", "GigabitEthernet0/1"], b: ["ISP-A", "GigabitEthernet0/1"] },
+      { a: ["R1", "GigabitEthernet0/2"], b: ["ISP-B", "GigabitEthernet0/1"] },
+      { a: ["ISP-A", "GigabitEthernet0/2"], b: ["INET", "GigabitEthernet0/1"] },
+      { a: ["ISP-B", "GigabitEthernet0/2"], b: ["INET", "GigabitEthernet0/2"] },
+      { a: ["INET", "GigabitEthernet0/0"], b: ["SRV", "eth0"] }
+    ],
+    initialConfig: {
+      // S1: remote-as 64501 (doğrusu 64500); S2: /23 için Null0 yok; S3: LP 200 ISP-B'nin girişinde
+      R1: `hostname R1
+${ifc2("g0/0", "198.51.100.1", LAN)}
+${ifc2("g0/3", "198.51.101.1", LAN)}
+${ifc2("g0/1", "203.0.113.2")}
+${ifc2("g0/2", "192.0.2.2")}
+route-map PRIMARY-IN permit 10
+ set local-preference 200
+exit
+router bgp 65010
+ bgp router-id 10.255.0.1
+ network 198.51.100.0 mask 255.255.254.0
+ neighbor 203.0.113.1 remote-as 64501
+ neighbor 203.0.113.1 description ISP-A birincil
+ neighbor 192.0.2.1 remote-as 64600
+ neighbor 192.0.2.1 description ISP-B yedek
+ neighbor 192.0.2.1 route-map PRIMARY-IN in
+exit`,
+      "ISP-A": `hostname ISP-A
+${ifc2("g0/1", "203.0.113.1")}
+${ifc2("g0/2", "10.24.0.1")}
+router bgp 64500
+ neighbor 203.0.113.2 remote-as 65010
+ neighbor 10.24.0.2 remote-as 64700
+exit`,
+      "ISP-B": `hostname ISP-B
+${ifc2("g0/1", "192.0.2.1")}
+${ifc2("g0/2", "10.34.0.1")}
+router bgp 64600
+ neighbor 192.0.2.2 remote-as 65010
+ neighbor 10.34.0.2 remote-as 64700
+exit`,
+      INET: `hostname INET
+${ifc2("g0/0", "203.0.114.1", LAN)}
+${ifc2("g0/1", "10.24.0.2")}
+${ifc2("g0/2", "10.34.0.2")}
+router bgp 64700
+ network 203.0.114.0
+ neighbor 10.24.0.1 remote-as 64500
+ neighbor 10.34.0.1 remote-as 64600
+exit`
+    },
+    initialPcs: {
+      PC1: { ip: "198.51.100.10", prefix: 24, gw: "198.51.100.1" },
+      PC2: { ip: "198.51.101.10", prefix: 24, gw: "198.51.101.1" },
+      SRV: { ip: "203.0.114.10", prefix: 24, gw: "203.0.114.1" }
+    },
+    objectives: [
+      {
+        id: "session",
+        title: "R1 – ISP-A oturumu Established",
+        hint: "R1: router bgp 65010 → neighbor 203.0.113.1 remote-as 64500. show ip bgp summary → State/PfxRcd sütununda sayı.",
+        check: (q) => {
+          const s = q.bgpSession("R1", "203.0.113.1");
+          return { ok: s?.state === "Established", detail: s ? `ISP-A: ${s.state}` : "komşu tanımı yok" };
+        }
+      },
+      {
+        id: "announce",
+        title: "Şirket bloğu 198.51.100.0/23 iki ISP'ye de duyuruluyor",
+        hint: "R1: ip route 198.51.100.0 255.255.254.0 Null0. show ip bgp → 198.51.100.0/23, next hop 0.0.0.0; show ip bgp neighbors 192.0.2.1 advertised-routes.",
+        check: (q) => {
+          const a = q.bgpPaths("ISP-A", "198.51.100.0", 23)?.some((p) => p.from === "203.0.113.2");
+          const b = q.bgpPaths("ISP-B", "198.51.100.0", 23)?.some((p) => p.from === "192.0.2.2");
+          return { ok: !!a && !!b, detail: !q.bgpPaths("R1", "198.51.100.0", 23) ? "R1'in BGP tablosunda /23 yok" : `ISP-A ${a ? "alıyor" : "almıyor"}, ISP-B ${b ? "alıyor" : "almıyor"}` };
+        }
+      },
+      {
+        id: "outbound",
+        title: "R1, 203.0.114.0/24'e ISP-A'dan çıkıyor",
+        hint: "route-map PRIMARY-IN'i ISP-A'nın girişine taşı: no neighbor 192.0.2.1 route-map PRIMARY-IN in, neighbor 203.0.113.1 route-map PRIMARY-IN in; sonra clear ip bgp * soft in. show ip bgp 203.0.114.0.",
+        check: (q) => {
+          const best = q.bgpPaths("R1", "203.0.114.0", 24)?.find((p) => p.best);
+          const r = q.route("R1", "203.0.114.0", 24);
+          return { ok: best?.from === "203.0.113.1" && r?.code === "B" && r.nh === "203.0.113.1", detail: best ? `en iyi yol ${best.from}, LP ${best.lp}` : "BGP tablosunda yok" };
+        }
+      },
+      {
+        id: "inbound",
+        title: "INET, 198.51.100.0/23'e ISP-A üzerinden gidiyor",
+        hint: "R1: route-map ISP-B-OUT permit 10 → set as-path prepend 65010 65010; neighbor 192.0.2.1 route-map ISP-B-OUT out; clear ip bgp 192.0.2.1 soft out. INET: show ip bgp 198.51.100.0 255.255.254.0.",
+        check: (q) => {
+          const best = q.bgpPaths("INET", "198.51.100.0", 23)?.find((p) => p.best);
+          return { ok: best?.from === "10.24.0.1", detail: best ? `INET en iyi yol ${best.from}, AS_PATH ${best.asPath.join(" ")}` : "INET'te /23 yok" };
+        }
+      },
+      {
+        id: "e2e",
+        title: "PC1 ve PC2 → SRV ping",
+        hint: "PC1'de: ping 203.0.114.10. /23 duyurulunca dönüş yolu oluşur; trace ile çıkışın ISP-A'dan (203.0.113.1) olduğunu gör.",
+        check: (q) => q.ping("PC1", "203.0.114.10").ok && q.ping("PC2", "203.0.114.10").ok
+      }
+    ],
+    solution: {
+      R1: `configure terminal
+ip route 198.51.100.0 255.255.254.0 Null0
+route-map ISP-B-OUT permit 10
+ set as-path prepend 65010 65010
+exit
+router bgp 65010
+ neighbor 203.0.113.1 remote-as 64500
+ no neighbor 192.0.2.1 route-map PRIMARY-IN in
+ neighbor 203.0.113.1 route-map PRIMARY-IN in
+ neighbor 192.0.2.1 route-map ISP-B-OUT out
+end
+clear ip bgp * soft
+write memory`
+    }
+  };
+  var bgp_two_isp_default = lab21;
+
   // src/labs/dhcp-setup.ts
   var SRV = "192.168.100.10";
   var offer = (q, pc) => dhcpDiscover(q.d, pc, []);
-  var lab21 = {
+  var lab22 = {
     id: "dhcp-kurulum",
     title: "DHCP: havuz, dışlama ve relay (ip helper-address)",
     summary: "R1'de 1. kat için DHCP havuzu kur, gateway adreslerini dışla; 2. katın isteğini relay ile sunucu odasındaki DHCP sunucusuna ilet.",
@@ -12629,7 +12791,7 @@ end
 `
     }
   };
-  var dhcp_setup_default = lab21;
+  var dhcp_setup_default = lab22;
 
   // src/labs/dns-setup.ts
   var DNS = "192.168.100.10";
@@ -12637,7 +12799,7 @@ end
     const r = dhcpDiscover(q.d, pc, []);
     return r.ok ? r.dns : null;
   };
-  var lab22 = {
+  var lab23 = {
     id: "dns-kurulum",
     title: "DNS: istemciye doğru DNS sunucusunu dağıtmak",
     summary: "İki katın DHCP havuzunda DNS ayarı bozuk. nslookup ile ad çözümleme hatasını IP bağlantı hatasından ayır ve havuzları düzelt.",
@@ -12743,14 +12905,14 @@ end
 `
     }
   };
-  var dns_setup_default = lab22;
+  var dns_setup_default = lab23;
 
   // src/labs/roas-setup.ts
   var sub = (q, vlan, ip2) => {
     const s = q.cfg("R1").subifs?.["GigabitEthernet0/0." + vlan];
     return !!s && s.vlan === vlan && !s.shutdown && s.ip?.addr === ip2 && s.ip.mask === "255.255.255.0";
   };
-  var lab23 = {
+  var lab24 = {
     id: "roas-kurulum",
     title: "Router-on-a-stick: iki VLAN'ı tek kabloyla yönlendirmek",
     summary: "SW1–R1 bağlantısını trunk yap, R1'de VLAN 10 ve 20 için alt arayüzleri kur; farklı VLAN'daki PC'ler birbirine ulaşsın.",
@@ -12850,7 +13012,7 @@ end
 `
     }
   };
-  var roas_setup_default = lab23;
+  var roas_setup_default = lab24;
 
   // src/labs/cdp-discovery.ts
   var UPLINKS2 = [
@@ -12865,7 +13027,7 @@ end
     ["SW-KAT2", "FastEthernet0/1"],
     ["SW-KAT2", "FastEthernet0/2"]
   ];
-  var lab24 = {
+  var lab25 = {
     id: "cdp-kesif",
     title: "CDP/LLDP: belgelenmemiş ağı çıkarmak ve etiketlemek",
     summary: "Yalnız R1'in adını biliyorsun. Komşu tablolarıyla ağı çiz, merkez switch'in uplink'lerini etiketle, LLDP'yi aç ve kullanıcı portlarında CDP'yi kapat.",
@@ -12987,7 +13149,7 @@ end
 `
     }
   };
-  var cdp_discovery_default = lab24;
+  var cdp_discovery_default = lab25;
 
   // src/labs/physical-check.ts
   var desc2 = (q, port) => (q.cfg("SW1").ifaces[port]?.description ?? "").toUpperCase();
@@ -12996,7 +13158,7 @@ end
     ["FastEthernet0/2", "PC-2"],
     ["GigabitEthernet0/1", "SW2"]
   ];
-  var lab25 = {
+  var lab26 = {
     id: "fiziksel-kontrol",
     title: "Port durum tablosunu okumak: iki uç, boş portlar ve etiketleme",
     summary: "show interfaces status ile disabled ve notconnect portları ayır, iki ucu oku, kullanılmayan portları kapat ve kullanılan portları etiketle.",
@@ -13095,10 +13257,10 @@ end
 `
     }
   };
-  var physical_check_default = lab25;
+  var physical_check_default = lab26;
 
   // src/labs/index.ts
-  var LABS = [vlan_basics_default, trunk_troubleshoot_default, trunk_hardening_default, campus_l2_l3_default, stp_load_balancing_default, etherchannel_troubleshoot_default, l3_static_routing_default, mgmt_vlan_default, ospf_single_area_default, routed_access_default, bpdu_guard_default, ospf_troubleshoot_default, ospf_multiarea_default, ospf_area_troubleshoot_default, ospf_advanced_troubleshoot_default, ospf_redistribution_default, sla_static_backup_default, sla_hsrp_track_default, mst_region_default, eigrp_troubleshoot_default, physical_check_default, roas_setup_default, dhcp_setup_default, dns_setup_default, cdp_discovery_default];
+  var LABS = [vlan_basics_default, trunk_troubleshoot_default, trunk_hardening_default, campus_l2_l3_default, stp_load_balancing_default, etherchannel_troubleshoot_default, l3_static_routing_default, mgmt_vlan_default, ospf_single_area_default, routed_access_default, bpdu_guard_default, ospf_troubleshoot_default, ospf_multiarea_default, ospf_area_troubleshoot_default, ospf_advanced_troubleshoot_default, ospf_redistribution_default, sla_static_backup_default, sla_hsrp_track_default, mst_region_default, eigrp_troubleshoot_default, physical_check_default, roas_setup_default, dhcp_setup_default, dns_setup_default, cdp_discovery_default, bgp_two_isp_default];
 
   // src/labs/hint-tiers.ts
   var HINT_TIERS = {
@@ -13540,6 +13702,28 @@ end
       ping: [
         "Aynı VLAN’daki iki PC birbirine ulaşıyor mu?",
         "Bölge ve kök düzeltmeleri döngüsüz bir ağaç bırakır; her VLAN kendi örneğinin yolundan akar."
+      ]
+    },
+    "bgp-iki-isp": {
+      session: [
+        "ISP-A oturumu neden Active’de kalıyor? Komşu tanımındaki AS numarası karşı tarafın gerçek AS’iyle aynı mı?",
+        "BGP açılış mesajında iki taraf AS numarasını bildirir; beklenenden farklı AS gelirse oturum reddedilir ve kurulmaz."
+      ],
+      announce: [
+        "network satırı /23 diyor; R1’in yönlendirme tablosunda birebir 198.51.100.0/23 var mı?",
+        "BGP bir öneki yalnız tabloda aynı önek ve maske ile bulursa duyurur; iki /24 bir /23 sayılmaz. Bloğu tabloda tutmanın atma (Null0) rotası ile bilinen bir yolu var."
+      ],
+      outbound: [
+        "BGP tablosunda LocPrf 200 hangi komşudan gelen yollarda? Birincil hat hangisi?",
+        "Yüksek Local Preference çıkışı o komşuya çeker; giriş (in) politikası doğru komşuya bağlanmalı. Politika değişikliği oturum kuruluyken kendiliğinden uygulanmaz."
+      ],
+      inbound: [
+        "INET, şirket bloğu için iki yoldan hangisini seçiyor ve hangi karar adımıyla? AS_PATH uzunlukları ne?",
+        "Karşı AS’ler gelen trafiğin yolunu kendi seçer; yedek hattan yapılan duyuruyu uzatmak (AS_PATH prepend, çıkış yönünde) onları birincile yöneltir."
+      ],
+      e2e: [
+        "PC1’den SRV’ye ping gidiyor ama yanıt dönüyor mu? INET şube bloğunu biliyor mu?",
+        "Dönüş yolu ancak şirket bloğu internete duyurulunca oluşur."
       ]
     },
     "eigrp-ariza": {
@@ -15011,16 +15195,16 @@ end
       const [x, y] = fwd ? [link.a, link.b] : [link.b, link.a];
       steps.push({ from: x[0], out: x[1], to: y[0], in: y[1], vlan: nodeVlan(c.to) });
     }
-    for (const [ifc2, atStart] of [
+    for (const [ifc3, atStart] of [
       [a, true],
       [b, false]
     ]) {
-      if (ifc2.kind !== "pc") continue;
-      const at = rt.topo.pcAttach[ifc2.dev];
-      if (!at || !rt.cableIntact(ifc2.dev, "eth0")) return null;
-      const vlan = nodeVlan(ifc2.node);
-      if (atStart) steps.unshift({ from: ifc2.dev, out: "eth0", to: at.dev, in: at.port, vlan });
-      else steps.push({ from: at.dev, out: at.port, to: ifc2.dev, in: "eth0", vlan });
+      if (ifc3.kind !== "pc") continue;
+      const at = rt.topo.pcAttach[ifc3.dev];
+      if (!at || !rt.cableIntact(ifc3.dev, "eth0")) return null;
+      const vlan = nodeVlan(ifc3.node);
+      if (atStart) steps.unshift({ from: ifc3.dev, out: "eth0", to: at.dev, in: at.port, vlan });
+      else steps.push({ from: at.dev, out: at.port, to: ifc3.dev, in: "eth0", vlan });
     }
     return steps;
   }

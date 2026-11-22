@@ -145,7 +145,7 @@ class FlowTasksTests(unittest.TestCase):
 
     def test_topic_without_tasks_offers_free_simulator(self):
         p = self.page
-        self.open_course("BGP")
+        self.open_course("IPsec")
         p.locator("#sfSheet .sf-steps button", has_text="3 · Pratik").click()
         expect(p.locator("#sfSheet .sf-tasks")).to_have_count(0)
         expect(p.locator("#sfSheet")).to_contain_text("simülatör görevi henüz yok")
@@ -171,9 +171,11 @@ class FlowTasksTests(unittest.TestCase):
         expect(eigrp.locator("small")).to_contain_text("okuma + simülatör labı")
         eigrp.evaluate("b => b.click()")
         expect(p.locator("#sfSheet > small").first).to_contain_text("OKUMA DERSİ + SİMÜLATÖR LABI")
-        bgp = p.locator("#sfList button", has_text="BGP").first
-        expect(bgp.locator("small")).to_contain_text("okuma")
-        expect(bgp.locator("small")).not_to_contain_text("simülatör labı")
+        bgp = p.locator("#sfList button", has_text="BGP: eBGP").first
+        expect(bgp.locator("small")).to_contain_text("okuma + simülatör labı")
+        ipsec = p.locator("#sfList button", has_text="IPsec").first
+        expect(ipsec.locator("small")).to_contain_text("okuma")
+        expect(ipsec.locator("small")).not_to_contain_text("simülatör labı")
 
     def test_level1_topics_have_setup_and_fault_tasks(self):
         """Şube 1.0: Seviye 1'in her konusunda en az bir kurulum (yönlendirmeli) görevi ve en az

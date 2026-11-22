@@ -202,6 +202,7 @@ köprü kullanılmadan doğrudan Labber'da kurulur; terminal Labber oturumudur, 
 | `dhcp-kurulum` | DHCP: havuz, dışlama ve relay (ip helper-address) | Başlangıç | 8/7 | 3 | Şube, Konu #9, DHCP, Relay, ip helper-address, 169.254 | **Labber** — LabDef doğrudan |
 | `dns-kurulum` | DNS: istemciye doğru DNS sunucusunu dağıtmak | Başlangıç | 8/7 | 3 | Şube, Konu #10, DNS, nslookup, DHCP, dns-server | **Labber** — LabDef doğrudan |
 | `cdp-kesif` | CDP/LLDP: belgelenmemiş ağı çıkarmak ve etiketlemek | Başlangıç | 9/8 | 4 | Şube, Konu #12, CDP, LLDP, description, Belgeleme | **Labber** — LabDef doğrudan |
+| `bgp-iki-isp` | eBGP arıza giderme: iki ISP'li şube (oturum, önek duyurma, politika) | İleri | 7/7 | 5 | ENCOR, ENARSI, BGP, eBGP, Local Preference, AS_PATH prepend, route-map, Arıza giderme | **Labber** — LabDef doğrudan |
 
 ## Motor kullanmayan eski içerik (L6)
 
@@ -212,7 +213,7 @@ alıştırmadır (3. yol, motor yok). Tablo ürünün kendisinden üretilir; ayr
 UYUMLULUK_MATRISI "L6".
 
 BGP öğeleri (Sorun Çöz `bgp`, protokol atölyesindeki üç BGP durumu) kavramsal kalır: eBGP
-(kademe 1) Labber'da modellendi, bu öğelerin Labber'a taşınması ayrı pratik işidir
+(kademe 1) Labber'da modellendi; canlı pratik Simülatör'deki `bgp-iki-isp` labıdır
 (UYUMLULUK_MATRISI "eBGP").
 
 | Bölüm | Öğe | Başlık | Yol |
@@ -277,8 +278,8 @@ gerekçesiyle gösterilir (terminal ve değerlendirme açık hata verir).
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
 | Ortak senaryolar | 116 | 0 | 116 |
-| Labber labları | 25 | 0 | 25 |
-| Toplam | 181 | 0 | 181 |
+| Labber labları | 26 | 0 | 26 |
+| Toplam | 182 | 0 | 182 |
 
 | Simüle edilememe gerekçesi | İçerik sayısı |
 |---|---|

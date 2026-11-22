@@ -203,7 +203,7 @@ def render(browser):
             'UYUMLULUK_MATRISI "L6".',
             "",
             "BGP öğeleri (Sorun Çöz `bgp`, protokol atölyesindeki üç BGP durumu) kavramsal kalır: eBGP",
-            "(kademe 1) Labber'da modellendi, bu öğelerin Labber'a taşınması ayrı pratik işidir",
+            "(kademe 1) Labber'da modellendi; canlı pratik Simülatör'deki `bgp-iki-isp` labıdır",
             '(UYUMLULUK_MATRISI "eBGP").',
             "",
             "| Bölüm | Öğe | Başlık | Yol |",

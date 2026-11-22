@@ -675,6 +675,7 @@
     'hsrp-sla-track': 'telemetry',
     'mst-bolge': 'mst',
     'eigrp-ariza': 'eigrp',
+    'bgp-iki-isp': 'bgp',
     'fiziksel-kontrol': 'physical',
     'roas-kurulum': 'intervlan',
     'dhcp-kurulum': 'dhcp',

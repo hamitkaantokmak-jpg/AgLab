@@ -8,6 +8,7 @@
   açıklama çıkar (bir kez); ipucu komut açıklamasının yerine geçer.
 """
 
+import json
 import unittest
 
 from playwright.sync_api import expect, sync_playwright
@@ -58,10 +59,22 @@ class CoachTests(unittest.TestCase):
         p.locator("#ptCliInput").press("Enter")
 
     def reload(self):
-        # Chromium localStorage yazmalarını tarayıcı sürecine gecikmeli işler; hemen yenilemek
-        # son yazmayı göremeyebilir (CI'da görüldü). Yenilemeden önce kayıt beklenir.
-        self.page.wait_for_timeout(1500)
+        # Sözleşme: uygulama durumu localStorage'a yazar, açılışta oradan okur. Chromium file://
+        # kökeninde localStorage'ı tarayıcı sürecine gecikmeli işler; yük altında yenilenen
+        # belge son yazmayı (hatta hiçbir kaydı) görmeyebiliyor (CI'da ve yerel hatta görüldü).
+        # Bu yüzden yenilemeden önce yazılan kayıt okunur ve yeni belgeye uygulama
+        # başlamadan tek seferlik verilir (window.name yenilemede korunur).
+        want = self.page.evaluate("localStorage.getItem('aglab-coach-v1')")
+        self.assertIsNotNone(want, "coach durumu localStorage'a yazılmadı")
+        self._reloads = getattr(self, "_reloads", 0) + 1
+        token = "aglab-coach-reload-%d" % self._reloads
+        self.ctx.add_init_script(
+            "if (window.name === %s) { window.name = '';"
+            " localStorage.setItem('aglab-coach-v1', %s); }" % (json.dumps(token), json.dumps(want))
+        )
+        self.page.evaluate("(t) => { window.name = t }", token)
         self.page.reload()
+        self.assertEqual(self.page.evaluate("localStorage.getItem('aglab-coach-v1')"), want)
 
     def finish_tour(self):
         self.wait_current("tour:0")

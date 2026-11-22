@@ -20,13 +20,14 @@ import slaStatic from './sla-static-backup'
 import slaHsrp from './sla-hsrp-track'
 import mstRegion from './mst-region'
 import eigrpTrouble from './eigrp-troubleshoot'
+import bgpTwoIsp from './bgp-two-isp'
 import dhcpSetup from './dhcp-setup'
 import dnsSetup from './dns-setup'
 import roasSetup from './roas-setup'
 import cdpDiscovery from './cdp-discovery'
 import physicalCheck from './physical-check'
 
-export const LABS: LabDef[] = [vlanBasics, troubleshoot, hardening, campus, stpLb, ecTrouble, l3Static, mgmt, ospfSingle, routedAccess, bpduGuard, ospfTrouble, ospfMulti, ospfAreaTrouble, ospfAdvTrouble, ospfRedist, slaStatic, slaHsrp, mstRegion, eigrpTrouble, physicalCheck, roasSetup, dhcpSetup, dnsSetup, cdpDiscovery]
+export const LABS: LabDef[] = [vlanBasics, troubleshoot, hardening, campus, stpLb, ecTrouble, l3Static, mgmt, ospfSingle, routedAccess, bpduGuard, ospfTrouble, ospfMulti, ospfAreaTrouble, ospfAdvTrouble, ospfRedist, slaStatic, slaHsrp, mstRegion, eigrpTrouble, physicalCheck, roasSetup, dhcpSetup, dnsSetup, cdpDiscovery, bgpTwoIsp]
 
 export function findLab(id: string): LabDef | undefined {
   return LABS.find((l) => l.id === id)
