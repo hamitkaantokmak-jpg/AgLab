@@ -40,13 +40,15 @@ function labTopology(def) {
     if (d.kind === 'switch')
       return {
         ...base,
-        type: 'Switch',
+        // Router (LabDef router: true) çizimde ve denetçide router olarak görünür; arayüz
+        // durumu labViewWrite ile çalışma zamanından yazılır.
+        type: d.router ? 'Router' : 'Switch',
         w: 112,
         h: 72,
         ports: d.ports.map(labShortPort),
         vlans: [1],
         interfaces: {},
-        config: { labberModel: d.model },
+        config: { labberModel: d.model, labberL3: !!(d.l3 || d.router) },
       };
     const pc = def.initialPcs?.[d.id];
     const mask = pc?.ip
@@ -54,7 +56,7 @@ function labTopology(def) {
       : '';
     return {
       ...base,
-      type: 'PC',
+      type: d.server ? 'Server' : 'PC',
       w: 104,
       h: 72,
       ip: pc?.ip || '',
@@ -248,15 +250,23 @@ const aglabLabber = (() => {
     }
     state.key = key();
   }
-  /** Lab kipinde çizimdeki durum: switch adı (hostname), PC adresi, güç, kablo. */
+  /**
+   * Lab kipinde çizimdeki durum: switch adı (hostname), port durumu, PC adresi, güç, kablo.
+   * Port durumu (`show interfaces status` ile aynı: connected/notconnect/disabled/err-disabled…),
+   * switchport modu/VLAN'ları ve routed portun adresi çalışma zamanından yazılır; inceleme paneli
+   * ve tuval bunları okur (lab tanımındaki başlangıç çizimi değil).
+   */
   function labViewWrite() {
-    const rt = state.rt;
+    const rt = state.rt,
+      q = rt.query();
     for (const d of devices) {
       const def = rt.topo.devices[d.id];
       if (!def) continue;
       d.enabled = rt.powered(d.id);
-      if (def.kind === 'switch') d.name = rt.hostname(d.id);
-      else {
+      if (def.kind === 'switch') {
+        d.name = rt.hostname(d.id);
+        d.interfaces = labPortStates(rt, q, def);
+      } else {
         const pc = rt.pcs[d.id];
         d.ip = pc?.ip || '';
         d.mask = pc?.ip ? prefixMask(pc.prefix) : '';
@@ -268,6 +278,40 @@ const aglabLabber = (() => {
         b = labPort(l.b, l.portB);
       l.up = rt.cableIntact(l.a, a) && rt.cableIntact(l.b, b);
     }
+  }
+  function labPortStates(rt, q, def) {
+    const cfg = rt.running[def.id],
+      out = {};
+    if (!cfg) return out;
+    for (const full of def.ports) {
+      const c = cfg.ifaces[full];
+      if (!c) continue;
+      const lp = q.port(def.id, full);
+      const routed = !!def.router || !!c.routed;
+      const i = {
+        enabled: !c.shutdown,
+        status: lp
+          ? lp.status
+          : c.shutdown
+            ? 'disabled'
+            : q.linkUp(def.id, full)
+              ? 'connected'
+              : 'notconnect',
+      };
+      if (routed) {
+        if (c.ip) {
+          i.ip = c.ip.addr;
+          i.mask = c.ip.mask;
+        }
+      } else {
+        i.mode = lp?.opMode || (c.mode === 'trunk' ? 'trunk' : 'access');
+        i.vlan = c.accessVlan;
+        i.native = c.nativeVlan;
+        i.allowed = c.allowed || [];
+      }
+      out[labShortPort(full)] = i;
+    }
+    return out;
   }
   function prefixMask(p) {
     const n = p ? (0xffffffff << (32 - p)) >>> 0 : 0;

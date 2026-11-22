@@ -6106,7 +6106,7 @@ html:not([data-theme='light']) {
 </section>
 <section class="workspace" id="area-troubleshoot">
 <div class="ag-progress"><span id="progressText">0 / 8 senaryo tamamlandı</span><div class="bar"><span id="progressBar"></span></div></div>
-<div class="lab-heading"><div><div class="eyebrow">SORUN ÇÖZ</div><h2>Belirtilerden arızayı teşhis et</h2><p>Çözüm komutu doğrudan verilmez. Görev Labber motorundaki gerçek topolojide açılır: belirtiyi araştır, düzelt ve test ederek doğrula.</p></div></div>
+<div class="lab-heading"><div><div class="eyebrow">SORUN ÇÖZ</div><h2>Belirtilerden arızayı teşhis et</h2><p>Çözüm komutu doğrudan verilmez. Görev Simülatör'de gerçek bir topolojide açılır: belirtiyi araştır, düzelt ve test ederek doğrula.</p></div></div>
 <details class="ux-extra-tools" id="uxTopologyAudit"><summary><span><b>Kendi topolojimden arıza görevi oluştur</b><small>Önce Simülatör'de ağ denetimi yaptıysan kullan</small></span></summary><div class="ux-extra-body">
 <section class="panel" id="topologyTaskCard" style="padding:16px;margin-bottom:17px">
   <div class="panel-head" style="padding:0 0 12px;border:0"><div><h3>Kendi topolojinden sorun çözme görevi</h3><span>Simülatör denetim bulgularını teşhis görevine dönüştür</span></div><button id="loadTopologyTask">Son denetimi yükle</button></div>
@@ -20651,7 +20651,7 @@ $('scenarioList').addEventListener('click', (e) => {
   if (b) load(+b.dataset.s);
 });
 $('mission').innerHTML =
-  '<div class="mission-top"><span class="tag">LABBER MOTORU</span></div><h3>Bir arıza görevi seç</h3><p>Her görev Simülatör’de gerçek bir topolojide açılır: belirtiyi cihaz terminallerinden araştır, düzelt ve başarıyı gerçek ping ile doğrula. Kavramsal alıştırmalar motor kullanmaz ve öyle etiketlidir.</p>';
+  '<div class="mission-top"><span class="tag">SİMÜLATÖRDE</span></div><h3>Bir arıza görevi seç</h3><p>Her görev Simülatör’de gerçek bir topolojide açılır: belirtiyi cihaz terminallerinden araştır, düzelt ve başarıyı gerçek ping ile doğrula. Kavramsal alıştırmalar motor kullanmaz ve öyle etiketlidir.</p>';
 renderList();
 // Ders etiketleri simülatör çalışma alanı yüklenince (sonraki betik) eklenir.
 document.addEventListener('DOMContentLoaded', renderList);
@@ -25820,9 +25820,10 @@ const AgLabModel = (() => {
     updateInspector();
     $p('ptTerminal').innerHTML = '';
     say(
-      'AğLab CLI hazır (Labber: switch/router IOS, PC VPCS). Paketin izlediği yolu Simulation Mode gösterir. Router alt arayüzleri için interface g0/0.20 → encapsulation dot1q 20 → ip address <IP> <MASK> sırasını kullan.',
+      'Terminal hazır: switch ve router\'da IOS komutları, PC\'de basit komutlar. Paketin izlediği yolu "Adım adım · İncele" gösterir.',
       'outinfo',
     );
+    sayCliPrimer();
     say('Başlangıç topolojisi: 2 PC, 2 switch, 1 router, 1 server.');
     say(
       'PC-01 ile PC-02 aynı VLAN 10 ve aynı IP subnetinde. SW-01 ↔ SW-02 bağlantısı trunk; ping ve show interfaces trunk ile doğrula.',
@@ -26026,7 +26027,11 @@ const AgLabModel = (() => {
       let ip =
         d.type === 'Router'
           ? Object.values(d.interfaces).find((i) => i.ip && i.enabled)?.ip || 'interfaces down'
-          : d.ip || 'L2 switch';
+          : d.type === 'Switch'
+            ? d.ip ||
+              Object.values(d.interfaces || {}).find((i) => i.ip && i.enabled)?.ip ||
+              (d.config?.labberL3 ? 'L3 switch' : 'L2 switch')
+            : d.ip || 'IP yok';
       el('text', { x: d.w / 2, y: 56, class: 'pt-ip' }, g).textContent = ip;
       g.setAttribute('tabindex', '0');
       g.setAttribute('role', 'button');
@@ -26286,6 +26291,13 @@ const AgLabModel = (() => {
     if (!d) return;
     $p('ptPrompt').textContent = aglabLabber.prompt(d.id) ?? d.name + ' (konsol yok)';
     refreshDeviceCli();
+  }
+  // Şube 1.0: CLI'yi ilk kez kullanan için kısa yol gösterici (Seviye 1 dersleri IOS kiplerini
+  // anlatmıyor; terminal kullanıcı kipinde `R1>` ile açılır). İçerik açılınca bir kez yazılır.
+  const CLI_PRIMER =
+    'İlk adımlar: "R1>" kullanıcı kipidir. enable → "R1#" (show komutları), configure terminal → "R1(config)#" (ayar), interface fa0/1 → "R1(config-if)#", end → geri. ? o anda yazılabilecekleri listeler, Tab komutu tamamlar. PC terminalinde: show ip, ping, ip dhcp, nslookup.';
+  function sayCliPrimer() {
+    say(CLI_PRIMER, 'outinfo');
   }
   function say(t, c = '') {
     let el = $p('ptTerminal'),
@@ -28106,13 +28118,15 @@ function labTopology(def) {
     if (d.kind === 'switch')
       return {
         ...base,
-        type: 'Switch',
+        // Router (LabDef router: true) çizimde ve denetçide router olarak görünür; arayüz
+        // durumu labViewWrite ile çalışma zamanından yazılır.
+        type: d.router ? 'Router' : 'Switch',
         w: 112,
         h: 72,
         ports: d.ports.map(labShortPort),
         vlans: [1],
         interfaces: {},
-        config: { labberModel: d.model },
+        config: { labberModel: d.model, labberL3: !!(d.l3 || d.router) },
       };
     const pc = def.initialPcs?.[d.id];
     const mask = pc?.ip
@@ -28120,7 +28134,7 @@ function labTopology(def) {
       : '';
     return {
       ...base,
-      type: 'PC',
+      type: d.server ? 'Server' : 'PC',
       w: 104,
       h: 72,
       ip: pc?.ip || '',
@@ -28314,15 +28328,23 @@ const aglabLabber = (() => {
     }
     state.key = key();
   }
-  /** Lab kipinde çizimdeki durum: switch adı (hostname), PC adresi, güç, kablo. */
+  /**
+   * Lab kipinde çizimdeki durum: switch adı (hostname), port durumu, PC adresi, güç, kablo.
+   * Port durumu (`show interfaces status` ile aynı: connected/notconnect/disabled/err-disabled…),
+   * switchport modu/VLAN'ları ve routed portun adresi çalışma zamanından yazılır; inceleme paneli
+   * ve tuval bunları okur (lab tanımındaki başlangıç çizimi değil).
+   */
   function labViewWrite() {
-    const rt = state.rt;
+    const rt = state.rt,
+      q = rt.query();
     for (const d of devices) {
       const def = rt.topo.devices[d.id];
       if (!def) continue;
       d.enabled = rt.powered(d.id);
-      if (def.kind === 'switch') d.name = rt.hostname(d.id);
-      else {
+      if (def.kind === 'switch') {
+        d.name = rt.hostname(d.id);
+        d.interfaces = labPortStates(rt, q, def);
+      } else {
         const pc = rt.pcs[d.id];
         d.ip = pc?.ip || '';
         d.mask = pc?.ip ? prefixMask(pc.prefix) : '';
@@ -28334,6 +28356,40 @@ const aglabLabber = (() => {
         b = labPort(l.b, l.portB);
       l.up = rt.cableIntact(l.a, a) && rt.cableIntact(l.b, b);
     }
+  }
+  function labPortStates(rt, q, def) {
+    const cfg = rt.running[def.id],
+      out = {};
+    if (!cfg) return out;
+    for (const full of def.ports) {
+      const c = cfg.ifaces[full];
+      if (!c) continue;
+      const lp = q.port(def.id, full);
+      const routed = !!def.router || !!c.routed;
+      const i = {
+        enabled: !c.shutdown,
+        status: lp
+          ? lp.status
+          : c.shutdown
+            ? 'disabled'
+            : q.linkUp(def.id, full)
+              ? 'connected'
+              : 'notconnect',
+      };
+      if (routed) {
+        if (c.ip) {
+          i.ip = c.ip.addr;
+          i.mask = c.ip.mask;
+        }
+      } else {
+        i.mode = lp?.opMode || (c.mode === 'trunk' ? 'trunk' : 'access');
+        i.vlan = c.accessVlan;
+        i.native = c.nativeVlan;
+        i.allowed = c.allowed || [];
+      }
+      out[labShortPort(full)] = i;
+    }
+    return out;
   }
   function prefixMask(p) {
     const n = p ? (0xffffffff << (32 - p)) >>> 0 : 0;
@@ -28633,8 +28689,8 @@ const aglabEngineChoice = (() => {
   }
   function badgeText(decision) {
     return decision.expressible
-      ? 'Motor: Labber — terminal, değerlendirme ve Simulation Mode Labber motorunda.'
-      : 'Simüle edilemiyor — Labber bu topolojiyi ifade edemiyor: ' +
+      ? 'Simülatör — terminal, kontrol ve adım adım izleme bu topolojide çalışır.'
+      : 'Simüle edilemiyor — simülatör bu topolojiyi kuramıyor: ' +
           decision.reasons.join('; ') +
           '. Topoloji düzenlenebilir ve kaydedilir; terminal ve değerlendirme çalışmaz.';
   }
@@ -69847,6 +69903,7 @@ function loadNetworkScenario(key) {
   academyClearSession();
   // Yeni senaryo temiz terminalle açılır: önceki topolojinin tanıtım metni ve çıktısı kalmaz.
   $p('ptTerminal').replaceChildren();
+  sayCliPrimer();
   importTopology(clone(row.topology));
   // Hedef ping'i: tarifte verilmişse verify.source/target, yoksa PC-01 → PC-02.
   const source = devices.find((d) => d.name === (row.verify.source || 'PC-01')),
@@ -70274,7 +70331,7 @@ function labberLabFind(id) {
   const labs = labberLabList();
   $p('labberLabsTitle').textContent = 'Labber labları (' + labs.length + ')';
   $p('labberLabsIntro').textContent =
-    'Labber simülatörünün kendi labları. Akademi lablarından ayrı bir gruptur; terminal Labber’ın IOS/VPCS oturumudur ve hedefler Labber’da değerlendirilir.';
+    'Simülatörün hazır labları: topoloji kurulu gelir, hedefler komut yazdıkça kontrol edilir. Akademi lablarından ayrı bir gruptur.';
   for (const l of labs) {
     const o = document.createElement('option');
     o.value = l.id;
@@ -70307,7 +70364,7 @@ function labberLabRestore(value) {
   aglabLabber.startLab(def);
   $p('labberLabSelect').value = def.id;
   $p('labberLabEngine').textContent =
-    'Motor: Labber — lab tanımı doğrudan Labber’da kurulur (köprü kullanılmaz); terminal, hedefler ve Simulation Mode Labber motorunda.';
+    'Simülatör — topoloji lab tanımından kurulur; hedefler komut yazdıkça kontrol edilir.';
   $p('labberLabEngine').dataset.engine = 'labber';
   // I-1: çalışma alanı rozeti
   $p('workspaceEngine').textContent = $p('labberLabEngine').textContent;
@@ -70376,7 +70433,12 @@ function labberLabStart(id) {
   academyClearSession();
   importTopology(labTopology(def));
   $p('ptTerminal').replaceChildren();
-  say(def.title + ' başlatıldı. Hedefleri terminalden (IOS/VPCS) çöz.', 'outinfo');
+  say(
+    def.title +
+      ' başlatıldı. Cihaz sekmesini seç ve görevdeki hedefleri terminale komut yazarak çöz.',
+    'outinfo',
+  );
+  sayCliPrimer();
 }
 $p('labberLabStart').addEventListener('click', () => labberLabStart($p('labberLabSelect').value));
 $p('labberLabCheck').addEventListener('click', labberLabsRefresh);
@@ -70723,14 +70785,14 @@ window.aglabLabberLabs = {
   bar.className = 'simulation-controls';
   bar.setAttribute('role', 'group');
   bar.setAttribute('aria-label', 'Laboratuvar çalışma modu');
-  const realtime = make('button', 'simulationRealtime', 'Realtime · Çalış'),
-    simulation = make('button', 'simulationMode', 'Simulation · İncele');
+  const realtime = make('button', 'simulationRealtime', 'Gerçek zamanlı · Çalış'),
+    simulation = make('button', 'simulationMode', 'Adım adım · İncele');
   bar.append(realtime, simulation);
   canvas.before(bar);
   const panel = make('section', 'simulationPanel');
   panel.setAttribute('aria-labelledby', 'simulationTitle');
   panel.hidden = true;
-  panel.append(make('h3', 'simulationTitle', 'Simulation Mode · motor kaydını yeniden oynat'));
+  panel.append(make('h3', 'simulationTitle', 'Adım adım izleme · paketin yolunu yeniden oynat'));
   panel.append(
     make(
       'p',
@@ -70751,7 +70813,7 @@ window.aglabLabberLabs = {
   const controls = make('div', 'simulationPlaybackControls');
   controls.className = 'simulation-controls';
   controls.setAttribute('role', 'group');
-  controls.setAttribute('aria-label', 'Simulation oynatma');
+  controls.setAttribute('aria-label', 'Adım adım oynatma');
   controls.hidden = true;
   const capture = make('button', 'simulationCapture', 'Kaydı al'),
     forward = make('button', 'simulationForward', 'İleri →'),
@@ -74948,7 +75010,7 @@ function workshopView(ids, cases) {
     'aria-labelledby': 'agSimSimTitle',
   });
   const simHead = make('div', { class: 'ag-sim-simhead' });
-  const simTitle = make('span', { id: 'agSimSimTitle', text: 'Simulation Mode' });
+  const simTitle = make('span', { id: 'agSimSimTitle', text: 'Adım adım izleme' });
   const timeline = make('ol', {
     class: 'ag-sim-timeline',
     id: 'agSimTimeline',
@@ -74959,7 +75021,7 @@ function workshopView(ids, cases) {
   const simIdle = make('p', {
     class: 'ag-sim-simidle',
     id: 'agSimSimIdle',
-    text: 'Paketin yolunu adım adım görmek için: terminalden bir ping at, sonra “Simulation · İncele”ye bas. Olaylar burada zaman çizelgesi olarak dizilir.',
+    text: 'Paketin yolunu adım adım görmek için: terminalden bir ping at, sonra “Adım adım · İncele”ye bas. Olaylar burada zaman çizelgesi olarak dizilir.',
   });
   simPane.append(simHead, simIdle, timeline);
   dock.append(termPane, simPane);
@@ -75224,7 +75286,7 @@ function workshopView(ids, cases) {
   const lb = catCard(
     'labber',
     $('labberLabsPanel'),
-    'Labber labları',
+    'Hazır lablar',
     $('labberLabSelect'),
     $('labberLabStart'),
   );
@@ -76088,11 +76150,28 @@ function workshopView(ids, cases) {
       rows.push(['IP', dev.ip ? dev.ip + (dev.mask ? ' / ' + dev.mask : '') : 'atanmamış']);
       rows.push(['Ağ geçidi', dev.gateway || '—']);
     }
-    rows.push([
-      'Durum',
-      !adminUp ? 'administratively down' : lineUp ? 'up / up' : 'down / down',
-      !adminUp || !lineUp ? 'bad' : 'ok',
-    ]);
+    // Labber labında port durumu çalışma zamanından gelir (`show interfaces status` ile aynı);
+    // yoksa çizim modelinden (kablo, güç, karşı uç) çıkarılır.
+    const STATUS = {
+      connected: 'connected (up / up)',
+      notconnect: 'notconnect (down / down)',
+      disabled: 'disabled (administratively down)',
+      'err-disabled': 'err-disabled',
+      inactive: 'inactive (VLAN yok)',
+      suspended: 'suspended',
+    };
+    if (iface.status && dev.enabled !== false)
+      rows.push([
+        'Durum',
+        STATUS[iface.status] || iface.status,
+        iface.status === 'connected' ? 'ok' : 'bad',
+      ]);
+    else
+      rows.push([
+        'Durum',
+        !adminUp ? 'administratively down' : lineUp ? 'up / up' : 'down / down',
+        !adminUp || !lineUp ? 'bad' : 'ok',
+      ]);
     rows.push(['Komşu', peer ? peer.name + ' ' + shortPort(peerPort) : '—']);
     props.replaceChildren(
       ...rows.flatMap(([k, v, cls]) => [
@@ -76376,7 +76455,7 @@ function workshopView(ids, cases) {
       timeline.replaceChildren();
       delete timeline.dataset.sig;
       eventDetail.textContent = '';
-      simTitle.textContent = 'Simulation Mode';
+      simTitle.textContent = 'Adım adım izleme';
       return;
     }
     const events = traceEvents();
@@ -76418,7 +76497,7 @@ function workshopView(ids, cases) {
         ? devName(first.device) + ' → ' + first.frame.ipv4.destinationIp + ' ping · '
         : '';
     simTitle.textContent =
-      'Simulation Mode · ' + ping + 'olay ' + (cur >= 0 ? cur + 1 : 0) + ' / ' + rows.length;
+      'Adım adım izleme · ' + ping + 'olay ' + (cur >= 0 ? cur + 1 : 0) + ' / ' + rows.length;
     scrollTick(cur);
   }
   function scrollTick(cur) {
@@ -76580,7 +76659,7 @@ function workshopView(ids, cases) {
     const eng = engineText(c);
     engineTag.textContent = eng;
     engineTag.hidden = !eng;
-    engineTag.dataset.engine = /Labber/.test(eng) ? 'labber' : eng ? 'other' : '';
+    engineTag.dataset.engine = /^Simülatör$|Labber/.test(eng) ? 'labber' : eng ? 'other' : '';
     const st = lockStatus(c);
     if (c.kind === 'academy') {
       const left = Math.max(0, st.hintsTotal - st.hintsUsed);

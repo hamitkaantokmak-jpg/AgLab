@@ -25,8 +25,8 @@ const aglabEngineChoice = (() => {
   }
   function badgeText(decision) {
     return decision.expressible
-      ? 'Motor: Labber — terminal, değerlendirme ve Simulation Mode Labber motorunda.'
-      : 'Simüle edilemiyor — Labber bu topolojiyi ifade edemiyor: ' +
+      ? 'Simülatör — terminal, kontrol ve adım adım izleme bu topolojide çalışır.'
+      : 'Simüle edilemiyor — simülatör bu topolojiyi kuramıyor: ' +
           decision.reasons.join('; ') +
           '. Topoloji düzenlenebilir ve kaydedilir; terminal ve değerlendirme çalışmaz.';
   }

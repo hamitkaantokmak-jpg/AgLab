@@ -263,7 +263,7 @@ $('scenarioList').addEventListener('click', (e) => {
   if (b) load(+b.dataset.s);
 });
 $('mission').innerHTML =
-  '<div class="mission-top"><span class="tag">LABBER MOTORU</span></div><h3>Bir arıza görevi seç</h3><p>Her görev Simülatör’de gerçek bir topolojide açılır: belirtiyi cihaz terminallerinden araştır, düzelt ve başarıyı gerçek ping ile doğrula. Kavramsal alıştırmalar motor kullanmaz ve öyle etiketlidir.</p>';
+  '<div class="mission-top"><span class="tag">SİMÜLATÖRDE</span></div><h3>Bir arıza görevi seç</h3><p>Her görev Simülatör’de gerçek bir topolojide açılır: belirtiyi cihaz terminallerinden araştır, düzelt ve başarıyı gerçek ping ile doğrula. Kavramsal alıştırmalar motor kullanmaz ve öyle etiketlidir.</p>';
 renderList();
 // Ders etiketleri simülatör çalışma alanı yüklenince (sonraki betik) eklenir.
 document.addEventListener('DOMContentLoaded', renderList);
@@ -5295,9 +5295,10 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     updateInspector();
     $p('ptTerminal').innerHTML = '';
     say(
-      'AğLab CLI hazır (Labber: switch/router IOS, PC VPCS). Paketin izlediği yolu Simulation Mode gösterir. Router alt arayüzleri için interface g0/0.20 → encapsulation dot1q 20 → ip address <IP> <MASK> sırasını kullan.',
+      'Terminal hazır: switch ve router\'da IOS komutları, PC\'de basit komutlar. Paketin izlediği yolu "Adım adım · İncele" gösterir.',
       'outinfo',
     );
+    sayCliPrimer();
     say('Başlangıç topolojisi: 2 PC, 2 switch, 1 router, 1 server.');
     say(
       'PC-01 ile PC-02 aynı VLAN 10 ve aynı IP subnetinde. SW-01 ↔ SW-02 bağlantısı trunk; ping ve show interfaces trunk ile doğrula.',
@@ -5501,7 +5502,11 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
       let ip =
         d.type === 'Router'
           ? Object.values(d.interfaces).find((i) => i.ip && i.enabled)?.ip || 'interfaces down'
-          : d.ip || 'L2 switch';
+          : d.type === 'Switch'
+            ? d.ip ||
+              Object.values(d.interfaces || {}).find((i) => i.ip && i.enabled)?.ip ||
+              (d.config?.labberL3 ? 'L3 switch' : 'L2 switch')
+            : d.ip || 'IP yok';
       el('text', { x: d.w / 2, y: 56, class: 'pt-ip' }, g).textContent = ip;
       g.setAttribute('tabindex', '0');
       g.setAttribute('role', 'button');
@@ -5761,6 +5766,13 @@ document.querySelectorAll('[data-shared-scenario]').forEach((b) =>
     if (!d) return;
     $p('ptPrompt').textContent = aglabLabber.prompt(d.id) ?? d.name + ' (konsol yok)';
     refreshDeviceCli();
+  }
+  // Şube 1.0: CLI'yi ilk kez kullanan için kısa yol gösterici (Seviye 1 dersleri IOS kiplerini
+  // anlatmıyor; terminal kullanıcı kipinde `R1>` ile açılır). İçerik açılınca bir kez yazılır.
+  const CLI_PRIMER =
+    'İlk adımlar: "R1>" kullanıcı kipidir. enable → "R1#" (show komutları), configure terminal → "R1(config)#" (ayar), interface fa0/1 → "R1(config-if)#", end → geri. ? o anda yazılabilecekleri listeler, Tab komutu tamamlar. PC terminalinde: show ip, ping, ip dhcp, nslookup.';
+  function sayCliPrimer() {
+    say(CLI_PRIMER, 'outinfo');
   }
   function say(t, c = '') {
     let el = $p('ptTerminal'),

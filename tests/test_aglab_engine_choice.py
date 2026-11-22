@@ -1,7 +1,7 @@
 """L2-D1: ortak senaryoların motor seçimi ve Labber'da değerlendirilmesi.
 
 * Motor kararı içerikten gelir (köprü raporu) ve docs/LAB_MOTOR_HARITASI.md ile aynıdır;
-  ekranda rozet olarak görünür: "Motor: Labber" ya da "Eski motor — nedeni: …".
+  ekranda rozet olarak görünür: "Simülatör — …" (data-engine="labber") ya da "Eski motor — nedeni: …".
 * Labber kararındaki senaryoların (sayı motor tablosundan türetilir) başarı ölçütü Labber'dan gelir: başlangıçta başarısız,
   tarif çözümünden sonra başarılı (Labber lab değişmezi).
 * CLI ping'i senaryo durumunu Labber sonucu ile yazar; başarısız ve başarılı iletim ayrı
@@ -113,7 +113,10 @@ class EngineChoiceTests(unittest.TestCase):
             self.assertEqual(decision["expressible"], engine == "labber", sid)
             if engine == "labber":
                 self.assertEqual(decision["reasons"], [], sid)
-                self.assertTrue(self.badge().startswith("Motor: Labber"), sid)
+                self.assertTrue(self.badge().startswith("Simülatör — "), sid)
+                self.assertEqual(
+                    self.page.get_attribute("#sharedScenarioEngine", "data-engine"), "labber", sid
+                )
             else:
                 self.assertTrue(decision["reasons"], sid)
                 self.assertTrue(self.badge().startswith("Simüle edilemiyor"), sid)

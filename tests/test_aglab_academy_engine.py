@@ -109,7 +109,7 @@ class AcademyEngineTests(unittest.TestCase):
             self.assertEqual(badge.get_attribute("data-engine"), engine, lid)
             text = badge.text_content()
             if engine == "labber":
-                self.assertTrue(text.startswith("Motor: Labber"), lid)
+                self.assertTrue(text.startswith("Simülatör — "), lid)
             else:
                 self.assertTrue(text.startswith("Eski motor — nedeni: "), lid)
 

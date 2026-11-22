@@ -17,14 +17,14 @@
   bar.className = 'simulation-controls';
   bar.setAttribute('role', 'group');
   bar.setAttribute('aria-label', 'Laboratuvar çalışma modu');
-  const realtime = make('button', 'simulationRealtime', 'Realtime · Çalış'),
-    simulation = make('button', 'simulationMode', 'Simulation · İncele');
+  const realtime = make('button', 'simulationRealtime', 'Gerçek zamanlı · Çalış'),
+    simulation = make('button', 'simulationMode', 'Adım adım · İncele');
   bar.append(realtime, simulation);
   canvas.before(bar);
   const panel = make('section', 'simulationPanel');
   panel.setAttribute('aria-labelledby', 'simulationTitle');
   panel.hidden = true;
-  panel.append(make('h3', 'simulationTitle', 'Simulation Mode · motor kaydını yeniden oynat'));
+  panel.append(make('h3', 'simulationTitle', 'Adım adım izleme · paketin yolunu yeniden oynat'));
   panel.append(
     make(
       'p',
@@ -45,7 +45,7 @@
   const controls = make('div', 'simulationPlaybackControls');
   controls.className = 'simulation-controls';
   controls.setAttribute('role', 'group');
-  controls.setAttribute('aria-label', 'Simulation oynatma');
+  controls.setAttribute('aria-label', 'Adım adım oynatma');
   controls.hidden = true;
   const capture = make('button', 'simulationCapture', 'Kaydı al'),
     forward = make('button', 'simulationForward', 'İleri →'),

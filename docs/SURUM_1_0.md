@@ -62,7 +62,35 @@ sunmaz.
 - Simülatör gerçek IOS değildir: komut sözdizimi eğitim amaçlı taklittir, çıktıların bazı
   alanları sabittir.
 
+## Personel gözüyle gezinme ve düzeltilenler
+
+Uygulama, ağa arada bir bakan ve CLI'yi az bilen bir şube çalışanı gözüyle 1366×768'de baştan
+dolaşıldı. Yanıltıcı ya da engelleyici bulunanlar 1.0'dan önce düzeltildi
+(`test_aglab_sube_ui.py`):
+
+- Labber labında inceleme paneli port durumunu lab açılışındaki çizimden okuyordu: kapalı port
+  "up / up" görünüyordu. Artık çalışma zamanından gelir (`show interfaces status` ile aynı).
+- Router'lar tuvalde ve terminal listesinde "L2 switch" / "Switch" görünüyordu; router portunda
+  panel "access, VLAN 1" ve hata veren `switchport` komutu öneriyordu. Artık router olarak,
+  adresiyle görünür; L3 switch routed port adresini, adresi olmayan PC "IP yok" gösterir.
+- Öğrencinin yolundaki geliştirici dili sadeleşti ("Motor: Labber — … köprü kullanılmaz",
+  "IOS/VPCS", "Realtime / Simulation"): ürün metninde motorun adı Simülatör (`SONRAKI_ISLER.md`
+  "Adlandırma"), adım adım paket izleme "Adım adım · İncele". Gelişmiş bölümündeki atölyeler
+  değişmedi.
+- Seviye 1 dersleri IOS kiplerini (`R1>`, `enable`, `configure terminal`) anlatmıyor; terminal
+  kullanıcı kipinde açılıyor. Lab ve senaryo açılınca terminal kısa bir "ilk adımlar" satırı
+  yazar. Derse ayrı bir CLI bölümü eklemek açık iş (aşağıda).
+
 ## Bilinen gözlemler (1.0'ı engellemez)
+
+- Seviye 1'de CLI temelleri bir ders parçası olarak yok (kipler, `?`, Tab, `do show`, `end`);
+  terminaldeki ilk adımlar satırı geçici çözüm.
+- Simülatör ekranı 1366×768 dizüstünde kalabalık: görev, tuval, inceleme, terminal ve zaman
+  çizelgesi aynı anda açık; görev açıklaması aşağıda kalıyor (geniş çalışma alanı Alt+Shift+F
+  yan şeritleri daraltır).
+- Pratik adımında konu başına 6–23 görev listeleniyor; hangisinin "önerilen" olduğu
+  işaretlenmiyor. Şube için "1 kurulum + 2 arıza" gibi bir öneri işareti düşünülebilir.
+- Konu başına süre yaklaşık 60 dakika (12 konu ≈ 12 saat); iş arasında çalışan için kısa yol yok.
 
 - Akademi labı başlatılınca, çalışma alanı boş olsa bile "Yeni laboratuvar açık çalışma
   alanının üzerine yazacak" onayı çıkar ve sayfa alttaki kataloğa kayar. İlk kullanımda

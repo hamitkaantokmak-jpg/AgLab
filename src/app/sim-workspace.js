@@ -178,7 +178,7 @@
     'aria-labelledby': 'agSimSimTitle',
   });
   const simHead = make('div', { class: 'ag-sim-simhead' });
-  const simTitle = make('span', { id: 'agSimSimTitle', text: 'Simulation Mode' });
+  const simTitle = make('span', { id: 'agSimSimTitle', text: 'Adım adım izleme' });
   const timeline = make('ol', {
     class: 'ag-sim-timeline',
     id: 'agSimTimeline',
@@ -189,7 +189,7 @@
   const simIdle = make('p', {
     class: 'ag-sim-simidle',
     id: 'agSimSimIdle',
-    text: 'Paketin yolunu adım adım görmek için: terminalden bir ping at, sonra “Simulation · İncele”ye bas. Olaylar burada zaman çizelgesi olarak dizilir.',
+    text: 'Paketin yolunu adım adım görmek için: terminalden bir ping at, sonra “Adım adım · İncele”ye bas. Olaylar burada zaman çizelgesi olarak dizilir.',
   });
   simPane.append(simHead, simIdle, timeline);
   dock.append(termPane, simPane);
@@ -454,7 +454,7 @@
   const lb = catCard(
     'labber',
     $('labberLabsPanel'),
-    'Labber labları',
+    'Hazır lablar',
     $('labberLabSelect'),
     $('labberLabStart'),
   );
@@ -1318,11 +1318,28 @@
       rows.push(['IP', dev.ip ? dev.ip + (dev.mask ? ' / ' + dev.mask : '') : 'atanmamış']);
       rows.push(['Ağ geçidi', dev.gateway || '—']);
     }
-    rows.push([
-      'Durum',
-      !adminUp ? 'administratively down' : lineUp ? 'up / up' : 'down / down',
-      !adminUp || !lineUp ? 'bad' : 'ok',
-    ]);
+    // Labber labında port durumu çalışma zamanından gelir (`show interfaces status` ile aynı);
+    // yoksa çizim modelinden (kablo, güç, karşı uç) çıkarılır.
+    const STATUS = {
+      connected: 'connected (up / up)',
+      notconnect: 'notconnect (down / down)',
+      disabled: 'disabled (administratively down)',
+      'err-disabled': 'err-disabled',
+      inactive: 'inactive (VLAN yok)',
+      suspended: 'suspended',
+    };
+    if (iface.status && dev.enabled !== false)
+      rows.push([
+        'Durum',
+        STATUS[iface.status] || iface.status,
+        iface.status === 'connected' ? 'ok' : 'bad',
+      ]);
+    else
+      rows.push([
+        'Durum',
+        !adminUp ? 'administratively down' : lineUp ? 'up / up' : 'down / down',
+        !adminUp || !lineUp ? 'bad' : 'ok',
+      ]);
     rows.push(['Komşu', peer ? peer.name + ' ' + shortPort(peerPort) : '—']);
     props.replaceChildren(
       ...rows.flatMap(([k, v, cls]) => [
@@ -1606,7 +1623,7 @@
       timeline.replaceChildren();
       delete timeline.dataset.sig;
       eventDetail.textContent = '';
-      simTitle.textContent = 'Simulation Mode';
+      simTitle.textContent = 'Adım adım izleme';
       return;
     }
     const events = traceEvents();
@@ -1648,7 +1665,7 @@
         ? devName(first.device) + ' → ' + first.frame.ipv4.destinationIp + ' ping · '
         : '';
     simTitle.textContent =
-      'Simulation Mode · ' + ping + 'olay ' + (cur >= 0 ? cur + 1 : 0) + ' / ' + rows.length;
+      'Adım adım izleme · ' + ping + 'olay ' + (cur >= 0 ? cur + 1 : 0) + ' / ' + rows.length;
     scrollTick(cur);
   }
   function scrollTick(cur) {
@@ -1810,7 +1827,7 @@
     const eng = engineText(c);
     engineTag.textContent = eng;
     engineTag.hidden = !eng;
-    engineTag.dataset.engine = /Labber/.test(eng) ? 'labber' : eng ? 'other' : '';
+    engineTag.dataset.engine = /^Simülatör$|Labber/.test(eng) ? 'labber' : eng ? 'other' : '';
     const st = lockStatus(c);
     if (c.kind === 'academy') {
       const left = Math.max(0, st.hintsTotal - st.hintsUsed);

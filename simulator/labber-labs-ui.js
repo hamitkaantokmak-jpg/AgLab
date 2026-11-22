@@ -31,7 +31,7 @@ function labberLabFind(id) {
   const labs = labberLabList();
   $p('labberLabsTitle').textContent = 'Labber labları (' + labs.length + ')';
   $p('labberLabsIntro').textContent =
-    'Labber simülatörünün kendi labları. Akademi lablarından ayrı bir gruptur; terminal Labber’ın IOS/VPCS oturumudur ve hedefler Labber’da değerlendirilir.';
+    'Simülatörün hazır labları: topoloji kurulu gelir, hedefler komut yazdıkça kontrol edilir. Akademi lablarından ayrı bir gruptur.';
   for (const l of labs) {
     const o = document.createElement('option');
     o.value = l.id;
@@ -64,7 +64,7 @@ function labberLabRestore(value) {
   aglabLabber.startLab(def);
   $p('labberLabSelect').value = def.id;
   $p('labberLabEngine').textContent =
-    'Motor: Labber — lab tanımı doğrudan Labber’da kurulur (köprü kullanılmaz); terminal, hedefler ve Simulation Mode Labber motorunda.';
+    'Simülatör — topoloji lab tanımından kurulur; hedefler komut yazdıkça kontrol edilir.';
   $p('labberLabEngine').dataset.engine = 'labber';
   // I-1: çalışma alanı rozeti
   $p('workspaceEngine').textContent = $p('labberLabEngine').textContent;
@@ -133,7 +133,12 @@ function labberLabStart(id) {
   academyClearSession();
   importTopology(labTopology(def));
   $p('ptTerminal').replaceChildren();
-  say(def.title + ' başlatıldı. Hedefleri terminalden (IOS/VPCS) çöz.', 'outinfo');
+  say(
+    def.title +
+      ' başlatıldı. Cihaz sekmesini seç ve görevdeki hedefleri terminale komut yazarak çöz.',
+    'outinfo',
+  );
+  sayCliPrimer();
 }
 $p('labberLabStart').addEventListener('click', () => labberLabStart($p('labberLabSelect').value));
 $p('labberLabCheck').addEventListener('click', labberLabsRefresh);
