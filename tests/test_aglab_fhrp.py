@@ -135,7 +135,8 @@ with tempfile.TemporaryDirectory() as tmp, sync_playwright() as pw:
         )
     )
     assert page.evaluate("aglabLabberSession.active()"), "FHRP topolojisi Labber kararında olmalı"
-    assert "Labber" in page.locator("#workspaceEngine").inner_text()
+    assert page.locator("#workspaceEngine").get_attribute("data-engine") == "labber"
+    assert page.locator("#workspaceEngine").inner_text().startswith("Simülatör")
     ios("r1", "enable")
     ios("r2", "enable")
     brief = cmd("r1", "show standby brief")

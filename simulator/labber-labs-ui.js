@@ -29,7 +29,7 @@ function labberLabFind(id) {
 }
 (function renderLabberLabCatalog() {
   const labs = labberLabList();
-  $p('labberLabsTitle').textContent = 'Labber labları (' + labs.length + ')';
+  $p('labberLabsTitle').textContent = 'Hazır lablar (' + labs.length + ')';
   $p('labberLabsIntro').textContent =
     'Simülatörün hazır labları: topoloji kurulu gelir, hedefler komut yazdıkça kontrol edilir. Akademi lablarından ayrı bir gruptur.';
   for (const l of labs) {

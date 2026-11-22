@@ -105,6 +105,19 @@ class SubeUiTests(unittest.TestCase):
         expect(term).not_to_contain_text("IOS/VPCS")
         expect(self.page.locator("#agSimEngine")).to_have_text("Simülatör")
 
+    def test_reload_keeps_lab_and_port_status(self):
+        """Port durumu kaydedilmez (kayıt şeması değişmez): yenilemeden sonra lab geri gelir ve
+        panel durumu çalışma zamanından yeniden hesaplar."""
+        self.start("fiziksel-kontrol")
+        self.type("SW1", "enable", "configure terminal", "interface fa0/2", "no shutdown", "end")
+        self.page.wait_for_timeout(1500)  # kayıt
+        self.page.reload()
+        self.page.click('[data-area="lab"]')
+        self.assertEqual(self.page.evaluate("aglabLabberLabs.active()"), "fiziksel-kontrol")
+        expect(self.page.locator("#ptTerminal")).not_to_contain_text("açılamadı")
+        expect(self.inspect("SW1", "fa0/2")).to_contain_text("connected (up / up)")
+        expect(self.inspect("SW1", "fa0/3")).to_contain_text("notconnect")  # kablosuz port
+
 
 if __name__ == "__main__":
     unittest.main()

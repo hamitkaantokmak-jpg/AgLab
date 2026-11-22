@@ -145,6 +145,7 @@ const aglabLabber = (() => {
       key: key(),
       broken: null,
       writeError: null,
+      ports: {},
     };
     labViewWrite();
     state.key = key();
@@ -265,7 +266,7 @@ const aglabLabber = (() => {
       d.enabled = rt.powered(d.id);
       if (def.kind === 'switch') {
         d.name = rt.hostname(d.id);
-        d.interfaces = labPortStates(rt, q, def);
+        d.interfaces = labPortStates(rt, q, def, (state.ports[d.id] = {}));
       } else {
         const pc = rt.pcs[d.id];
         d.ip = pc?.ip || '';
@@ -279,7 +280,10 @@ const aglabLabber = (() => {
       l.up = rt.cableIntact(l.a, a) && rt.cableIntact(l.b, b);
     }
   }
-  function labPortStates(rt, q, def) {
+  // Kayıt şemasındaki arayüz alanları (enabled, mode, vlan, nativeVlan, allowed, ip, mask)
+  // modele yazılır; `show interfaces status` durumu kaydedilmez, `status` tablosuna gider
+  // (portStatus ile okunur).
+  function labPortStates(rt, q, def, status) {
     const cfg = rt.running[def.id],
       out = {};
     if (!cfg) return out;
@@ -288,16 +292,15 @@ const aglabLabber = (() => {
       if (!c) continue;
       const lp = q.port(def.id, full);
       const routed = !!def.router || !!c.routed;
-      const i = {
-        enabled: !c.shutdown,
-        status: lp
-          ? lp.status
-          : c.shutdown
-            ? 'disabled'
-            : q.linkUp(def.id, full)
-              ? 'connected'
-              : 'notconnect',
-      };
+      const short = labShortPort(full);
+      const i = { enabled: !c.shutdown };
+      status[short] = lp
+        ? lp.status
+        : c.shutdown
+          ? 'disabled'
+          : q.linkUp(def.id, full)
+            ? 'connected'
+            : 'notconnect';
       if (routed) {
         if (c.ip) {
           i.ip = c.ip.addr;
@@ -306,12 +309,16 @@ const aglabLabber = (() => {
       } else {
         i.mode = lp?.opMode || (c.mode === 'trunk' ? 'trunk' : 'access');
         i.vlan = c.accessVlan;
-        i.native = c.nativeVlan;
-        i.allowed = c.allowed || [];
+        i.nativeVlan = c.nativeVlan;
+        if (c.allowed) i.allowed = c.allowed.slice();
       }
-      out[labShortPort(full)] = i;
+      out[short] = i;
     }
     return out;
+  }
+  /** Labber labında portun `show interfaces status` durumu; lab dışında ya da bilinmiyorsa null. */
+  function portStatus(dev, port) {
+    return (state?.lab && state.ports?.[dev]?.[port]) || null;
   }
   function prefixMask(p) {
     const n = p ? (0xffffffff << (32 - p)) >>> 0 : 0;
@@ -534,6 +541,7 @@ const aglabLabber = (() => {
     hostSends,
     start,
     startLab,
+    portStatus,
     lab,
     stop,
     active,
@@ -578,6 +586,8 @@ window.aglabLabberSession = {
   trace: () => readEthernetTrace(),
   // Arayüz PR 2: inceleme panelinin hızlı show çıktısı (geçici oturum; durum değişmez).
   peek: (dev, line) => aglabLabber.peek(dev, line),
+  // Şube 1.0: Labber labında portun `show interfaces status` durumu (inceleme paneli).
+  portStatus: (dev, port) => aglabLabber.portStatus(dev, port),
   // Testler: çalışma zamanının tam durumu (running/startup, öğrenilmiş MAC/ARP, donanım…).
   state: () => aglabLabber.runtime().save(),
 };

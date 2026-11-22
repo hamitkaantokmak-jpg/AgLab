@@ -1309,7 +1309,7 @@
       rows.push(['Mod', iface.mode || 'access']);
       if (iface.mode === 'trunk') {
         rows.push(['Kapsülleme', '802.1Q']);
-        rows.push(['Native VLAN', String(iface.native ?? 1)]);
+        rows.push(['Native VLAN', String(iface.nativeVlan ?? iface.native ?? 1)]);
         rows.push(['İzinli VLAN', (iface.allowed || []).join(', ') || 'tümü']);
       } else rows.push(['Access VLAN', String(iface.vlan ?? 1)]);
     } else if (dev.type === 'Router') {
@@ -1328,12 +1328,9 @@
       inactive: 'inactive (VLAN yok)',
       suspended: 'suspended',
     };
-    if (iface.status && dev.enabled !== false)
-      rows.push([
-        'Durum',
-        STATUS[iface.status] || iface.status,
-        iface.status === 'connected' ? 'ok' : 'bad',
-      ]);
+    const status = window.aglabLabberSession?.portStatus?.(dev.id, port) || null;
+    if (status && dev.enabled !== false)
+      rows.push(['Durum', STATUS[status] || status, status === 'connected' ? 'ok' : 'bad']);
     else
       rows.push([
         'Durum',
