@@ -36,8 +36,14 @@
 //   kazanırsa yol `show ip bgp`'de `r` (RIB-failure) ile işaretlenir.
 // - Modellenmeyenler: iBGP, route reflector, confederation, community, aggregate-address,
 //   MP-BGP/IPv6, dampening, graceful restart, BFD, zamanlayıcılar, route-map/prefix-list ve
-//   soft reconfiguration (kademe 1b), `neighbor … default-originate`, `maximum-paths`.
+//   `neighbor … default-originate`, `maximum-paths`.
+// - Politika (kademe 1b, bgp-policy.ts): gönderenin çıkış (prefix-list, route-map: metric,
+//   as-path prepend) ve alıcının giriş politikası (prefix-list, route-map: local-preference,
+//   weight, metric, prepend) her yolda uygulanır. Politika komşu başına oturum kurulduğunda ya da
+//   `clear ip bgp` ile dondurulur (Derived.bgpApplied); sonraki değişiklik soft clear'a kadar
+//   etkisizdir.
 
+import { applyPolicy, resolvePolicy, samePolicy, type BgpPolicy, type PolicyDir } from './bgp-policy'
 import type { Derived } from './engine'
 import { deliver, l3Ifs, routeTable, sourceIp, type L3If } from './net'
 import type { BgpNeighborConfig, SwitchConfig } from './types'
@@ -132,9 +138,22 @@ export interface BgpState {
   received: Record<string, BgpPath[]>
   /** AS_PATH'te kendi AS'ini gördüğü için reddedilen yollar (komşu → önekler) */
   loopRejected: Record<string, string[]>
+  /** giriş politikasının reddettiği yollar (komşu → önekler) */
+  policyDenied: Record<string, string[]>
 }
 
 const ipInt = (ip: string) => ipToInt(ip) ?? 0
+
+/** Komşunun etkin politikası: dondurulmuşsa o, yoksa yapılandırmadaki. */
+export function effectivePolicy(d: Derived, dev: string, n: BgpNeighborConfig, dir: PolicyDir): BgpPolicy {
+  return d.bgpApplied?.[dev + '|' + n.ip]?.[dir] ?? resolvePolicy(d.cfgs[dev]!, n, dir)
+}
+
+/** Yapılandırmadaki politika uygulanandan farklı mı (soft clear bekliyor). */
+export function policyPending(d: Derived, dev: string, n: BgpNeighborConfig, dir: PolicyDir): boolean {
+  const applied = d.bgpApplied?.[dev + '|' + n.ip]?.[dir]
+  return !!applied && !samePolicy(applied, resolvePolicy(d.cfgs[dev]!, n, dir))
+}
 const keyOf = (net: string, prefix: number) => `${net}/${prefix}`
 
 export function bgpRunning(d: Derived, dev: string): boolean {
@@ -317,6 +336,7 @@ export function computeBgp(d: Derived): Record<string, BgpState> {
       advertised: {},
       received: {},
       loopRejected: {},
+      policyDenied: {},
     }
   }
   const local = Object.fromEntries(devs.map((dev) => [dev, localPaths(d, dev)]))
@@ -341,19 +361,32 @@ export function computeBgp(d: Derived): Record<string, BgpState> {
       st.received = {}
       st.advertised = {}
       st.loopRejected = {}
+      st.policyDenied = {}
       for (const s of st.sessions) {
         s.pfxRcd = 0
         if (s.state !== 'Established' || !s.peerDev || !out[s.peerDev]) continue
         const peer = s.peerDev
         const n = b.neighbors.find((x) => x.ip === s.ip)!
         const peerAs = out[peer]!.as
+        const pn = d.cfgs[peer]!.bgp!.neighbors.find((x) => x.ip === s.localIp)!
+        const outPol = effectivePolicy(d, peer, pn, 'out')
+        const inPol = effectivePolicy(d, dev, n, 'in')
         const rx: BgpPath[] = []
         for (const p of best[peer]!.values()) {
           // komşu, bizden öğrendiğini bize geri duyurmaz
           if (p.from === s.localIp) continue
-          const asPath = [peerAs, ...p.asPath]
-          if (asPath.includes(st.as)) {
+          // gönderenin çıkış politikası (LP ve weight gönderilmez)
+          const o = applyPolicy(outPol, p.net, p.prefix).set
+          if (!o) continue
+          const asPath0 = [peerAs, ...(o.prepend ?? []), ...p.asPath]
+          if (asPath0.includes(st.as)) {
             ;(st.loopRejected[s.ip] ??= []).push(keyOf(p.net, p.prefix))
+            continue
+          }
+          // alıcının giriş politikası
+          const i = applyPolicy(inPol, p.net, p.prefix).set
+          if (!i) {
+            ;(st.policyDenied[s.ip] ??= []).push(keyOf(p.net, p.prefix))
             continue
           }
           const path: BgpPath = {
@@ -362,11 +395,11 @@ export function computeBgp(d: Derived): Record<string, BgpState> {
             nh: s.ip,
             from: s.ip,
             peerRid: s.peerRid,
-            asPath,
+            asPath: [...(i.prepend ?? []), ...asPath0],
             origin: p.origin,
-            med: p.local ? p.med : null,
-            lp,
-            weight: n.weight ?? 0,
+            med: i.metric ?? o.metric ?? (p.local ? p.med : null),
+            lp: i.localPref ?? lp,
+            weight: i.weight ?? n.weight ?? 0,
             local: false,
             sourced: null,
             valid: nhOk(dev, s.ip),
@@ -402,8 +435,16 @@ export function computeBgp(d: Derived): Record<string, BgpState> {
   // duyurulan yollar (show … advertised-routes): komşudan öğrenilen hariç en iyi yollar
   for (const dev of devs) {
     const st = out[dev]!
-    for (const s of st.sessions)
-      if (s.state === 'Established') st.advertised[s.ip] = [...best[dev]!.values()].filter((p) => p.from !== s.ip)
+    const b = d.cfgs[dev]!.bgp!
+    for (const s of st.sessions) {
+      if (s.state !== 'Established') continue
+      const pol = effectivePolicy(d, dev, b.neighbors.find((x) => x.ip === s.ip)!, 'out')
+      st.advertised[s.ip] = [...best[dev]!.values()].flatMap((p) => {
+        if (p.from === s.ip) return []
+        const o = applyPolicy(pol, p.net, p.prefix).set
+        return o ? [{ ...p, ...(o.metric !== undefined ? { med: o.metric } : {}) }] : []
+      })
+    }
     st.rib = [...best[dev]!.values()].filter((p) => !p.local).map((p) => ({ net: p.net, prefix: p.prefix, nh: p.nh, metric: p.med ?? 0, ad: BGP_AD }))
   }
   return out
@@ -599,7 +640,18 @@ export function showBgpNeighbors(d: Derived, dev: string, ip?: string): string[]
       o.push(`    Prefixes Current: ${(st.advertised[s.ip] ?? []).length} sent, ${s.pfxRcd} received`)
       const loops = st.loopRejected[s.ip]?.length ?? 0
       if (loops) o.push(`    AS_PATH loop: ${loops} prefix(es) denied (own AS ${st.as} in path)`)
+      const denied = st.policyDenied[s.ip]?.length ?? 0
+      if (denied) o.push(`    Inbound policy: ${denied} prefix(es) denied`)
     }
+    if (n.prefixListIn || n.routeMapIn) o.push('  Inbound path policy configured')
+    if (n.prefixListOut || n.routeMapOut) o.push('  Outbound path policy configured')
+    if (n.prefixListIn) o.push(`  Incoming update prefix filter list is ${n.prefixListIn}`)
+    if (n.prefixListOut) o.push(`  Outgoing update prefix filter list is ${n.prefixListOut}`)
+    if (n.routeMapIn) o.push(`  Route map for incoming advertisements is ${n.routeMapIn}`)
+    if (n.routeMapOut) o.push(`  Route map for outgoing advertisements is ${n.routeMapOut}`)
+    for (const dir of ['in', 'out'] as const)
+      if (up && policyPending(d, dev, n, dir))
+        o.push(`  AğLab: ${dir === 'in' ? 'inbound' : 'outbound'} policy changed; not applied until "clear ip bgp ${s.ip} soft ${dir}"`)
     if (n.weight !== undefined) o.push(`  Default weight ${n.weight}`)
     if (!up && s.reason && s.reason !== 'admin') {
       o.push(`  Last reset never${s.reason === 'badas' ? ', due to BGP Notification ' + (s.notification ?? 'sent') + ', peer in wrong AS' : ''}`)
@@ -685,6 +737,10 @@ function neighborLines(n: BgpNeighborConfig): string[] {
   if (n.updateSource) o.push(p + 'update-source ' + n.updateSource)
   if (n.shutdown) o.push(p + 'shutdown')
   if (n.weight !== undefined) o.push(p + 'weight ' + n.weight)
+  if (n.prefixListIn) o.push(p + 'prefix-list ' + n.prefixListIn + ' in')
+  if (n.prefixListOut) o.push(p + 'prefix-list ' + n.prefixListOut + ' out')
+  if (n.routeMapIn) o.push(p + 'route-map ' + n.routeMapIn + ' in')
+  if (n.routeMapOut) o.push(p + 'route-map ' + n.routeMapOut + ' out')
   return o
 }
 

@@ -1084,6 +1084,8 @@ export function toAglab(
     if (cfg.ospf) fail('OSPF')
     if (cfg.eigrp) fail('EIGRP yapılandırması (desteklenmiyor)')
     if (cfg.bgp) fail('BGP yapılandırması (desteklenmiyor)')
+    if (Object.keys(cfg.prefixLists ?? {}).length) fail('ip prefix-list (desteklenmiyor)')
+    if (Object.keys(cfg.routeMaps ?? {}).length) fail('route-map (desteklenmiyor)')
     if (Object.keys(cfg.keyChains ?? {}).length) fail('key chain (desteklenmiyor)')
     if (cfg.routes.length) fail('statik rota')
     if (Object.keys(cfg.tracks ?? {}).length) fail('track (izlenen nesne; switch üzerinde desteklenmiyor)')
@@ -1232,6 +1234,8 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
   if (cfg.eigrp) fail(`EIGRP yapılandırması (router eigrp ${cfg.eigrp.as}; desteklenmiyor)`)
   // eBGP ve Null0 statik rota AğLab modelinde yok: sessizce düşürülmez, raporlanır
   if (cfg.bgp) fail(`BGP yapılandırması (router bgp ${cfg.bgp.as}; desteklenmiyor)`)
+  for (const n of Object.keys(cfg.prefixLists ?? {})) fail(`ip prefix-list ${n} (desteklenmiyor)`)
+  for (const n of Object.keys(cfg.routeMaps ?? {})) fail(`route-map ${n} (desteklenmiyor)`)
   for (const r of cfg.routes) if (r.nh === 'Null0') fail(`Null0 statik rota ${r.net} ${r.mask} (desteklenmiyor)`)
   if (Object.keys(cfg.keyChains ?? {}).length) fail('key chain (desteklenmiyor)')
   {

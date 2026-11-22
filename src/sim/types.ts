@@ -326,6 +326,33 @@ export interface BgpNeighborConfig {
   shutdown?: boolean
   /** `neighbor … weight` (bu komşudan öğrenilen yollar) */
   weight?: number
+  /** `neighbor … route-map <ad> in|out` (kademe 1b) */
+  routeMapIn?: string
+  routeMapOut?: string
+  /** `neighbor … prefix-list <ad> in|out` (kademe 1b) */
+  prefixListIn?: string
+  prefixListOut?: string
+}
+
+/** `ip prefix-list <ad> [seq N] permit|deny A.B.C.D/n [ge N] [le N]` satırı. */
+export interface PrefixListEntry {
+  seq: number
+  action: 'permit' | 'deny'
+  net: string
+  len: number
+  ge?: number
+  le?: number
+}
+
+/** `route-map <ad> permit|deny <sıra>` girdisi (BGP politikası için match/set alt kümesi). */
+export interface RouteMapEntry {
+  seq: number
+  action: 'permit' | 'deny'
+  /** `match ip address prefix-list <ad>…` */
+  matchPrefixLists: string[]
+  /** `match ip address <acl>…` (standart: ağ adresi; genişletilmiş: kaynak ağ, hedef maske) */
+  matchAcls: string[]
+  set: { localPref?: number; metric?: number; weight?: number; prepend?: number[] }
 }
 
 /** `router bgp <AS>`: eBGP, IPv4 unicast (kademe 1). */
@@ -407,6 +434,10 @@ export interface SwitchConfig {
   eigrp?: EigrpConfig | null
   /** eBGP (kademe 1; bgp.ts) */
   bgp?: BgpConfig | null
+  /** `ip prefix-list` (ad → girdiler, sıra numarasına göre) */
+  prefixLists?: Record<string, PrefixListEntry[]>
+  /** `route-map` (ad → girdiler, sıra numarasına göre) */
+  routeMaps?: Record<string, RouteMapEntry[]>
   /** `key chain <ad>` → anahtar no → `key-string` (null: anahtar var, metin yok) */
   keyChains?: Record<string, Record<string, string | null>>
   /** L5-d: NAT (`ip nat inside source …`, `ip nat pool`) */

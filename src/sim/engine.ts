@@ -132,6 +132,8 @@ export interface Derived {
   eigrp: Record<string, import('./eigrp').EigrpState>
   /** eBGP (bgp.ts; computeState() doldurur) */
   bgp: Record<string, import('./bgp').BgpState>
+  /** eBGP: komşu başına uygulanan (dondurulmuş) politika, 'dev|komşu' → yön (runtime sahibi; soft clear) */
+  bgpApplied?: Record<string, { in?: import('./bgp-policy').BgpPolicy; out?: import('./bgp-policy').BgpPolicy }>
   /** duplicate addresses; filled by computeState() in ospf.ts */
   dups: DupIp[]
   /** L5-d: dynamic NAT translations (owned by the runtime; read by deliver()) */

@@ -3,12 +3,13 @@
 import * as fhrp from '../fhrp'
 import * as tracking from '../track'
 import * as bgp from '../bgp'
+import * as bgpPolicy from '../bgp-policy'
 import * as eigrp from '../eigrp'
 import { defaultMst, mstOf } from '../mst'
 import { defaultSvi, defaultSwitchConfig, defaultVlanName, pickL2, RESERVED_VLANS } from '../config'
 import { arpMac, deliver, l3Ifs, ping, traceProbe } from '../net'
 import type { LabRuntime } from '../runtime'
-import type { BgpConfig, BgpNeighborConfig, ChannelMode, DhcpPool, EigrpConfig, EigrpSeedMetric, FhrpTrack, HsrpGroup, IpSlaConfig, MstConfig, TrackConfig, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
+import type { BgpConfig, BgpNeighborConfig, RouteMapEntry, ChannelMode, DhcpPool, EigrpConfig, EigrpSeedMetric, FhrpTrack, HsrpGroup, IpSlaConfig, MstConfig, TrackConfig, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { canonIf, clone, ifNum, intToIp, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, prefixToMask, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
@@ -22,7 +23,7 @@ const SLA = '<1-2147483647:Entry number>'
 /** MST örnek listesi (0-4094; ör. 0-3,5) */
 const MI = '<WORD:MST instance range, example: 0-3,5,7-9>'
 
-export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl' | 'track' | 'ipsla' | 'ipslaEcho' | 'mst' | 'eigrp' | 'keychain' | 'keychainKey' | 'bgp'
+export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl' | 'track' | 'ipsla' | 'ipslaEcho' | 'mst' | 'eigrp' | 'keychain' | 'keychainKey' | 'bgp' | 'routemap'
 
 type P = Pattern<IosSession>
 type Out = string[] | void
@@ -55,6 +56,10 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show ip route ospf', run: (x) => show.showIpRoute(x.rt, x.dev, 'O') },
     { p: 'show ip route eigrp', run: (x) => show.showIpRoute(x.rt, x.dev, 'D') },
     { p: 'show ip route bgp', run: (x) => show.showIpRoute(x.rt, x.dev, 'B') },
+    { p: 'show ip prefix-list', run: (x) => bgpPolicy.showPrefixLists(x.cfg) },
+    { p: 'show ip prefix-list <WORD:Name of a prefix list>', run: (x, a) => bgpPolicy.showPrefixLists(x.cfg, a[3]!) },
+    { p: 'show route-map', run: (x) => bgpPolicy.showRouteMaps(x.cfg) },
+    { p: 'show route-map <WORD:route-map name>', run: (x, a) => bgpPolicy.showRouteMaps(x.cfg, a[2]!) },
     { p: 'show ip bgp', run: (x) => bgp.showBgp(x.rt.derived, x.dev) },
     { p: 'show ip bgp summary', run: (x) => bgp.showBgpSummary(x.rt.derived, x.dev) },
     { p: 'show ip bgp neighbors', run: (x) => bgp.showBgpNeighbors(x.rt.derived, x.dev) },
@@ -183,14 +188,14 @@ const privPatterns: P[] = [
   { p: 'erase startup-config', run: (x) => x.erase() },
   { p: 'reload', run: (x) => x.reload() },
   { p: 'clear ip nat translation *', run: (x) => x.clearNat() },
-  { p: 'clear ip bgp *', run: (x) => x.clearBgp('*', false) },
-  { p: 'clear ip bgp * soft', run: (x) => x.clearBgp('*', true) },
-  { p: 'clear ip bgp * soft in', run: (x) => x.clearBgp('*', true) },
-  { p: 'clear ip bgp * soft out', run: (x) => x.clearBgp('*', true) },
-  { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear>', run: (x, a) => x.clearBgp(a[3]!, false) },
-  { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft', run: (x, a) => x.clearBgp(a[3]!, true) },
-  { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft in', run: (x, a) => x.clearBgp(a[3]!, true) },
-  { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft out', run: (x, a) => x.clearBgp(a[3]!, true) },
+  { p: 'clear ip bgp *', run: (x) => x.clearBgp('*', 'hard') },
+  { p: 'clear ip bgp * soft', run: (x) => x.clearBgp('*', 'soft') },
+  { p: 'clear ip bgp * soft in', run: (x) => x.clearBgp('*', 'in') },
+  { p: 'clear ip bgp * soft out', run: (x) => x.clearBgp('*', 'out') },
+  { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear>', run: (x, a) => x.clearBgp(a[3]!, 'hard') },
+  { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft', run: (x, a) => x.clearBgp(a[3]!, 'soft') },
+  { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft in', run: (x, a) => x.clearBgp(a[3]!, 'in') },
+  { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft out', run: (x, a) => x.clearBgp(a[3]!, 'out') },
   {
     p: 'clear access-list counters',
     run: (x) => {
@@ -361,6 +366,17 @@ const configPatterns = (def: SwitchDef): P[] => {
         },
       },
       { p: 'router bgp <1-4294967295:Autonomous system number>', run: (x, a) => x.enterBgp(Number(a[2])) },
+      { p: 'ip prefix-list <WORD:Name of a prefix list> <LINE:[seq N] permit|deny A.B.C.D/n [ge N] [le N]>', run: (x, a) => x.prefixListAdd(a[2]!, a[3]!) },
+      { p: 'no ip prefix-list <WORD:Name of a prefix list>', run: (x, a) => x.prefixListRemove(a[3]!, null) },
+      { p: 'no ip prefix-list <WORD:Name of a prefix list> <LINE:seq N …>', run: (x, a) => x.prefixListRemove(a[3]!, a[4]!) },
+      { p: 'route-map <WORD:Route map tag>', run: (x, a) => x.enterRouteMap(a[1]!, null, null) },
+      { p: 'route-map <WORD:Route map tag> permit', run: (x, a) => x.enterRouteMap(a[1]!, 'permit', null) },
+      { p: 'route-map <WORD:Route map tag> permit <0-65535:Sequence to insert to/delete from existing route-map entry>', run: (x, a) => x.enterRouteMap(a[1]!, 'permit', Number(a[3])) },
+      { p: 'route-map <WORD:Route map tag> deny', run: (x, a) => x.enterRouteMap(a[1]!, 'deny', null) },
+      { p: 'route-map <WORD:Route map tag> deny <0-65535:Sequence to insert to/delete from existing route-map entry>', run: (x, a) => x.enterRouteMap(a[1]!, 'deny', Number(a[3])) },
+      { p: 'no route-map <WORD:Route map tag>', run: (x, a) => x.routeMapRemove(a[2]!, null) },
+      { p: 'no route-map <WORD:Route map tag> permit <0-65535:Sequence>', run: (x, a) => x.routeMapRemove(a[2]!, Number(a[4])) },
+      { p: 'no route-map <WORD:Route map tag> deny <0-65535:Sequence>', run: (x, a) => x.routeMapRemove(a[2]!, Number(a[4])) },
       {
         p: 'no router bgp <1-4294967295:Autonomous system number>',
         run: (x, a) => {
@@ -729,6 +745,33 @@ const bgpPatterns: P[] = [
   { p: `no neighbor ${NB} shutdown`, run: (x, a) => x.bgpNbr(a[2]!, (n) => void delete n.shutdown) },
   { p: `neighbor ${NB} weight <0-65535:default weight>`, run: (x, a) => x.bgpNbr(a[1]!, (n) => void (n.weight = Number(a[3]))) },
   { p: `no neighbor ${NB} weight`, run: (x, a) => x.bgpNbr(a[2]!, (n) => void delete n.weight) },
+  ...(['in', 'out'] as const).flatMap((dir): P[] => {
+    const rm = dir === 'in' ? 'routeMapIn' : 'routeMapOut'
+    const pl = dir === 'in' ? 'prefixListIn' : 'prefixListOut'
+    return [
+      { p: `neighbor ${NB} route-map <WORD:Name of route map> ${dir}`, run: (x, a) => x.bgpNbr(a[1]!, (n) => void (n[rm] = a[3]!)) },
+      { p: `no neighbor ${NB} route-map <WORD:Name of route map> ${dir}`, run: (x, a) => x.bgpNbr(a[2]!, (n) => void delete n[rm]) },
+      { p: `neighbor ${NB} prefix-list <WORD:Name of a prefix list> ${dir}`, run: (x, a) => x.bgpNbr(a[1]!, (n) => void (n[pl] = a[3]!)) },
+      { p: `no neighbor ${NB} prefix-list <WORD:Name of a prefix list> ${dir}`, run: (x, a) => x.bgpNbr(a[2]!, (n) => void delete n[pl]) },
+    ]
+  }),
+]
+
+/** `route-map <ad> permit|deny <sıra>` alt kipi (config-route-map): BGP için match/set alt kümesi. */
+const routeMapPatterns: P[] = [
+  ...commonSub,
+  { p: 'match ip address prefix-list <LINE:IP prefix-list name(s)>', run: (x, a) => void (x.rmEntry.matchPrefixLists = a[4]!.trim().split(/\s+/)) },
+  { p: 'no match ip address prefix-list', run: (x) => void (x.rmEntry.matchPrefixLists = []) },
+  { p: 'match ip address <LINE:IP access-list number(s) or name(s)>', run: (x, a) => void (x.rmEntry.matchAcls = a[3]!.trim().split(/\s+/)) },
+  { p: 'no match ip address', run: (x) => void Object.assign(x.rmEntry, { matchAcls: [], matchPrefixLists: [] }) },
+  { p: 'set local-preference <0-4294967295:Preference value>', run: (x, a) => void (x.rmEntry.set.localPref = Number(a[2])) },
+  { p: 'no set local-preference', run: (x) => void delete x.rmEntry.set.localPref },
+  { p: 'set metric <0-4294967295:Metric value or Bandwidth in Kbits per second>', run: (x, a) => void (x.rmEntry.set.metric = Number(a[2])) },
+  { p: 'no set metric', run: (x) => void delete x.rmEntry.set.metric },
+  { p: 'set weight <0-65535:BGP weight for routing table>', run: (x, a) => void (x.rmEntry.set.weight = Number(a[2])) },
+  { p: 'no set weight', run: (x) => void delete x.rmEntry.set.weight },
+  { p: 'set as-path prepend <LINE:AS number(s)>', run: (x, a) => x.rmPrepend(a[3]!) },
+  { p: 'no set as-path prepend', run: (x) => void delete x.rmEntry.set.prepend },
 ]
 
 /** `key chain <ad>` alt kipi. */
@@ -984,6 +1027,7 @@ function tries(def: SwitchDef) {
       mst: buildTrie(mstPatterns),
       eigrp: buildTrie(eigrpPatterns),
       bgp: buildTrie(bgpPatterns),
+      routemap: buildTrie(routeMapPatterns),
       keychain: buildTrie(keyChainPatterns),
       keychainKey: buildTrie(keyChainKeyPatterns),
     }
@@ -1008,6 +1052,9 @@ export class IosSession {
   slaNo = 0
   /** `(config-mst)` altında bekleyen bölge yapılandırması (exit ile uygulanır) */
   mstPending: MstConfig | null = null
+  /** `(config-route-map)` altında düzenlenen route-map ve sıra numarası */
+  routeMapName = ''
+  routeMapSeq = 0
   /** `(config-keychain)` / `(config-keychain-key)` altında düzenlenen zincir ve anahtar */
   keyChain = ''
   keyId = ''
@@ -1056,6 +1103,8 @@ export class IosSession {
       case 'eigrp':
       case 'bgp':
         return h + '(config-router)#'
+      case 'routemap':
+        return h + '(config-route-map)#'
       case 'keychain':
         return h + '(config-keychain)#'
       case 'keychainKey':
@@ -1066,7 +1115,7 @@ export class IosSession {
   }
 
   get inConfig() {
-    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho' || this.mode === 'mst' || this.mode === 'eigrp' || this.mode === 'keychain' || this.mode === 'keychainKey' || this.mode === 'bgp'
+    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho' || this.mode === 'mst' || this.mode === 'eigrp' || this.mode === 'keychain' || this.mode === 'keychainKey' || this.mode === 'bgp' || this.mode === 'routemap'
   }
 
   private trie(): TrieNode<IosSession> {
@@ -1115,7 +1164,7 @@ export class IosSession {
   private run(cmd: string): string[] {
     let r = parse(this.trie(), cmd)
     // in a sub-mode, a global config command drops back to config mode (as IOS does)
-    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho' || this.mode === 'eigrp' || this.mode === 'keychain' || this.mode === 'keychainKey' || this.mode === 'bgp') && r.err !== 'empty') {
+    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho' || this.mode === 'eigrp' || this.mode === 'keychain' || this.mode === 'keychainKey' || this.mode === 'bgp' || this.mode === 'routemap') && r.err !== 'empty') {
       const g = parse(tries(this.def).config, cmd)
       if (g.ok) {
         this.mode = 'config'
@@ -1937,9 +1986,73 @@ export class IosSession {
     fn(n)
   }
 
-  clearBgp(target: string, soft: boolean): Out {
+  clearBgp(target: string, mode: 'hard' | 'soft' | 'in' | 'out'): Out {
     if (!this.rt.derived.bgp?.[this.dev]) return ['% BGP not active']
-    if (!this.rt.clearBgp(this.dev, target, soft)) return ['% No such neighbor or address family']
+    if (!this.rt.clearBgp(this.dev, target, mode)) return ['% No such neighbor or address family']
+  }
+
+  // ---- prefix-list / route-map (BGP politikası, kademe 1b) ----
+
+  prefixListAdd(name: string, rest: string): Out {
+    const list = ((this.cfg.prefixLists ??= {})[name] ??= [])
+    const e = bgpPolicy.parsePrefixListLine(rest, list)
+    if (typeof e === 'string') {
+      if (!list.length) delete this.cfg.prefixLists![name]
+      return [e]
+    }
+    // aynı sıra numarası satırın yerine geçer (IOS)
+    const i = list.findIndex((x) => x.seq === e.seq)
+    if (i >= 0) list[i] = e
+    else list.push(e)
+    list.sort((a, b) => a.seq - b.seq)
+  }
+
+  prefixListRemove(name: string, rest: string | null): Out {
+    const list = this.cfg.prefixLists?.[name]
+    if (!list) return
+    const m = rest ? /^\s*seq\s+(\d+)/.exec(rest) : null
+    if (rest && !m) return ['% Invalid input: expected seq N']
+    if (m) {
+      const i = list.findIndex((x) => x.seq === Number(m[1]))
+      if (i >= 0) list.splice(i, 1)
+    }
+    if (!m || !list.length) delete this.cfg.prefixLists![name]
+  }
+
+  enterRouteMap(name: string, action: 'permit' | 'deny' | null, seq: number | null): Out {
+    const list = ((this.cfg.routeMaps ??= {})[name] ??= [])
+    // sıra verilmezse: tek girdi varsa o, yoksa 10 (IOS)
+    const s = seq ?? (list.length === 1 ? list[0]!.seq : 10)
+    if (seq === null && list.length > 1) return ['% Please specify the entry by its sequence']
+    let e = list.find((x) => x.seq === s)
+    if (!e) {
+      e = { seq: s, action: action ?? 'permit', matchPrefixLists: [], matchAcls: [], set: {} }
+      list.push(e)
+      list.sort((a, b) => a.seq - b.seq)
+    } else if (action) e.action = action
+    this.routeMapName = name
+    this.routeMapSeq = s
+    this.mode = 'routemap'
+  }
+
+  routeMapRemove(name: string, seq: number | null): Out {
+    const list = this.cfg.routeMaps?.[name]
+    if (!list) return
+    if (seq !== null) {
+      const i = list.findIndex((x) => x.seq === seq)
+      if (i >= 0) list.splice(i, 1)
+    }
+    if (seq === null || !list.length) delete this.cfg.routeMaps![name]
+  }
+
+  get rmEntry(): RouteMapEntry {
+    return this.cfg.routeMaps![this.routeMapName]!.find((x) => x.seq === this.routeMapSeq)!
+  }
+
+  rmPrepend(line: string): Out {
+    const as = line.trim().split(/\s+/).map(Number)
+    if (!as.length || as.some((n) => !Number.isInteger(n) || n < 1 || n > 4294967295)) return ['% Invalid AS number']
+    this.rmEntry.set.prepend = as
   }
 
   // ---- EIGRP ----

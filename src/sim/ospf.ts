@@ -91,8 +91,10 @@ export function computeState(
   pcs: Record<string, PcConfig>,
   errdis?: Set<string>,
   hw?: Hardware,
+  bgpApplied?: Derived['bgpApplied'],
 ): Derived {
   const d = derive(topo, cfgs, pcs, errdis, hw)
+  if (bgpApplied) d.bgpApplied = bgpApplied
   d.ospf = computeOspf(d)
   // EIGRP, OSPF'ten sonra: aynı önekte AD seçimi rota tablosunda (OSPF ↔ EIGRP aktarımı yok)
   d.eigrp = computeEigrp(d)
