@@ -375,3 +375,57 @@ describe('EIGRP troubleshooting lab (Konu #41)', () => {
     expect(solved.query().route('R2', '10.3.3.0', 24)!.paths!.length).toBe(1)
   })
 })
+
+describe('eBGP two-ISP lab (Konu #32)', () => {
+  const run = (rt: LabRuntime, dev: string, cmd: string) => runScript(rt, dev, cmd).slice(1).join('\n')
+  const best = (rt: LabRuntime, dev: string, net: string, len: number) => rt.query().bgpPaths(dev, net, len)?.find((p) => p.best)
+
+  it('bgp-iki-isp: every symptom in the brief is visible at start', () => {
+    const rt = createLab(findLab('bgp-iki-isp')!)
+    expect(rt.logs).toEqual([])
+    // S1: ISP-A Active, neden neighbors çıktısında; clear ile log üretilir
+    expect(rt.query().bgpSession('R1', '203.0.113.1')!.state).toBe('Active')
+    expect(run(rt, 'R1', 'show ip bgp summary')).toMatch(/203\.0\.113\.1\s+4\s+64501.*Active/)
+    expect(run(rt, 'R1', 'show ip bgp neighbors 203.0.113.1')).toMatch(/wrong AS|bad peer AS/i)
+    // S2: /23 yok, PC1 → SRV başarısız, INET'te rota yok
+    expect(rt.query().bgpPaths('R1', '198.51.100.0', 23)).toBeNull()
+    expect(rt.query().ping('PC1', '203.0.114.10').ok).toBe(false)
+    expect(rt.query().route('INET', '198.51.100.0', 23)).toBeFalsy()
+    // S3: ISP-B yollarında LocPrf 200
+    expect(best(rt, 'R1', '203.0.114.0', 24)).toMatchObject({ from: '192.0.2.1', lp: 200 })
+    expect(run(rt, 'R1', 'show ip bgp')).toMatch(/203\.0\.114\.0\s+192\.0\.2\.1\s+200\s+0 64600 64700 i/)
+    expect(run(rt, 'R1', 'show ip bgp neighbors 192.0.2.1')).toMatch(/incoming advertisements is PRIMARY-IN/)
+    // brief: arayüz kapatılıp açılınca NOTIFICATION log'u (FBF4 = 64500)
+    cfg(rt, 'R1', 'interface g0/1\nshutdown\nno shutdown')
+    expect(rt.logs.filter((l) => l.dev === 'R1').map((l) => l.text).join('\n')).toMatch(/NOTIFICATION: sent to neighbor 203\.0\.113\.1 .*wrong AS.* FBF4/)
+  })
+
+  it('bgp-iki-isp: S3 needs the soft clear; inbound needs prepend + soft out', () => {
+    const def = findLab('bgp-iki-isp')!
+    const rt = createLab(def)
+    cfg(rt, 'R1', 'router bgp 65010\nneighbor 203.0.113.1 remote-as 64500\nexit\nip route 198.51.100.0 255.255.254.0 Null0')
+    expect(rt.query().bgpSession('R1', '203.0.113.1')!.state).toBe('Established')
+    expect(rt.query().ping('PC1', '203.0.114.10').ok).toBe(true)
+    // ISP-A kuruldu ama LP 200 hâlâ ISP-B'de: çıkış ISP-B
+    expect(best(rt, 'R1', '203.0.114.0', 24)!.from).toBe('192.0.2.1')
+    // route-map taşındı, soft clear yok: ISP-B girişi dondurulmuş, değişmez
+    cfg(rt, 'R1', 'router bgp 65010\nno neighbor 192.0.2.1 route-map PRIMARY-IN in\nneighbor 203.0.113.1 route-map PRIMARY-IN in')
+    expect(best(rt, 'R1', '203.0.114.0', 24)!.from).toBe('192.0.2.1')
+    expect(run(rt, 'R1', 'show ip bgp neighbors 192.0.2.1')).toMatch(/not applied until/)
+    runScript(rt, 'R1', 'clear ip bgp * soft in')
+    expect(best(rt, 'R1', '203.0.114.0', 24)).toMatchObject({ from: '203.0.113.1', lp: 200 })
+    expect(rt.objectives().find((o) => o.id === 'outbound')!.ok).toBe(true)
+    // gelen yön: router-id ile ISP-B seçili; prepend soft out'a kadar etkisiz
+    expect(best(rt, 'INET', '198.51.100.0', 23)!.from).toBe('10.34.0.1')
+    cfg(rt, 'R1', 'route-map ISP-B-OUT permit 10\nset as-path prepend 65010 65010\nexit\nrouter bgp 65010\nneighbor 192.0.2.1 route-map ISP-B-OUT out')
+    expect(best(rt, 'INET', '198.51.100.0', 23)!.from).toBe('10.34.0.1')
+    runScript(rt, 'R1', 'clear ip bgp 192.0.2.1 soft out')
+    expect(best(rt, 'INET', '198.51.100.0', 23)).toMatchObject({ from: '10.24.0.1', asPath: [64500, 65010] })
+    expect(failed(rt)).toEqual([])
+    // ISP-A kapanınca çıkış ve giriş yedeğe geçer
+    cfg(rt, 'R1', 'interface g0/1\nshutdown')
+    expect(best(rt, 'R1', '203.0.114.0', 24)!.from).toBe('192.0.2.1')
+    expect(best(rt, 'INET', '198.51.100.0', 23)!.asPath).toEqual([64600, 65010, 65010, 65010])
+    expect(rt.query().ping('PC2', '203.0.114.10').ok).toBe(true)
+  })
+})

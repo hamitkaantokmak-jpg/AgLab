@@ -1,6 +1,6 @@
 # AğLab Konu #32: BGP: eBGP, önek duyurma ve yol seçimi
 
-> Uygulamadaki `bgp` dersi bu belgeyle uyumludur. **Okuma dersi (Seviye 3, CCNP):** Labber eBGP'yi (kademe 1) çalıştırır: oturum ve kurulmama nedenleri, network tam eşleşme, AS_PATH ve döngü önleme, en iyi yol seçimi (Weight, Local Preference, AS_PATH, ORIGIN, MED, router-id), AD 20. Prefix-list, route-map (match ip address [prefix-list], set local-preference / metric / weight / as-path prepend) ve soft clear da var: politika değişikliği `clear ip bgp … soft` yapılana kadar uygulanmaz. iBGP, route reflector ve community modellenmez (Gerçek Lab / FRR). Simülatör labı ayrı işte eklenecek.
+> Uygulamadaki `bgp` dersi bu belgeyle uyumludur. **Okuma dersi (Seviye 3, CCNP):** Labber eBGP'yi (kademe 1) çalıştırır: oturum ve kurulmama nedenleri, network tam eşleşme, AS_PATH ve döngü önleme, en iyi yol seçimi (Weight, Local Preference, AS_PATH, ORIGIN, MED, router-id), AD 20. Prefix-list, route-map (match ip address [prefix-list], set local-preference / metric / weight / as-path prepend) ve soft clear da var: politika değişikliği `clear ip bgp … soft` yapılana kadar uygulanmaz. iBGP, route reflector ve community modellenmez (Gerçek Lab / FRR). Simülatör'deki **bgp-iki-isp** labı S1–S3'ü ve Bölüm 4'ün prepend adımını bir arada çalıştırır.
 > Ön koşul: Statik ve varsayılan rota (Konu #8), OSPF (Konu #15), ACL (Konu #19). Şemalar: `docs/dersler/gorseller/bgp.py`.
 
 Bu konu bittiğinde öğrenci BGP'nin IGP'lerden farkını ve otonom sistem kavramını açıklar; eBGP komşuluğunu kurar ve `show ip bgp summary` çıktısından oturumun durumunu okur. network komutunun neden tam önek istediğini bilir. AS_PATH'in döngüyü nasıl önlediğini, en iyi yol seçiminin ilk adımlarını (Weight, Local Preference, AS_PATH, Origin, MED) sırasıyla uygular. İki ISP'li bir şubede çıkan trafiği Local Preference/Weight ile, gelen trafiği AS_PATH prepend ile yönlendirir. Süre yaklaşık 60 dakika.
@@ -112,7 +112,7 @@ R1#show ip bgp neighbors 192.0.2.1 advertised-routes
 
 ## 4. Yönlendirmeli lab
 
-> **Simülatörde yok:** Lab'ı kâğıt üstünde yürüt; her adımda Bölüm 3'teki beklenen çıktıyla karşılaştır.
+> **Simülatörde:** 1–6. adımlar Simülatör'deki **bgp-iki-isp** labında denenir (Pratik adımında). Labda adresler aynıdır; R1 arızalı başlar (S1–S3), adım adım kurmak yerine arızaları bularak aynı yapılandırmaya varırsın. 6. adım için R1'de `neighbor 203.0.113.1 shutdown` ya da Gi0/1'i kapat. Labda politika değişikliği `clear ip bgp … soft` yapılana kadar uygulanmaz.
 
 Topoloji: g7'deki gibi; R1 AS 65010, blok 198.51.100.0/23; ISP-A AS 64500 (203.0.113.1), ISP-B AS 64600 (192.0.2.1).
 
@@ -137,7 +137,7 @@ Topoloji: g7'deki gibi; R1 AS 65010, blok 198.51.100.0/23; ISP-A AS 64500 (203.0
 
 ## 6. Arıza senaryoları
 
-> **Uygulamada:** S1 (yanlış remote-as) ve S2 (/23 duyurulmuyor) Labber'da çalışır; Simülatör labı ayrı işte (`bgp-*`) eklenecek. S3 (LP'nin yanlış komşuya uygulanması ve soft clear) da Labber'da çalışır; S4 kavramsaldır. Önce kendin çöz; neden ve çözüm kapalı kutularda.
+> **Uygulamada:** S1 (yanlış remote-as), S2 (/23 duyurulmuyor) ve S3 (LP'nin yanlış komşuya uygulanması ve soft clear) Simülatör'deki **bgp-iki-isp** labında birlikte çözülür; S4 kavramsaldır. Önce kendin çöz; neden ve çözüm kapalı kutularda.
 
 ### S1 · Başlangıç · ISP-A oturumu kurulmuyor (E1)
 
@@ -270,4 +270,5 @@ Kaynaklar: INE ENCOR (BGP Fundamentals and Basic Configuration, path selection) 
 
 - [x] eBGP kademe 1 Labber'da: oturum (Idle/Active/Established; yanlış remote-as, karşıda tanım yok, rota yok, multihop, update-source, TCP 179 ACL'si, MD5 parolası, `neighbor shutdown` ayrı nedenler; `%BGP-5-ADJCHANGE`, `%BGP-3-NOTIFICATION` günlüğü), `network` tam eşleşme ve `ip route … Null0`, `redistribute static|connected`, AS_PATH/NEXT_HOP/ORIGIN/MED/Weight/LP, Cisco sırasıyla en iyi yol, AD 20, `show ip bgp`, `summary`, `neighbors [… advertised-routes|routes]`, `show ip bgp <önek>`, `show ip route bgp`, `clear ip bgp`. Zamanlayıcılar ve MsgRcvd/MsgSent sabittir (UYUMLULUK_MATRISI "eBGP"). S1 ve S2 bununla çalışır.
 - [x] Prefix-list, route-map, `neighbor … route-map|prefix-list in|out` ve soft clear (kademe 1b): politika oturum kurulunca dondurulur, değişiklik `clear ip bgp … soft in|out` ile uygulanır; `show ip bgp neighbors` bekleyen değişikliği söyler. S3 bununla çalışır.
+- [x] Simülatör labı **bgp-iki-isp**: S1–S3 ve prepend ile gelen trafik (Bölüm 4).
 - [ ] iBGP, route reflector, community, aggregate-address (kademe 2): Gerçek Lab (FRR).

@@ -446,6 +446,28 @@ export const HINT_TIERS: Record<string, Record<string, [string, string]>> = {
       'Bölge ve kök düzeltmeleri döngüsüz bir ağaç bırakır; her VLAN kendi örneğinin yolundan akar.',
     ],
   },
+  'bgp-iki-isp': {
+    session: [
+      'ISP-A oturumu neden Active’de kalıyor? Komşu tanımındaki AS numarası karşı tarafın gerçek AS’iyle aynı mı?',
+      'BGP açılış mesajında iki taraf AS numarasını bildirir; beklenenden farklı AS gelirse oturum reddedilir ve kurulmaz.',
+    ],
+    announce: [
+      'network satırı /23 diyor; R1’in yönlendirme tablosunda birebir 198.51.100.0/23 var mı?',
+      'BGP bir öneki yalnız tabloda aynı önek ve maske ile bulursa duyurur; iki /24 bir /23 sayılmaz. Bloğu tabloda tutmanın atma (Null0) rotası ile bilinen bir yolu var.',
+    ],
+    outbound: [
+      'BGP tablosunda LocPrf 200 hangi komşudan gelen yollarda? Birincil hat hangisi?',
+      'Yüksek Local Preference çıkışı o komşuya çeker; giriş (in) politikası doğru komşuya bağlanmalı. Politika değişikliği oturum kuruluyken kendiliğinden uygulanmaz.',
+    ],
+    inbound: [
+      'INET, şirket bloğu için iki yoldan hangisini seçiyor ve hangi karar adımıyla? AS_PATH uzunlukları ne?',
+      'Karşı AS’ler gelen trafiğin yolunu kendi seçer; yedek hattan yapılan duyuruyu uzatmak (AS_PATH prepend, çıkış yönünde) onları birincile yöneltir.',
+    ],
+    e2e: [
+      'PC1’den SRV’ye ping gidiyor ama yanıt dönüyor mu? INET şube bloğunu biliyor mu?',
+      'Dönüş yolu ancak şirket bloğu internete duyurulunca oluşur.',
+    ],
+  },
   'eigrp-ariza': {
     summary: [
       'R2’nin tablosunda şube LAN’ları nasıl görünüyor? Tek bir büyük ağ mı, iki ayrı alt ağ mı?',
