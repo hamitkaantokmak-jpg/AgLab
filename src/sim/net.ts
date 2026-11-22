@@ -176,7 +176,7 @@ export function isRouter(d: Derived, dev: string): boolean {
   return def.kind === 'switch' && !!(def.l3 || def.router) && d.cfgs[dev]!.ipRouting
 }
 
-export type RouteCode = 'C' | 'S' | 'L' | 'O' | 'O IA' | 'O E2' | 'D' | 'D EX'
+export type RouteCode = 'C' | 'S' | 'L' | 'O' | 'O IA' | 'O E2' | 'D' | 'D EX' | 'B'
 
 export interface RouteEntry {
   code: RouteCode
@@ -236,13 +236,18 @@ export function routeTable(d: Derived, dev: string): RouteEntry[] {
   }
   if (!isRouter(d, dev)) return out
   const connected = out.filter((e) => e.code === 'C' && ifs.find((i) => i.name === e.ifname)?.node)
-  const statics: Candidate[] = d.cfgs[dev]!.routes.flatMap((r, idx) => {
+  const statics: Candidate[] = d.cfgs[dev]!.routes.flatMap((r, idx): Candidate[] => {
     const prefix = maskToPrefix(r.mask)
     if (prefix === null) return []
     // `ip route … track N`: nesne Down iken kurulmaz (track.ts; ilk aşamada d.track yok: kurulu)
     if (r.track !== undefined && d.track && !d.track.objects[dev]?.[String(r.track)]?.up) return []
+    // `ip route … Null0`: çıkışı Null0 (eşleşen paket atılır; BGP network'ü için tablo girdisi)
+    if (r.nh === NULL0) return [{ code: 'S' as const, net: r.net, prefix, ad: r.ad ?? 1, idx, nh: null, ifname: NULL0 }]
     return [{ code: 'S' as const, net: r.net, prefix, ad: r.ad ?? 1, idx, nh: r.nh, ifname: '' }]
   })
+  // eBGP (bgp.ts): AD 20; next hop statik rota gibi özyinelemeli çözülür. BGP hesaplanırken
+  // (d.bgp henüz yok) tablo BGP'siz kurulur: oturum ve network denetimi IGP/statik tabloya bakar.
+  const bgp: Candidate[] = (d.bgp?.[dev]?.rib ?? []).map((r, i) => ({ code: 'B' as const, net: r.net, prefix: r.prefix, ad: r.ad, idx: 100000 + i, nh: r.nh, ifname: '', metric: r.metric }))
   const ospf: Candidate[] = (d.ospf[dev]?.routes ?? [])
     .filter((r) => r.paths.length)
     .map((r) => ({ code: r.code, net: r.net, prefix: r.prefix, ad: OSPF_AD, nh: r.paths[0]!.nh, ifname: r.paths[0]!.ifname, metric: r.metric, paths: r.paths }))
@@ -261,17 +266,19 @@ export function routeTable(d: Derived, dev: string): RouteEntry[] {
       ...connected.filter((c) => inPrefix(dst, c.net, c.prefix)).map((c) => ({ ...c, ad: 0 }) as Candidate),
       ...statics.filter((c) => !seen.has(c.idx!) && inPrefix(dst, c.net, c.prefix)),
       ...dynamic.filter((c) => inPrefix(dst, c.net, c.prefix)),
+      ...bgp.filter((c) => !seen.has(c.idx!) && inPrefix(dst, c.net, c.prefix)),
     ].sort((a, b) => b.prefix - a.prefix || a.ad - b.ad || (a.code === 'S' ? 0 : 1) - (b.code === 'S' ? 0 : 1))
     for (const m of matches) {
       if (m.code === 'C') return { ifname: m.ifname, via: dst }
       if (m.ifname === NULL0) return null
-      if (m.code !== 'S') return { ifname: m.ifname, via: m.nh! }
+      if (m.code !== 'S' && m.code !== 'B') return { ifname: m.ifname, via: m.nh! }
       const r = resolve(m, seen)
       if (r) return r
     }
     return null
   }
   const resolve = (s: Candidate, seen: Set<number>): Res | null => {
+    if (s.ifname === NULL0) return { ifname: NULL0, via: NULL0 }
     const direct = connected.find((c) => inPrefix(s.nh!, c.net, c.prefix))
     if (direct) return { ifname: direct.ifname, via: s.nh! }
     return lookupFor(s.nh!, new Set([...seen, s.idx!]))
@@ -288,7 +295,12 @@ export function routeTable(d: Derived, dev: string): RouteEntry[] {
     const r = resolve(s, new Set())
     if (!r) continue
     // equal distance: static before OSPF, earlier configuration line first (strict <)
-    consider({ code: 'S', net: s.net, prefix: s.prefix, nh: s.nh, ifname: r.ifname, ...(s.ad !== 1 ? { ad: s.ad } : {}), via: r.via }, s.ad * 2)
+    consider({ code: 'S', net: s.net, prefix: s.prefix, nh: s.nh, ifname: r.ifname, ...(s.ad !== 1 ? { ad: s.ad } : {}), ...(r.ifname === NULL0 ? {} : { via: r.via }) }, s.ad * 2)
+  }
+  for (const b of bgp) {
+    const r = resolve(b, new Set())
+    if (!r || r.ifname === NULL0) continue
+    consider({ code: 'B', net: b.net, prefix: b.prefix, nh: b.nh, ifname: r.ifname, metric: b.metric, ad: b.ad, via: r.via }, b.ad * 2 + 1)
   }
   for (const r of dynamic)
     consider({ code: r.code, net: r.net, prefix: r.prefix, nh: r.nh, ifname: r.ifname, metric: r.metric, ...(r.paths ? { paths: r.paths } : {}), ...(r.code.startsWith('D') ? { ad: r.ad } : {}) }, r.ad * 2 + 1)

@@ -211,6 +211,10 @@ gerçek topoloji senaryosuna / Labber görünümüne çevrildi (2. yol) ya da ka
 alıştırmadır (3. yol, motor yok). Tablo ürünün kendisinden üretilir; ayrıntı
 UYUMLULUK_MATRISI "L6".
 
+BGP öğeleri (Sorun Çöz `bgp`, protokol atölyesindeki üç BGP durumu) kavramsal kalır: eBGP
+(kademe 1) Labber'da modellendi, bu öğelerin Labber'a taşınması ayrı pratik işidir
+(UYUMLULUK_MATRISI "eBGP").
+
 | Bölüm | Öğe | Başlık | Yol |
 |---|---|---|---|
 | Sorun Çöz | `gateway` | Dış ağlara erişim sorunu | 1 · Labber karşılığı `gw-pc-wrong-gateway` |

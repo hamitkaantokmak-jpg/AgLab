@@ -311,9 +311,45 @@ export interface EigrpConfig {
   defaultMetric: EigrpSeedMetric | null
 }
 
+/** `neighbor <ip> …` (router bgp altında; yapılandırma sırası korunur). */
+export interface BgpNeighborConfig {
+  ip: string
+  remoteAs: number
+  description?: string
+  /** `neighbor … password` (MD5; düz metin saklanır) */
+  password?: string
+  /** `neighbor … ebgp-multihop [ttl]` (varsayılan 255) */
+  ebgpMultihop?: number
+  /** `neighbor … update-source <arayüz>` (kanonik ad) */
+  updateSource?: string
+  /** `neighbor … shutdown` */
+  shutdown?: boolean
+  /** `neighbor … weight` (bu komşudan öğrenilen yollar) */
+  weight?: number
+}
+
+/** `router bgp <AS>`: eBGP, IPv4 unicast (kademe 1). */
+export interface BgpConfig {
+  as: number
+  /** `bgp router-id` */
+  routerId: string | null
+  /** `bgp log-neighbor-changes` (IOS varsayılanı açık; yalnız yazılır) */
+  logNeighborChanges: boolean
+  /** `bgp default local-preference` (varsayılan 100) */
+  defaultLocalPref: number | null
+  /** `network <ağ> [mask <maske>]` (sınıflı maske mask'sız yazılır) */
+  networks: { net: string; mask: string }[]
+  /** `redistribute static|connected [metric N]` (metric: MED) */
+  redistribute: { static?: { metric?: number }; connected?: { metric?: number } }
+  /** `default-metric` (yeniden dağıtılan yolların MED'i) */
+  defaultMetric: number | null
+  neighbors: BgpNeighborConfig[]
+}
+
 export interface StaticRoute {
   net: string
   mask: string
+  /** next hop adresi ya da `Null0` (atılır; özet/duyuru için) */
   nh: string
   /** administrative distance (`ip route … <1-255>`); undefined = 1 */
   ad?: number
@@ -369,6 +405,8 @@ export interface SwitchConfig {
   ospf?: OspfConfig | null
   /** klasik EIGRP (tek AS modellenir) */
   eigrp?: EigrpConfig | null
+  /** eBGP (kademe 1; bgp.ts) */
+  bgp?: BgpConfig | null
   /** `key chain <ad>` → anahtar no → `key-string` (null: anahtar var, metin yok) */
   keyChains?: Record<string, Record<string, string | null>>
   /** L5-d: NAT (`ip nat inside source …`, `ip nat pool`) */

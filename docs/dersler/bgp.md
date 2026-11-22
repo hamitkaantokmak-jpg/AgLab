@@ -1,6 +1,6 @@
 # AğLab Konu #32: BGP: eBGP, önek duyurma ve yol seçimi
 
-> Uygulamadaki `bgp` dersi bu belgeyle uyumludur. **Okuma dersi (Seviye 3, CCNP):** Labber'da basit eBGP var; yol seçimi özellikleri, iBGP ve route-map Gerçek Lab (FRR) bekliyor.
+> Uygulamadaki `bgp` dersi bu belgeyle uyumludur. **Okuma dersi (Seviye 3, CCNP):** Labber eBGP'yi (kademe 1) çalıştırır: oturum ve kurulmama nedenleri, network tam eşleşme, AS_PATH ve döngü önleme, en iyi yol seçimi (Weight, Local Preference, AS_PATH, ORIGIN, MED, router-id), AD 20. Route-map, prefix-list ve soft clear (S3) kademe 1b'de; iBGP, route reflector ve community modellenmez (Gerçek Lab / FRR). Simülatör labı ayrı işte eklenecek.
 > Ön koşul: Statik ve varsayılan rota (Konu #8), OSPF (Konu #15), ACL (Konu #19). Şemalar: `docs/dersler/gorseller/bgp.py`.
 
 Bu konu bittiğinde öğrenci BGP'nin IGP'lerden farkını ve otonom sistem kavramını açıklar; eBGP komşuluğunu kurar ve `show ip bgp summary` çıktısından oturumun durumunu okur. network komutunun neden tam önek istediğini bilir. AS_PATH'in döngüyü nasıl önlediğini, en iyi yol seçiminin ilk adımlarını (Weight, Local Preference, AS_PATH, Origin, MED) sırasıyla uygular. İki ISP'li bir şubede çıkan trafiği Local Preference/Weight ile, gelen trafiği AS_PATH prepend ile yönlendirir. Süre yaklaşık 60 dakika.
@@ -137,7 +137,7 @@ Topoloji: g7'deki gibi; R1 AS 65010, blok 198.51.100.0/23; ISP-A AS 64500 (203.0
 
 ## 6. Arıza senaryoları
 
-> **Uygulamada:** Kâğıt üstü vakalar; motor ya da Gerçek Lab desteği gelince Sorun Çöz'e `bgp-*` kimlikleriyle eklenecek. Önce kendin çöz; neden ve çözüm kapalı kutularda.
+> **Uygulamada:** S1 (yanlış remote-as) ve S2 (/23 duyurulmuyor) Labber'da çalışır; Simülatör labı ayrı işte (`bgp-*`) eklenecek. S3 route-map ister (kademe 1b); S4 kavramsaldır. Önce kendin çöz; neden ve çözüm kapalı kutularda.
 
 ### S1 · Başlangıç · ISP-A oturumu kurulmuyor (E1)
 
@@ -268,4 +268,6 @@ Kaynaklar: INE ENCOR (BGP Fundamentals and Basic Configuration, path selection) 
 
 **Motor gereksinimleri**
 
-- [ ] Labber'da basit eBGP var; LP/Weight/prepend, route-map ve iBGP motorda yok. Gerçek Lab (FRR) hazır olunca S1–S4 `bgp-*` kimlikleriyle eklenir.
+- [x] eBGP kademe 1 Labber'da: oturum (Idle/Active/Established; yanlış remote-as, karşıda tanım yok, rota yok, multihop, update-source, TCP 179 ACL'si, MD5 parolası, `neighbor shutdown` ayrı nedenler; `%BGP-5-ADJCHANGE`, `%BGP-3-NOTIFICATION` günlüğü), `network` tam eşleşme ve `ip route … Null0`, `redistribute static|connected`, AS_PATH/NEXT_HOP/ORIGIN/MED/Weight/LP, Cisco sırasıyla en iyi yol, AD 20, `show ip bgp`, `summary`, `neighbors [… advertised-routes|routes]`, `show ip bgp <önek>`, `show ip route bgp`, `clear ip bgp`. Zamanlayıcılar ve MsgRcvd/MsgSent sabittir (UYUMLULUK_MATRISI "eBGP"). S1 ve S2 bununla çalışır.
+- [ ] Route-map, prefix-list, `neighbor … route-map|prefix-list in|out` ve soft clear (kademe 1b): S3 ve LP'yi komşu başına ayarlama bunu bekliyor.
+- [ ] iBGP, route reflector, community, aggregate-address (kademe 2): Gerçek Lab (FRR).

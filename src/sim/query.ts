@@ -18,7 +18,7 @@ export type RouteLookup = Omit<RouteEntry, 'prefix' | 'ad'> & {
   prefixLength: number
   nextHop: string | null
   ad: number
-  source: 'C' | 'S' | 'O' | 'D' | 'default'
+  source: 'C' | 'S' | 'O' | 'D' | 'B' | 'default'
 }
 
 export class LabQuery {
@@ -106,6 +106,26 @@ export class LabQuery {
     }
   }
 
+  /**
+   * eBGP durumu: AS, router ID, oturumlar (state, reason, peerAs, pfxRcd), BGP tablosu (önek →
+   * yollar; en iyi önce, `decidedBy` seçimi belirleyen adım) ve tabloya aday rotalar; yoksa null.
+   */
+  bgp(dev: string) {
+    const s = this.d.bgp?.[dev]
+    if (!s) return null
+    return { as: s.as, rid: s.rid, sessions: s.sessions, table: s.table, rib: s.rib, advertised: s.advertised, received: s.received, loopRejected: s.loopRejected }
+  }
+
+  /** eBGP oturumu (komşu adresiyle); yoksa null. */
+  bgpSession(dev: string, ip: string) {
+    return this.d.bgp?.[dev]?.sessions.find((x) => x.ip === ip) ?? null
+  }
+
+  /** Bir önek için BGP yolları (en iyi önce) ya da null. */
+  bgpPaths(dev: string, net: string, prefix: number) {
+    return this.d.bgp?.[dev]?.table.find((e) => e.net === net && e.prefix === prefix)?.paths ?? null
+  }
+
   /** EIGRP topoloji girdisi: FD, successor'lar ve feasible successor'lar (yollar: nh, ifname, metric, rd); yoksa null. */
   eigrpTopo(dev: string, net: string, prefix: number) {
     const t = this.d.eigrp[dev]?.topo.find((x) => x.net === net && x.prefix === prefix)
@@ -173,8 +193,8 @@ export class LabQuery {
     }
     if (!best) return null
     const source: RouteLookup['source'] =
-      best.prefix === 0 ? 'default' : best.code === 'C' ? 'C' : best.code === 'S' ? 'S' : best.code.startsWith('D') ? 'D' : 'O'
-    const ad = best.code === 'C' ? 0 : best.code === 'S' ? (best.ad ?? 1) : best.code.startsWith('D') ? best.ad! : OSPF_AD
+      best.prefix === 0 ? 'default' : best.code === 'C' ? 'C' : best.code === 'S' ? 'S' : best.code === 'B' ? 'B' : best.code.startsWith('D') ? 'D' : 'O'
+    const ad = best.code === 'C' ? 0 : best.code === 'S' ? (best.ad ?? 1) : best.code === 'B' || best.code.startsWith('D') ? best.ad! : OSPF_AD
     return { ...best, prefix: `${best.net}/${best.prefix}`, prefixLength: best.prefix, nextHop: best.code === 'C' ? null : best.nh, ad, source }
   }
 

@@ -175,6 +175,18 @@ export const HELP: Record<string, string> = {
   'receive-only': 'Set receive only neighbor',
   topology: 'IP-EIGRP Topology Table',
   'all-links': 'Show all links in topology table',
+  // BGP (eBGP, kademe 1)
+  bgp: 'Border Gateway Protocol (BGP)',
+  'remote-as': 'Specify a BGP neighbor',
+  'ebgp-multihop': 'Allow EBGP neighbors not on directly connected networks',
+  'update-source': 'Source of routing updates',
+  'log-neighbor-changes': 'Log neighbor up/down and reset reason',
+  'local-preference': 'local preference (higher=more preferred)',
+  'advertised-routes': 'Display the routes advertised to a BGP neighbor',
+  routes: 'Display routes learned from neighbor',
+  soft: 'Soft reconfig',
+  mask: 'Network mask',
+  Null0: 'Null interface',
   // STP protection / errdisable
   bpduguard: 'Don\'t accept BPDUs on this interface',
   errdisable: 'Error disable',
