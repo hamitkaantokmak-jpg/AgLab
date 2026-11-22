@@ -1,6 +1,6 @@
 # AğLab Konu #37: Ağ izleme: IP SLA, SPAN, NetFlow, debug ve telemetri
 
-> Uygulamadaki `telemetry` dersi bu belgeyle uyumludur. **Okuma dersi (Seviye 3, CCNP):** Paket Dedektifi SPAN + yakalamanın basit bir karşılığıdır; IP SLA, NetFlow ve telemetri Labber'da yok.
+> Uygulamadaki `telemetry` dersi bu belgeyle uyumludur. **Okuma dersi + Simülatör labı (Seviye 3, CCNP):** Labber IP SLA (icmp-echo) ve track'i çalıştırır: Simülatör'deki **hsrp-sla-track** ve **statik-yedek** labları. Paket Dedektifi SPAN + yakalamanın basit bir karşılığıdır; NetFlow ve telemetri Labber'da yok.
 > Ön koşul: Teşhis araçları (Konu #24), ağ servisleri: Syslog ve SNMP (Konu #23), FHRP ve track (Konu #18). Şemalar: `docs/dersler/gorseller/ag-izleme.py`.
 
 Bu konu bittiğinde öğrenci bir şikâyete hangi izleme aracıyla yaklaşacağını seçer. IP SLA ile hat kalitesini ölçer ve track ile bir statik rotayı ya da HSRP önceliğini bu ölçüme bağlar. SPAN/RSPAN/ERSPAN ile trafiğin kopyasını çıkarır; NetFlow kayıtlarından WAN'ı dolduran akışı bulur. debug'ı güvenle (bellek, koşul, süre) kullanır; SNMP sorgusu ile model tabanlı telemetrinin farkını açıklar. Süre yaklaşık 50 dakika.

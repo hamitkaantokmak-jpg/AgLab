@@ -1,6 +1,6 @@
 # AğLab Konu #44: Redistribution ve rota filtreleme: prefix-list, route-map, etiket
 
-> Uygulamadaki `redistribution` dersi bu belgeyle uyumludur. **Okuma dersi (Seviye 3, CCNP):** Redistribution ve route-map Labber'da yok; Gerçek Lab (FRR) bunları destekler.
+> Uygulamadaki `redistribution` dersi bu belgeyle uyumludur. **Okuma dersi + Simülatör labı (Seviye 3, CCNP):** Labber OSPF'e `redistribute static|connected` aktarımını çalıştırır: Simülatör'deki **ospf-dagitim** labı. Protokoller arası aktarım, route-map, prefix-list ve etiket Labber'da yok; Gerçek Lab (FRR) bunları destekler.
 > Ön koşul: OSPF çok alan (Konu #31), EIGRP (Konu #41), BGP (Konu #32), ACL ve wildcard (Konu #19). Şemalar: `docs/dersler/gorseller/redistribution.py`.
 
 Bu konu bittiğinde öğrenci redistribution'ın neden gerektiğini ve tohum metriğin her protokolde nasıl davrandığını açıklar; EIGRP'ye metriksiz aktarımın rotayı neden görünmez yaptığını bilir. İki noktadan karşılıklı aktarımda geri besleme döngüsünün nasıl oluştuğunu gösterir ve etiketle önler. Prefix-list satırlarını (ge/le) okuyup yazar, route-map bloklarının sırasını ve örtük deny'ı uygular. Filtrenin nereye (aktarım, distribute-list, BGP komşusu) konacağına karar verir. Süre yaklaşık 60 dakika.

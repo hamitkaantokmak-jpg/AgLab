@@ -31,6 +31,10 @@
     intermediate: 'Seviye 2 · CCNA',
     advanced: 'Seviye 3 · CCNP',
   };
+  // Pratik türü (kurs verisindeki kind): "okuma" simülatör görevi olmayan ders; "okuma-lab"
+  // okuma dersi ama konunun simülatör labı var (test_aglab_flow_tasks bu eşleşmeyi denetler).
+  const KIND_LABEL = { okuma: 'okuma', 'okuma-lab': 'okuma + simülatör labı' },
+    KIND_HEAD = { okuma: 'OKUMA DERSİ', 'okuma-lab': 'OKUMA DERSİ + SİMÜLATÖR LABI' };
   const KEY = 'aglab.student.flow.v10',
     VERSION = 1;
   const $ = (id) => document.getElementById(id);
@@ -137,7 +141,7 @@
             'small',
             (state.lessons[c.id]?.best >= 70 ? '✓ Tamamlandı · ' : '') +
               (c.num ? 'Konu #' + c.num : '') +
-              (c.kind === 'okuma' ? ' · okuma' : ''),
+              (KIND_LABEL[c.kind] ? ' · ' + KIND_LABEL[c.kind] : ''),
           );
         x.append(t, s);
         x.onclick = () => choose(c.id);
@@ -188,7 +192,7 @@
         'small',
         (LEVEL_NAME[c.level] || 'Ders').toLocaleUpperCase('tr-TR') +
           (c.num ? ' · KONU #' + c.num : '') +
-          (c.kind === 'okuma' ? ' · OKUMA DERSİ' : '') +
+          (KIND_LABEL[c.kind] ? ' · ' + KIND_HEAD[c.kind] : '') +
           ' · ' +
           (rec().best ? 'En iyi puan ' + rec().best + '/100' : 'Henüz puan yok'),
       ),

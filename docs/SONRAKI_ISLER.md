@@ -6,16 +6,22 @@ işleri toplar. Motor entegrasyonunun güncel durumu için `DEVIR_NOTU.md`, müf
 
 ## Sıra
 
-1. **L5 kalanı** (motor): HTTP servisi, PKT IOS metin yolu.
-2. **Seviye 1 dersleri** (içerik): kalan 7 konu (#1, #2, #4, #8, #9, #10, #12). Bu
-   sırada motor işi bekler.
-3. **İçe aktarmanın Labber'a geçmesi, L6, L7** (motor).
-4. **Arayüz yenilemesi** (aşağıda).
-5. **Şube sürümü 1.0:** Seviye 1 eksiksiz ve yeni arayüzle şubede kullanıma başlanır;
+Durum 22 Kasım 2026 itibarıyla; ayrıntı `DEVIR_NOTU.md` "Güncel durum".
+
+1. ✅ **L5 kalanı** (motor): HTTP servisi, PKT IOS metin yolu. (#75, #76)
+2. ✅ **Seviye 1 dersleri** (içerik): kalan 7 konu (#1, #2, #4, #8, #9, #10, #12). Bu
+   sırada motor işi bekler. (#78, #79, #97)
+3. ✅ **İçe aktarmanın Labber'a geçmesi, L6, L7** (motor). (#81, #84, #87, #88)
+4. ◐ **Arayüz yenilemesi** (aşağıda). İskelet, Simülatör çalışma alanı, çözüm kilidi ve
+   konu akışı (Öğren → Test → Pratik) yapıldı (#91–#100). Arıza senaryosu ekranının
+   belirti kartı/katman seçici/kanıt defteri ile müfredat haritasının konu kartları
+   yapılmadı (açık; ekranlar aşağıdaki tabloda).
+5. ▶ **Şube sürümü 1.0** (sıradaki): Seviye 1 eksiksiz ve yeni arayüzle şubede kullanıma başlanır;
    geri bildirim CCNA önceliklerini belirler.
 6. **CCNA** (Seviye 2): müfredatın istediği motor özellikleri ve dersler birlikte.
 7. **CCNP** (Seviye 3): önce okuma konuları; routing konularında Labber mı Canlı Lab mı
-   kararı o gün verilir.
+   kararı o gün verilir. Not: 5. adım beklenmeden CCNP motor ve lab işi yapıldı (MST,
+   OSPF çok alan, redistribution, IP SLA/track, klasik EIGRP; #101–#109).
 
 ## Arayüz yenilemesi
 

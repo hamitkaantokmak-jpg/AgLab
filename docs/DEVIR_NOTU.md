@@ -5,6 +5,25 @@ Plan: [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) (L3 tablosu, L4 "Aşamalar", 
 Motor kararları: [LAB_MOTOR_HARITASI.md](LAB_MOTOR_HARITASI.md). Kararlar ve bilinen
 farklar: [UYUMLULUK_MATRISI.md](UYUMLULUK_MATRISI.md) (sonundaki "Labber" bölümü).
 
+## Güncel durum (22 Kasım 2026)
+
+Aşağıdaki bölümler yazıldıkları günün notlarıdır; durum satırları bu tarihte güncellendi.
+
+- **Açık PR yok.** L7a (#87) ve L7b+c (#88) birleşti: tek motor Labber.
+- **Arayüz yenilemesi:** PR 1, 2, 2b ve 3'ün ön adımı birleşti (#91–#94). Ardından plan dışı
+  üç arayüz PR'ı birleşti: #98 (konu listesi, yerleşim, üst arama, ilk açılış), #99 (konu
+  akışı Öğren → Test → Pratik, konuya göre görev listesi), #100 (Sorun Çöz, Gelişmiş, telefon
+  görünümü). Planlanan **PR 3 ekranı** (belirti kartı, Belirti → Teşhis → Kanıt → Düzeltme,
+  katman seçici, kanıt defteri, gereksiz değişiklik uyarısı) ve **PR 4** (müfredat haritası
+  konu kartları, ders adım çubuğu, satır vurgusu) **yapılmadı**; kodda karşılıkları yok.
+- **İçerik:** derslerin görsel ve ayrıntılı yeniden yazımı (#97), eksik CCNP dersleri (#101).
+- **CCNP motor ve pratik:** OSPF çok alan, redistribution ve labları (#102), IP SLA + track
+  (#103) ve labları (#104), MST (#105) ve labı (#106), klasik EIGRP (#107) ve labı (#108),
+  belge düzeltmesi (#109).
+- **Repo düzeni** (#110–#112): betikler `tools/`, belgeler `docs/` (eski raporlar
+  `docs/arsiv/`), PKT örnekleri `tests/fixtures/pkt/`; hat `python tools/run_pipeline.py`.
+- **Sıradaki:** `SONRAKI_ISLER.md` 5. adım, Şube sürümü 1.0.
+
 ## Arayüz yenilemesi (L7'den sonra)
 
 Referans taslak: `docs/arayuz/` (dal `claude/arayuz-taslak`; README, dolu-1..4.png, wire/dolu.html).
@@ -15,9 +34,10 @@ Her adım ayrı PR, bir öncekinin dalı üstüne; birleştirilmez.
 |---|---|---|
 | PR 1 iskelet, adlandırma, tek paket | #91 | birleşti |
 | PR 2 Simülatör çalışma alanı, çözüm kilidi | #92 | birleşti |
-| PR 2b Simülatör artıkları | #93, `claude/arayuz-2b-simulator` (taban `main`) | açık |
-| PR 3 Sorun Çöz | #94, `claude/dreamy-wright-f5x0dz` (taban `main`) | ön adım + ekler (aşağıda); ekranın kendisi sırada |
-| PR 4 Müfredat haritası ve ders | — | sırada |
+| PR 2b Simülatör artıkları | #93, `claude/arayuz-2b-simulator` (taban `main`) | birleşti |
+| PR 3 Sorun Çöz | #94, `claude/dreamy-wright-f5x0dz` (taban `main`) | ön adım + ekler birleşti; ekranın kendisi yapılmadı |
+| Plan dışı: konu listesi/yerleşim, Öğren → Test → Pratik, Sorun Çöz/Gelişmiş/telefon | #98, #99, #100 | birleşti |
+| PR 4 Müfredat haritası ve ders | — | yapılmadı |
 
 PR 1:
 - `src/index.html`: üst bar (`#agTop`: logo, `#areaTabs` dört bölüm, `#agSearch`, `#agTopTools`
@@ -199,13 +219,13 @@ Uygulama notları (PR 1'de öğrenilenler):
 | Seviye 1/2 dersleri (paralel iş) | #78, #79 | birleşti |
 | L6 motor kullanmayan eski içerik | #84 (main'den, dal `claude/l6-legacy-content`) | birleşti |
 | Ortak senaryo kök nedeni gizli | #86 | birleşti |
-| L7a içerik (bgp-as, 3 switching senaryosu) + oracle kararı | #87 (main'den, dal `claude/l7a-icerik-oracle`) | açık |
-| L7b+c eski motorların kaldırılması + kalıcılık v24 | #88, dal `claude/l7b-eski-motor-kaldirma` (L7a dalından; PR tabanı L7a dalı) | açık |
+| L7a içerik (bgp-as, 3 switching senaryosu) + oracle kararı | #87 (main'den, dal `claude/l7a-icerik-oracle`) | birleşti |
+| L7b+c eski motorların kaldırılması + kalıcılık v24 | #88, dal `claude/l7b-eski-motor-kaldirma` (L7a dalından; PR tabanı L7a dalı) | birleşti |
 
-**Durum:** #75–#86 birleşti. **L7a (#87)** ve **L7b+c** açık; birleştirilmedi. L7b ve L7c tek PR:
+**Durum:** #75–#88 birleşti (sonrası için yukarıdaki "Güncel durum"). L7b ve L7c tek PR:
 eski `startupConfig` kaydını yalnız eski motor işliyordu; v24 olmadan eski motoru kaldırmak kayıtlı
 çalışmaları "simüle edilemiyor"a düşürür ve `test_aglab_switch_svi` D'yi bozardı. #87 birleşince
-L7b+c PR'ının tabanı `main`'e çevrilmeli. Arayüz yenilemesine başlanmadı.
+L7b+c PR'ının tabanı `main`'e çevrilmişti.
 
 ### L7b+c özeti
 

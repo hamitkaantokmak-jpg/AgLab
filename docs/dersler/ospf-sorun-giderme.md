@@ -1,6 +1,6 @@
 # AğLab Konu #42: İleri OSPF sorun giderme: komşuluk durumları, LSDB ve eksik rotalar
 
-> Uygulamadaki `ospftshoot` dersi bu belgeyle uyumludur. **Okuma dersi (Seviye 3, CCNP):** Labber tek alan OSPF komşuluğunu ve temel rota kurulumunu çalıştırır; komşuluk durum makinesinin ara durumları, LSDB ve alan türleri Gerçek Lab (FRR) ile denenir.
+> Uygulamadaki `ospftshoot` dersi bu belgeyle uyumludur. **Okuma dersi + Simülatör labı (Seviye 3, CCNP):** Labber komşuluk şartlarını, MTU → EXSTART, ağ tipi uyuşmazlığını ve DR seçimini çalıştırır: Simülatör'deki **ospf-sorun-ileri** ve **ospf-ariza** labları. LSDB (`show ip ospf database`), distribute-list ve forwarding address Labber'da yok; Gerçek Lab (FRR) ile denenir.
 > Ön koşul: OSPFv2 tek alan (Konu #15), OSPF çok alan (Konu #31), sorun giderme yöntemi (Konu #11). Şemalar: `docs/dersler/gorseller/ospf-sorun-giderme.py`.
 
 Bu konu bittiğinde öğrenci OSPF arızasını iki soruya ayırır: "komşuluk kuruluyor mu?" ve "komşuluk var ama rota neden yok ya da neden yanlış?". Komşuluğun takıldığı durumdan (INIT, 2-WAY, EXSTART/EXCHANGE) olası nedeni çıkarır; hello parametreleri, MTU, ağ tipi, kimlik doğrulama ve router-id çakışmasını kanıtla ayırt eder. Komşuluk tamamken eksik rotayı LSDB'de arar: LSA hiç yok mu, var ama tabloya girmiyor mu? Filtreleri, alan türlerini, özetlemeyi ve forwarding address'i bu sırayla eler. Süre yaklaşık 60 dakika.

@@ -1,6 +1,6 @@
 # AğLab Konu #29: İleri STP: MST, yol ayarı, Loop Guard ve UDLD
 
-> Uygulamadaki `mst` dersi bu belgeyle uyumludur. **Okuma dersi (Seviye 3, CCNP):** Labber Rapid PVST+ çalıştırır; MST bölgesi, Loop Guard ve UDLD henüz yok.
+> Uygulamadaki `mst` dersi bu belgeyle uyumludur. **Okuma dersi + Simülatör labı (Seviye 3, CCNP):** Labber MST'yi çalıştırır (bölge adı/revizyon/eşleme, CIST ve MSTI kökleri, bölge sınırı): Simülatör'deki **mst-bolge** labı. Loop Guard ve UDLD yok.
 > Ön koşul: STP/RSTP (Konu #13), EtherChannel (Konu #14), kampüs tasarımı (Konu #27). Şemalar: `docs/dersler/gorseller/mst.py`.
 
 Bu konu bittiğinde öğrenci MST'nin PVST+'a göre neyi kazandırdığını açıklar; bir MST bölgesini (ad, revizyon, VLAN–örnek eşlemesi) kurar ve iki switch'in neden aynı bölgede olmadığını çıktıdan bulur. Örnek başına kök yerleştirerek iki yolu da kullanır; port maliyeti ve port önceliğiyle yolu değiştirir. Tek yönlü bağlantı arızasına karşı Loop Guard ve UDLD'nin nasıl koruduğunu anlatır. Süre yaklaşık 50 dakika.

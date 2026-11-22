@@ -1,6 +1,6 @@
 # AğLab Konu #27: Kampüs ve kurumsal ağ tasarımı
 
-> Uygulamadaki `design` dersi bu belgeyle uyumludur. **Okuma dersi (Seviye 3, CCNP):** tasarım kararları kâğıt üstünde verilir; Labber'daki topolojiler küçük ölçekli örneklerdir.
+> Uygulamadaki `design` dersi bu belgeyle uyumludur. **Okuma dersi + Simülatör labı (Seviye 3, CCNP):** tasarım kararları kâğıt üstünde verilir; Labber'daki topolojiler küçük ölçekli örneklerdir. Simülatör'deki **routed-erisim-blogu** labı tamamen routed erişim bloğunu (routed port, OSPF, ECMP) kurdurur.
 > Ön koşul: STP (Konu #13), EtherChannel (Konu #14), OSPF (Konu #15), FHRP (Konu #18). Şemalar: `docs/dersler/gorseller/kampus-tasarim.py`.
 
 Bu konu bittiğinde öğrenci hiyerarşik kampüs modelinin (erişim, dağıtım, çekirdek) her katmanının görevini açıklar; iki ve üç katmanlı tasarım arasında ölçeğe göre seçim yapar. Katman 2 erişim ile yönlendirilmiş erişimi STP, FHRP ve yük paylaşımı açısından karşılaştırır. Hata alanı ve aşırı abonelik kavramlarıyla bir tasarımı değerlendirir; SSO/NSF ve StackWise gibi yüksek erişilebilirlik seçeneklerinin neyi koruduğunu söyler. Süre yaklaşık 50 dakika.
