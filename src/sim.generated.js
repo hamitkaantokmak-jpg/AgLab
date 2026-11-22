@@ -1945,12 +1945,153 @@ var AgLabSim = (() => {
     return out.sort((a, b) => a.vlan - b.vlan || a.mac.localeCompare(b.mac));
   }
 
+  // src/sim/bgp-policy.ts
+  function resolvePolicy(cfg, n, dir) {
+    const plName = dir === "in" ? n.prefixListIn : n.prefixListOut;
+    const rmName = dir === "in" ? n.routeMapIn : n.routeMapOut;
+    let routeMap = null;
+    if (rmName) {
+      const entries = cfg.routeMaps?.[rmName] ?? null;
+      const lists = {};
+      const acls = {};
+      for (const e of entries ?? []) {
+        for (const l of e.matchPrefixLists) lists[l] = clone2(cfg.prefixLists?.[l] ?? null);
+        for (const a of e.matchAcls) acls[a] = clone2(cfg.acls?.[a] ?? null);
+      }
+      routeMap = { name: rmName, entries: clone2(entries), lists, acls };
+    }
+    return {
+      prefixList: plName ? { name: plName, entries: clone2(cfg.prefixLists?.[plName] ?? null) } : null,
+      routeMap
+    };
+  }
+  var clone2 = (v) => v === null || v === void 0 ? v : JSON.parse(JSON.stringify(v));
+  function samePolicy(a, b) {
+    return !!a && JSON.stringify(a) === JSON.stringify(b);
+  }
+  function plEntryMatches(e, net, len) {
+    if (len < e.len) return false;
+    const m = prefixMaskInt(e.len);
+    if ((ipToInt(net) & m) >>> 0 !== (ipToInt(e.net) & m) >>> 0) return false;
+    if (e.ge === void 0 && e.le === void 0) return len === e.len;
+    return len >= (e.ge ?? e.len) && len <= (e.le ?? 32);
+  }
+  function prefixListPermits(entries, net, len) {
+    if (!entries) return true;
+    const e = [...entries].sort((a, b) => a.seq - b.seq).find((x) => plEntryMatches(x, net, len));
+    return e?.action === "permit";
+  }
+  function applyPolicy(pol, net, len) {
+    if (!pol) return { set: {} };
+    if (pol.prefixList && !prefixListPermits(pol.prefixList.entries, net, len)) return { set: null };
+    const rm = pol.routeMap;
+    if (!rm) return { set: {} };
+    if (!rm.entries) return { set: null };
+    for (const e of [...rm.entries].sort((a, b) => a.seq - b.seq)) {
+      const plOk = !e.matchPrefixLists.length || e.matchPrefixLists.some((l) => !!rm.lists[l] && prefixListPermits(rm.lists[l], net, len));
+      const aclOk = !e.matchAcls.length || e.matchAcls.some((a) => {
+        const acl = rm.acls[a];
+        if (!acl) return false;
+        return aclDecide(acl, { proto: "icmp", icmpType: "echo", src: net, dst: prefixToMask(len) }).permit;
+      });
+      if (!plOk || !aclOk) continue;
+      return { set: e.action === "permit" ? e.set : null };
+    }
+    return { set: null };
+  }
+  function parsePrefixListLine(rest, list) {
+    const t = rest.trim().split(/\s+/);
+    let i = 0;
+    let seq = null;
+    if (t[i] === "seq") {
+      seq = Number(t[i + 1]);
+      if (!Number.isInteger(seq) || seq < 1 || seq > 4294967294) return "% Invalid sequence number";
+      i += 2;
+    }
+    const action = t[i++];
+    if (action !== "permit" && action !== "deny") return "% Invalid input: expected permit or deny";
+    const m = /^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/.exec(t[i++] ?? "");
+    if (!m || ipToInt(m[1]) === null || Number(m[2]) > 32) return "% Invalid prefix (A.B.C.D/n)";
+    const len = Number(m[2]);
+    const net = m[1];
+    if ((ipToInt(net) & prefixMaskInt(len)) >>> 0 !== ipToInt(net)) return "% Invalid prefix range, make sure: len < ge-value <= le-value (host bits must be zero)";
+    const e = { seq: seq ?? (list.length ? Math.max(...list.map((x) => x.seq)) + 5 : 5), action, net, len };
+    while (i < t.length) {
+      const k = t[i++];
+      const v = Number(t[i++]);
+      if (k !== "ge" && k !== "le" || !Number.isInteger(v) || v < 1 || v > 32) return "% Invalid input: ge/le <1-32>";
+      e[k] = v;
+    }
+    if (e.ge !== void 0 && e.ge <= len || e.le !== void 0 && e.le < (e.ge ?? len) || e.le !== void 0 && e.ge === void 0 && e.le <= len)
+      return "% Invalid prefix range, make sure: len < ge-value <= le-value";
+    return e;
+  }
+  function prefixListLines(c) {
+    const o = [];
+    for (const [name, list] of Object.entries(c.prefixLists ?? {}))
+      for (const e of [...list].sort((a, b) => a.seq - b.seq)) o.push(`ip prefix-list ${name} ${plEntryText(e)}`);
+    if (o.length) o.push("!");
+    return o;
+  }
+  function plEntryText(e) {
+    return `seq ${e.seq} ${e.action} ${e.net}/${e.len}${e.ge !== void 0 ? " ge " + e.ge : ""}${e.le !== void 0 ? " le " + e.le : ""}`;
+  }
+  function routeMapLines(c) {
+    const o = [];
+    for (const [name, list] of Object.entries(c.routeMaps ?? {}))
+      for (const e of [...list].sort((a, b) => a.seq - b.seq)) {
+        o.push(`route-map ${name} ${e.action} ${e.seq}`);
+        if (e.matchPrefixLists.length) o.push(` match ip address prefix-list ${e.matchPrefixLists.join(" ")}`);
+        if (e.matchAcls.length) o.push(` match ip address ${e.matchAcls.join(" ")}`);
+        if (e.set.prepend) o.push(` set as-path prepend ${e.set.prepend.join(" ")}`);
+        if (e.set.localPref !== void 0) o.push(` set local-preference ${e.set.localPref}`);
+        if (e.set.metric !== void 0) o.push(` set metric ${e.set.metric}`);
+        if (e.set.weight !== void 0) o.push(` set weight ${e.set.weight}`);
+        o.push("!");
+      }
+    return o;
+  }
+  function showPrefixLists(c, name) {
+    const o = [];
+    for (const [n, list] of Object.entries(c.prefixLists ?? {})) {
+      if (name && n !== name) continue;
+      o.push(`ip prefix-list ${n}: ${list.length} entries`);
+      for (const e of [...list].sort((a, b) => a.seq - b.seq)) o.push(`   ${plEntryText(e)}`);
+    }
+    return o;
+  }
+  function showRouteMaps(c, name) {
+    const o = [];
+    for (const [n, list] of Object.entries(c.routeMaps ?? {})) {
+      if (name && n !== name) continue;
+      for (const e of [...list].sort((a, b) => a.seq - b.seq)) {
+        o.push(`route-map ${n}, ${e.action}, sequence ${e.seq}`, "  Match clauses:");
+        if (e.matchPrefixLists.length) o.push(`    ip address prefix-lists: ${e.matchPrefixLists.join(" ")} `);
+        if (e.matchAcls.length) o.push(`    ip address (access-lists): ${e.matchAcls.join(" ")} `);
+        o.push("  Set clauses:");
+        if (e.set.prepend) o.push(`    as-path prepend ${e.set.prepend.join(" ")}`);
+        if (e.set.localPref !== void 0) o.push(`    local-preference ${e.set.localPref}`);
+        if (e.set.metric !== void 0) o.push(`    metric ${e.set.metric}`);
+        if (e.set.weight !== void 0) o.push(`    weight ${e.set.weight}`);
+        o.push("  Policy routing matches: 0 packets, 0 bytes");
+      }
+    }
+    return o;
+  }
+
   // src/sim/bgp.ts
   var BGP_AD = 20;
   var LOCAL_WEIGHT = 32768;
   var BGP_PORT = 179;
   var CLIENT_PORT = 11e3;
   var ipInt = (ip2) => ipToInt(ip2) ?? 0;
+  function effectivePolicy(d, dev, n, dir) {
+    return d.bgpApplied?.[dev + "|" + n.ip]?.[dir] ?? resolvePolicy(d.cfgs[dev], n, dir);
+  }
+  function policyPending(d, dev, n, dir) {
+    const applied = d.bgpApplied?.[dev + "|" + n.ip]?.[dir];
+    return !!applied && !samePolicy(applied, resolvePolicy(d.cfgs[dev], n, dir));
+  }
   var keyOf = (net, prefix) => `${net}/${prefix}`;
   function bgpRunning(d, dev) {
     const def = d.topo.devices[dev];
@@ -2088,7 +2229,7 @@ var AgLabSim = (() => {
     return s.filter((p) => v(p) === m);
   }
   function computeBgp(d) {
-    var _a, _b;
+    var _a, _b, _c, _d;
     const devs = d.topo.switches.filter((s) => bgpRunning(d, s.id)).map((s) => s.id);
     const out = {};
     for (const dev of devs) {
@@ -2101,7 +2242,8 @@ var AgLabSim = (() => {
         rib: [],
         advertised: {},
         received: {},
-        loopRejected: {}
+        loopRejected: {},
+        policyDenied: {}
       };
     }
     const local = Object.fromEntries(devs.map((dev) => [dev, localPaths(d, dev)]));
@@ -2125,19 +2267,31 @@ var AgLabSim = (() => {
         st.received = {};
         st.advertised = {};
         st.loopRejected = {};
+        st.policyDenied = {};
         for (const s of st.sessions) {
           s.pfxRcd = 0;
           if (s.state !== "Established" || !s.peerDev || !out[s.peerDev]) continue;
           const peer = s.peerDev;
           const n = b.neighbors.find((x) => x.ip === s.ip);
           const peerAs = out[peer].as;
+          const pn = d.cfgs[peer].bgp.neighbors.find((x) => x.ip === s.localIp);
+          const outPol = effectivePolicy(d, peer, pn, "out");
+          const inPol = effectivePolicy(d, dev, n, "in");
           const rx = [];
           for (const p of best[peer].values()) {
             if (p.from === s.localIp) continue;
-            const asPath = [peerAs, ...p.asPath];
-            if (asPath.includes(st.as)) {
+            const o = applyPolicy(outPol, p.net, p.prefix).set;
+            if (!o) continue;
+            const asPath0 = [peerAs, ...o.prepend ?? [], ...p.asPath];
+            if (asPath0.includes(st.as)) {
               ;
               ((_a = st.loopRejected)[_b = s.ip] ?? (_a[_b] = [])).push(keyOf(p.net, p.prefix));
+              continue;
+            }
+            const i = applyPolicy(inPol, p.net, p.prefix).set;
+            if (!i) {
+              ;
+              ((_c = st.policyDenied)[_d = s.ip] ?? (_c[_d] = [])).push(keyOf(p.net, p.prefix));
               continue;
             }
             const path = {
@@ -2146,11 +2300,11 @@ var AgLabSim = (() => {
               nh: s.ip,
               from: s.ip,
               peerRid: s.peerRid,
-              asPath,
+              asPath: [...i.prepend ?? [], ...asPath0],
               origin: p.origin,
-              med: p.local ? p.med : null,
-              lp,
-              weight: n.weight ?? 0,
+              med: i.metric ?? o.metric ?? (p.local ? p.med : null),
+              lp: i.localPref ?? lp,
+              weight: i.weight ?? n.weight ?? 0,
               local: false,
               sourced: null,
               valid: nhOk(dev, s.ip),
@@ -2185,8 +2339,16 @@ var AgLabSim = (() => {
     }
     for (const dev of devs) {
       const st = out[dev];
-      for (const s of st.sessions)
-        if (s.state === "Established") st.advertised[s.ip] = [...best[dev].values()].filter((p) => p.from !== s.ip);
+      const b = d.cfgs[dev].bgp;
+      for (const s of st.sessions) {
+        if (s.state !== "Established") continue;
+        const pol = effectivePolicy(d, dev, b.neighbors.find((x) => x.ip === s.ip), "out");
+        st.advertised[s.ip] = [...best[dev].values()].flatMap((p) => {
+          if (p.from === s.ip) return [];
+          const o = applyPolicy(pol, p.net, p.prefix).set;
+          return o ? [{ ...p, ...o.metric !== void 0 ? { med: o.metric } : {} }] : [];
+        });
+      }
       st.rib = [...best[dev].values()].filter((p) => !p.local).map((p) => ({ net: p.net, prefix: p.prefix, nh: p.nh, metric: p.med ?? 0, ad: BGP_AD }));
     }
     return out;
@@ -2356,7 +2518,18 @@ var AgLabSim = (() => {
         o.push(`    Prefixes Current: ${(st.advertised[s.ip] ?? []).length} sent, ${s.pfxRcd} received`);
         const loops = st.loopRejected[s.ip]?.length ?? 0;
         if (loops) o.push(`    AS_PATH loop: ${loops} prefix(es) denied (own AS ${st.as} in path)`);
+        const denied = st.policyDenied[s.ip]?.length ?? 0;
+        if (denied) o.push(`    Inbound policy: ${denied} prefix(es) denied`);
       }
+      if (n.prefixListIn || n.routeMapIn) o.push("  Inbound path policy configured");
+      if (n.prefixListOut || n.routeMapOut) o.push("  Outbound path policy configured");
+      if (n.prefixListIn) o.push(`  Incoming update prefix filter list is ${n.prefixListIn}`);
+      if (n.prefixListOut) o.push(`  Outgoing update prefix filter list is ${n.prefixListOut}`);
+      if (n.routeMapIn) o.push(`  Route map for incoming advertisements is ${n.routeMapIn}`);
+      if (n.routeMapOut) o.push(`  Route map for outgoing advertisements is ${n.routeMapOut}`);
+      for (const dir of ["in", "out"])
+        if (up && policyPending(d, dev, n, dir))
+          o.push(`  AğLab: ${dir === "in" ? "inbound" : "outbound"} policy changed; not applied until "clear ip bgp ${s.ip} soft ${dir}"`);
       if (n.weight !== void 0) o.push(`  Default weight ${n.weight}`);
       if (!up && s.reason && s.reason !== "admin") {
         o.push(`  Last reset never${s.reason === "badas" ? ", due to BGP Notification " + (s.notification ?? "sent") + ", peer in wrong AS" : ""}`);
@@ -2431,6 +2604,10 @@ var AgLabSim = (() => {
     if (n.updateSource) o.push(p + "update-source " + n.updateSource);
     if (n.shutdown) o.push(p + "shutdown");
     if (n.weight !== void 0) o.push(p + "weight " + n.weight);
+    if (n.prefixListIn) o.push(p + "prefix-list " + n.prefixListIn + " in");
+    if (n.prefixListOut) o.push(p + "prefix-list " + n.prefixListOut + " out");
+    if (n.routeMapIn) o.push(p + "route-map " + n.routeMapIn + " in");
+    if (n.routeMapOut) o.push(p + "route-map " + n.routeMapOut + " out");
     return o;
   }
   function asHex(as) {
@@ -2916,8 +3093,9 @@ var AgLabSim = (() => {
   }
 
   // src/sim/ospf.ts
-  function computeState(topo, cfgs, pcs, errdis, hw) {
+  function computeState(topo, cfgs, pcs, errdis, hw, bgpApplied) {
     const d = derive(topo, cfgs, pcs, errdis, hw);
+    if (bgpApplied) d.bgpApplied = bgpApplied;
     d.ospf = computeOspf(d);
     d.eigrp = computeEigrp(d);
     d.bgp = computeBgp(d);
@@ -3849,6 +4027,15 @@ var AgLabSim = (() => {
     soft: "Soft reconfig",
     mask: "Network mask",
     Null0: "Null interface",
+    "prefix-list": "Build a prefix list",
+    "route-map": "Create route-map or enter route-map command mode",
+    match: "Match values from routing table",
+    set: "Set values in destination routing protocol",
+    prepend: "Prepend to the as-path",
+    "as-path": "Prepend string for a BGP AS-path attribute",
+    seq: "sequence number of an entry",
+    ge: "Minimum prefix length to be matched",
+    le: "Maximum prefix length to be matched",
     // STP protection / errdisable
     bpduguard: "Don't accept BPDUs on this interface",
     errdisable: "Error disable",
@@ -4366,6 +4553,7 @@ var AgLabSim = (() => {
     o.push(...natConfigLines(c));
     for (const r of c.routes) o.push(routeLine(r));
     o.push(...ipSlaLines(c));
+    o.push(...prefixListLines(c), ...routeMapLines(c));
     o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), "!", "line con 0", "line aux 0", "line vty 0 4", " login", "!", "end");
     return o;
   }
@@ -4469,6 +4657,7 @@ var AgLabSim = (() => {
     o.push("ip forward-protocol nd", "no ip http server", "!");
     for (const r of c.routes) o.push(routeLine(r));
     o.push(...ipSlaLines(c));
+    o.push(...prefixListLines(c), ...routeMapLines(c));
     o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), "!", "line con 0", "line vty 0 4", " login", "line vty 5 15", " login", "!", "end");
     return o;
   }
@@ -5474,6 +5663,10 @@ var AgLabSim = (() => {
       { p: "show ip route ospf", run: (x) => showIpRoute(x.rt, x.dev, "O") },
       { p: "show ip route eigrp", run: (x) => showIpRoute(x.rt, x.dev, "D") },
       { p: "show ip route bgp", run: (x) => showIpRoute(x.rt, x.dev, "B") },
+      { p: "show ip prefix-list", run: (x) => showPrefixLists(x.cfg) },
+      { p: "show ip prefix-list <WORD:Name of a prefix list>", run: (x, a) => showPrefixLists(x.cfg, a[3]) },
+      { p: "show route-map", run: (x) => showRouteMaps(x.cfg) },
+      { p: "show route-map <WORD:route-map name>", run: (x, a) => showRouteMaps(x.cfg, a[2]) },
       { p: "show ip bgp", run: (x) => showBgp(x.rt.derived, x.dev) },
       { p: "show ip bgp summary", run: (x) => showBgpSummary(x.rt.derived, x.dev) },
       { p: "show ip bgp neighbors", run: (x) => showBgpNeighbors(x.rt.derived, x.dev) },
@@ -5602,14 +5795,14 @@ var AgLabSim = (() => {
     { p: "erase startup-config", run: (x) => x.erase() },
     { p: "reload", run: (x) => x.reload() },
     { p: "clear ip nat translation *", run: (x) => x.clearNat() },
-    { p: "clear ip bgp *", run: (x) => x.clearBgp("*", false) },
-    { p: "clear ip bgp * soft", run: (x) => x.clearBgp("*", true) },
-    { p: "clear ip bgp * soft in", run: (x) => x.clearBgp("*", true) },
-    { p: "clear ip bgp * soft out", run: (x) => x.clearBgp("*", true) },
-    { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear>", run: (x, a) => x.clearBgp(a[3], false) },
-    { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft", run: (x, a) => x.clearBgp(a[3], true) },
-    { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft in", run: (x, a) => x.clearBgp(a[3], true) },
-    { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft out", run: (x, a) => x.clearBgp(a[3], true) },
+    { p: "clear ip bgp *", run: (x) => x.clearBgp("*", "hard") },
+    { p: "clear ip bgp * soft", run: (x) => x.clearBgp("*", "soft") },
+    { p: "clear ip bgp * soft in", run: (x) => x.clearBgp("*", "in") },
+    { p: "clear ip bgp * soft out", run: (x) => x.clearBgp("*", "out") },
+    { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear>", run: (x, a) => x.clearBgp(a[3], "hard") },
+    { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft", run: (x, a) => x.clearBgp(a[3], "soft") },
+    { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft in", run: (x, a) => x.clearBgp(a[3], "in") },
+    { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft out", run: (x, a) => x.clearBgp(a[3], "out") },
     {
       p: "clear access-list counters",
       run: (x) => {
@@ -5774,6 +5967,17 @@ var AgLabSim = (() => {
           }
         },
         { p: "router bgp <1-4294967295:Autonomous system number>", run: (x, a) => x.enterBgp(Number(a[2])) },
+        { p: "ip prefix-list <WORD:Name of a prefix list> <LINE:[seq N] permit|deny A.B.C.D/n [ge N] [le N]>", run: (x, a) => x.prefixListAdd(a[2], a[3]) },
+        { p: "no ip prefix-list <WORD:Name of a prefix list>", run: (x, a) => x.prefixListRemove(a[3], null) },
+        { p: "no ip prefix-list <WORD:Name of a prefix list> <LINE:seq N …>", run: (x, a) => x.prefixListRemove(a[3], a[4]) },
+        { p: "route-map <WORD:Route map tag>", run: (x, a) => x.enterRouteMap(a[1], null, null) },
+        { p: "route-map <WORD:Route map tag> permit", run: (x, a) => x.enterRouteMap(a[1], "permit", null) },
+        { p: "route-map <WORD:Route map tag> permit <0-65535:Sequence to insert to/delete from existing route-map entry>", run: (x, a) => x.enterRouteMap(a[1], "permit", Number(a[3])) },
+        { p: "route-map <WORD:Route map tag> deny", run: (x, a) => x.enterRouteMap(a[1], "deny", null) },
+        { p: "route-map <WORD:Route map tag> deny <0-65535:Sequence to insert to/delete from existing route-map entry>", run: (x, a) => x.enterRouteMap(a[1], "deny", Number(a[3])) },
+        { p: "no route-map <WORD:Route map tag>", run: (x, a) => x.routeMapRemove(a[2], null) },
+        { p: "no route-map <WORD:Route map tag> permit <0-65535:Sequence>", run: (x, a) => x.routeMapRemove(a[2], Number(a[4])) },
+        { p: "no route-map <WORD:Route map tag> deny <0-65535:Sequence>", run: (x, a) => x.routeMapRemove(a[2], Number(a[4])) },
         {
           p: "no router bgp <1-4294967295:Autonomous system number>",
           run: (x, a) => {
@@ -6122,7 +6326,32 @@ var AgLabSim = (() => {
     { p: `neighbor ${NB} shutdown`, run: (x, a) => x.bgpNbr(a[1], (n) => void (n.shutdown = true)) },
     { p: `no neighbor ${NB} shutdown`, run: (x, a) => x.bgpNbr(a[2], (n) => void delete n.shutdown) },
     { p: `neighbor ${NB} weight <0-65535:default weight>`, run: (x, a) => x.bgpNbr(a[1], (n) => void (n.weight = Number(a[3]))) },
-    { p: `no neighbor ${NB} weight`, run: (x, a) => x.bgpNbr(a[2], (n) => void delete n.weight) }
+    { p: `no neighbor ${NB} weight`, run: (x, a) => x.bgpNbr(a[2], (n) => void delete n.weight) },
+    ...["in", "out"].flatMap((dir) => {
+      const rm = dir === "in" ? "routeMapIn" : "routeMapOut";
+      const pl = dir === "in" ? "prefixListIn" : "prefixListOut";
+      return [
+        { p: `neighbor ${NB} route-map <WORD:Name of route map> ${dir}`, run: (x, a) => x.bgpNbr(a[1], (n) => void (n[rm] = a[3])) },
+        { p: `no neighbor ${NB} route-map <WORD:Name of route map> ${dir}`, run: (x, a) => x.bgpNbr(a[2], (n) => void delete n[rm]) },
+        { p: `neighbor ${NB} prefix-list <WORD:Name of a prefix list> ${dir}`, run: (x, a) => x.bgpNbr(a[1], (n) => void (n[pl] = a[3])) },
+        { p: `no neighbor ${NB} prefix-list <WORD:Name of a prefix list> ${dir}`, run: (x, a) => x.bgpNbr(a[2], (n) => void delete n[pl]) }
+      ];
+    })
+  ];
+  var routeMapPatterns = [
+    ...commonSub,
+    { p: "match ip address prefix-list <LINE:IP prefix-list name(s)>", run: (x, a) => void (x.rmEntry.matchPrefixLists = a[4].trim().split(/\s+/)) },
+    { p: "no match ip address prefix-list", run: (x) => void (x.rmEntry.matchPrefixLists = []) },
+    { p: "match ip address <LINE:IP access-list number(s) or name(s)>", run: (x, a) => void (x.rmEntry.matchAcls = a[3].trim().split(/\s+/)) },
+    { p: "no match ip address", run: (x) => void Object.assign(x.rmEntry, { matchAcls: [], matchPrefixLists: [] }) },
+    { p: "set local-preference <0-4294967295:Preference value>", run: (x, a) => void (x.rmEntry.set.localPref = Number(a[2])) },
+    { p: "no set local-preference", run: (x) => void delete x.rmEntry.set.localPref },
+    { p: "set metric <0-4294967295:Metric value or Bandwidth in Kbits per second>", run: (x, a) => void (x.rmEntry.set.metric = Number(a[2])) },
+    { p: "no set metric", run: (x) => void delete x.rmEntry.set.metric },
+    { p: "set weight <0-65535:BGP weight for routing table>", run: (x, a) => void (x.rmEntry.set.weight = Number(a[2])) },
+    { p: "no set weight", run: (x) => void delete x.rmEntry.set.weight },
+    { p: "set as-path prepend <LINE:AS number(s)>", run: (x, a) => x.rmPrepend(a[3]) },
+    { p: "no set as-path prepend", run: (x) => void delete x.rmEntry.set.prepend }
   ];
   var keyChainPatterns = [
     ...commonSub,
@@ -6353,6 +6582,7 @@ var AgLabSim = (() => {
         mst: buildTrie(mstPatterns),
         eigrp: buildTrie(eigrpPatterns),
         bgp: buildTrie(bgpPatterns),
+        routemap: buildTrie(routeMapPatterns),
         keychain: buildTrie(keyChainPatterns),
         keychainKey: buildTrie(keyChainKeyPatterns)
       };
@@ -6377,6 +6607,9 @@ var AgLabSim = (() => {
       __publicField(this, "slaNo", 0);
       /** `(config-mst)` altında bekleyen bölge yapılandırması (exit ile uygulanır) */
       __publicField(this, "mstPending", null);
+      /** `(config-route-map)` altında düzenlenen route-map ve sıra numarası */
+      __publicField(this, "routeMapName", "");
+      __publicField(this, "routeMapSeq", 0);
       /** `(config-keychain)` / `(config-keychain-key)` altında düzenlenen zincir ve anahtar */
       __publicField(this, "keyChain", "");
       __publicField(this, "keyId", "");
@@ -6419,6 +6652,8 @@ var AgLabSim = (() => {
         case "eigrp":
         case "bgp":
           return h + "(config-router)#";
+        case "routemap":
+          return h + "(config-route-map)#";
         case "keychain":
           return h + "(config-keychain)#";
         case "keychainKey":
@@ -6428,7 +6663,7 @@ var AgLabSim = (() => {
       }
     }
     get inConfig() {
-      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho" || this.mode === "mst" || this.mode === "eigrp" || this.mode === "keychain" || this.mode === "keychainKey" || this.mode === "bgp";
+      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho" || this.mode === "mst" || this.mode === "eigrp" || this.mode === "keychain" || this.mode === "keychainKey" || this.mode === "bgp" || this.mode === "routemap";
     }
     trie() {
       const t = tries(this.def);
@@ -6471,7 +6706,7 @@ var AgLabSim = (() => {
     }
     run(cmd) {
       let r = parse(this.trie(), cmd);
-      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho" || this.mode === "eigrp" || this.mode === "keychain" || this.mode === "keychainKey" || this.mode === "bgp") && r.err !== "empty") {
+      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho" || this.mode === "eigrp" || this.mode === "keychain" || this.mode === "keychainKey" || this.mode === "bgp" || this.mode === "routemap") && r.err !== "empty") {
         const g = parse(tries(this.def).config, cmd);
         if (g.ok) {
           this.mode = "config";
@@ -7203,9 +7438,66 @@ var AgLabSim = (() => {
       if (!n) return ["% Specify remote-as or peer-group commands first"];
       fn(n);
     }
-    clearBgp(target, soft) {
+    clearBgp(target, mode) {
       if (!this.rt.derived.bgp?.[this.dev]) return ["% BGP not active"];
-      if (!this.rt.clearBgp(this.dev, target, soft)) return ["% No such neighbor or address family"];
+      if (!this.rt.clearBgp(this.dev, target, mode)) return ["% No such neighbor or address family"];
+    }
+    // ---- prefix-list / route-map (BGP politikası, kademe 1b) ----
+    prefixListAdd(name, rest) {
+      var _a, _b;
+      const list = (_b = (_a = this.cfg).prefixLists ?? (_a.prefixLists = {}))[name] ?? (_b[name] = []);
+      const e = parsePrefixListLine(rest, list);
+      if (typeof e === "string") {
+        if (!list.length) delete this.cfg.prefixLists[name];
+        return [e];
+      }
+      const i = list.findIndex((x) => x.seq === e.seq);
+      if (i >= 0) list[i] = e;
+      else list.push(e);
+      list.sort((a, b) => a.seq - b.seq);
+    }
+    prefixListRemove(name, rest) {
+      const list = this.cfg.prefixLists?.[name];
+      if (!list) return;
+      const m = rest ? /^\s*seq\s+(\d+)/.exec(rest) : null;
+      if (rest && !m) return ["% Invalid input: expected seq N"];
+      if (m) {
+        const i = list.findIndex((x) => x.seq === Number(m[1]));
+        if (i >= 0) list.splice(i, 1);
+      }
+      if (!m || !list.length) delete this.cfg.prefixLists[name];
+    }
+    enterRouteMap(name, action, seq) {
+      var _a, _b;
+      const list = (_b = (_a = this.cfg).routeMaps ?? (_a.routeMaps = {}))[name] ?? (_b[name] = []);
+      const s = seq ?? (list.length === 1 ? list[0].seq : 10);
+      if (seq === null && list.length > 1) return ["% Please specify the entry by its sequence"];
+      let e = list.find((x) => x.seq === s);
+      if (!e) {
+        e = { seq: s, action: action ?? "permit", matchPrefixLists: [], matchAcls: [], set: {} };
+        list.push(e);
+        list.sort((a, b) => a.seq - b.seq);
+      } else if (action) e.action = action;
+      this.routeMapName = name;
+      this.routeMapSeq = s;
+      this.mode = "routemap";
+    }
+    routeMapRemove(name, seq) {
+      const list = this.cfg.routeMaps?.[name];
+      if (!list) return;
+      if (seq !== null) {
+        const i = list.findIndex((x) => x.seq === seq);
+        if (i >= 0) list.splice(i, 1);
+      }
+      if (seq === null || !list.length) delete this.cfg.routeMaps[name];
+    }
+    get rmEntry() {
+      return this.cfg.routeMaps[this.routeMapName].find((x) => x.seq === this.routeMapSeq);
+    }
+    rmPrepend(line) {
+      const as = line.trim().split(/\s+/).map(Number);
+      if (!as.length || as.some((n) => !Number.isInteger(n) || n < 1 || n > 4294967295)) return ["% Invalid AS number"];
+      this.rmEntry.set.prepend = as;
     }
     // ---- EIGRP ----
     get eigrp() {
@@ -8546,6 +8838,8 @@ var AgLabSim = (() => {
       __publicField(this, "aclHits", /* @__PURE__ */ new Map());
       /** L5-d: dynamic NAT translations (no timeout; `clear ip nat translation *` empties it) */
       __publicField(this, "natTable", []);
+      /** eBGP: komşu başına dondurulmuş politika ('dev|komşu'); oturum kurulunca / clear ip bgp ile alınır */
+      __publicField(this, "bgpApplied", {});
       /** L5-d: packets translated (show ip nat statistics "Hits") */
       __publicField(this, "natHits", 0);
       /** L5-d: packets dropped because the pool had no free address */
@@ -8586,6 +8880,7 @@ var AgLabSim = (() => {
       this.psLast.clear();
       this.aclHits.clear();
       this.natTable = [];
+      this.bgpApplied = {};
       this.natHits = 0;
       this.natMisses = 0;
       this.dhcp = [];
@@ -8598,9 +8893,10 @@ var AgLabSim = (() => {
         if (dv.off) this.hw.off.add(dv.id);
         if (dv.kind === "pc" && dv.nicDown) this.hw.nicDown.add(dv.id);
       }
-      this.derived = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw);
+      this.derived = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw, this.bgpApplied);
       this.applyInitial(this);
       this.fhrpActive.clear();
+      this.bgpApplied = {};
       this.derived = this.recompute();
       for (const sw2 of this.topo.switches) this.startup[sw2.id] = clone(this.running[sw2.id]);
       this.seen.clear();
@@ -8637,16 +8933,25 @@ var AgLabSim = (() => {
      * Kademe 1'de politika (route-map/prefix-list) olmadığından soft sıfırlama tabloyu değiştirmez.
      * Dönüş: eşleşen komşu sayısı (0: böyle komşu yok).
      */
-    clearBgp(dev, target, soft) {
+    clearBgp(dev, target, mode) {
+      var _a;
       const st = this.derived.bgp?.[dev];
-      if (!st) return 0;
+      const cfg = this.running[dev]?.bgp;
+      if (!st || !cfg) return 0;
       const list = st.sessions.filter((s) => target === "*" || s.ip === target);
-      const log = this.running[dev]?.bgp?.logNeighborChanges ?? true;
-      if (!soft && log)
-        for (const s of list.filter((x) => x.state === "Established")) {
+      const log = cfg.logNeighborChanges ?? true;
+      for (const s of list.filter((x) => x.state === "Established")) {
+        if (mode === "hard" && log) {
           this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${s.ip} Down User reset`);
           this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${s.ip} Up `);
         }
+        const n = cfg.neighbors.find((x) => x.ip === s.ip);
+        const k = dev + "|" + s.ip;
+        const cur = (_a = this.bgpApplied)[k] ?? (_a[k] = {});
+        if (mode !== "out") cur.in = resolvePolicy(this.running[dev], n, "in");
+        if (mode !== "in") cur.out = resolvePolicy(this.running[dev], n, "out");
+      }
+      if (list.length) this.commit();
       return list.length;
     }
     /** Recompute after a config change and log what changed. */
@@ -8659,7 +8964,7 @@ var AgLabSim = (() => {
     }
     /** Derive, then settle err-disable (BPDU guard) and OSPF router-id selection. */
     recompute() {
-      let d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw);
+      let d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw, this.bgpApplied);
       for (let i = 0; i < 4; i++) {
         let changed = false;
         for (const k of [...this.errdis]) {
@@ -8702,14 +9007,34 @@ var AgLabSim = (() => {
           this.psDynamic.delete(k);
         }
         if (!changed) break;
-        d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw);
+        d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw, this.bgpApplied);
       }
       d.natTable = this.natTable;
       d.arpCache = this.arp;
+      this.freezeBgpPolicy(d);
       this.trackChanges(computeTrack(d));
       d.fhrp = computeFhrp(d, this.fhrpActive);
       this.fhrpLog(d.fhrp);
       return d;
+    }
+    /**
+     * eBGP politika anlık görüntüsü: kurulu oturumda yoksa yapılandırmadaki politika alınır
+     * (oturum açılışı politikayı uygular); kurulu olmayan oturumun görüntüsü silinir (yeniden
+     * açılışta güncel politika uygulanır). Kurulu oturumda politika değişirse görüntü değişmez:
+     * değişiklik `clear ip bgp` ile uygulanır. Görüntü alınması hesabı değiştirmez (aynı içerik).
+     */
+    freezeBgpPolicy(d) {
+      const keep = /* @__PURE__ */ new Set();
+      for (const [dev, st] of Object.entries(d.bgp ?? {}))
+        for (const s of st.sessions) {
+          const k = dev + "|" + s.ip;
+          if (s.state !== "Established") continue;
+          keep.add(k);
+          const n = this.running[dev].bgp.neighbors.find((x) => x.ip === s.ip);
+          if (!this.bgpApplied[k]) this.bgpApplied[k] = { in: resolvePolicy(this.running[dev], n, "in"), out: resolvePolicy(this.running[dev], n, "out") };
+        }
+      for (const k of Object.keys(this.bgpApplied)) if (!keep.has(k)) delete this.bgpApplied[k];
+      d.bgpApplied = this.bgpApplied;
     }
     trackChanges(t) {
       const seen = /* @__PURE__ */ new Set();
@@ -9025,7 +9350,8 @@ var AgLabSim = (() => {
         natHits: this.natHits,
         natMisses: this.natMisses,
         hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
-        dhcp: clone(this.dhcp)
+        dhcp: clone(this.dhcp),
+        bgpApplied: clone(this.bgpApplied)
       };
     }
     load(s) {
@@ -9051,6 +9377,7 @@ var AgLabSim = (() => {
       this.natMisses = s.natMisses ?? 0;
       if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) };
       this.dhcp = clone(s.dhcp ?? []);
+      this.bgpApplied = clone(s.bgpApplied ?? {});
       this.fhrpActive.clear();
       this.fhrpStates.clear();
       this.fhrpQuiet = true;
@@ -14312,6 +14639,8 @@ end
       if (cfg.ospf) fail("OSPF");
       if (cfg.eigrp) fail("EIGRP yapılandırması (desteklenmiyor)");
       if (cfg.bgp) fail("BGP yapılandırması (desteklenmiyor)");
+      if (Object.keys(cfg.prefixLists ?? {}).length) fail("ip prefix-list (desteklenmiyor)");
+      if (Object.keys(cfg.routeMaps ?? {}).length) fail("route-map (desteklenmiyor)");
       if (Object.keys(cfg.keyChains ?? {}).length) fail("key chain (desteklenmiyor)");
       if (cfg.routes.length) fail("statik rota");
       if (Object.keys(cfg.tracks ?? {}).length) fail("track (izlenen nesne; switch üzerinde desteklenmiyor)");
@@ -14433,6 +14762,8 @@ end
     for (const n of Object.keys(cfg.ipSla ?? {})) fail(`IP SLA ${n} (desteklenmiyor)`);
     if (cfg.eigrp) fail(`EIGRP yapılandırması (router eigrp ${cfg.eigrp.as}; desteklenmiyor)`);
     if (cfg.bgp) fail(`BGP yapılandırması (router bgp ${cfg.bgp.as}; desteklenmiyor)`);
+    for (const n of Object.keys(cfg.prefixLists ?? {})) fail(`ip prefix-list ${n} (desteklenmiyor)`);
+    for (const n of Object.keys(cfg.routeMaps ?? {})) fail(`route-map ${n} (desteklenmiyor)`);
     for (const r of cfg.routes) if (r.nh === "Null0") fail(`Null0 statik rota ${r.net} ${r.mask} (desteklenmiyor)`);
     if (Object.keys(cfg.keyChains ?? {}).length) fail("key chain (desteklenmiyor)");
     {

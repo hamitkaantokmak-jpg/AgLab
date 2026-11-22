@@ -12,6 +12,7 @@ import { bpduViolations, type Derived } from './engine'
 import { l3Ifs, macTable, type Delivery, type Hop } from './net'
 import { candidateRid, computeState } from './ospf'
 import { asHex } from './bgp'
+import { resolvePolicy, type BgpPolicy } from './bgp-policy'
 import { eigrpTag } from './eigrp'
 import { LabQuery } from './query'
 import { buildTopo, pk, type Topo } from './topology'
@@ -56,6 +57,8 @@ export interface SavedState {
   nat?: NatEntry[]
   natHits?: number
   natMisses?: number
+  /** eBGP: komşu başına dondurulmuş politika (soft clear bekleyen değişiklik kayıttan sonra da bekler) */
+  bgpApplied?: Record<string, { in?: BgpPolicy; out?: BgpPolicy }>
 }
 
 /** IOS `mac address-table aging-time` varsayılanı (saniye). */
@@ -122,6 +125,8 @@ export class LabRuntime {
   aclHits = new Map<string, number>()
   /** L5-d: dynamic NAT translations (no timeout; `clear ip nat translation *` empties it) */
   natTable: NatEntry[] = []
+  /** eBGP: komşu başına dondurulmuş politika ('dev|komşu'); oturum kurulunca / clear ip bgp ile alınır */
+  bgpApplied: Record<string, { in?: BgpPolicy; out?: BgpPolicy }> = {}
   /** L5-d: packets translated (show ip nat statistics "Hits") */
   natHits = 0
   /** L5-d: packets dropped because the pool had no free address */
@@ -158,6 +163,7 @@ export class LabRuntime {
     this.psLast.clear()
     this.aclHits.clear()
     this.natTable = []
+    this.bgpApplied = {}
     this.natHits = 0
     this.natMisses = 0
     this.dhcp = []
@@ -170,10 +176,13 @@ export class LabRuntime {
       if (dv.off) this.hw.off.add(dv.id)
       if (dv.kind === 'pc' && dv.nicDown) this.hw.nicDown.add(dv.id)
     }
-    this.derived = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw)
+    this.derived = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw, this.bgpApplied)
     this.applyInitial(this)
     // FHRP: lab başlangıcı bütün üyelerin birlikte açılışıdır (seçim önceliğe göre)
     this.fhrpActive.clear()
+    // eBGP: lab başlangıcı açılıştır; oturumlar bütün yapılandırmayla kurulur (satır satır
+    // uygulanırken dondurulan politika görüntüleri atılır)
+    this.bgpApplied = {}
     this.derived = this.recompute()
     for (const sw of this.topo.switches) this.startup[sw.id] = clone(this.running[sw.id]!)
     this.seen.clear()
@@ -215,16 +224,25 @@ export class LabRuntime {
    * Kademe 1'de politika (route-map/prefix-list) olmadığından soft sıfırlama tabloyu değiştirmez.
    * Dönüş: eşleşen komşu sayısı (0: böyle komşu yok).
    */
-  clearBgp(dev: string, target: string, soft: boolean): number {
+  clearBgp(dev: string, target: string, mode: 'hard' | 'soft' | 'in' | 'out'): number {
     const st = this.derived.bgp?.[dev]
-    if (!st) return 0
+    const cfg = this.running[dev]?.bgp
+    if (!st || !cfg) return 0
     const list = st.sessions.filter((s) => target === '*' || s.ip === target)
-    const log = this.running[dev]?.bgp?.logNeighborChanges ?? true
-    if (!soft && log)
-      for (const s of list.filter((x) => x.state === 'Established')) {
+    const log = cfg.logNeighborChanges ?? true
+    for (const s of list.filter((x) => x.state === 'Established')) {
+      if (mode === 'hard' && log) {
         this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${s.ip} Down User reset`)
         this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${s.ip} Up `)
       }
+      // güncel politika uygulanır: sert sıfırlama ve soft (iki yön) ikisini, soft in/out birini
+      const n = cfg.neighbors.find((x) => x.ip === s.ip)!
+      const k = dev + '|' + s.ip
+      const cur = (this.bgpApplied[k] ??= {})
+      if (mode !== 'out') cur.in = resolvePolicy(this.running[dev]!, n, 'in')
+      if (mode !== 'in') cur.out = resolvePolicy(this.running[dev]!, n, 'out')
+    }
+    if (list.length) this.commit()
     return list.length
   }
 
@@ -239,7 +257,7 @@ export class LabRuntime {
 
   /** Derive, then settle err-disable (BPDU guard) and OSPF router-id selection. */
   private recompute(): Derived {
-    let d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw)
+    let d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw, this.bgpApplied)
     for (let i = 0; i < 4; i++) {
       let changed = false
       // a shut port leaves err-disabled state (shutdown / no shutdown recovers it)
@@ -286,15 +304,36 @@ export class LabRuntime {
         this.psDynamic.delete(k)
       }
       if (!changed) break
-      d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw)
+      d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw, this.bgpApplied)
     }
     d.natTable = this.natTable
     d.arpCache = this.arp
+    this.freezeBgpPolicy(d)
     // IP SLA + izlenen nesneler (FHRP'den önce: HSRP track'leri nesne durumunu kullanır)
     this.trackChanges(computeTrack(d))
     d.fhrp = computeFhrp(d, this.fhrpActive)
     this.fhrpLog(d.fhrp)
     return d
+  }
+
+  /**
+   * eBGP politika anlık görüntüsü: kurulu oturumda yoksa yapılandırmadaki politika alınır
+   * (oturum açılışı politikayı uygular); kurulu olmayan oturumun görüntüsü silinir (yeniden
+   * açılışta güncel politika uygulanır). Kurulu oturumda politika değişirse görüntü değişmez:
+   * değişiklik `clear ip bgp` ile uygulanır. Görüntü alınması hesabı değiştirmez (aynı içerik).
+   */
+  private freezeBgpPolicy(d: Derived) {
+    const keep = new Set<string>()
+    for (const [dev, st] of Object.entries(d.bgp ?? {}))
+      for (const s of st.sessions) {
+        const k = dev + '|' + s.ip
+        if (s.state !== 'Established') continue
+        keep.add(k)
+        const n = this.running[dev]!.bgp!.neighbors.find((x) => x.ip === s.ip)!
+        if (!this.bgpApplied[k]) this.bgpApplied[k] = { in: resolvePolicy(this.running[dev]!, n, 'in'), out: resolvePolicy(this.running[dev]!, n, 'out') }
+      }
+    for (const k of Object.keys(this.bgpApplied)) if (!keep.has(k)) delete this.bgpApplied[k]
+    d.bgpApplied = this.bgpApplied
   }
 
   /** İzlenen nesne durum değişikliği sayaçları ('dev|n' → son durum, değişim sayısı). */
@@ -656,6 +695,7 @@ export class LabRuntime {
       natMisses: this.natMisses,
       hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
       dhcp: clone(this.dhcp),
+      bgpApplied: clone(this.bgpApplied),
     }
   }
 
@@ -683,6 +723,7 @@ export class LabRuntime {
     this.natMisses = s.natMisses ?? 0
     if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) }
     this.dhcp = clone(s.dhcp ?? [])
+    this.bgpApplied = clone(s.bgpApplied ?? {})
     // FHRP: kayıttan açılış bütün üyelerin birlikte açılışıdır (en yüksek öncelik); log yazılmaz
     this.fhrpActive.clear()
     this.fhrpStates.clear()

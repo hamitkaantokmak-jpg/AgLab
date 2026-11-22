@@ -11,6 +11,7 @@ import { natConfigLines } from '../nat'
 import { pk } from '../topology'
 import type { IpAddr, L2IfConfig, L3Opts, MstConfig, PhysIfConfig, SwitchConfig, SwitchDef } from '../types'
 import { bgpConfigLines, bgpProtocolLines } from '../bgp'
+import { prefixListLines, routeMapLines } from '../bgp-policy'
 import { eigrpConfigLines, eigrpIfLines, eigrpProtocolLines, keyChainLines } from '../eigrp'
 import { formatVlans, instanceIds, instanceOf, mstDigest as mstDigestOf, mstOf, vlansOf, type MstInstanceState } from '../mst'
 import { formatVlanList, ifType, intToIp, ipToInt, macAdd, maskToPrefix, pad, padL, prefixMaskInt, shortIf } from '../util'
@@ -174,6 +175,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   o.push(...natConfigLines(c))
   for (const r of c.routes) o.push(routeLine(r))
   o.push(...ipSlaLines(c))
+  o.push(...prefixListLines(c), ...routeMapLines(c))
   o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), '!', 'line con 0', 'line aux 0', 'line vty 0 4', ' login', '!', 'end')
   return o
 }
@@ -286,6 +288,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   o.push('ip forward-protocol nd', 'no ip http server', '!')
   for (const r of c.routes) o.push(routeLine(r))
   o.push(...ipSlaLines(c))
+  o.push(...prefixListLines(c), ...routeMapLines(c))
   o.push(...aclConfigLines(c), ...discoveryGlobalLines(c), '!', 'line con 0', 'line vty 0 4', ' login', 'line vty 5 15', ' login', '!', 'end')
   return o
 }
