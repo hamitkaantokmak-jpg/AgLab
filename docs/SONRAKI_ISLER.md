@@ -16,7 +16,7 @@ Durum 22 Kasım 2026 itibarıyla; ayrıntı `DEVIR_NOTU.md` "Güncel durum".
    konu akışı (Öğren → Test → Pratik) yapıldı (#91–#100). Arıza senaryosu ekranının
    belirti kartı/katman seçici/kanıt defteri ile müfredat haritasının konu kartları
    yapılmadı (açık; ekranlar aşağıdaki tabloda).
-5. ▶ **Şube sürümü 1.0** (sıradaki): Seviye 1 eksiksiz ve yeni arayüzle şubede kullanıma başlanır;
+5. ▶ **Şube sürümü 1.0** (sıradaki; kontrol listesi `SURUM_1_0.md`): Seviye 1 eksiksiz ve yeni arayüzle şubede kullanıma başlanır;
    geri bildirim CCNA önceliklerini belirler.
 6. **CCNA** (Seviye 2): müfredatın istediği motor özellikleri ve dersler birlikte.
 7. **CCNP** (Seviye 3): önce okuma konuları; routing konularında Labber mı Canlı Lab mı

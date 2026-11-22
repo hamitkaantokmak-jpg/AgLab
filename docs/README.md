@@ -8,6 +8,7 @@ Güncel plan ve kararlar için önce ilk tablodaki belgeler okunur; çelişkide 
 | Belge | Ne için |
 |---|---|
 | [SONRAKI_ISLER.md](SONRAKI_ISLER.md) | İş sırası: L7 sonrası onaylanmış işler |
+| [SURUM_1_0.md](SURUM_1_0.md) | Şube sürümü 1.0: Seviye 1 kontrol listesi, doğrulama, modellenmeyenler, açık kararlar |
 | [DEVIR_NOTU.md](DEVIR_NOTU.md) | Labber entegrasyonunun ve arayüz yenilemesinin durumu, birleşen/açık işler |
 | [YENIDEN_YAPILANMA.md](YENIDEN_YAPILANMA.md) | Mimari plan: Labber tek ağ motoru (L1–L7) |
 | [MUFREDAT.md](MUFREDAT.md) | Üç seviyeli müfredat, konu sırası, motor yol haritası |
