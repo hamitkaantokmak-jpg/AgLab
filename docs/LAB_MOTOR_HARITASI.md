@@ -197,6 +197,11 @@ köprü kullanılmadan doğrudan Labber'da kurulur; terminal Labber oturumudur, 
 | `hsrp-sla-track` | IP SLA + track ile HSRP: ağ geçidi internetini kaybedince devretmek | İleri | 8/8 | 4 | ENCOR, IP SLA, Track, HSRP, Preempt, Arıza giderme | **Labber** — LabDef doğrudan |
 | `mst-bolge` | MST: bölge uyuşmazlığı ve kaybolan yük dengeleme | İleri | 8/9 | 4 | ENCOR, STP, MST, 802.1s, Bölge, CIST, Arıza giderme | **Labber** — LabDef doğrudan |
 | `eigrp-ariza` | EIGRP arıza giderme: auto-summary, K değerleri ve variance | İleri | 6/6 | 5 | ENARSI, EIGRP, auto-summary, K değerleri, Feasible successor, variance, Arıza giderme | **Labber** — LabDef doğrudan |
+| `fiziksel-kontrol` | Port durum tablosunu okumak: iki uç, boş portlar ve etiketleme | Başlangıç | 6/5 | 4 | Şube, Konu #4, show interfaces status, shutdown, notconnect, description | **Labber** — LabDef doğrudan |
+| `roas-kurulum` | Router-on-a-stick: iki VLAN'ı tek kabloyla yönlendirmek | Başlangıç | 5/4 | 5 | Şube, Konu #7, Router-on-a-stick, Alt arayüz, 802.1Q, Trunk | **Labber** — LabDef doğrudan |
+| `dhcp-kurulum` | DHCP: havuz, dışlama ve relay (ip helper-address) | Başlangıç | 8/7 | 3 | Şube, Konu #9, DHCP, Relay, ip helper-address, 169.254 | **Labber** — LabDef doğrudan |
+| `dns-kurulum` | DNS: istemciye doğru DNS sunucusunu dağıtmak | Başlangıç | 8/7 | 3 | Şube, Konu #10, DNS, nslookup, DHCP, dns-server | **Labber** — LabDef doğrudan |
+| `cdp-kesif` | CDP/LLDP: belgelenmemiş ağı çıkarmak ve etiketlemek | Başlangıç | 9/8 | 4 | Şube, Konu #12, CDP, LLDP, description, Belgeleme | **Labber** — LabDef doğrudan |
 
 ## Motor kullanmayan eski içerik (L6)
 
@@ -268,8 +273,8 @@ gerekçesiyle gösterilir (terminal ve değerlendirme açık hata verir).
 |---|---|---|---|
 | Akademi labları | 40 | 0 | 40 |
 | Ortak senaryolar | 116 | 0 | 116 |
-| Labber labları | 20 | 0 | 20 |
-| Toplam | 176 | 0 | 176 |
+| Labber labları | 25 | 0 | 25 |
+| Toplam | 181 | 0 | 181 |
 
 | Simüle edilememe gerekçesi | İçerik sayısı |
 |---|---|

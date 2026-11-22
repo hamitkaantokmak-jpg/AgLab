@@ -137,6 +137,8 @@ Pool KAT1 :
 
 ## 4. Yönlendirmeli lab
 
+> **Simülatörde:** bu labın hazır topolojisi ve otomatik kontrolü Simülatör'deki **dhcp-kurulum** labıdır (dersin Pratik adımı). Simülatör labı bu adımların özüdür; ayrıntılar labın görev metnindedir.
+
 Topoloji: R1'in üç arayüzü var. Gi0/0 1. kata (192.168.10.0/24), Gi0/1 2. kata (192.168.20.0/24), Gi0/2 sunucu odasına (192.168.100.0/24) bakıyor. Sunucu odasında SRV (192.168.100.10) DHCP ve DNS sunucusu. Başlangıçta R1'de havuz ve relay yok; PC'lerin hepsi DHCP istemcisi.
 
 1. **Sunucusuz dene.** PC-11'de `ip dhcp`. Çıktı: `Can't find dhcp server`, adres 169.254.x.x. *Neden:* 1. katta DHCP veren kimse yok; istemci kendine link-local adres verdi.

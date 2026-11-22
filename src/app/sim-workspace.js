@@ -675,6 +675,11 @@
     'hsrp-sla-track': 'telemetry',
     'mst-bolge': 'mst',
     'eigrp-ariza': 'eigrp',
+    'fiziksel-kontrol': 'physical',
+    'roas-kurulum': 'intervlan',
+    'dhcp-kurulum': 'dhcp',
+    'dns-kurulum': 'dns',
+    'cdp-kesif': 'discovery',
   };
   function academyCourse(id) {
     const n = Number(String(id).replace(/\D/g, ''));

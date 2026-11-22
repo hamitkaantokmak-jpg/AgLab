@@ -175,6 +175,24 @@ class FlowTasksTests(unittest.TestCase):
         expect(bgp.locator("small")).to_contain_text("okuma")
         expect(bgp.locator("small")).not_to_contain_text("simülatör labı")
 
+    def test_level1_topics_have_setup_and_fault_tasks(self):
+        """Şube 1.0: Seviye 1'in her konusunda en az bir kurulum (yönlendirmeli) görevi ve en az
+        beş arıza görevi var. #1 Sorun giderme yöntemi kurulum gerektirmez: yönlendirmeli labı
+        sağlam ağda kanıt toplamaktır, pratiği arıza senaryolarıdır."""
+        p = self.page
+        p.click('[data-area="lab"]')
+        expect(p.locator("#agSimTasks")).to_be_visible()
+        for c in COURSES:
+            if c["level"] != "beginner":
+                continue
+            with self.subTest(c["id"]):
+                types = p.evaluate(
+                    "(id) => aglabSimWorkspace.tasksFor(id).map(t => t.type)", c["id"]
+                )
+                self.assertGreaterEqual(types.count("ariza"), 5)
+                if c["id"] != "method":
+                    self.assertGreaterEqual(types.count("kurulum"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

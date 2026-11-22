@@ -15,11 +15,11 @@ var AgLabSim = (() => {
     for (var name in all)
       __defProp(target, name, { get: all[name], enumerable: true });
   };
-  var __copyProps = (to, from, except, desc) => {
+  var __copyProps = (to, from, except, desc3) => {
     if (from && typeof from === "object" || typeof from === "function") {
       for (let key of __getOwnPropNames(from))
         if (!__hasOwnProp.call(to, key) && key !== except)
-          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc3 = __getOwnPropDesc(from, key)) || desc3.enumerable });
     }
     return to;
   };
@@ -334,19 +334,19 @@ var AgLabSim = (() => {
 
   // src/sim/topology.ts
   var pk = (dev, port) => `${dev}|${port}`;
-  function buildTopo(lab21) {
+  function buildTopo(lab26) {
     const devices = {};
-    for (const d of lab21.devices) devices[d.id] = d;
+    for (const d of lab26.devices) devices[d.id] = d;
     const peer = {};
-    for (const l of lab21.links) {
+    for (const l of lab26.links) {
       peer[pk(l.a[0], l.a[1])] = { dev: l.b[0], port: l.b[1] };
       peer[pk(l.b[0], l.b[1])] = { dev: l.a[0], port: l.a[1] };
     }
-    const switches = lab21.devices.filter((d) => d.kind === "switch");
-    const pcs = lab21.devices.filter((d) => d.kind === "pc");
+    const switches = lab26.devices.filter((d) => d.kind === "switch");
+    const pcs = lab26.devices.filter((d) => d.kind === "pc");
     const pcAttach = {};
     for (const pc of pcs) pcAttach[pc.id] = peer[pk(pc.id, "eth0")] ?? null;
-    return { lab: lab21, devices, switches, pcs, peer, pcAttach };
+    return { lab: lab26, devices, switches, pcs, peer, pcAttach };
   }
 
   // src/sim/mst.ts
@@ -3349,15 +3349,15 @@ var AgLabSim = (() => {
   var newNode = () => ({ kws: /* @__PURE__ */ new Map(), params: [] });
   function parseParam(spec) {
     const [head, ...rest] = spec.slice(1, -1).split(":");
-    const desc = rest.join(":");
+    const desc3 = rest.join(":");
     const m = /^(\d+)-(\d+)$/.exec(head);
-    if (m) return { kind: "range", min: Number(m[1]), max: Number(m[2]), desc };
-    if (head === "vlist") return { kind: "vlist", desc };
-    if (head === "A.B.C.D") return { kind: "ip", desc };
-    if (head === "H.H.H") return { kind: "mac", desc };
-    if (head === "WORD") return { kind: "word", desc };
-    if (head === "LINE") return { kind: "line", desc };
-    if (head === "ifnum") return { kind: "ifnum", desc };
+    if (m) return { kind: "range", min: Number(m[1]), max: Number(m[2]), desc: desc3 };
+    if (head === "vlist") return { kind: "vlist", desc: desc3 };
+    if (head === "A.B.C.D") return { kind: "ip", desc: desc3 };
+    if (head === "H.H.H") return { kind: "mac", desc: desc3 };
+    if (head === "WORD") return { kind: "word", desc: desc3 };
+    if (head === "LINE") return { kind: "line", desc: desc3 };
+    if (head === "ifnum") return { kind: "ifnum", desc: desc3 };
     throw new Error("bad param " + spec);
   }
   var sameParam = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -3995,7 +3995,7 @@ var AgLabSim = (() => {
     const d = rt.derived;
     const sw2 = rt.topo.devices[dev];
     const o = ["", "Port      Name               Status       Vlan       Duplex  Speed Type"];
-    const row = (name, desc, status, vlan, speed, type, up) => pad(shortIf(name), 10) + pad(desc.slice(0, 18), 19) + pad(status, 13) + pad(vlan, 11) + pad(up ? "a-full" : "auto", 8) + padL(up ? speed : "auto", 5) + " " + type;
+    const row = (name, desc3, status, vlan, speed, type, up) => pad(shortIf(name), 10) + pad(desc3.slice(0, 18), 19) + pad(status, 13) + pad(vlan, 11) + pad(up ? "a-full" : "auto", 8) + padL(up ? speed : "auto", 5) + " " + type;
     for (const p of sw2.ports) {
       const ps = d.phys[pk(dev, p)];
       const lp = d.lportOfPhys[pk(dev, p)];
@@ -4636,8 +4636,8 @@ var AgLabSim = (() => {
       `${name} is ${admin ? "administratively down" : up ? "up" : "down"}, line protocol is ${proto ? "up (connected)" : admin ? "down (disabled)" : ps?.errDisabled ? "down (err-disabled)" : ps?.ec?.flag === "s" ? "down (suspended)" : "down (notconnect)"}`,
       `  Hardware is ${isPo ? "EtherChannel" : ifType(name)?.speed === 100 ? "Fast Ethernet" : "Gigabit Ethernet"}, address is ${mac} (bia ${mac})`
     ];
-    const desc = isPo ? lp.cfg.description : rt.running[dev].ifaces[name]?.description;
-    if (desc) out.push(`  Description: ${desc}`);
+    const desc3 = isPo ? lp.cfg.description : rt.running[dev].ifaces[name]?.description;
+    if (desc3) out.push(`  Description: ${desc3}`);
     const rip = !isPo ? rt.running[dev].ifaces[name]?.ip : null;
     if (rip && rt.running[dev].ifaces[name]?.routed) out.push(`  Internet address is ${rip.addr}/${maskToPrefix(rip.mask)}`);
     out.push(`  MTU 1500 bytes, BW ${speed} Kbit/sec, DLY 100 usec,`, "     reliability 255/255, txload 1/255, rxload 1/255", "  Encapsulation ARPA, loopback not set");
@@ -6015,10 +6015,10 @@ var AgLabSim = (() => {
       if (!name) throw new InvalidAt(argIndex);
       if (this.def.router && (name.startsWith("Vlan") || name.startsWith("Port-channel"))) throw new InvalidAt(argIndex);
       if (name.includes(".")) {
-        const [parent, sub] = [name.slice(0, name.indexOf(".")), name.slice(name.indexOf(".") + 1)];
-        if (!this.def.router || !this.cfg.ifaces[parent] || !/^\d+$/.test(sub) || Number(sub) < 1 || Number(sub) > 4294967295)
+        const [parent, sub2] = [name.slice(0, name.indexOf(".")), name.slice(name.indexOf(".") + 1)];
+        if (!this.def.router || !this.cfg.ifaces[parent] || !/^\d+$/.test(sub2) || Number(sub2) < 1 || Number(sub2) > 4294967295)
           throw new InvalidAt(argIndex + 1);
-        const full = parent + "." + Number(sub);
+        const full = parent + "." + Number(sub2);
         const subs = (_a = this.cfg).subifs ?? (_a.subifs = {});
         if (create && !subs[full]) subs[full] = { parent, vlan: null, native: false, shutdown: false, description: "", ip: null };
         if (!subs[full]) throw new InvalidAt(argIndex + 1);
@@ -11485,8 +11485,579 @@ write memory`
   };
   var eigrp_troubleshoot_default = lab20;
 
+  // src/labs/dhcp-setup.ts
+  var SRV = "192.168.100.10";
+  var offer = (q, pc) => dhcpDiscover(q.d, pc, []);
+  var lab21 = {
+    id: "dhcp-kurulum",
+    title: "DHCP: havuz, dışlama ve relay (ip helper-address)",
+    summary: "R1'de 1. kat için DHCP havuzu kur, gateway adreslerini dışla; 2. katın isteğini relay ile sunucu odasındaki DHCP sunucusuna ilet.",
+    level: "Başlangıç",
+    tags: ["Şube", "Konu #9", "DHCP", "Relay", "ip helper-address", "169.254"],
+    brief: [
+      "R1'in üç arayüzü hazır: Gi0/0 1. kat (192.168.10.1/24), Gi0/1 2. kat (192.168.20.1/24), Gi0/2 sunucu odası (192.168.100.1/24). Sunucu odasındaki SRV (192.168.100.10) DHCP ve DNS servisi çalıştırıyor. 1. kattaki yazıcının sabit adresi 192.168.10.5.",
+      "Önce gözle: PC-11'de `ip dhcp` yaz. \"Can't find dhcp server\" ve 169.254.x.x adresi, 1. katta DHCP veren kimse olmadığını gösterir.",
+      "1. kat için R1'de havuz kur: 192.168.10.1–192.168.10.20 dışlansın (gateway ve yazıcılar), havuz KAT1 192.168.10.0/24 ağını dağıtsın, default-router 192.168.10.1 ve dns-server 192.168.100.10 versin.",
+      "2. kat adreslerini R1 değil SRV dağıtacak. PC-21'in yayını R1'de durur; R1'in 2. kat arayüzü isteği SRV'ye iletmeli.",
+      "Her adımdan sonra PC'de yeniden `ip dhcp` ve `show ip` ile sonucu gör; R1'de `show ip dhcp binding` kiralamaları listeler."
+    ],
+    view: { w: 860, h: 470 },
+    devices: [
+      { id: "R1", kind: "switch", router: true, model: "ISR4331", mac: "5254.0090.0001", ports: ports("Gi0/0-2"), x: 430, y: 80 },
+      { id: "SW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0090.0011", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 200, y: 230 },
+      { id: "SW2", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0090.0012", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 520, y: 230 },
+      { id: "PC-11", kind: "pc", mac: "0050.7966.9011", x: 110, y: 400 },
+      { id: "PC-12", kind: "pc", mac: "0050.7966.9012", x: 290, y: 400 },
+      { id: "PC-21", kind: "pc", mac: "0050.7966.9021", x: 520, y: 400 },
+      { id: "SRV", kind: "pc", server: true, mac: "0050.7966.9100", x: 760, y: 230 },
+      { id: "YAZICI", kind: "pc", mac: "0050.7966.9050", x: 40, y: 230 }
+    ],
+    links: [
+      { a: ["R1", "GigabitEthernet0/0"], b: ["SW1", "GigabitEthernet0/1"] },
+      { a: ["R1", "GigabitEthernet0/1"], b: ["SW2", "GigabitEthernet0/1"] },
+      { a: ["R1", "GigabitEthernet0/2"], b: ["SRV", "eth0"] },
+      { a: ["PC-11", "eth0"], b: ["SW1", "FastEthernet0/1"] },
+      { a: ["PC-12", "eth0"], b: ["SW1", "FastEthernet0/2"] },
+      { a: ["PC-21", "eth0"], b: ["SW2", "FastEthernet0/1"] },
+      { a: ["YAZICI", "eth0"], b: ["SW1", "FastEthernet0/3"] }
+    ],
+    initialConfig: {
+      R1: `interface g0/0
+ ip address 192.168.10.1 255.255.255.0
+ no shutdown
+interface g0/1
+ ip address 192.168.20.1 255.255.255.0
+ no shutdown
+interface g0/2
+ ip address 192.168.100.1 255.255.255.0
+ no shutdown
+exit`,
+      SW1: `interface range fa0/1 - 4
+ switchport mode access
+exit`,
+      SW2: `interface range fa0/1 - 4
+ switchport mode access
+exit`
+    },
+    initialPcs: {
+      SRV: { ip: SRV, prefix: 24, gw: "192.168.100.1", services: { dhcp: true, dns: true } },
+      YAZICI: { ip: "192.168.10.5", prefix: 24, gw: "192.168.10.1" }
+    },
+    objectives: [
+      {
+        id: "exclude",
+        title: "192.168.10.1–192.168.10.20 dağıtılmıyor",
+        hint: "ip dhcp excluded-address 192.168.10.1 192.168.10.20 (havuzdan önce yaz). Kontrol: show running-config | include excluded",
+        check: (q) => {
+          const n = (ip2) => ipToInt(ip2) ?? -1;
+          return (q.cfg("R1").dhcpExcluded ?? []).some((e) => n(e.lo) <= n("192.168.10.1") && n(e.hi) >= n("192.168.10.20"));
+        }
+      },
+      {
+        id: "pool",
+        title: "PC-11 R1'den 192.168.10.21, gateway 192.168.10.1 ve DNS 192.168.100.10 alır",
+        hint: "ip dhcp pool KAT1 → network 192.168.10.0 255.255.255.0 → default-router 192.168.10.1 → dns-server 192.168.100.10. PC-11'de ip dhcp ile dene.",
+        check: (q) => {
+          const r = offer(q, "PC-11");
+          if (!r.ok) return { ok: false, detail: "DHCP yanıtı yok" };
+          const ok = r.server === "R1" && r.ip === "192.168.10.21" && r.gw === "192.168.10.1" && r.dns === SRV;
+          return { ok, detail: ok ? void 0 : `Teklif: ${r.ip}, GW ${r.gw ?? "-"}, DNS ${r.dns ?? "-"}` };
+        }
+      },
+      {
+        id: "relay",
+        title: "PC-21 adresini SRV'den relay ile alır (192.168.20.x, gateway 192.168.20.1)",
+        hint: "interface g0/1 → ip helper-address 192.168.100.10. PC-21'de ip dhcp; show ip'te DHCP SERVER 192.168.100.10 görünür.",
+        check: (q) => {
+          const r = offer(q, "PC-21");
+          return r.ok && r.server === "SRV" && !!r.relay && r.gw === "192.168.20.1" && r.ip.startsWith("192.168.20.");
+        }
+      }
+    ],
+    solution: {
+      R1: `configure terminal
+ip dhcp excluded-address 192.168.10.1 192.168.10.20
+ip dhcp pool KAT1
+ network 192.168.10.0 255.255.255.0
+ default-router 192.168.10.1
+ dns-server 192.168.100.10
+exit
+interface g0/1
+ ip helper-address 192.168.100.10
+end
+`
+    }
+  };
+  var dhcp_setup_default = lab21;
+
+  // src/labs/dns-setup.ts
+  var DNS = "192.168.100.10";
+  var dnsOf = (q, pc) => {
+    const r = dhcpDiscover(q.d, pc, []);
+    return r.ok ? r.dns : null;
+  };
+  var lab22 = {
+    id: "dns-kurulum",
+    title: "DNS: istemciye doğru DNS sunucusunu dağıtmak",
+    summary: "İki katın DHCP havuzunda DNS ayarı bozuk. nslookup ile ad çözümleme hatasını IP bağlantı hatasından ayır ve havuzları düzelt.",
+    level: "Başlangıç",
+    tags: ["Şube", "Konu #10", "DNS", "nslookup", "DHCP", "dns-server"],
+    brief: [
+      "Şube ağı Konu #9'daki gibi: R1 iki kata DHCP ile adres veriyor (havuzlar KAT1 ve KAT2). Sunucu odasında DNS sunucusu SRV (192.168.100.10) ve web sunucusu ERP (192.168.100.20) var.",
+      'Şikâyet: "ERP açılmıyor". PC-11\'de `ip dhcp`, sonra `show ip`: hangi DNS sunucusunu aldı? `nslookup ERP` ve `ping 192.168.100.20` sonuçlarını karşılaştır: biri çalışıp öbürü çalışmıyorsa sorun ağda değil, isim çözümlemede.',
+      'PC-21 için aynısını yap; bu katın belirtisi farklı olabilir ("timed out" ile "Default servers are not available" aynı şey değildir).',
+      "Düzeltmeyi istemcide değil, adresi dağıtan yerde yap: R1'deki iki havuz da DNS olarak 192.168.100.10'u vermeli. Sonra PC'lerde yeniden `ip dhcp` ve `nslookup ERP` ile doğrula.",
+      "Not: AğLab'ın DNS sunucusu ağdaki her cihazı kendi adıyla tanır; ayrı kayıt girmek gerekmez (SRV'de `show dns`)."
+    ],
+    view: { w: 860, h: 470 },
+    devices: [
+      { id: "R1", kind: "switch", router: true, model: "ISR4331", mac: "5254.0091.0001", ports: ports("Gi0/0-2"), x: 430, y: 80 },
+      { id: "SW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0091.0011", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 200, y: 230 },
+      { id: "SW2", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0091.0012", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 430, y: 230 },
+      { id: "SW3", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0091.0013", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 690, y: 230 },
+      { id: "PC-11", kind: "pc", mac: "0050.7966.9111", x: 200, y: 400 },
+      { id: "PC-21", kind: "pc", mac: "0050.7966.9121", x: 430, y: 400 },
+      { id: "SRV", kind: "pc", server: true, mac: "0050.7966.9200", x: 620, y: 400 },
+      { id: "ERP", kind: "pc", server: true, mac: "0050.7966.9201", x: 760, y: 400 }
+    ],
+    links: [
+      { a: ["R1", "GigabitEthernet0/0"], b: ["SW1", "GigabitEthernet0/1"] },
+      { a: ["R1", "GigabitEthernet0/1"], b: ["SW2", "GigabitEthernet0/1"] },
+      { a: ["R1", "GigabitEthernet0/2"], b: ["SW3", "GigabitEthernet0/1"] },
+      { a: ["PC-11", "eth0"], b: ["SW1", "FastEthernet0/1"] },
+      { a: ["PC-21", "eth0"], b: ["SW2", "FastEthernet0/1"] },
+      { a: ["SRV", "eth0"], b: ["SW3", "FastEthernet0/1"] },
+      { a: ["ERP", "eth0"], b: ["SW3", "FastEthernet0/2"] }
+    ],
+    initialConfig: {
+      R1: `interface g0/0
+ ip address 192.168.10.1 255.255.255.0
+ no shutdown
+interface g0/1
+ ip address 192.168.20.1 255.255.255.0
+ no shutdown
+interface g0/2
+ ip address 192.168.100.1 255.255.255.0
+ no shutdown
+exit
+ip dhcp excluded-address 192.168.10.1 192.168.10.20
+ip dhcp excluded-address 192.168.20.1 192.168.20.20
+ip dhcp pool KAT1
+ network 192.168.10.0 255.255.255.0
+ default-router 192.168.10.1
+ dns-server 192.168.100.11
+exit
+ip dhcp pool KAT2
+ network 192.168.20.0 255.255.255.0
+ default-router 192.168.20.1
+exit`,
+      SW1: `interface range fa0/1 - 4
+ switchport mode access
+exit`,
+      SW2: `interface range fa0/1 - 4
+ switchport mode access
+exit`,
+      SW3: `interface range fa0/1 - 4
+ switchport mode access
+exit`
+    },
+    initialPcs: {
+      SRV: { ip: DNS, prefix: 24, gw: "192.168.100.1", services: { dns: true } },
+      ERP: { ip: "192.168.100.20", prefix: 24, gw: "192.168.100.1", services: { http: true } }
+    },
+    objectives: [
+      {
+        id: "kat1",
+        title: "1. kat DHCP'den DNS olarak 192.168.100.10 alıyor",
+        hint: "ip dhcp pool KAT1 → dns-server 192.168.100.10 (yeni değer eskisinin yerine geçer). PC-11'de ip dhcp, sonra nslookup ERP.",
+        check: (q) => {
+          const dns = dnsOf(q, "PC-11");
+          return { ok: dns === DNS, detail: dns === DNS ? void 0 : "Dağıtılan DNS: " + (dns ?? "yok") };
+        }
+      },
+      {
+        id: "kat2",
+        title: "2. kat DHCP'den DNS olarak 192.168.100.10 alıyor",
+        hint: 'ip dhcp pool KAT2 → dns-server 192.168.100.10. Havuzda DNS hiç yoksa istemci "Default servers are not available" der.',
+        check: (q) => {
+          const dns = dnsOf(q, "PC-21");
+          return { ok: dns === DNS, detail: dns === DNS ? void 0 : "Dağıtılan DNS: " + (dns ?? "yok") };
+        }
+      },
+      {
+        id: "server",
+        title: "DNS sunucusu ve ERP iki kattan da erişilebilir (R1'in iki LAN arayüzünden ping)",
+        hint: "Bu hedef baştan sağlam: ping çalıştığı halde ad çözülmüyorsa sorun bağlantıda değildir. Kontrol: ping 192.168.100.10 source g0/0",
+        check: (q) => q.ping("SRV", "192.168.10.1").ok && q.ping("SRV", "192.168.20.1").ok && q.ping("ERP", "192.168.10.1").ok
+      }
+    ],
+    solution: {
+      R1: `configure terminal
+ip dhcp pool KAT1
+ dns-server 192.168.100.10
+exit
+ip dhcp pool KAT2
+ dns-server 192.168.100.10
+end
+`
+    }
+  };
+  var dns_setup_default = lab22;
+
+  // src/labs/roas-setup.ts
+  var sub = (q, vlan, ip2) => {
+    const s = q.cfg("R1").subifs?.["GigabitEthernet0/0." + vlan];
+    return !!s && s.vlan === vlan && !s.shutdown && s.ip?.addr === ip2 && s.ip.mask === "255.255.255.0";
+  };
+  var lab23 = {
+    id: "roas-kurulum",
+    title: "Router-on-a-stick: iki VLAN'ı tek kabloyla yönlendirmek",
+    summary: "SW1–R1 bağlantısını trunk yap, R1'de VLAN 10 ve 20 için alt arayüzleri kur; farklı VLAN'daki PC'ler birbirine ulaşsın.",
+    level: "Başlangıç",
+    tags: ["Şube", "Konu #7", "Router-on-a-stick", "Alt arayüz", "802.1Q", "Trunk"],
+    brief: [
+      "SW1'de VLAN'lar hazır: PC-01 ve PC-03 VLAN 10'da (192.168.10.0/24, gateway .1), PC-02 VLAN 20'de (192.168.20.0/24, gateway .1). Önce gözle: PC-01 → PC-03 ping çalışır, PC-01 → PC-02 çalışmaz.",
+      "R1'in tek kablosu SW1 Gi0/1'e bağlı. Bu kablo iki VLAN'ı da taşımalı: SW1 tarafında trunk, izinli VLAN'lar 10 ve 20.",
+      "R1'de fiziksel arayüz G0/0 açık olmalı ama IP almaz. Her VLAN için bir alt arayüz: G0/0.10 (VLAN 10, 192.168.10.1/24) ve G0/0.20 (VLAN 20, 192.168.20.1/24).",
+      "Her adımdan sonra doğrula: SW1'de `show interfaces trunk`, R1'de `show ip interface brief` ve `show ip route` (iki bağlı ağ), sonra PC-01'den `ping 192.168.20.12` ve `trace 192.168.20.12`."
+    ],
+    view: { w: 820, h: 460 },
+    devices: [
+      { id: "R1", kind: "switch", router: true, model: "ISR4331", mac: "5254.0092.0001", ports: ports("Gi0/0-2"), x: 410, y: 70 },
+      { id: "SW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0092.0011", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 410, y: 220 },
+      { id: "PC-01", kind: "pc", mac: "0050.7966.9201", x: 180, y: 390 },
+      { id: "PC-02", kind: "pc", mac: "0050.7966.9202", x: 410, y: 390 },
+      { id: "PC-03", kind: "pc", mac: "0050.7966.9203", x: 640, y: 390 }
+    ],
+    links: [
+      { a: ["R1", "GigabitEthernet0/0"], b: ["SW1", "GigabitEthernet0/1"] },
+      { a: ["PC-01", "eth0"], b: ["SW1", "FastEthernet0/1"] },
+      { a: ["PC-02", "eth0"], b: ["SW1", "FastEthernet0/2"] },
+      { a: ["PC-03", "eth0"], b: ["SW1", "FastEthernet0/3"] }
+    ],
+    initialConfig: {
+      SW1: `vlan 10
+ name SATIS
+vlan 20
+ name MUHASEBE
+exit
+interface fa0/1
+ switchport mode access
+ switchport access vlan 10
+interface fa0/2
+ switchport mode access
+ switchport access vlan 20
+interface fa0/3
+ switchport mode access
+ switchport access vlan 10
+exit`
+    },
+    initialPcs: {
+      "PC-01": { ip: "192.168.10.11", prefix: 24, gw: "192.168.10.1" },
+      "PC-02": { ip: "192.168.20.12", prefix: 24, gw: "192.168.20.1" },
+      "PC-03": { ip: "192.168.10.13", prefix: 24, gw: "192.168.10.1" }
+    },
+    objectives: [
+      {
+        id: "trunk",
+        title: "SW1 Gi0/1 trunk ve VLAN 10 ile 20'yi taşıyor",
+        hint: "interface gi0/1 → switchport mode trunk → switchport trunk allowed vlan 10,20. Kontrol: show interfaces trunk",
+        check: (q) => q.isTrunk("SW1", "GigabitEthernet0/1") && q.trunkCarries("SW1", "GigabitEthernet0/1", 10) && q.trunkCarries("SW1", "GigabitEthernet0/1", 20)
+      },
+      {
+        id: "sub10",
+        title: "R1 G0/0.10: VLAN 10, 192.168.10.1/24",
+        hint: "interface g0/0 → no shutdown; interface g0/0.10 → encapsulation dot1Q 10 → ip address 192.168.10.1 255.255.255.0 (önce encapsulation).",
+        check: (q) => sub(q, 10, "192.168.10.1")
+      },
+      {
+        id: "sub20",
+        title: "R1 G0/0.20: VLAN 20, 192.168.20.1/24",
+        hint: "interface g0/0.20 → encapsulation dot1Q 20 → ip address 192.168.20.1 255.255.255.0",
+        check: (q) => sub(q, 20, "192.168.20.1")
+      },
+      {
+        id: "gw",
+        title: "PC'ler kendi gateway'ine ulaşıyor",
+        hint: "Fiziksel G0/0 kapalıysa alt arayüzler de çalışmaz: interface g0/0 → no shutdown. Kontrol: show ip interface brief",
+        check: (q) => q.ping("PC-01", "192.168.10.1").ok && q.ping("PC-02", "192.168.20.1").ok
+      },
+      {
+        id: "inter",
+        title: "PC-01 (VLAN 10) ↔ PC-02 (VLAN 20) ping",
+        hint: "Trafik R1 üzerinden döner: PC-01'de trace 192.168.20.12 ilk adımda 192.168.10.1'i gösterir.",
+        check: (q) => q.ping("PC-01", "192.168.20.12").ok && q.ping("PC-02", "192.168.10.13").ok
+      }
+    ],
+    solution: {
+      SW1: `configure terminal
+interface gi0/1
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20
+end
+`,
+      R1: `configure terminal
+interface g0/0
+ no shutdown
+interface g0/0.10
+ encapsulation dot1Q 10
+ ip address 192.168.10.1 255.255.255.0
+interface g0/0.20
+ encapsulation dot1Q 20
+ ip address 192.168.20.1 255.255.255.0
+end
+`
+    }
+  };
+  var roas_setup_default = lab23;
+
+  // src/labs/cdp-discovery.ts
+  var UPLINKS2 = [
+    ["GigabitEthernet0/1", "R1"],
+    ["GigabitEthernet0/2", "SW-KAT1"],
+    ["GigabitEthernet0/3", "SW-KAT2"]
+  ];
+  var desc = (q, dev, port) => (q.cfg(dev).ifaces[port]?.description ?? "").toUpperCase();
+  var ACCESS3 = [
+    ["SW-KAT1", "FastEthernet0/1"],
+    ["SW-KAT1", "FastEthernet0/2"],
+    ["SW-KAT2", "FastEthernet0/1"],
+    ["SW-KAT2", "FastEthernet0/2"]
+  ];
+  var lab24 = {
+    id: "cdp-kesif",
+    title: "CDP/LLDP: belgelenmemiş ağı çıkarmak ve etiketlemek",
+    summary: "Yalnız R1'in adını biliyorsun. Komşu tablolarıyla ağı çiz, merkez switch'in uplink'lerini etiketle, LLDP'yi aç ve kullanıcı portlarında CDP'yi kapat.",
+    level: "Başlangıç",
+    tags: ["Şube", "Konu #12", "CDP", "LLDP", "description", "Belgeleme"],
+    brief: [
+      "Şubenin çizimi yok. Bildiğin tek şey: kullanıcıların gateway'i R1. Tuvaldeki cihaz adlarına değil, komşu tablolarına güven.",
+      "R1'den başla: `show cdp neighbors` hangi cihazı, hangi iki port arasında gösteriyor? O cihaza geç ve aynı komutu orada çalıştır; komşudan komşuya ilerleyerek bir kâğıda çiz (her bağlantının iki ucundaki port adlarıyla). `show cdp neighbors detail` komşunun adresini ve modelini de verir.",
+      "PC'ler CDP göndermez: kat switch'lerinin komşu tablosunda PC görünmez. Bir PC'nin portunu bulmak için MAC tablosuna bakılır (Konu #3).",
+      'Bulduğunu belgele: merkez switch\'in üç uplink portunun açıklamasına karşı ucun cihaz adını yaz (ör. "R1 Gi0/0"). Bir sonraki arızada "bu port nereye gidiyor?" sorusu `show interfaces status` ile tek bakışta cevaplanır.',
+      "Ağa başka marka cihaz da eklenecek: merkez switch'te standart LLDP'yi aç (`show lldp` durumu gösterir; LLDP komşusu görmek için karşı ucun da LLDP çalıştırması gerekir). Kat switch'lerinde kullanıcı portları (Fa0/1–2) cihaz bilgisini dışarı sızdırmasın: o portlarda CDP kapalı olmalı."
+    ],
+    view: { w: 880, h: 500 },
+    devices: [
+      { id: "R1", kind: "switch", router: true, model: "ISR4331", mac: "5254.0093.0001", ports: ports("Gi0/0-2"), x: 440, y: 60 },
+      { id: "SW-CORE", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0093.0010", ports: ports("Fa0/1-4", "Gi0/1-3"), x: 440, y: 190 },
+      { id: "SW-KAT1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0093.0011", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 220, y: 320 },
+      { id: "SW-KAT2", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0093.0012", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 660, y: 320 },
+      { id: "ADMIN", kind: "pc", mac: "0050.7966.9300", x: 760, y: 190 },
+      { id: "PC-11", kind: "pc", mac: "0050.7966.9311", x: 140, y: 450 },
+      { id: "PC-12", kind: "pc", mac: "0050.7966.9312", x: 300, y: 450 },
+      { id: "PC-21", kind: "pc", mac: "0050.7966.9321", x: 580, y: 450 },
+      { id: "PC-22", kind: "pc", mac: "0050.7966.9322", x: 740, y: 450 }
+    ],
+    links: [
+      { a: ["R1", "GigabitEthernet0/0"], b: ["SW-CORE", "GigabitEthernet0/1"] },
+      { a: ["SW-CORE", "GigabitEthernet0/2"], b: ["SW-KAT1", "GigabitEthernet0/1"] },
+      { a: ["SW-CORE", "GigabitEthernet0/3"], b: ["SW-KAT2", "GigabitEthernet0/1"] },
+      { a: ["ADMIN", "eth0"], b: ["SW-CORE", "FastEthernet0/1"] },
+      { a: ["PC-11", "eth0"], b: ["SW-KAT1", "FastEthernet0/1"] },
+      { a: ["PC-12", "eth0"], b: ["SW-KAT1", "FastEthernet0/2"] },
+      { a: ["PC-21", "eth0"], b: ["SW-KAT2", "FastEthernet0/1"] },
+      { a: ["PC-22", "eth0"], b: ["SW-KAT2", "FastEthernet0/2"] }
+    ],
+    initialConfig: {
+      R1: `interface g0/0
+ ip address 192.168.10.1 255.255.255.0
+ no shutdown
+exit`,
+      "SW-CORE": `hostname SW-CORE
+interface vlan 1
+ ip address 192.168.10.2 255.255.255.0
+ no shutdown
+exit
+ip default-gateway 192.168.10.1`,
+      "SW-KAT1": `hostname SW-KAT1
+interface vlan 1
+ ip address 192.168.10.3 255.255.255.0
+ no shutdown
+exit
+ip default-gateway 192.168.10.1`,
+      "SW-KAT2": `hostname SW-KAT2
+interface vlan 1
+ ip address 192.168.10.4 255.255.255.0
+ no shutdown
+exit
+ip default-gateway 192.168.10.1`
+    },
+    initialPcs: {
+      ADMIN: { ip: "192.168.10.100", prefix: 24, gw: "192.168.10.1" },
+      "PC-11": { ip: "192.168.10.11", prefix: 24, gw: "192.168.10.1" },
+      "PC-12": { ip: "192.168.10.12", prefix: 24, gw: "192.168.10.1" },
+      "PC-21": { ip: "192.168.10.21", prefix: 24, gw: "192.168.10.1" },
+      "PC-22": { ip: "192.168.10.22", prefix: 24, gw: "192.168.10.1" }
+    },
+    objectives: [
+      {
+        id: "labels",
+        title: "SW-CORE'un üç uplink'inin açıklaması karşı ucun adını taşıyor",
+        hint: "SW-CORE'da interface gi0/1 → description R1 Gi0/0; gi0/2 → description SW-KAT1 Gi0/1; gi0/3 → description SW-KAT2 Gi0/1. Kontrol: show interfaces status (Name sütunu)",
+        check: (q) => {
+          const bad = UPLINKS2.filter(([p, peer]) => !desc(q, "SW-CORE", p).includes(peer));
+          return { ok: !bad.length, detail: bad.length ? "Eksik/yanlış: " + bad.map(([p]) => p.replace("GigabitEthernet", "Gi")).join(", ") : void 0 };
+        }
+      },
+      {
+        id: "lldp",
+        title: "SW-CORE'da LLDP açık",
+        hint: "lldp run (genel yapılandırma). LLDP IOS'ta varsayılan kapalıdır; CDP açıktır. Kontrol: show lldp",
+        check: (q) => q.cfg("SW-CORE").lldpRun === true
+      },
+      {
+        id: "nocdp",
+        title: "Kat switch'lerinin kullanıcı portlarında (Fa0/1–2) CDP kapalı",
+        hint: "interface range fa0/1 - 2 → no cdp enable (her iki kat switch'inde). Uplink'lerde CDP açık kalsın: komşu tablosu ona bağlı.",
+        check: (q) => {
+          const bad = ACCESS3.filter(([d, p]) => q.cfg(d).ifaces[p]?.cdp !== false);
+          return { ok: !bad.length, detail: bad.length ? "Açık: " + bad.map(([d, p]) => d + " " + p.replace("FastEthernet", "Fa")).join(", ") : void 0 };
+        }
+      },
+      {
+        id: "uplinks",
+        title: "Uplink'lerde CDP açık kalıyor (komşu tablosu bozulmadı)",
+        hint: "no cdp run ya da uplink'te no cdp enable komşu keşfini kapatır: cdp run ve interface gi0/x → cdp enable ile geri aç.",
+        check: (q) => q.cfg("SW-CORE").cdpRun !== false && UPLINKS2.every(([p]) => q.cfg("SW-CORE").ifaces[p]?.cdp !== false) && ["SW-KAT1", "SW-KAT2"].every((d) => q.cfg(d).cdpRun !== false && q.cfg(d).ifaces["GigabitEthernet0/1"]?.cdp !== false)
+      }
+    ],
+    solution: {
+      "SW-CORE": `configure terminal
+interface gi0/1
+ description R1 Gi0/0
+interface gi0/2
+ description SW-KAT1 Gi0/1
+interface gi0/3
+ description SW-KAT2 Gi0/1
+exit
+lldp run
+end
+`,
+      "SW-KAT1": `configure terminal
+interface range fa0/1 - 2
+ no cdp enable
+end
+`,
+      "SW-KAT2": `configure terminal
+interface range fa0/1 - 2
+ no cdp enable
+end
+`
+    }
+  };
+  var cdp_discovery_default = lab24;
+
+  // src/labs/physical-check.ts
+  var desc2 = (q, port) => (q.cfg("SW1").ifaces[port]?.description ?? "").toUpperCase();
+  var LABELS = [
+    ["FastEthernet0/1", "PC-1"],
+    ["FastEthernet0/2", "PC-2"],
+    ["GigabitEthernet0/1", "SW2"]
+  ];
+  var lab25 = {
+    id: "fiziksel-kontrol",
+    title: "Port durum tablosunu okumak: iki uç, boş portlar ve etiketleme",
+    summary: "show interfaces status ile disabled ve notconnect portları ayır, iki ucu oku, kullanılmayan portları kapat ve kullanılan portları etiketle.",
+    level: "Başlangıç",
+    tags: ["Şube", "Konu #4", "show interfaces status", "shutdown", "notconnect", "description"],
+    brief: [
+      `SW1'e PC-1 (Fa0/1) ve PC-2 (Fa0/2) bağlı; yazıcı ve PC-3, SW1'e Gi0/1 ile bağlı SW2'de. Hepsi 192.168.10.0/24 ağında. Şikâyet: "PC-2 hiçbir yere ulaşamıyor, yazıcı da yazmıyor."`,
+      'Her teşhis durum tablosuyla başlar: SW1\'de `show interfaces status`. connected, notconnect ve disabled portları ayır. disabled "biri bu portu kapattı" demektir; notconnect "bu uçta sorun yok ama karşıdan sinyal gelmiyor".',
+      "Bir uplink notconnect ise karşı ucu da oku: SW2'ye geç ve aynı tabloya bak. Sorun hangi uçta?",
+      `Düzelttikten sonra şube kuralını uygula: SW1'de kullanılmayan Fa0/3 ve Fa0/4 kapalı dursun; kullanılan üç portun açıklamasına bağlı cihazın adını yaz (ör. "PC-1"). Tablodaki Name sütunu dolar.`,
+      "Son olarak ilk şikâyeti aynı testle dene: PC-2'den PC-1'e ve yazıcıya ping."
+    ],
+    view: { w: 820, h: 460 },
+    devices: [
+      { id: "SW1", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0094.0011", ports: ports("Fa0/1-5", "Gi0/1-2"), x: 260, y: 160 },
+      { id: "SW2", kind: "switch", model: "WS-C2960-24TT-L", mac: "5254.0094.0012", ports: ports("Fa0/1-4", "Gi0/1-2"), x: 580, y: 160 },
+      { id: "PC-1", kind: "pc", mac: "0050.7966.9401", x: 140, y: 360 },
+      { id: "PC-2", kind: "pc", mac: "0050.7966.9402", x: 340, y: 360 },
+      { id: "YAZICI", kind: "pc", mac: "0050.7966.9410", x: 520, y: 360 },
+      { id: "PC-3", kind: "pc", mac: "0050.7966.9403", x: 700, y: 360 }
+    ],
+    links: [
+      { a: ["SW1", "GigabitEthernet0/1"], b: ["SW2", "GigabitEthernet0/1"] },
+      { a: ["PC-1", "eth0"], b: ["SW1", "FastEthernet0/1"] },
+      { a: ["PC-2", "eth0"], b: ["SW1", "FastEthernet0/2"] },
+      { a: ["YAZICI", "eth0"], b: ["SW2", "FastEthernet0/1"] },
+      { a: ["PC-3", "eth0"], b: ["SW2", "FastEthernet0/2"] }
+    ],
+    initialConfig: {
+      SW1: `interface range fa0/1 - 5
+ switchport mode access
+interface fa0/2
+ shutdown
+interface fa0/5
+ shutdown
+exit`,
+      SW2: `interface range fa0/1 - 4
+ switchport mode access
+interface gi0/1
+ shutdown
+exit`
+    },
+    initialPcs: {
+      "PC-1": { ip: "192.168.10.11", prefix: 24, gw: null },
+      "PC-2": { ip: "192.168.10.12", prefix: 24, gw: null },
+      YAZICI: { ip: "192.168.10.50", prefix: 24, gw: null },
+      "PC-3": { ip: "192.168.10.13", prefix: 24, gw: null }
+    },
+    objectives: [
+      {
+        id: "pc2",
+        title: "PC-2 ↔ PC-1 ping",
+        hint: 'SW1 Fa0/2 "disabled": interface fa0/2 → no shutdown. Kontrol: show interfaces status',
+        check: (q) => q.ping("PC-2", "192.168.10.11").ok
+      },
+      {
+        id: "uplink",
+        title: "SW1–SW2 uplink'i up; PC-1 yazıcıya ulaşıyor",
+        hint: "SW1 tarafında Gi0/1 notconnect ama kapatılmamış; SW2'de Gi0/1 disabled. Kapatılan uçta: interface gi0/1 → no shutdown",
+        check: (q) => q.linkUp("SW1", "GigabitEthernet0/1") && q.ping("PC-1", "192.168.10.50").ok
+      },
+      {
+        id: "unused",
+        title: "SW1'de kullanılmayan Fa0/3 ve Fa0/4 kapalı",
+        hint: "interface range fa0/3 - 4 → shutdown. Kullanılmayan açık port, izinsiz bir cihazın ağa girmesine izin verir.",
+        check: (q) => ["FastEthernet0/3", "FastEthernet0/4"].every((p) => q.cfg("SW1").ifaces[p]?.shutdown === true)
+      },
+      {
+        id: "labels",
+        title: "SW1'in kullanılan portları etiketli (PC-1, PC-2, SW2)",
+        hint: "interface fa0/1 → description PC-1; fa0/2 → description PC-2; gi0/1 → description SW2 Gi0/1. Kontrol: show interfaces status (Name sütunu)",
+        check: (q) => {
+          const bad = LABELS.filter(([p, name]) => !desc2(q, p).includes(name));
+          return { ok: !bad.length, detail: bad.length ? "Eksik: " + bad.map(([p]) => p.replace("FastEthernet", "Fa").replace("GigabitEthernet", "Gi")).join(", ") : void 0 };
+        }
+      }
+    ],
+    solution: {
+      SW1: `configure terminal
+interface fa0/2
+ no shutdown
+interface range fa0/3 - 4
+ shutdown
+interface fa0/1
+ description PC-1
+interface fa0/2
+ description PC-2
+interface gi0/1
+ description SW2 Gi0/1
+end
+`,
+      SW2: `configure terminal
+interface gi0/1
+ no shutdown
+end
+`
+    }
+  };
+  var physical_check_default = lab25;
+
   // src/labs/index.ts
-  var LABS = [vlan_basics_default, trunk_troubleshoot_default, trunk_hardening_default, campus_l2_l3_default, stp_load_balancing_default, etherchannel_troubleshoot_default, l3_static_routing_default, mgmt_vlan_default, ospf_single_area_default, routed_access_default, bpdu_guard_default, ospf_troubleshoot_default, ospf_multiarea_default, ospf_area_troubleshoot_default, ospf_advanced_troubleshoot_default, ospf_redistribution_default, sla_static_backup_default, sla_hsrp_track_default, mst_region_default, eigrp_troubleshoot_default];
+  var LABS = [vlan_basics_default, trunk_troubleshoot_default, trunk_hardening_default, campus_l2_l3_default, stp_load_balancing_default, etherchannel_troubleshoot_default, l3_static_routing_default, mgmt_vlan_default, ospf_single_area_default, routed_access_default, bpdu_guard_default, ospf_troubleshoot_default, ospf_multiarea_default, ospf_area_troubleshoot_default, ospf_advanced_troubleshoot_default, ospf_redistribution_default, sla_static_backup_default, sla_hsrp_track_default, mst_region_default, eigrp_troubleshoot_default, physical_check_default, roas_setup_default, dhcp_setup_default, dns_setup_default, cdp_discovery_default];
 
   // src/labs/hint-tiers.ts
   var HINT_TIERS = {
@@ -11973,6 +12544,92 @@ write memory`
         "PC1’den PC4’e paket hangi atlamalardan geçiyor, nerede duruyor?",
         "Gidiş ve dönüş için iki uçta da rota gerekir; üç bağlantı düzelince ikisi de olur."
       ]
+    },
+    "fiziksel-kontrol": {
+      pc2: [
+        "PC-2’nin bağlı olduğu port durum tablosunda hangi durumda? connected mi, başka bir şey mi?",
+        '"disabled" portun yönetimsel olarak kapatıldığını gösterir: kablo sağlam olsa da port trafik taşımaz.'
+      ],
+      uplink: [
+        "İki switch arasındaki bağlantının iki ucunu ayrı ayrı oku: iki uçta da aynı durum mu görünüyor?",
+        'Bir uç kapatılınca karşı uç sinyal alamaz ve "notconnect" görünür; düzeltme kapatılan uçta yapılır.'
+      ],
+      unused: [
+        "Kablo takılı olmayan portlar hangi durumda bekliyor? Açık bekleyen boş port var mı?",
+        "Kullanılmayan portu kapatmak, izinsiz bir cihazın ağa takılmasına karşı en basit önlemdir."
+      ],
+      labels: [
+        "Durum tablosundaki Name sütunu dolu mu? Bir porta bakınca neye bağlı olduğunu anlayabiliyor musun?",
+        'Port açıklaması yalnız belgedir, trafiği etkilemez; ama bir sonraki arızada "bu port kimin?" sorusunu tek bakışta cevaplar.'
+      ]
+    },
+    "roas-kurulum": {
+      trunk: [
+        "Switch’in router’a giden portu kaç VLAN taşıyor? Router her iki VLAN’ın trafiğini görebiliyor mu?",
+        "Tek kablodan birden fazla VLAN taşımak için çerçeveler 802.1Q etiketiyle gider; bu bağlantı trunk olmalı ve iki VLAN’a izin vermeli."
+      ],
+      sub10: [
+        "Router’da VLAN 10’un gateway adresini taşıyan bir arayüz var mı?",
+        "Router-on-a-stick’te her VLAN için fiziksel arayüzün altında bir alt arayüz açılır; alt arayüz önce hangi VLAN etiketini dinleyeceğini öğrenir, sonra adresini alır."
+      ],
+      sub20: [
+        "VLAN 20 için de aynı yapı var mı? Gateway adresi PC-02’nin ayarıyla aynı mı?",
+        "Her VLAN ayrı bir IP ağıdır; alt arayüzün adresi o VLAN’daki PC’lerin gateway’i olur."
+      ],
+      gw: [
+        "PC’ler kendi gateway’ine ulaşabiliyor mu? Router’ın fiziksel arayüzü hangi durumda?",
+        "Alt arayüzler fiziksel arayüzün üstünde yaşar: fiziksel arayüz kapalıysa hepsi kapalıdır. Fiziksel arayüz adres almaz."
+      ],
+      inter: [
+        "PC-01’den PC-02’ye giden paket hangi adımlardan geçiyor? İlk adım gateway mi?",
+        "Farklı VLAN’daki iki uç ancak router üzerinden konuşur: paket trunk’tan yukarı çıkar, router’da etiketi değişir, aynı trunk’tan aşağı iner."
+      ]
+    },
+    "dhcp-kurulum": {
+      exclude: [
+        "Gateway ve yazıcıların sabit adresleri havuzdan dağıtılabilir mi? Bunu önleyen bir ayar var mı?",
+        "Dışlanan aralık havuzun dağıtmayacağı adreslerdir; havuz açılmadan önce yazılırsa sabit adresler hiç dağıtılmaz."
+      ],
+      pool: [
+        "PC-11 adres istediğinde ne cevap alıyor? 169.254 ile başlayan adres ne anlatır?",
+        "Havuz dört şey verir: hangi ağ, hangi gateway, hangi DNS ve dışlananlardan sonraki ilk boş adres."
+      ],
+      relay: [
+        "PC-21 adres istiyor ama DHCP sunucusu başka bir ağda. İsteği oraya kim taşıyabilir?",
+        "DHCP isteği yayındır ve router’da durur; router’ın o kattaki arayüzü isteği belirli bir sunucuya tek yönlü iletirse (relay) sunucu o katın ağı için adres verir."
+      ]
+    },
+    "dns-kurulum": {
+      kat1: [
+        "PC-11’in DHCP’den aldığı DNS sunucusu adresi, sunucu odasındaki DNS sunucusunun adresiyle aynı mı?",
+        "İstemci DNS sunucusunu DHCP’den öğrenir; düzeltme istemcide değil, adresi dağıtan havuzda yapılır. İstemci yeni değeri ancak yeniden adres isteyince alır."
+      ],
+      kat2: [
+        "PC-21’in ad sorgusundaki hata 1. kattakinden farklı mı? Hiç DNS sunucusu almış mı?",
+        '"timed out" sorulan sunucunun cevap vermediğini, "Default servers are not available" ise sorulacak sunucu olmadığını anlatır.'
+      ],
+      server: [
+        "Ad çözülmediğinde aynı sunucuya adresle ulaşabiliyor musun?",
+        "Ping çalışıp ad çözülmüyorsa sorun bağlantıda değil, isim çözümlemededir: iki katmanı ayrı ayrı sına."
+      ]
+    },
+    "cdp-kesif": {
+      labels: [
+        "Merkez switch’in uplink portlarından hangisi nereye gidiyor? Durum tablosunda bunu söyleyen bir sütun var mı?",
+        "Komşu tablosu iki porta bakar: soldaki senin portun, sağdaki komşunun portu. Bulduğunu port açıklamasına yazmak çizimi cihazın içine taşır."
+      ],
+      lldp: [
+        "Merkez switch başka marka bir cihazla komşuluk kurabilecek durumda mı?",
+        "CDP Cisco’ya özeldir ve varsayılan açıktır; standart LLDP ise IOS’ta varsayılan kapalıdır ve ayrıca açılır."
+      ],
+      nocdp: [
+        "Kat switch’lerinin kullanıcı portları cihaz bilgisini dışarı duyuruyor mu?",
+        "Komşu keşfi yalnız ağ cihazları arasında gereklidir; kullanıcı portunda kapatmak cihaz modelini ve adresini sızdırmayı önler."
+      ],
+      uplinks: [
+        "Uplink’lerde komşular hâlâ görünüyor mu?",
+        "Keşfi cihaz genelinde ya da uplink’te kapatmak, ağı çizdiğin komşu tablosunu da yok eder; yalnız kullanıcı portlarında kapat."
+      ]
     }
   };
 
@@ -12318,9 +12975,9 @@ write memory`
         if (!name.includes(".")) continue;
         const dot = name.indexOf(".");
         const physName = name.slice(0, dot);
-        const sub = name.slice(dot + 1);
+        const sub2 = name.slice(dot + 1);
         const parent = canonPort(physName);
-        if (!parent || portMap[parent] === void 0 || !/^\d+$/.test(sub) || Number(sub) < 1 || Number(sub) > 4294967295) {
+        if (!parent || portMap[parent] === void 0 || !/^\d+$/.test(sub2) || Number(sub2) < 1 || Number(sub2) > 4294967295) {
           reject(id, name, "Alt arayüzün fiziksel portu cihazda yok ya da numarası geçersiz");
           continue;
         }
@@ -12337,7 +12994,7 @@ write memory`
           else if (v === null) reject(id, `${name}.vlan`, "Geçersiz 802.1Q VLAN kimliği");
           else vlan = v;
         }
-        const key = `${parent}.${Number(sub)}`;
+        const key = `${parent}.${Number(sub2)}`;
         const subs = cfg.subifs ?? (cfg.subifs = {});
         if (vlan !== null && Object.values(subs).some((x) => x.parent === parent && x.vlan === vlan)) {
           reject(id, name, `Aynı fiziksel portta VLAN ${vlan} iki alt arayüzde`);

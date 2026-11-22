@@ -127,6 +127,8 @@ Gi0/1       10,20                        ← router'a giden trunk iki VLAN'ı da
 
 ## 4. Yönlendirmeli lab
 
+> **Simülatörde:** bu labın hazır topolojisi ve otomatik kontrolü Simülatör'deki **roas-kurulum** labıdır (dersin Pratik adımı). Simülatör labı bu adımların özüdür; ayrıntılar labın görev metnindedir.
+
 Topoloji: R1 G0/0 ─ SW1 Gi0/1; SW1'de PC-01 ve PC-03 VLAN 10, PC-02 VLAN 20.
 
 1. **Switch tarafı:**
