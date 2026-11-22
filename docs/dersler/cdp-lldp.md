@@ -151,6 +151,8 @@ Okuması CDP'yle aynıdır. Switch burada `B` (Bridge) olarak görünür. Komşu
 
 ## 4. Yönlendirmeli lab
 
+> **Simülatörde:** bu labın hazır topolojisi ve otomatik kontrolü Simülatör'deki **cdp-kesif** labıdır (dersin Pratik adımı). Simülatör labı bu adımların özüdür; ayrıntılar labın görev metnindedir.
+
 Topoloji: R1, merkez switch SW-CORE, iki kat switch'i (SW-KAT1, SW-KAT2), her katta iki PC ve SW-CORE'a bağlı bir yönetim PC'si (ADMIN). Sana yalnız R1'in adı verildi; ağın geri kalanını CDP ile çıkaracaksın.
 
 | Cihaz | Yönetim adresi |

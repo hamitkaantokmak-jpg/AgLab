@@ -490,4 +490,90 @@ export const HINT_TIERS: Record<string, Record<string, [string, string]>> = {
       'Gidiş ve dönüş için iki uçta da rota gerekir; üç bağlantı düzelince ikisi de olur.',
     ],
   },
+  'fiziksel-kontrol': {
+    pc2: [
+      'PC-2’nin bağlı olduğu port durum tablosunda hangi durumda? connected mi, başka bir şey mi?',
+      '"disabled" portun yönetimsel olarak kapatıldığını gösterir: kablo sağlam olsa da port trafik taşımaz.',
+    ],
+    uplink: [
+      'İki switch arasındaki bağlantının iki ucunu ayrı ayrı oku: iki uçta da aynı durum mu görünüyor?',
+      'Bir uç kapatılınca karşı uç sinyal alamaz ve "notconnect" görünür; düzeltme kapatılan uçta yapılır.',
+    ],
+    unused: [
+      'Kablo takılı olmayan portlar hangi durumda bekliyor? Açık bekleyen boş port var mı?',
+      'Kullanılmayan portu kapatmak, izinsiz bir cihazın ağa takılmasına karşı en basit önlemdir.',
+    ],
+    labels: [
+      'Durum tablosundaki Name sütunu dolu mu? Bir porta bakınca neye bağlı olduğunu anlayabiliyor musun?',
+      'Port açıklaması yalnız belgedir, trafiği etkilemez; ama bir sonraki arızada "bu port kimin?" sorusunu tek bakışta cevaplar.',
+    ],
+  },
+  'roas-kurulum': {
+    trunk: [
+      'Switch’in router’a giden portu kaç VLAN taşıyor? Router her iki VLAN’ın trafiğini görebiliyor mu?',
+      'Tek kablodan birden fazla VLAN taşımak için çerçeveler 802.1Q etiketiyle gider; bu bağlantı trunk olmalı ve iki VLAN’a izin vermeli.',
+    ],
+    sub10: [
+      'Router’da VLAN 10’un gateway adresini taşıyan bir arayüz var mı?',
+      'Router-on-a-stick’te her VLAN için fiziksel arayüzün altında bir alt arayüz açılır; alt arayüz önce hangi VLAN etiketini dinleyeceğini öğrenir, sonra adresini alır.',
+    ],
+    sub20: [
+      'VLAN 20 için de aynı yapı var mı? Gateway adresi PC-02’nin ayarıyla aynı mı?',
+      'Her VLAN ayrı bir IP ağıdır; alt arayüzün adresi o VLAN’daki PC’lerin gateway’i olur.',
+    ],
+    gw: [
+      'PC’ler kendi gateway’ine ulaşabiliyor mu? Router’ın fiziksel arayüzü hangi durumda?',
+      'Alt arayüzler fiziksel arayüzün üstünde yaşar: fiziksel arayüz kapalıysa hepsi kapalıdır. Fiziksel arayüz adres almaz.',
+    ],
+    inter: [
+      'PC-01’den PC-02’ye giden paket hangi adımlardan geçiyor? İlk adım gateway mi?',
+      'Farklı VLAN’daki iki uç ancak router üzerinden konuşur: paket trunk’tan yukarı çıkar, router’da etiketi değişir, aynı trunk’tan aşağı iner.',
+    ],
+  },
+  'dhcp-kurulum': {
+    exclude: [
+      'Gateway ve yazıcıların sabit adresleri havuzdan dağıtılabilir mi? Bunu önleyen bir ayar var mı?',
+      'Dışlanan aralık havuzun dağıtmayacağı adreslerdir; havuz açılmadan önce yazılırsa sabit adresler hiç dağıtılmaz.',
+    ],
+    pool: [
+      'PC-11 adres istediğinde ne cevap alıyor? 169.254 ile başlayan adres ne anlatır?',
+      'Havuz dört şey verir: hangi ağ, hangi gateway, hangi DNS ve dışlananlardan sonraki ilk boş adres.',
+    ],
+    relay: [
+      'PC-21 adres istiyor ama DHCP sunucusu başka bir ağda. İsteği oraya kim taşıyabilir?',
+      'DHCP isteği yayındır ve router’da durur; router’ın o kattaki arayüzü isteği belirli bir sunucuya tek yönlü iletirse (relay) sunucu o katın ağı için adres verir.',
+    ],
+  },
+  'dns-kurulum': {
+    kat1: [
+      'PC-11’in DHCP’den aldığı DNS sunucusu adresi, sunucu odasındaki DNS sunucusunun adresiyle aynı mı?',
+      'İstemci DNS sunucusunu DHCP’den öğrenir; düzeltme istemcide değil, adresi dağıtan havuzda yapılır. İstemci yeni değeri ancak yeniden adres isteyince alır.',
+    ],
+    kat2: [
+      'PC-21’in ad sorgusundaki hata 1. kattakinden farklı mı? Hiç DNS sunucusu almış mı?',
+      '"timed out" sorulan sunucunun cevap vermediğini, "Default servers are not available" ise sorulacak sunucu olmadığını anlatır.',
+    ],
+    server: [
+      'Ad çözülmediğinde aynı sunucuya adresle ulaşabiliyor musun?',
+      'Ping çalışıp ad çözülmüyorsa sorun bağlantıda değil, isim çözümlemededir: iki katmanı ayrı ayrı sına.',
+    ],
+  },
+  'cdp-kesif': {
+    labels: [
+      'Merkez switch’in uplink portlarından hangisi nereye gidiyor? Durum tablosunda bunu söyleyen bir sütun var mı?',
+      'Komşu tablosu iki porta bakar: soldaki senin portun, sağdaki komşunun portu. Bulduğunu port açıklamasına yazmak çizimi cihazın içine taşır.',
+    ],
+    lldp: [
+      'Merkez switch başka marka bir cihazla komşuluk kurabilecek durumda mı?',
+      'CDP Cisco’ya özeldir ve varsayılan açıktır; standart LLDP ise IOS’ta varsayılan kapalıdır ve ayrıca açılır.',
+    ],
+    nocdp: [
+      'Kat switch’lerinin kullanıcı portları cihaz bilgisini dışarı duyuruyor mu?',
+      'Komşu keşfi yalnız ağ cihazları arasında gereklidir; kullanıcı portunda kapatmak cihaz modelini ve adresini sızdırmayı önler.',
+    ],
+    uplinks: [
+      'Uplink’lerde komşular hâlâ görünüyor mu?',
+      'Keşfi cihaz genelinde ya da uplink’te kapatmak, ağı çizdiğin komşu tablosunu da yok eder; yalnız kullanıcı portlarında kapat.',
+    ],
+  },
 }

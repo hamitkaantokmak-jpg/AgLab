@@ -130,6 +130,8 @@ Windows'ta `ipconfig /all` içinde "DNS Servers" satırı. Etkilenen bilgisayar�
 
 ## 4. Yönlendirmeli lab
 
+> **Simülatörde:** bu labın hazır topolojisi ve otomatik kontrolü Simülatör'deki **dns-kurulum** labıdır (dersin Pratik adımı). Simülatör labı bu adımların özüdür; ayrıntılar labın görev metnindedir.
+
 Topoloji Konu #9'un bitmiş ağıdır: R1, iki kat, sunucu odasında DHCP ve DNS sunucusu SRV (192.168.100.10) ve ERP sunucusu (192.168.100.20). AğLab'ın DNS sunucusu, ağdaki her cihazı kendi adıyla tanır.
 
 1. **Ayarı oku.** PC-11'de `show ip`: DNS 192.168.100.10. *Neden:* PC-11 bu adresi DHCP'den aldı; havuzda `dns-server` böyle yazılı.

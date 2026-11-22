@@ -116,12 +116,14 @@ FastEthernet0/2 is down, line protocol is down (notconnect)
 
 ## 4. Yönlendirmeli lab
 
+> **Simülatörde:** bu labın hazır topolojisi ve otomatik kontrolü Simülatör'deki **fiziksel-kontrol** labıdır (dersin Pratik adımı). Simülatör labı bu adımların özüdür; ayrıntılar labın görev metnindedir.
+
 Topoloji: SW1'e PC-1 (Fa0/1) ve PC-2 (Fa0/2) bağlı. SW2 (yazıcı ve PC-3) SW1'e Gi0/1 ile bağlı. Fa0/3–Fa0/5 boş; Fa0/5 kapalı.
 
 1. **Durum tablosu.** SW1'de `show interfaces status`. connected, notconnect ve disabled portları ayır. *Neden:* Her teşhis bu tabloyla başlar.
 2. **Port kapat.** `interface fa0/2` → `shutdown`. Tabloda Fa0/2 **disabled**. PC-2'den `ping 192.168.10.11`: başarısız. PC-2'de bağlantı yok (gerçek cihazda kartın ışığı söner).
 3. **İki ucu oku.** SW1'de `interface gi0/1` → `shutdown`. SW1'de Gi0/1 **disabled**; SW2'de `show interfaces status`: Gi0/1 **notconnect**. *Neden:* Bir uç kapatılınca karşı uç bağlantıyı kaybeder ama nedenini bilmez. İki portu da `no shutdown` ile aç.
-4. **Belgele (okuma).** Gerçek bir switch'te `interface fa0/1` → `description PC-1` yazınca tablodaki Name sütunu dolar; bir sonraki arızada "bu port kimin?" sorusu tek bakışta cevaplanır. AğLab'da açıklama komutu çalışır ama kayda geçmez; bu adımı okuma olarak geç.
+4. **Belgele.** `interface fa0/1` → `description PC-1` yazınca `show interfaces status` tablosundaki Name sütunu dolar; bir sonraki arızada "bu port kimin?" sorusu tek bakışta cevaplanır.
 5. **Cihazı kapat.** SW2'yi seç ve `device power off`. SW1'de Gi0/1 **notconnect**; SW2'nin yönetim adresine (192.168.10.3) ping yok. `device power on` ile aç. *Neden:* Karşı cihazın kapalı olması da bu uçta notconnect olarak görünür; ayırmak için karşı cihaza başka yoldan (konsol, yönetim adresi) bakılır.
 6. **Ayrıntılı çıktı.** `show interfaces fa0/1`: ilk satır ve sayaçlar.
 
