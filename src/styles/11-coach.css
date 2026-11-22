@@ -1,0 +1,126 @@
+/* Eğitici katman (src/app/coach.js): balon, tur, kip satırı, 💡 menüsü. Yalnız token renkleri. */
+.ag-coach {
+  position: fixed;
+  z-index: 2147483000;
+  width: min(340px, calc(100vw - 16px));
+  padding: 12px 14px 10px;
+  background: var(--panel, #fff);
+  color: var(--text, #1f2430);
+  border: 1px solid var(--accent, #3b6cf6);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.22);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.ag-coach[hidden] {
+  display: none;
+}
+.ag-coach > b {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent-text, #2d55d6);
+}
+.ag-coach-body p {
+  margin: 0 0 6px;
+}
+.ag-coach-body code {
+  font-weight: 600;
+}
+.ag-coach-arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: inherit;
+  border: inherit;
+  transform: translateX(-50%) rotate(45deg);
+}
+.ag-coach[data-side='below'] .ag-coach-arrow {
+  top: -7px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.ag-coach[data-side='above'] .ag-coach-arrow {
+  bottom: -7px;
+  border-left: 0;
+  border-top: 0;
+}
+.ag-coach[data-side='none'] .ag-coach-arrow {
+  display: none;
+}
+.ag-coach-foot {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.ag-coach-count {
+  margin-right: auto;
+  color: var(--muted, #59606c);
+  font-size: 12px;
+}
+.ag-coach .ag-coach-btn {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line, #dde1e6) !important;
+  background: var(--panel2, #f1f3f6) !important;
+  color: var(--text, #1f2430) !important;
+  cursor: pointer;
+  font: inherit;
+}
+.ag-coach .ag-coach-btn.primary {
+  background: var(--accent, #3b6cf6) !important;
+  border-color: var(--accent, #3b6cf6) !important;
+  color: #fff !important;
+}
+.ag-coach-mode {
+  margin: 4px 0 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--accent-soft, #e5ecff);
+  color: var(--text, #1f2430);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.ag-coach-mode[hidden] {
+  display: none;
+}
+.ag-coach-mode kbd {
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--accent-text, #2d55d6);
+}
+.ag-coach-menu {
+  position: relative;
+}
+.ag-coach-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 2147482000;
+  display: grid;
+  min-width: 230px;
+  padding: 6px;
+  background: var(--panel, #fff);
+  border: 1px solid var(--line, #dde1e6);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+}
+.ag-coach-menu-list[hidden] {
+  display: none;
+}
+.ag-coach-menu-list button {
+  text-align: left;
+  padding: 7px 10px;
+  border: 0 !important;
+  border-radius: 6px;
+  background: transparent !important;
+  color: var(--text, #1f2430) !important;
+  font: inherit;
+  cursor: pointer;
+}
+.ag-coach-menu-list button:hover,
+.ag-coach-menu-list button:focus-visible {
+  background: var(--accent-soft, #e5ecff) !important;
+}
