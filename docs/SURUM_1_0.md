@@ -81,10 +81,31 @@ dolaşıldı. Yanıltıcı ya da engelleyici bulunanlar 1.0'dan önce düzeltild
   kullanıcı kipinde açılıyor. Lab ve senaryo açılınca terminal kısa bir "ilk adımlar" satırı
   yazar. Derse ayrı bir CLI bölümü eklemek açık iş (aşağıda).
 
+## Eğitici katman (ipuçları)
+
+Uygulama ilk kez kullanan için kendini anlatır (`src/app/coach.js`, `test_aglab_coach.py`):
+
+- **İlk açılış turu** (4 adım): bölümler, Öğren → Test → Pratik, Simülatör, ipucu ayarı.
+- **Simülatörde ilk görev turu** (4 adım): görev ve hedefler, ağ çizimi, terminal, İpucu ve
+  Kontrol et.
+- **Bağlamsal ipuçları**, ilk karşılaşmada bir kez: ilk Kontrol et, ilk İpucu,
+  `% Invalid input` / `% Incomplete command` / `% Ambiguous command`, 169.254 adresi,
+  başarısız ping, bulunamayan ad.
+- **Terminal kip satırı**: komut satırının altında; istemden kipi (kullanıcı, ayrıcalıklı, genel
+  ayar, arayüz, VLAN, DHCP havuzu…, PC/sunucu) ve oradan nasıl çıkılacağını söyler.
+- **Komut açıklaması**: 57 IOS ve 10 PC komutu ilk kez yazılınca tek cümleyle açıklanır;
+  kısaltmalar tanınır (`sh ip int br`, `conf t`, `no shut`, `do …`).
+
+Her balon "Anladım" (ya da Esc) ile kapanır ve bir daha çıkmaz. Üst çubuktaki 💡 menüsü
+ipuçlarını kapatır/açar, turu yeniden başlatır ve gösterilenleri sıfırlar. Durum o tarayıcıda
+`aglab-coach-v1` kaydında tutulur. Otomasyon altında (Playwright) katman kapalıdır; testler
+`aglab-coach-force` ile açar.
+
 ## Bilinen gözlemler (1.0'ı engellemez)
 
-- Seviye 1'de CLI temelleri bir ders parçası olarak yok (kipler, `?`, Tab, `do show`, `end`);
-  terminaldeki ilk adımlar satırı geçici çözüm.
+- Seviye 1'de CLI temelleri bir ders parçası olarak yok (kipler, `?`, Tab, `do show`, `end`).
+  Terminaldeki ilk adımlar satırı, kip satırı ve komut açıklamaları bunu pratikte karşılıyor;
+  ayrı bir ders yine de düşünülebilir.
 - Simülatör ekranı 1366×768 dizüstünde kalabalık: görev, tuval, inceleme, terminal ve zaman
   çizelgesi aynı anda açık; görev açıklaması aşağıda kalıyor (geniş çalışma alanı Alt+Shift+F
   yan şeritleri daraltır).
