@@ -150,6 +150,31 @@ class FlowTasksTests(unittest.TestCase):
         expect(p.locator("#sfSheet .sf-tasks")).to_have_count(0)
         expect(p.locator("#sfSheet")).to_contain_text("simülatör görevi henüz yok")
 
+    def test_reading_label_matches_simulator_tasks(self):
+        """ "Okuma" etiketi yalnız simülatör görevi olmayan derste; labı olan okuma dersi
+        "okuma + simülatör labı" etiketini taşır (MUFREDAT "Dürüstlük" ilkesi iki yönlü)."""
+        p = self.page
+        p.click('[data-area="lab"]')
+        expect(p.locator("#agSimTasks")).to_be_visible()
+        counts = p.evaluate(
+            "Object.fromEntries(%s.map(id => [id, aglabSimWorkspace.tasksFor(id).length]))"
+            % json.dumps([c["id"] for c in COURSES])
+        )
+        for c in COURSES:
+            with self.subTest(c["id"]):
+                if c.get("kind") == "okuma":
+                    self.assertEqual(counts[c["id"]], 0, "görevi olan ders 'okuma' olamaz")
+                if c.get("kind") == "okuma-lab":
+                    self.assertGreater(counts[c["id"]], 0, "'okuma-lab' dersinin görevi olmalı")
+        p.click('[data-area="learn"]')
+        eigrp = p.locator("#sfList button", has_text="EIGRP").first
+        expect(eigrp.locator("small")).to_contain_text("okuma + simülatör labı")
+        eigrp.evaluate("b => b.click()")
+        expect(p.locator("#sfSheet > small").first).to_contain_text("OKUMA DERSİ + SİMÜLATÖR LABI")
+        bgp = p.locator("#sfList button", has_text="BGP").first
+        expect(bgp.locator("small")).to_contain_text("okuma")
+        expect(bgp.locator("small")).not_to_contain_text("simülatör labı")
+
 
 if __name__ == "__main__":
     unittest.main()

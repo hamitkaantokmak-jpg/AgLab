@@ -1,6 +1,6 @@
 # AğLab Konu #31: OSPF çok alan: LSA türleri, alan türleri ve özetleme
 
-> Uygulamadaki `ospfadv` dersi bu belgeyle uyumludur. **Okuma dersi (Seviye 3, CCNP):** Labber tek alan OSPF'i çalıştırır; çok alan, LSA türleri ve alan türleri Gerçek Lab (FRR) ya da motor desteği bekliyor.
+> Uygulamadaki `ospfadv` dersi bu belgeyle uyumludur. **Okuma dersi + Simülatör labı (Seviye 3, CCNP):** Labber çok alanlı OSPF'i çalıştırır (ABR/ASBR, varsayılan rota, stub ve totally stubby): Simülatör'deki **ospf-cok-alan** ve **ospf-alan-ariza** labları. LSA veritabanı, özetleme, NSSA ve virtual-link Labber'da yok; Gerçek Lab (FRR) bunları çalıştırır.
 > Ön koşul: OSPFv2 tek alan (Konu #15), wildcard ve özetleme mantığı (Konu #2, #19). Şemalar: `docs/dersler/gorseller/ospf-ileri.py`.
 
 Bu konu bittiğinde öğrenci OSPF'i alanlara bölmenin nedenini açıklar; ABR ve ASBR'yi topolojide gösterir. LSA tip 1, 2, 3, 4, 5 ve 7'nin kim tarafından üretildiğini ve nereye yayıldığını söyler; rota tablosundaki O, O IA, O E1/E2 ve O N1/N2 kodlarını okur. Stub, totally stubby ve NSSA alanlarının neyi engellediğini karşılaştırır; ABR'de özet yapar, omurgaya bağlı olmayan alan sorununu tanır. Süre yaklaşık 60 dakika.

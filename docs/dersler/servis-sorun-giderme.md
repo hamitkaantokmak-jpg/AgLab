@@ -1,6 +1,6 @@
 # AğLab Konu #48: Altyapı servisleri sorun giderme: DHCP, NTP, SNMP, Syslog ve IP SLA
 
-> Uygulamadaki `svctshoot` dersi bu belgeyle uyumludur. **Okuma dersi (Seviye 3, CCNP):** Labber DHCP sunucusunu ve relay'i çalıştırır (Konu #9); NTP, SNMP, Syslog ve IP SLA motorda yok, kâğıt üstü lab ve çıktı okumayla işlenir.
+> Uygulamadaki `svctshoot` dersi bu belgeyle uyumludur. **Okuma dersi + Simülatör labı (Seviye 3, CCNP):** Labber DHCP sunucusunu ve relay'i (Konu #9), IP SLA ve track'i çalıştırır: Simülatör'deki **statik-yedek** labı. NTP, SNMP ve Syslog motorda yok, kâğıt üstü lab ve çıktı okumayla işlenir.
 > Ön koşul: DHCP (Konu #9), ağ servisleri: NTP, Syslog, SNMP (Konu #23), ağ izleme ve IP SLA (Konu #37), L2 güvenlik: DHCP snooping (Konu #21). Şemalar: `docs/dersler/gorseller/servis-sorun-giderme.py`.
 
 Bu konu bittiğinde öğrenci "ağ çalışıyor ama servis çalışmıyor" türündeki arızaları servis servis ayırır. DHCP'de DORA'nın hangi adımda koptuğunu bulur: istemci, relay, snooping, havuz ya da sunucu. NTP'de "unsynchronized" bir saatin neden senkronize olmadığını (erişim, stratum, kimlik doğrulama) kanıtla gösterir. SNMPv3'te kullanıcı, grup ve görünüm zincirini, Syslog'da seviye ve kaynak arayüzü kontrol eder. IP SLA ve track ile statik rotanın yedeklenmesini kurar ve "yedek hat devreye girmedi" arızasını çözer. Süre yaklaşık 70 dakika.

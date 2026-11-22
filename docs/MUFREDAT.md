@@ -88,17 +88,17 @@ CCNP Enterprise, ENCOR (350-401) ve bir uzmanlık sınavından oluşur; burada u
 
 | # | Konu | Pratik | Motor / Gerçek Lab durumu | Öncelik |
 | --- | --- | --- | --- | --- |
-| 27 | Kampüs ve kurumsal tasarım (hiyerarşik model, yüksek erişilebilirlik) | Okuma | —. Okuma dersi var (`docs/dersler/kampus-tasarim.md`, `design`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 27 | Kampüs ve kurumsal tasarım (hiyerarşik model, yüksek erişilebilirlik) | Okuma + motor | Tasarım kararları okuma; routed erişim bloğu Labber'da. Okuma dersi (`docs/dersler/kampus-tasarim.md`, `design`; 7 şema, 4 kâğıt üstü vaka) ve Simülatör labı **routed-erisim-blogu** var | P2 |
 | 28 | L2/L3 iletim mekanizmaları (CEF, FIB, adjacency) | Okuma + motor (Paket Dedektifi) | Kısmi. Okuma dersi var (`docs/dersler/iletim-mekanizmalari.md`, `forwarding`; 7 şema, 4 kâğıt üstü vaka) | P2 |
-| 29 | İleri STP: MST, RSTP ayarı | Motor | Yok. Okuma dersi var (`docs/dersler/mst.md`, `mst`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 29 | İleri STP: MST, RSTP ayarı | Motor | MST Labber'da (#105: bölge, CIST/MSTI kökleri, bölge sınırı); Loop Guard ve UDLD yok. Okuma dersi (`docs/dersler/mst.md`, `mst`; 7 şema, 4 kâğıt üstü vaka) ve Simülatör labı **mst-bolge** (#106) var | P2 |
 | 30 | İleri EtherChannel sorun giderme | Motor | 14. konuya bağlı. Ayrı ders yok: #14 (bayraklar, üye tutarlılığı) ve #29 kapsar | P2 |
-| 31 | OSPF çok alan, LSA ve alan türleri | Gerçek Lab + motor | FRR destekler; motor yok. Okuma dersi var (`docs/dersler/ospf-ileri.md`, `ospfadv`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 31 | OSPF çok alan, LSA ve alan türleri | Gerçek Lab + motor | Çok alan, ABR/ASBR, varsayılan rota, stub ve totally stubby Labber'da (#102); LSA veritabanı, özetleme, NSSA ve virtual-link yok (FRR destekler). Okuma dersi (`docs/dersler/ospf-ileri.md`, `ospfadv`; 7 şema, 4 kâğıt üstü vaka) ve Simülatör labları **ospf-cok-alan**, **ospf-alan-ariza** var | P2 |
 | 32 | eBGP ve yol seçimi | Gerçek Lab | FRR destekler; motorda basit eBGP var. Okuma dersi var (`docs/dersler/bgp.md`, `bgp`; 7 şema, 4 kâğıt üstü vaka) | P2 |
 | 33 | VRF ve GRE tünelleri | Gerçek Lab | FRR/Linux destekler; motor yok. Okuma dersi var (`docs/dersler/vrf-gre.md`, `vrfgre`; 7 şema, 4 kâğıt üstü vaka) | P2 |
 | 34 | IPsec site-to-site | Okuma | Yok. Okuma dersi var (`docs/dersler/ipsec.md`, `ipsec`; 7 şema, 4 kâğıt üstü vaka) | P3 |
 | 35 | VXLAN, LISP, SD-Access, SD-WAN mimarileri | Okuma | Kapsam dışı. Okuma dersi var (`docs/dersler/sdwan-sda.md`, `sdwan`; 7 şema, 4 kâğıt üstü vaka) | P3 |
 | 36 | QoS uygulaması (sınıflandırma, işaretleme, kuyruk) | Okuma | Yok. Okuma dersi var (`docs/dersler/qos.md`, `qos`; 7 şema, 4 kâğıt üstü vaka) | P3 |
-| 37 | Ağ izleme: IP SLA, SPAN, NetFlow, Syslog, debug | Okuma + motor | Paket Dedektifi kısmen karşılar. Okuma dersi var (`docs/dersler/ag-izleme.md`, `telemetry`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 37 | Ağ izleme: IP SLA, SPAN, NetFlow, Syslog, debug | Okuma + motor | IP SLA (icmp-echo) ve track Labber'da (#103); Paket Dedektifi SPAN'ı kısmen karşılar; NetFlow yok. Okuma dersi (`docs/dersler/ag-izleme.md`, `telemetry`; 7 şema, 4 kâğıt üstü vaka) ve Simülatör labı **hsrp-sla-track** (#104) var | P2 |
 | 38 | Altyapı güvenliği: CoPP, 802.1X, cihaz erişim ACL'leri | Okuma + motor | ACL'ye bağlı. Okuma dersi var (`docs/dersler/altyapi-guvenligi.md`, `dot1x`; 7 şema, 4 kâğıt üstü vaka) | P3 |
 | 39 | Otomasyon: Python, NETCONF/RESTCONF, YANG, REST API | Gerçek Lab (sandbox) | Yok; ileride Automation Studio. Okuma dersi var (`docs/dersler/programlanabilirlik.md`, `programmability`; 7 şema, 4 kâğıt üstü vaka) | P3 |
 | 40 | Kurumsal kablosuz: RF, AP katılımı, dolaşım | Okuma | Kapsam dışı. Okuma dersi var (`docs/dersler/kablosuz-ileri.md`, `wlanadv`; 7 şema, 5 kâğıt üstü vaka) | P3 |
@@ -110,13 +110,13 @@ Kaynak karşılaştırmasıyla eklenen: **#49 Multicast** (IGMP, PIM, RP kavraml
 | # | Konu | Pratik | Motor / Gerçek Lab durumu | Öncelik |
 | --- | --- | --- | --- | --- |
 | 41 | EIGRP (named mode, metrik, stub; ENCOR v1.0'da da var) | Motor + okuma | Klasik EIGRP Labber'da (#107). Okuma dersi (`docs/dersler/eigrp.md`, `eigrp`) ve Simülatör labı **eigrp-ariza** var | P3 |
-| 42 | İleri OSPF sorun giderme | Gerçek Lab + motor | FRR destekler. Okuma dersi var (`docs/dersler/ospf-sorun-giderme.md`, `ospftshoot`; 7 şema, 5 kâğıt üstü vaka) | P2 |
+| 42 | İleri OSPF sorun giderme | Gerçek Lab + motor | Komşuluk şartları, MTU → EXSTART, ağ tipi uyuşmazlığı ve DR seçimi Labber'da (#102); LSDB ve distribute-list yok (FRR destekler). Okuma dersi (`docs/dersler/ospf-sorun-giderme.md`, `ospftshoot`; 7 şema, 5 kâğıt üstü vaka) ve Simülatör labı **ospf-sorun-ileri** var | P2 |
 | 43 | İleri BGP: iBGP, route reflector, attribute'lar, politika | Gerçek Lab | FRR destekler. Okuma dersi var (`docs/dersler/bgp-ileri.md`, `bgpadv`; 7 şema, 5 kâğıt üstü vaka) | P2 |
-| 44 | Redistribution ve rota filtreleme (prefix-list, route-map) | Gerçek Lab | FRR destekler. Okuma dersi var (`docs/dersler/redistribution.md`, `redistribution`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 44 | Redistribution ve rota filtreleme (prefix-list, route-map) | Gerçek Lab + motor | OSPF'e `redistribute static\|connected` Labber'da (#102; EIGRP'de de, #107); protokoller arası aktarım, route-map ve prefix-list yok (FRR destekler). Okuma dersi (`docs/dersler/redistribution.md`, `redistribution`; 7 şema, 4 kâğıt üstü vaka) ve Simülatör labı **ospf-dagitim** var | P2 |
 | 45 | PBR ve VRF-lite | Gerçek Lab | FRR destekler. VRF-lite #33'te; PBR okuma dersi var (`docs/dersler/pbr.md`, `pbr`; 7 şema, 5 kâğıt üstü vaka) | P2 |
 | 46 | DMVPN | Okuma | Yok. Okuma dersi var (`docs/dersler/dmvpn.md`, `dmvpn`; 7 şema, 5 kâğıt üstü vaka) | P3 |
 | 47 | IPv6 ileri: DHCPv6, IPv6 ACL, first-hop security | Motor + okuma | 16. konuya bağlı. Okuma dersi var (`docs/dersler/ipv6-ileri.md`, `ipv6adv`; 7 şema, 5 kâğıt üstü vaka) | P3 |
-| 48 | Altyapı servisleri sorun giderme: DHCP, NTP, SNMP, Syslog, IP SLA | Motor + okuma | DHCP var; diğerleri yok. Okuma dersi var (`docs/dersler/servis-sorun-giderme.md`, `svctshoot`; 7 şema, 5 kâğıt üstü vaka) | P2 |
+| 48 | Altyapı servisleri sorun giderme: DHCP, NTP, SNMP, Syslog, IP SLA | Motor + okuma | DHCP, IP SLA ve track Labber'da (#103); NTP, SNMP ve Syslog yok. Okuma dersi (`docs/dersler/servis-sorun-giderme.md`, `svctshoot`; 7 şema, 5 kâğıt üstü vaka) ve Simülatör labı **statik-yedek** (#104) var | P2 |
 
 Bu seviyede 23 konunun 8'i Gerçek Lab'a, yaklaşık yarısı ağırlıkla okumaya dayanıyor. CCNP hedefi ciddiyse Gerçek Lab'ı çok kullanıcılı ve kolay kurulur hale getirmek motor geliştirmesi kadar önemlidir.
 
@@ -129,7 +129,7 @@ Müfredattan çıkan motor işi altı faza ayrılır; sıra, en çok öğrenciye
 3. **Faz C — CCNA routing:** Tek alan OSPF'i gerçek SPF/LSDB ile tamamla; HSRP/VRRP; IPv6 (SLAAC, NDP, statik rota); ACL ve NAT'ı test kapsamıyla doğrula.
 4. **Faz D — CCNA servis ve güvenlik:** SSH/AAA erişim modeli, Syslog ve NTP'nin asgari modeli, SNMP okuma.
 5. **Faz E — CCNP için Gerçek Lab:** Çok kullanıcılı, kolay kurulan Gerçek Lab; OSPF çok alan, BGP, redistribution, PBR ve VRF senaryoları; motor–FRR fark testleri.
-6. **Faz F — CCNP motor genişlemesi:** MST, OSPF çok alan ve OSPFv3, ileride EIGRP.
+6. **Faz F — CCNP motor genişlemesi:** MST, OSPF çok alan ve OSPFv3, ileride EIGRP. (22 Kasım 2026: MST, OSPF çok alan, OSPF'e redistribution, IP SLA/track ve klasik EIGRP yapıldı; OSPFv3 kaldı.)
 
 Kablosuz, SD-WAN, SD-Access, VXLAN/LISP, QoS uygulaması ve DMVPN motor kapsamı dışında tutulur; bunlar okuma olarak kalır.
 
@@ -186,6 +186,8 @@ Mevcut 40 Akademi labı ve 17 arıza senaryosu da aynı numaralarla etiketlenip 
 5. **Seviye 3 (CCNP):** Faz E (Gerçek Lab) hazır olunca routing ağırlıklı konular; okuma konuları her an yazılabilir.
 
 **Durum (16 Kasım 2026):** Seviye 1'in 12 konusu ve Seviye 2'nin 14 konusu uygulamada; her biri `docs/dersler/` altında 7 şemalı ayrıntılı derse sahip (simülatörde çalışmayanlar "okuma dersi" etiketli). Seviye 3'ün 22 konusunun hepsi okuma dersi olarak yazıldı (#27–29, #31–49); #30 ayrı ders değildir (#14 ve #29 kapsar). Okuma dersleri simülatör desteği gelince pratiğe çevrilir: her dersin "Motor gereksinimleri" bölümü ne gerektiğini yazar.
+
+**Durum (22 Kasım 2026):** Seviye 3'te sekiz okuma dersinin Simülatör labı var (#27, #29, #31, #37, #41, #42, #44, #48); uygulama bunları "okuma + simülatör labı" etiketiyle gösterir (`src/data/courses.json` `kind: "okuma-lab"`). Labı olmayan okuma dersleri "okuma" etiketinde kalır; eşleşmeyi `tests/test_aglab_flow_tasks.py` denetler.
 
 **Ders yapısı (bütün ayrıntılı dersler):** 0 Bir bakışta · 1 Neden önemli · 2 Kavram (benzetme → teknik → şema → dikkat) · 3 Çıktı okuma · 4 Yönlendirmeli lab · 5 Sık hatalar · 6 Arıza senaryoları (neden/çözüm kapalı kutuda) · 7 Kısa sınav (cevaplar kapalı) · 8 Özet kartı · 9 Doğrulama notları. Şemalar `docs/dersler/gorseller/<konu>.py` tanımlarından `tools/build_figures.py` ile üretilir; uygulama bunları "Ayrıntılı öğren" adımında gösterir.
 
