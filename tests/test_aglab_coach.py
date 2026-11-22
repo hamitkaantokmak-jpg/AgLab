@@ -57,6 +57,12 @@ class CoachTests(unittest.TestCase):
         p.fill("#ptCliInput", line)
         p.locator("#ptCliInput").press("Enter")
 
+    def reload(self):
+        # Chromium localStorage yazmalarını tarayıcı sürecine gecikmeli işler; hemen yenilemek
+        # son yazmayı göremeyebilir (CI'da görüldü). Yenilemeden önce kayıt beklenir.
+        self.page.wait_for_timeout(1500)
+        self.page.reload()
+
     def finish_tour(self):
         self.wait_current("tour:0")
         for i in range(3):
@@ -88,7 +94,7 @@ class CoachTests(unittest.TestCase):
         p = self.open()
         self.finish_tour()
         self.assertEqual(p.evaluate("aglabCoach.seen().tour"), "done")
-        p.reload()
+        self.reload()
         p.wait_for_timeout(1200)
         self.assertIsNone(self.current())
         # Atla da turu bitirir; menüden yeniden başlar.
@@ -111,7 +117,7 @@ class CoachTests(unittest.TestCase):
         self.type("R1", "enable")
         self.assertIsNone(self.current())
         expect(p.locator("#agCoachMode")).to_be_hidden()
-        p.reload()
+        self.reload()
         self.assertFalse(p.evaluate("aglabCoach.enabled()"), "kapatma kalıcı")
         p.click("#agCoachMenuBtn")
         expect(p.locator("#agCoachToggle")).to_have_text("Eğitici ipuçlarını aç")
