@@ -2,7 +2,7 @@
 
 * Grup listelenir; lab sayısı ve kimlikleri `src/labs/index.ts` kataloğundan türetilir
   (sabit yazılmaz). Akademi lab listesine karışmaz.
-* Her lab: başlatılınca rozet "Motor: Labber"; başlangıçta en az bir hedef çözülmemiş;
+* Her lab: başlatılınca rozet "Simülatör — …" (data-engine="labber"); başlangıçta en az bir hedef çözülmemiş;
   referans çözüm TERMINALDEN (form + Enter, ayrıcalıklı moddan) yazılınca bütün hedefler
   çözülmüş görünür ve IOS hatası çıkmaz. Hedefler rt.objectives() ile değerlendirilir.
 * Lab tanımı sabittir: düzenleyiciyle topoloji değişirse değerlendirme açık hata verir.
@@ -104,7 +104,7 @@ class LabberLabsTests(unittest.TestCase):
                 self.start(lab_id)
                 self.assertEqual(self.page.evaluate("aglabLabberLabs.active()"), lab_id)
                 self.assertTrue(
-                    self.page.text_content("#labberLabEngine").startswith("Motor: Labber")
+                    self.page.text_content("#labberLabEngine").startswith("Simülatör — ")
                 )
                 start = self.objectives()
                 self.assertTrue(start)

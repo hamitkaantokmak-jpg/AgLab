@@ -88,7 +88,8 @@ class SimWorkspaceTests(unittest.TestCase):
     def test_layout_matches_reference(self):
         p = self.page
         expect(p.locator("#agSimTitle")).to_have_text("Simülatör · Serbest çalışma")
-        expect(p.locator("#agSimEngine")).to_have_text("Motor: Labber")
+        expect(p.locator("#agSimEngine")).to_have_text("Simülatör")
+        expect(p.locator("#agSimEngine")).to_have_attribute("data-engine", "labber")
         boxes = {
             sel: p.locator(sel).bounding_box()
             for sel in ["#agSimHead", "#agSimTask", "#agSimStage", "#agSimInspect", "#agSimDock"]
@@ -710,7 +711,7 @@ class SimWorkspaceTests(unittest.TestCase):
         p = self.page
         idle = p.locator("#agSimSimIdle")
         expect(idle).to_be_visible()
-        expect(idle).to_contain_text("Simulation · İncele")
+        expect(idle).to_contain_text("Adım adım · İncele")
         p.click("#simulationMode")
         expect(idle).to_be_hidden()
         p.click("#simulationRealtime")
@@ -743,7 +744,7 @@ class SimWorkspaceTests(unittest.TestCase):
         self.assertEqual(cards.count(), 3)
         titles = [cards.nth(i).locator(".ag-cat-head h3").text_content() for i in range(3)]
         self.assertTrue(titles[0].startswith("Akademi labları"), titles)
-        self.assertTrue(titles[1].startswith("Labber labları"), titles)
+        self.assertTrue(titles[1].startswith("Hazır lablar"), titles)
         self.assertTrue(titles[2].startswith("Hazır senaryolar"), titles)
         # Her görev tek satır: ad, seviye, durum; satır sayısı seçenek sayısı kadar.
         for key, sel in [
