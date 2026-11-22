@@ -911,6 +911,7 @@ var AgLabSim = (() => {
       hw,
       ospf: {},
       eigrp: {},
+      bgp: {},
       dups: []
     };
     const allVlans = /* @__PURE__ */ new Set();
@@ -1106,7 +1107,7 @@ var AgLabSim = (() => {
   // src/sim/acl.ts
   var ANY = { addr: "0.0.0.0", wild: "255.255.255.255" };
   var hostAddr = (ip2) => ({ addr: ip2, wild: "0.0.0.0" });
-  var TCP_NAMES = { ftp: 21, telnet: 23, smtp: 25, www: 80, pop3: 110 };
+  var TCP_NAMES = { ftp: 21, telnet: 23, smtp: 25, www: 80, pop3: 110, bgp: 179 };
   var UDP_NAMES = { domain: 53, bootps: 67, bootpc: 68, tftp: 69, snmp: 161 };
   var BOTH = { domain: 53 };
   var ICMP_TYPES = ["echo", "echo-reply", "unreachable", "time-exceeded"];
@@ -1650,8 +1651,10 @@ var AgLabSim = (() => {
       const prefix = maskToPrefix(r.mask);
       if (prefix === null) return [];
       if (r.track !== void 0 && d.track && !d.track.objects[dev]?.[String(r.track)]?.up) return [];
+      if (r.nh === NULL0) return [{ code: "S", net: r.net, prefix, ad: r.ad ?? 1, idx, nh: null, ifname: NULL0 }];
       return [{ code: "S", net: r.net, prefix, ad: r.ad ?? 1, idx, nh: r.nh, ifname: "" }];
     });
+    const bgp = (d.bgp?.[dev]?.rib ?? []).map((r, i) => ({ code: "B", net: r.net, prefix: r.prefix, ad: r.ad, idx: 1e5 + i, nh: r.nh, ifname: "", metric: r.metric }));
     const ospf2 = (d.ospf[dev]?.routes ?? []).filter((r) => r.paths.length).map((r) => ({ code: r.code, net: r.net, prefix: r.prefix, ad: OSPF_AD, nh: r.paths[0].nh, ifname: r.paths[0].ifname, metric: r.metric, paths: r.paths }));
     const eigrp = (d.eigrp?.[dev]?.routes ?? []).map(
       (r) => r.paths.length ? { code: r.code, net: r.net, prefix: r.prefix, ad: r.ad, nh: r.paths[0].nh, ifname: r.paths[0].ifname, metric: r.metric, paths: r.paths } : { code: r.code, net: r.net, prefix: r.prefix, ad: r.ad, nh: null, ifname: NULL0, metric: r.metric }
@@ -1661,18 +1664,20 @@ var AgLabSim = (() => {
       const matches = [
         ...connected.filter((c) => inPrefix(dst, c.net, c.prefix)).map((c) => ({ ...c, ad: 0 })),
         ...statics.filter((c) => !seen.has(c.idx) && inPrefix(dst, c.net, c.prefix)),
-        ...dynamic.filter((c) => inPrefix(dst, c.net, c.prefix))
+        ...dynamic.filter((c) => inPrefix(dst, c.net, c.prefix)),
+        ...bgp.filter((c) => !seen.has(c.idx) && inPrefix(dst, c.net, c.prefix))
       ].sort((a, b) => b.prefix - a.prefix || a.ad - b.ad || (a.code === "S" ? 0 : 1) - (b.code === "S" ? 0 : 1));
       for (const m of matches) {
         if (m.code === "C") return { ifname: m.ifname, via: dst };
         if (m.ifname === NULL0) return null;
-        if (m.code !== "S") return { ifname: m.ifname, via: m.nh };
+        if (m.code !== "S" && m.code !== "B") return { ifname: m.ifname, via: m.nh };
         const r = resolve(m, seen);
         if (r) return r;
       }
       return null;
     };
     const resolve = (s, seen) => {
+      if (s.ifname === NULL0) return { ifname: NULL0, via: NULL0 };
       const direct = connected.find((c) => inPrefix(s.nh, c.net, c.prefix));
       if (direct) return { ifname: direct.ifname, via: s.nh };
       return lookupFor(s.nh, /* @__PURE__ */ new Set([...seen, s.idx]));
@@ -1687,7 +1692,12 @@ var AgLabSim = (() => {
     for (const s of statics) {
       const r = resolve(s, /* @__PURE__ */ new Set());
       if (!r) continue;
-      consider({ code: "S", net: s.net, prefix: s.prefix, nh: s.nh, ifname: r.ifname, ...s.ad !== 1 ? { ad: s.ad } : {}, via: r.via }, s.ad * 2);
+      consider({ code: "S", net: s.net, prefix: s.prefix, nh: s.nh, ifname: r.ifname, ...s.ad !== 1 ? { ad: s.ad } : {}, ...r.ifname === NULL0 ? {} : { via: r.via } }, s.ad * 2);
+    }
+    for (const b of bgp) {
+      const r = resolve(b, /* @__PURE__ */ new Set());
+      if (!r || r.ifname === NULL0) continue;
+      consider({ code: "B", net: b.net, prefix: b.prefix, nh: b.nh, ifname: r.ifname, metric: b.metric, ad: b.ad, via: r.via }, b.ad * 2 + 1);
     }
     for (const r of dynamic)
       consider({ code: r.code, net: r.net, prefix: r.prefix, nh: r.nh, ifname: r.ifname, metric: r.metric, ...r.paths ? { paths: r.paths } : {}, ...r.code.startsWith("D") ? { ad: r.ad } : {} }, r.ad * 2 + 1);
@@ -1935,6 +1945,498 @@ var AgLabSim = (() => {
     return out.sort((a, b) => a.vlan - b.vlan || a.mac.localeCompare(b.mac));
   }
 
+  // src/sim/bgp.ts
+  var BGP_AD = 20;
+  var LOCAL_WEIGHT = 32768;
+  var BGP_PORT = 179;
+  var CLIENT_PORT = 11e3;
+  var ipInt = (ip2) => ipToInt(ip2) ?? 0;
+  var keyOf = (net, prefix) => `${net}/${prefix}`;
+  function bgpRunning(d, dev) {
+    const def = d.topo.devices[dev];
+    const c = d.cfgs[dev];
+    return def?.kind === "switch" && !!(def.l3 || def.router) && !!c?.ipRouting && !!c.bgp && !d.hw.off.has(dev);
+  }
+  function bgpRid(d, dev) {
+    const b = d.cfgs[dev].bgp;
+    if (b.routerId) return b.routerId;
+    const ifs = l3Ifs(d, dev);
+    const pick = (list) => list.length ? list.map((i) => i.ip).sort((a, z) => ipInt(z) - ipInt(a))[0] : null;
+    return pick(ifs.filter((i) => i.kind === "loop")) ?? pick(ifs);
+  }
+  function classful(net) {
+    const f = Number(net.split(".")[0]);
+    return f < 128 ? 8 : f < 192 ? 16 : f < 224 ? 24 : 32;
+  }
+  function recomputeBgp(d) {
+    d.bgp = {};
+    d.bgp = computeBgp(d);
+    markRibFailures(d);
+  }
+  function bgpUsesStatics(d, dev) {
+    const b = d.cfgs[dev]?.bgp;
+    return !!b && (!!b.redistribute.static || b.networks.length > 0);
+  }
+  function sideCheck(d, dev, n) {
+    const own = d.cfgs[dev].bgp;
+    if (n.shutdown) return { reason: "admin", src: null, peerDev: null };
+    if (n.remoteAs === own.as) return { reason: "ibgp", src: null, peerDev: null };
+    let src = null;
+    if (n.updateSource) {
+      const i = l3Ifs(d, dev).find((x) => x.name === n.updateSource);
+      if (!i) return { reason: "nosource", src: null, peerDev: null };
+      src = i.ip;
+    }
+    const out = sourceIp(d, dev, n.ip);
+    if (!out) return { reason: "noroute", src, peerDev: null };
+    src = src ?? out;
+    const connected = l3Ifs(d, dev).some((i) => i.kind !== "loop" && i.node && sameSubnet(i.ip, n.ip, i.prefix));
+    if (!n.ebgpMultihop && !connected) return { reason: "multihop", src, peerDev: null };
+    const ttl = n.ebgpMultihop ?? 1;
+    const fwd = deliver(d, dev, n.ip, { proto: "tcp", src, sport: CLIENT_PORT, dport: BGP_PORT, ttl });
+    if (fwd.kind === "expired") return { reason: "multihop", src, peerDev: null };
+    if (fwd.kind !== "ok") return { reason: fwd.kind === "unreach" && fwd.filtered ? "acl" : "unreach", src, peerDev: null };
+    const peerDev = fwd.hops[fwd.hops.length - 1]?.dev ?? null;
+    if (!peerDev || !l3Ifs(d, peerDev).some((i) => i.ip === n.ip)) return { reason: "unreach", src, peerDev: null };
+    const back = deliver(d, peerDev, src, { proto: "tcp", src: n.ip, sport: BGP_PORT, dport: CLIENT_PORT, ttl });
+    if (back.kind !== "ok" || back.hops[back.hops.length - 1]?.dev !== dev)
+      return { reason: back.kind === "unreach" && back.filtered ? "acl" : "unreach", src, peerDev };
+    return { src, peerDev };
+  }
+  var IDLE = ["noroute", "multihop", "nosource", "ibgp"];
+  function session(d, dev, n) {
+    const own = d.cfgs[dev].bgp;
+    const s = { ip: n.ip, remoteAs: n.remoteAs, state: "Active", peerDev: null, localIp: null, peerRid: null, peerAs: null, pfxRcd: 0 };
+    const fail = (reason, extra = {}) => ({
+      ...s,
+      ...extra,
+      reason,
+      state: reason === "admin" ? "Idle (Admin)" : IDLE.includes(reason) ? "Idle" : "Active"
+    });
+    const a = sideCheck(d, dev, n);
+    s.localIp = a.src;
+    s.peerDev = a.peerDev;
+    if (a.reason) return fail(a.reason);
+    const peer = a.peerDev;
+    const pb = bgpRunning(d, peer) ? d.cfgs[peer].bgp : null;
+    const pn = pb?.neighbors.find((x) => x.ip === a.src);
+    if (!pb || !pn) return fail("nopeer");
+    s.peerAs = pb.as;
+    if (pn.shutdown) return fail("peeradmin");
+    const b = sideCheck(d, peer, pn);
+    if (b.reason) return fail(b.reason === "acl" ? "acl" : "peer", { peerReason: b.reason });
+    if (b.src !== n.ip) return fail("source");
+    if ((n.password ?? "") !== (pn.password ?? "")) return fail("auth", { auth: n.password ? pn.password ? "invalid" : "none" : "unexpected" });
+    if (n.remoteAs !== pb.as) return fail("badas", { notification: "sent" });
+    if (pn.remoteAs !== own.as) return fail("badas", { notification: "received" });
+    return { ...s, state: "Established", peerRid: bgpRid(d, peer) };
+  }
+  function localPaths(d, dev) {
+    const b = d.cfgs[dev].bgp;
+    const lp = b.defaultLocalPref ?? 100;
+    const table = routeTable(d, dev).filter((e) => e.code !== "L");
+    const out = [];
+    const base3 = { nh: "0.0.0.0", from: null, peerRid: null, asPath: [], lp, weight: LOCAL_WEIGHT, local: true, valid: true, best: false };
+    for (const n of b.networks) {
+      const prefix = maskToPrefix(n.mask);
+      const e = table.find((x) => x.net === n.net && x.prefix === prefix);
+      if (!e || out.some((p) => p.net === n.net && p.prefix === prefix)) continue;
+      const med = e.code === "C" || e.code === "S" ? 0 : e.metric ?? 0;
+      out.push({ ...base3, net: n.net, prefix, origin: "i", med, sourced: "network" });
+    }
+    for (const [src, code] of [
+      ["connected", "C"],
+      ["static", "S"]
+    ]) {
+      const r = b.redistribute[src];
+      if (!r) continue;
+      for (const e of table) {
+        if (e.code !== code || e.prefix === 0 || out.some((p) => p.net === e.net && p.prefix === e.prefix)) continue;
+        out.push({ ...base3, net: e.net, prefix: e.prefix, origin: "?", med: r.metric ?? b.defaultMetric ?? 0, sourced: "redistribute" });
+      }
+    }
+    return out;
+  }
+  var ORIGIN_RANK = { i: 0, "?": 2 };
+  function selectBest(paths) {
+    let set = paths.filter((p) => p.valid);
+    if (!set.length) return { best: null, step: "only" };
+    if (set.length === 1) return { best: set[0], step: "only" };
+    const steps = [
+      ["weight", (s) => keepMax(s, (p) => p.weight)],
+      ["localpref", (s) => keepMax(s, (p) => p.lp)],
+      ["local", (s) => s.some((p) => p.local) ? s.filter((p) => p.local) : s],
+      ["aspath", (s) => keepMax(s, (p) => -p.asPath.length)],
+      ["origin", (s) => keepMax(s, (p) => -ORIGIN_RANK[p.origin])],
+      [
+        "med",
+        // yalnız aynı komşu AS'den gelen yollar karşılaştırılır (MED yoksa 0)
+        (s) => s.filter((p) => !s.some((q) => q !== p && q.asPath[0] === p.asPath[0] && (q.med ?? 0) < (p.med ?? 0)))
+      ],
+      ["ebgp", (s) => s],
+      ["routerid", (s) => keepMax(s, (p) => -ipInt(p.peerRid ?? "255.255.255.255"))],
+      ["neighbor", (s) => keepMax(s, (p) => -ipInt(p.from ?? "255.255.255.255"))]
+    ];
+    for (const [step2, f] of steps) {
+      set = f(set);
+      if (set.length === 1) return { best: set[0], step: step2 };
+    }
+    return { best: set[0], step: "neighbor" };
+  }
+  function keepMax(s, v) {
+    const m = Math.max(...s.map(v));
+    return s.filter((p) => v(p) === m);
+  }
+  function computeBgp(d) {
+    var _a, _b;
+    const devs = d.topo.switches.filter((s) => bgpRunning(d, s.id)).map((s) => s.id);
+    const out = {};
+    for (const dev of devs) {
+      const b = d.cfgs[dev].bgp;
+      out[dev] = {
+        as: b.as,
+        rid: bgpRid(d, dev),
+        sessions: b.neighbors.map((n) => session(d, dev, n)),
+        table: [],
+        rib: [],
+        advertised: {},
+        received: {},
+        loopRejected: {}
+      };
+    }
+    const local = Object.fromEntries(devs.map((dev) => [dev, localPaths(d, dev)]));
+    const nhCache = /* @__PURE__ */ new Map();
+    const nhOk = (dev, nh) => {
+      const k = dev + "|" + nh;
+      if (!nhCache.has(k)) nhCache.set(k, !!sourceIp(d, dev, nh));
+      return nhCache.get(k);
+    };
+    let best = Object.fromEntries(devs.map((dev) => [dev, /* @__PURE__ */ new Map()]));
+    let prev = "";
+    for (let round = 0; round < 64; round++) {
+      const next = {};
+      for (const dev of devs) {
+        const st = out[dev];
+        const b = d.cfgs[dev].bgp;
+        const lp = b.defaultLocalPref ?? 100;
+        const cands = /* @__PURE__ */ new Map();
+        const add = (p) => cands.set(keyOf(p.net, p.prefix), [...cands.get(keyOf(p.net, p.prefix)) ?? [], p]);
+        for (const p of local[dev]) add({ ...p });
+        st.received = {};
+        st.advertised = {};
+        st.loopRejected = {};
+        for (const s of st.sessions) {
+          s.pfxRcd = 0;
+          if (s.state !== "Established" || !s.peerDev || !out[s.peerDev]) continue;
+          const peer = s.peerDev;
+          const n = b.neighbors.find((x) => x.ip === s.ip);
+          const peerAs = out[peer].as;
+          const rx = [];
+          for (const p of best[peer].values()) {
+            if (p.from === s.localIp) continue;
+            const asPath = [peerAs, ...p.asPath];
+            if (asPath.includes(st.as)) {
+              ;
+              ((_a = st.loopRejected)[_b = s.ip] ?? (_a[_b] = [])).push(keyOf(p.net, p.prefix));
+              continue;
+            }
+            const path = {
+              net: p.net,
+              prefix: p.prefix,
+              nh: s.ip,
+              from: s.ip,
+              peerRid: s.peerRid,
+              asPath,
+              origin: p.origin,
+              med: p.local ? p.med : null,
+              lp,
+              weight: n.weight ?? 0,
+              local: false,
+              sourced: null,
+              valid: nhOk(dev, s.ip),
+              best: false
+            };
+            rx.push(path);
+            add(path);
+          }
+          st.received[s.ip] = rx;
+          s.pfxRcd = rx.length;
+        }
+        const m = /* @__PURE__ */ new Map();
+        const table = [];
+        for (const [k, paths] of cands) {
+          const { best: w, step: step2 } = selectBest(paths);
+          for (const p of paths) {
+            p.best = p === w;
+            if (p === w) p.decidedBy = step2;
+            else delete p.decidedBy;
+          }
+          if (w) m.set(k, w);
+          table.push({ net: paths[0].net, prefix: paths[0].prefix, paths: [...paths].sort((a, z) => Number(z.best) - Number(a.best)) });
+        }
+        table.sort((a, z) => ipInt(a.net) - ipInt(z.net) || a.prefix - z.prefix);
+        st.table = table;
+        next[dev] = m;
+      }
+      best = next;
+      const sig = JSON.stringify(devs.map((dev) => [...best[dev].values()].map((p) => [p.net, p.prefix, p.from, p.asPath, p.med])));
+      if (sig === prev) break;
+      prev = sig;
+    }
+    for (const dev of devs) {
+      const st = out[dev];
+      for (const s of st.sessions)
+        if (s.state === "Established") st.advertised[s.ip] = [...best[dev].values()].filter((p) => p.from !== s.ip);
+      st.rib = [...best[dev].values()].filter((p) => !p.local).map((p) => ({ net: p.net, prefix: p.prefix, nh: p.nh, metric: p.med ?? 0, ad: BGP_AD }));
+    }
+    return out;
+  }
+  function markRibFailures(d) {
+    for (const [dev, st] of Object.entries(d.bgp ?? {})) {
+      const table = routeTable(d, dev);
+      for (const e of st.table)
+        for (const p of e.paths) {
+          if (!p.best || p.local) continue;
+          const r = table.find((x) => x.net === e.net && x.prefix === e.prefix && x.code !== "L");
+          if (r && r.code !== "B") p.ribFailure = true;
+          else delete p.ribFailure;
+        }
+    }
+  }
+  var STATE_TEXT = {
+    admin: "Administratively shut down",
+    nosource: "update-source interface has no usable address",
+    noroute: "No route to peer",
+    multihop: "External BGP neighbor not directly connected (ebgp-multihop not configured)",
+    ibgp: "Internal BGP (iBGP) is not modelled",
+    unreach: "TCP connection to peer port 179 not established",
+    acl: "TCP port 179 to/from peer is filtered by an access list",
+    nopeer: "Peer has no neighbor statement for this address (connection refused)",
+    peeradmin: "Peer has shut down this neighbor",
+    peer: "Peer rejects the connection",
+    source: "Peer expects another source address (check update-source)",
+    auth: "MD5 authentication mismatch",
+    badas: "BGP Notification, peer in wrong AS"
+  };
+  function notActive(d, dev) {
+    return d.bgp[dev] ? null : ["% BGP not active"];
+  }
+  function netText(net, prefix) {
+    return prefix === classful(net) || net === "0.0.0.0" && prefix === 0 ? net : `${net}/${prefix}`;
+  }
+  var HEADER = [
+    "Status codes: s suppressed, d damped, h history, * valid, > best, i - internal,",
+    "              r RIB-failure, S Stale, m multipath, b backup-path, f RT-Filter,",
+    "              x best-external, a additional-path, c RIB-compressed,",
+    "              t secondary path, L long-lived-stale,",
+    "Origin codes: i - IGP, e - EGP, ? - incomplete",
+    "RPKI validation codes: V valid, I invalid, N Not found",
+    "",
+    "     Network          Next Hop            Metric LocPrf Weight Path"
+  ];
+  function pathRow(p, first) {
+    const status = (p.valid ? p.ribFailure ? "r" : "*" : " ") + (p.best ? ">" : " ");
+    const net = first ? pad(netText(p.net, p.prefix), 17) : " ".repeat(17);
+    const med = p.med === null ? "" : String(p.med);
+    const lp = p.lp !== 100 ? String(p.lp) : "";
+    return ` ${status}  ${net}${pad(p.nh, 20)}${padL(med, 6)} ${padL(lp, 6)} ${padL(p.weight, 6)} ${[...p.asPath, p.origin].join(" ")}`;
+  }
+  function tableRows(paths) {
+    const o = [];
+    let last = "";
+    for (const p of paths) {
+      const k = keyOf(p.net, p.prefix);
+      o.push(pathRow(p, k !== last));
+      last = k;
+    }
+    return o;
+  }
+  function tableVersion(st) {
+    return 1 + st.table.length;
+  }
+  function showBgp(d, dev) {
+    const na = notActive(d, dev);
+    if (na) return na;
+    const st = d.bgp[dev];
+    const o = [`BGP table version is ${tableVersion(st)}, local router ID is ${st.rid ?? "0.0.0.0"}`, ...HEADER];
+    o.push(...tableRows(st.table.flatMap((e) => e.paths)));
+    return o;
+  }
+  function showBgpPrefix(d, dev, net, mask) {
+    const na = notActive(d, dev);
+    if (na) return na;
+    const st = d.bgp[dev];
+    const n = ipInt(net);
+    const e = mask ? st.table.find((x) => x.net === net && x.prefix === maskToPrefix(mask)) : st.table.filter((x) => {
+      const m = x.prefix ? 4294967295 << 32 - x.prefix >>> 0 : 0;
+      return (n & m) >>> 0 === ipInt(x.net);
+    }).sort((a, z) => z.prefix - a.prefix)[0];
+    if (!e) return ["% Network not in table"];
+    const bestIdx = e.paths.findIndex((p) => p.best);
+    const o = [
+      `BGP routing table entry for ${e.net}/${e.prefix}, version ${tableVersion(st)}`,
+      `Paths: (${e.paths.length} available, ${bestIdx >= 0 ? "best #" + (bestIdx + 1) : "no best path"}, table default)`
+    ];
+    const adv = st.sessions.filter((s) => s.state === "Established" && (st.advertised[s.ip] ?? []).some((p) => p.net === e.net && p.prefix === e.prefix));
+    o.push(adv.length ? "  Advertised to update-groups:" : "  Not advertised to any peer");
+    if (adv.length) o.push("     1");
+    for (const p of e.paths) {
+      o.push("  Refresh Epoch 1");
+      o.push("  " + (p.asPath.length ? p.asPath.join(" ") : "Local"));
+      o.push(p.local ? `    0.0.0.0 from 0.0.0.0 (${st.rid ?? "0.0.0.0"})` : `    ${p.nh} from ${p.from} (${p.peerRid ?? p.from})`);
+      const attrs = [
+        `Origin ${p.origin === "i" ? "IGP" : "incomplete"}`,
+        ...p.med === null ? [] : [`metric ${p.med}`],
+        `localpref ${p.lp}`,
+        ...p.weight ? [`weight ${p.weight}`] : [],
+        p.valid ? "valid" : "invalid (next hop inaccessible)",
+        ...p.local ? ["sourced", "local"] : ["external"],
+        ...p.best ? ["best"] : []
+      ];
+      o.push("      " + attrs.join(", "));
+      if (p.ribFailure) o.push("      RIB-failure: Higher admin distance");
+      if (p.best) o.push(`      AğLab: best path selected by ${STEP_TEXT[p.decidedBy ?? "only"]}`);
+    }
+    return o;
+  }
+  var STEP_TEXT = {
+    only: "only valid path",
+    weight: "weight",
+    localpref: "local preference",
+    local: "locally originated",
+    aspath: "AS_PATH length",
+    origin: "origin",
+    med: "MED (same neighbor AS)",
+    ebgp: "eBGP over iBGP",
+    routerid: "lowest neighbor router ID",
+    neighbor: "lowest neighbor address"
+  };
+  function showBgpSummary(d, dev) {
+    const na = notActive(d, dev);
+    if (na) return na;
+    const st = d.bgp[dev];
+    const paths = st.table.reduce((n, e) => n + e.paths.length, 0);
+    const v = tableVersion(st);
+    const o = [
+      `BGP router identifier ${st.rid ?? "0.0.0.0"}, local AS number ${st.as}`,
+      `BGP table version is ${v}, main routing table version ${v}`
+    ];
+    if (st.table.length) {
+      o.push(`${st.table.length} network entries using ${st.table.length * 144} bytes of memory`);
+      o.push(`${paths} path entries using ${paths * 84} bytes of memory`);
+    }
+    o.push("", "Neighbor        V           AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd");
+    for (const s of [...st.sessions].sort((a, z) => ipInt(a.ip) - ipInt(z.ip))) {
+      const up = s.state === "Established";
+      o.push(
+        `${pad(s.ip, 16)}4 ${padL(s.remoteAs, 12)} ${padL(up ? 12 : 0, 7)} ${padL(up ? 10 : 0, 7)} ${padL(up ? v : 1, 8)}    0    0 ${pad(up ? "00:12:34" : "never", 8)} ${up ? padL(s.pfxRcd, 12) : s.state}`
+      );
+    }
+    return o;
+  }
+  function showBgpNeighbors(d, dev, ip2) {
+    const na = notActive(d, dev);
+    if (na) return na;
+    const st = d.bgp[dev];
+    const b = d.cfgs[dev].bgp;
+    const list = st.sessions.filter((s) => !ip2 || s.ip === ip2);
+    if (ip2 && !list.length) return ["% No such neighbor or address family"];
+    const o = [];
+    for (const s of list) {
+      const n = b.neighbors.find((x) => x.ip === s.ip);
+      const up = s.state === "Established";
+      o.push(`BGP neighbor is ${s.ip},  remote AS ${s.remoteAs}, external link`);
+      if (n.description) o.push(` Description: ${n.description}`);
+      o.push(`  BGP version 4, remote router ID ${up ? s.peerRid : "0.0.0.0"}`);
+      o.push(`  BGP state = ${s.state === "Idle (Admin)" ? "Idle" : s.state}${up ? ", up for 00:12:34" : ""}`);
+      if (s.state === "Idle (Admin)") o.push("  Administratively shut down");
+      if (up) {
+        o.push("  Neighbor sessions:", "    1 active, is not multisession capable (disabled)");
+        o.push("  For address family: IPv4 Unicast");
+        o.push(`    Prefixes Current: ${(st.advertised[s.ip] ?? []).length} sent, ${s.pfxRcd} received`);
+        const loops = st.loopRejected[s.ip]?.length ?? 0;
+        if (loops) o.push(`    AS_PATH loop: ${loops} prefix(es) denied (own AS ${st.as} in path)`);
+      }
+      if (n.weight !== void 0) o.push(`  Default weight ${n.weight}`);
+      if (!up && s.reason && s.reason !== "admin") {
+        o.push(`  Last reset never${s.reason === "badas" ? ", due to BGP Notification " + (s.notification ?? "sent") + ", peer in wrong AS" : ""}`);
+        o.push(`  AğLab: ${STATE_TEXT[s.reason]}${s.peerReason ? " (" + STATE_TEXT[s.peerReason] + ")" : ""}`);
+      } else if (up) o.push("  Last reset never");
+      o.push(
+        n.ebgpMultihop ? `  External BGP neighbor may be up to ${n.ebgpMultihop} hops away.` : s.reason === "multihop" ? "  External BGP neighbor not directly connected." : "  External BGP neighbor may be up to 1 hop away."
+      );
+      if (n.password) o.push("  Connection is MD5 authenticated.");
+      if (up) {
+        o.push(`  Connections established 1; dropped 0`);
+        o.push(`Local host: ${s.localIp}, Local port: ${BGP_PORT}`);
+        o.push(`Foreign host: ${s.ip}, Foreign port: ${CLIENT_PORT}`);
+      } else o.push("  No active TCP connection");
+      o.push("");
+    }
+    return o;
+  }
+  function showBgpNeighborRoutes(d, dev, ip2, which) {
+    const na = notActive(d, dev);
+    if (na) return na;
+    const st = d.bgp[dev];
+    if (!st.sessions.some((s) => s.ip === ip2)) return ["% No such neighbor or address family"];
+    const paths = (which === "advertised" ? st.advertised[ip2] : st.received[ip2]) ?? [];
+    const o = [`BGP table version is ${tableVersion(st)}, local router ID is ${st.rid ?? "0.0.0.0"}`, ...HEADER, ...tableRows(paths)];
+    o.push("", `Total number of prefixes ${paths.length} `);
+    return o;
+  }
+  function bgpProtocolLines(d, dev) {
+    const st = d.bgp[dev];
+    const b = d.cfgs[dev]?.bgp;
+    if (!st || !b) return [];
+    const o = [
+      `Routing Protocol is "bgp ${b.as}"`,
+      "  Outgoing update filter list for all interfaces is not set",
+      "  Incoming update filter list for all interfaces is not set",
+      "  IGP synchronization is disabled",
+      "  Automatic route summarization is disabled"
+    ];
+    if (b.redistribute.static || b.redistribute.connected)
+      o.push(`  Redistributing: ${["connected", "static"].filter((x) => b.redistribute[x]).join(", ")}`);
+    o.push("  Neighbor(s):", "    Address          FiltIn FiltOut DistIn DistOut Weight RouteMap");
+    for (const n of b.neighbors) o.push(`    ${pad(n.ip, 17)}${" ".repeat(36)}${n.weight !== void 0 ? padL(n.weight, 6) : ""}`);
+    o.push("  Maximum path: 1", "  Routing Information Sources:", "    Gateway         Distance      Last Update");
+    for (const s of st.sessions.filter((x) => x.state === "Established" && x.pfxRcd)) o.push(`    ${pad(s.ip, 16)}${padL(BGP_AD, 8)}      00:12:34`);
+    o.push(`  Distance: external ${BGP_AD} internal 200 local 200`, "");
+    return o;
+  }
+  function bgpConfigLines(c) {
+    const b = c.bgp;
+    if (!b) return [];
+    const o = ["router bgp " + b.as];
+    if (b.routerId) o.push(" bgp router-id " + b.routerId);
+    if (b.logNeighborChanges) o.push(" bgp log-neighbor-changes");
+    if (b.defaultLocalPref !== null) o.push(" bgp default local-preference " + b.defaultLocalPref);
+    for (const n of b.networks) o.push(` network ${n.net}${maskToPrefix(n.mask) === classful(n.net) ? "" : " mask " + n.mask}`);
+    for (const src of ["connected", "static"]) {
+      const r = b.redistribute[src];
+      if (r) o.push(` redistribute ${src}${r.metric !== void 0 ? " metric " + r.metric : ""}`);
+    }
+    for (const n of b.neighbors) o.push(...neighborLines(n));
+    if (b.defaultMetric !== null) o.push(" default-metric " + b.defaultMetric);
+    o.push("!");
+    return o;
+  }
+  function neighborLines(n) {
+    const p = ` neighbor ${n.ip} `;
+    const o = [p + "remote-as " + n.remoteAs];
+    if (n.description) o.push(p + "description " + n.description);
+    if (n.password) o.push(p + "password " + n.password);
+    if (n.ebgpMultihop) o.push(p + "ebgp-multihop " + n.ebgpMultihop);
+    if (n.updateSource) o.push(p + "update-source " + n.updateSource);
+    if (n.shutdown) o.push(p + "shutdown");
+    if (n.weight !== void 0) o.push(p + "weight " + n.weight);
+    return o;
+  }
+  function asHex(as) {
+    return (as & 65535).toString(16).toUpperCase().padStart(4, "0");
+  }
+
   // src/sim/eigrp.ts
   var EIGRP_AD = 90;
   var EIGRP_EX_AD = 170;
@@ -1963,16 +2465,16 @@ var AgLabSim = (() => {
     return { net: networkOf(net, p), prefix: p };
   };
   var pkey = (net, prefix) => `${net}/${prefix}`;
-  var ipInt = (ip2) => ipToInt(ip2) ?? 0;
-  var within = (net, prefix, sNet, sPrefix) => prefix >= sPrefix && (ipInt(net) & prefixMaskInt(sPrefix)) >>> 0 === ipInt(sNet);
+  var ipInt2 = (ip2) => ipToInt(ip2) ?? 0;
+  var within = (net, prefix, sNet, sPrefix) => prefix >= sPrefix && (ipInt2(net) & prefixMaskInt(sPrefix)) >>> 0 === ipInt2(sNet);
   function eigrpNetMatches(n, ip2) {
-    const a = ipInt(ip2);
+    const a = ipInt2(ip2);
     if (n.wildcard === null) {
       const p = classfulPrefix(n.addr);
       return networkOf(ip2, p) === networkOf(n.addr, p);
     }
-    const care = ~ipInt(n.wildcard) >>> 0;
-    return (a & care) >>> 0 === (ipInt(n.addr) & care) >>> 0;
+    const care = ~ipInt2(n.wildcard) >>> 0;
+    return (a & care) >>> 0 === (ipInt2(n.addr) & care) >>> 0;
   }
   function eigrpL3Opts(cfg, ifname) {
     if (ifname.startsWith("Vlan")) return cfg.svis[ifname.slice(4)]?.l3;
@@ -1990,7 +2492,7 @@ var AgLabSim = (() => {
     const e = d.cfgs[dev].eigrp;
     if (e.routerId) return e.routerId;
     const ifs = l3Ifs(d, dev);
-    const pick = (list) => list.length ? list.map((i) => i.ip).sort((a, b) => ipInt(b) - ipInt(a))[0] : null;
+    const pick = (list) => list.length ? list.map((i) => i.ip).sort((a, b) => ipInt2(b) - ipInt2(a))[0] : null;
     return pick(ifs.filter((i) => i.kind === "loop")) ?? pick(ifs);
   }
   function sendKey(cfg, chain) {
@@ -2189,7 +2691,7 @@ var AgLabSim = (() => {
         external: x.vec.external,
         origin: x.vec.origin
       });
-      const byMetric = (p, q) => p.metric - q.metric || ipInt(p.nh) - ipInt(q.nh);
+      const byMetric = (p, q) => p.metric - q.metric || ipInt2(p.nh) - ipInt2(q.nh);
       for (const [k, b] of best.get(dev)) {
         const [net, p] = k.split("/");
         const all = (got.get(k) ?? []).map(pathOf).sort(byMetric);
@@ -2220,8 +2722,8 @@ var AgLabSim = (() => {
         s.routes = s.routes.filter((r) => pkey(r.net, r.prefix) !== k);
         s.routes.push({ code: "D", net, prefix: Number(p), metric, ad: EIGRP_SUMMARY_AD, paths: [] });
       }
-      s.topo = [...entries.values()].sort((x, y) => ipInt(x.net) - ipInt(y.net) || x.prefix - y.prefix);
-      s.routes.sort((x, y) => ipInt(x.net) - ipInt(y.net) || x.prefix - y.prefix);
+      s.topo = [...entries.values()].sort((x, y) => ipInt2(x.net) - ipInt2(y.net) || x.prefix - y.prefix);
+      s.routes.sort((x, y) => ipInt2(x.net) - ipInt2(y.net) || x.prefix - y.prefix);
     }
     return out;
   }
@@ -2348,14 +2850,14 @@ var AgLabSim = (() => {
     if (e.autoSummary)
       for (const r of s.routes.filter((x) => !x.paths.length && classfulPrefix(x.net) === x.prefix)) o.push(`    ${r.net}/${r.prefix} for ${s.ifs.filter((i) => majorOf(networkOf(i.ip, i.prefix)).net !== r.net).map((i) => shortIf(i.name)).join(", ")}`);
     o.push("  Routing for Networks:");
-    for (const n of e.networks) o.push(`    ${n.addr}${n.wildcard !== null ? "/" + (32 - popcount(ipInt(n.wildcard))) : ""}`);
+    for (const n of e.networks) o.push(`    ${n.addr}${n.wildcard !== null ? "/" + (32 - popcount(ipInt2(n.wildcard))) : ""}`);
     const passive = s.ifs.filter((i) => i.passive).map((i) => i.name);
     if (passive.length) {
       o.push("  Passive Interface(s):");
       for (const p of passive) o.push(`    ${p}`);
     }
     o.push("  Routing Information Sources:", "    Gateway         Distance      Last Update");
-    for (const ip2 of [...new Set(s.nbrs.filter((n) => n.ok).map((n) => n.ip))].sort((a, b) => ipInt(a) - ipInt(b))) o.push(`    ${pad(ip2, 16)}${padL(EIGRP_AD, 8)}      00:12:34`);
+    for (const ip2 of [...new Set(s.nbrs.filter((n) => n.ok).map((n) => n.ip))].sort((a, b) => ipInt2(a) - ipInt2(b))) o.push(`    ${pad(ip2, 16)}${padL(EIGRP_AD, 8)}      00:12:34`);
     o.push(`  Distance: internal ${EIGRP_AD} external ${EIGRP_EX_AD}`, "");
     return o;
   }
@@ -2418,6 +2920,8 @@ var AgLabSim = (() => {
     const d = derive(topo, cfgs, pcs, errdis, hw);
     d.ospf = computeOspf(d);
     d.eigrp = computeEigrp(d);
+    d.bgp = computeBgp(d);
+    markRibFailures(d);
     d.dups = duplicateIps(d);
     return d;
   }
@@ -2867,6 +3371,8 @@ var AgLabSim = (() => {
       (dev) => eigrpExternalsFromTable(d, dev) && d.cfgs[dev].routes.some((r) => r.track !== void 0 && !objects[dev]?.[String(r.track)]?.up)
     );
     if (eigrpStale) recomputeEigrp(d);
+    const bgpStale = ospfStale || eigrpStale || devs.some((dev) => bgpUsesStatics(d, dev) && d.cfgs[dev].routes.some((r) => r.track !== void 0 && !objects[dev]?.[String(r.track)]?.up));
+    if (bgpStale && Object.keys(d.bgp ?? {}).length) recomputeBgp(d);
     for (const dev of devs)
       for (const [n, r] of Object.entries(sla[dev])) {
         if (!r.scheduled || r.ok) continue;
@@ -3331,6 +3837,18 @@ var AgLabSim = (() => {
     "receive-only": "Set receive only neighbor",
     topology: "IP-EIGRP Topology Table",
     "all-links": "Show all links in topology table",
+    // BGP (eBGP, kademe 1)
+    bgp: "Border Gateway Protocol (BGP)",
+    "remote-as": "Specify a BGP neighbor",
+    "ebgp-multihop": "Allow EBGP neighbors not on directly connected networks",
+    "update-source": "Source of routing updates",
+    "log-neighbor-changes": "Log neighbor up/down and reset reason",
+    "local-preference": "local preference (higher=more preferred)",
+    "advertised-routes": "Display the routes advertised to a BGP neighbor",
+    routes: "Display routes learned from neighbor",
+    soft: "Soft reconfig",
+    mask: "Network mask",
+    Null0: "Null interface",
     // STP protection / errdisable
     bpduguard: "Don't accept BPDUs on this interface",
     errdisable: "Error disable",
@@ -3843,6 +4361,7 @@ var AgLabSim = (() => {
     }
     o.push(...eigrpConfigLines(c));
     if (c.ospf) o.push(...ospfLines(c));
+    o.push(...bgpConfigLines(c));
     o.push("ip forward-protocol nd", "no ip http server", "!");
     o.push(...natConfigLines(c));
     for (const r of c.routes) o.push(routeLine(r));
@@ -3945,6 +4464,7 @@ var AgLabSim = (() => {
     }
     o.push(...eigrpConfigLines(c));
     if (c.ospf) o.push(...ospfLines(c));
+    o.push(...bgpConfigLines(c));
     if (c.defaultGateway) o.push("ip default-gateway " + c.defaultGateway);
     o.push("ip forward-protocol nd", "no ip http server", "!");
     for (const r of c.routes) o.push(routeLine(r));
@@ -4135,7 +4655,9 @@ var AgLabSim = (() => {
     const keep = (e) => !only || (only === "C" ? e.code === "C" || e.code === "L" : e.code.startsWith(only));
     const line = (e, codeCol, width = 9) => {
       const head = `${codeCol.padEnd(width)}${e.net}/${e.prefix}`;
+      if (e.code === "S" && e.ifname === "Null0") return [`${head} is directly connected, Null0`];
       if (e.code === "S") return [`${head} [${e.ad ?? 1}/0] via ${e.nh}`];
+      if (e.code === "B") return [`${head} [${e.ad}/${e.metric ?? 0}] via ${e.nh}, 00:12:34`];
       if (e.code === "C" || e.code === "L") return [`${head} is directly connected, ${e.ifname}`];
       if (e.code.startsWith("D") && e.ifname === "Null0") return [`${head} is a summary, 00:12:34, Null0`];
       const paths = e.paths ?? [{ nh: e.nh, ifname: e.ifname }];
@@ -4185,7 +4707,18 @@ var AgLabSim = (() => {
       return o;
     }
     if (e.code === "S") {
-      o.push(`  Known via "static", distance ${e.ad ?? 1}, metric 0` + (e.prefix === 0 ? ", candidate default path" : ""), "  Routing Descriptor Blocks:", `  * ${e.nh}`, "      Route metric is 0, traffic share count is 1");
+      o.push(`  Known via "static", distance ${e.ad ?? 1}, metric 0` + (e.prefix === 0 ? ", candidate default path" : ""), "  Routing Descriptor Blocks:", e.ifname === "Null0" ? "  * directly connected, via Null0" : `  * ${e.nh}`, "      Route metric is 0, traffic share count is 1");
+      return o;
+    }
+    if (e.code === "B") {
+      const b = rt.derived.bgp?.[dev];
+      const p = b?.table.find((x) => x.net === e.net && x.prefix === e.prefix)?.paths.find((x) => x.best);
+      const tag = p?.asPath[0];
+      o.push(`  Known via "bgp ${b?.as ?? 0}", distance ${e.ad}, metric ${e.metric ?? 0}` + (e.prefix === 0 ? ", candidate default path" : ""));
+      if (tag !== void 0) o.push(`  Tag ${tag}, type external`);
+      o.push(`  Last update from ${e.nh} 00:12:34 ago`, "  Routing Descriptor Blocks:", `  * ${e.nh}, from ${e.nh}, 00:12:34 ago`, `      Route metric is ${e.metric ?? 0}, traffic share count is 1`);
+      if (p) o.push(`      AS Hops ${p.asPath.length}`);
+      if (tag !== void 0) o.push(`      Route tag ${tag}`);
       return o;
     }
     if (e.code.startsWith("D")) {
@@ -4309,7 +4842,7 @@ var AgLabSim = (() => {
   function showIpProtocols(rt, dev) {
     const head = ["*** IP Routing is NSF aware ***", ""];
     const eigrp = eigrpProtocolLines(rt.derived, dev);
-    return [...head, ...eigrp, ...ospfProtocolLines(rt, dev)];
+    return [...head, ...eigrp, ...ospfProtocolLines(rt, dev), ...bgpProtocolLines(rt.derived, dev)];
   }
   function ospfProtocolLines(rt, dev) {
     const s = ospfOf(rt, dev);
@@ -4449,7 +4982,7 @@ var AgLabSim = (() => {
     return o;
   }
   var ROLE_TEXT = { Root: "root", Desg: "designated", Altn: "alternate", Mstr: "master" };
-  var STATE_TEXT = { FWD: "forwarding", BLK: "blocking", BKN: "broken" };
+  var STATE_TEXT2 = { FWD: "forwarding", BLK: "blocking", BKN: "broken" };
   function showSpanningTreeMst(rt, dev, only, detail = false) {
     const c = rt.running[dev];
     const st = rt.derived.mst[dev];
@@ -4481,7 +5014,7 @@ var AgLabSim = (() => {
       o.push(...portRows(rt, dev, x.ports, 17));
       if (detail)
         for (const [name, p] of Object.entries(x.ports)) {
-          o.push("", ` ${name} of MST${x.id} is ${ROLE_TEXT[p.role]} ${STATE_TEXT[p.state]}`);
+          o.push("", ` ${name} of MST${x.id} is ${ROLE_TEXT[p.role]} ${STATE_TEXT2[p.state]}`);
           o.push(`Port info             port id       ${pad(`${p.prio ?? 128}.${p.portNum}`, 8)}priority  ${pad(p.prio ?? 128, 5)}cost  ${p.cost}`);
           o.push(`Designated root       address ${x.rootMac}  priority  ${x.rootPrio}`);
         }
@@ -4940,6 +5473,18 @@ var AgLabSim = (() => {
       { p: "show ip route", run: (x) => showIpRoute(x.rt, x.dev) },
       { p: "show ip route ospf", run: (x) => showIpRoute(x.rt, x.dev, "O") },
       { p: "show ip route eigrp", run: (x) => showIpRoute(x.rt, x.dev, "D") },
+      { p: "show ip route bgp", run: (x) => showIpRoute(x.rt, x.dev, "B") },
+      { p: "show ip bgp", run: (x) => showBgp(x.rt.derived, x.dev) },
+      { p: "show ip bgp summary", run: (x) => showBgpSummary(x.rt.derived, x.dev) },
+      { p: "show ip bgp neighbors", run: (x) => showBgpNeighbors(x.rt.derived, x.dev) },
+      { p: "show ip bgp neighbors <A.B.C.D:Neighbor to display information about>", run: (x, a) => showBgpNeighbors(x.rt.derived, x.dev, a[4]) },
+      {
+        p: "show ip bgp neighbors <A.B.C.D:Neighbor to display information about> advertised-routes",
+        run: (x, a) => showBgpNeighborRoutes(x.rt.derived, x.dev, a[4], "advertised")
+      },
+      { p: "show ip bgp neighbors <A.B.C.D:Neighbor to display information about> routes", run: (x, a) => showBgpNeighborRoutes(x.rt.derived, x.dev, a[4], "received") },
+      { p: "show ip bgp <A.B.C.D:Network in the BGP routing table to display>", run: (x, a) => showBgpPrefix(x.rt.derived, x.dev, a[3]) },
+      { p: "show ip bgp <A.B.C.D:Network in the BGP routing table to display> <A.B.C.D:Network mask>", run: (x, a) => showBgpPrefix(x.rt.derived, x.dev, a[3], a[4]) },
       { p: "show ip eigrp neighbors", run: (x) => showEigrpNeighbors(x.rt.derived, x.dev, false) },
       { p: "show ip eigrp neighbors detail", run: (x) => showEigrpNeighbors(x.rt.derived, x.dev, true) },
       { p: "show ip eigrp interfaces", run: (x) => showEigrpInterfaces(x.rt.derived, x.dev, false) },
@@ -5057,6 +5602,14 @@ var AgLabSim = (() => {
     { p: "erase startup-config", run: (x) => x.erase() },
     { p: "reload", run: (x) => x.reload() },
     { p: "clear ip nat translation *", run: (x) => x.clearNat() },
+    { p: "clear ip bgp *", run: (x) => x.clearBgp("*", false) },
+    { p: "clear ip bgp * soft", run: (x) => x.clearBgp("*", true) },
+    { p: "clear ip bgp * soft in", run: (x) => x.clearBgp("*", true) },
+    { p: "clear ip bgp * soft out", run: (x) => x.clearBgp("*", true) },
+    { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear>", run: (x, a) => x.clearBgp(a[3], false) },
+    { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft", run: (x, a) => x.clearBgp(a[3], true) },
+    { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft in", run: (x, a) => x.clearBgp(a[3], true) },
+    { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft out", run: (x, a) => x.clearBgp(a[3], true) },
     {
       p: "clear access-list counters",
       run: (x) => {
@@ -5217,6 +5770,14 @@ var AgLabSim = (() => {
             x.cfg.ipRouting = false;
             x.cfg.ospf = null;
             x.cfg.eigrp = null;
+            x.cfg.bgp = null;
+          }
+        },
+        { p: "router bgp <1-4294967295:Autonomous system number>", run: (x, a) => x.enterBgp(Number(a[2])) },
+        {
+          p: "no router bgp <1-4294967295:Autonomous system number>",
+          run: (x, a) => {
+            if (x.cfg.bgp?.as === Number(a[3])) x.cfg.bgp = null;
           }
         },
         { p: "router ospf <1-65535:Process ID>", run: (x, a) => x.enterOspf(Number(a[2])) },
@@ -5243,6 +5804,12 @@ var AgLabSim = (() => {
           }
         },
         { p: "ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router's address>", run: (x, a) => x.addRoute(a[2], a[3], a[4]) },
+        // BGP network'ü için özet girdisi: çıkışı Null0 (eşleşen paket atılır)
+        { p: "ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> Null0", run: (x, a) => x.addRoute(a[2], a[3], "Null0") },
+        {
+          p: "ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> Null0 <1-255:Distance metric for this route>",
+          run: (x, a) => x.addRoute(a[2], a[3], "Null0", Number(a[5]))
+        },
         {
           p: "ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router's address> <1-255:Distance metric for this route>",
           run: (x, a) => x.addRoute(a[2], a[3], a[4], Number(a[5]))
@@ -5279,7 +5846,8 @@ var AgLabSim = (() => {
         {
           p: "no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router's address> <1-255:Distance metric for this route>",
           run: (x, a) => x.removeRoute(a[3], a[4], a[5])
-        }
+        },
+        { p: "no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> Null0", run: (x, a) => x.removeRoute(a[3], a[4], "Null0") }
       );
     }
     if (def.router) {
@@ -5513,6 +6081,49 @@ var AgLabSim = (() => {
     { p: `default-metric ${EM}`, run: (x, a) => void (x.eigrp.defaultMetric = seed(a, 1)) },
     { p: "no default-metric", run: (x) => void (x.eigrp.defaultMetric = null) }
   ];
+  var NB = "<A.B.C.D:Neighbor address>";
+  var bgpPatterns = [
+    ...commonSub,
+    { p: "bgp router-id <A.B.C.D:Manually configured router identifier>", run: (x, a) => void (x.bgp.routerId = a[2]) },
+    { p: "no bgp router-id", run: (x) => void (x.bgp.routerId = null) },
+    { p: "bgp log-neighbor-changes", run: (x) => void (x.bgp.logNeighborChanges = true) },
+    { p: "no bgp log-neighbor-changes", run: (x) => void (x.bgp.logNeighborChanges = false) },
+    { p: "bgp default local-preference <0-4294967295:Local preference value>", run: (x, a) => void (x.bgp.defaultLocalPref = Number(a[3])) },
+    { p: "no bgp default local-preference", run: (x) => void (x.bgp.defaultLocalPref = null) },
+    { p: "network <A.B.C.D:Network number>", run: (x, a) => x.bgpNetwork(a[1], null, true) },
+    { p: "network <A.B.C.D:Network number> mask <A.B.C.D:Network mask>", run: (x, a) => x.bgpNetwork(a[1], a[3], true) },
+    { p: "no network <A.B.C.D:Network number>", run: (x, a) => x.bgpNetwork(a[2], null, false) },
+    { p: "no network <A.B.C.D:Network number> mask <A.B.C.D:Network mask>", run: (x, a) => x.bgpNetwork(a[2], a[4], false) },
+    { p: "redistribute static", run: (x) => void (x.bgp.redistribute.static = {}) },
+    { p: "redistribute static metric <0-4294967295:Default metric>", run: (x, a) => void (x.bgp.redistribute.static = { metric: Number(a[3]) }) },
+    { p: "no redistribute static", run: (x) => void delete x.bgp.redistribute.static },
+    { p: "redistribute connected", run: (x) => void (x.bgp.redistribute.connected = {}) },
+    { p: "redistribute connected metric <0-4294967295:Default metric>", run: (x, a) => void (x.bgp.redistribute.connected = { metric: Number(a[3]) }) },
+    { p: "no redistribute connected", run: (x) => void delete x.bgp.redistribute.connected },
+    { p: "default-metric <1-4294967295:Default metric>", run: (x, a) => void (x.bgp.defaultMetric = Number(a[1])) },
+    { p: "no default-metric", run: (x) => void (x.bgp.defaultMetric = null) },
+    { p: `neighbor ${NB} remote-as <1-4294967295:AS of remote neighbor>`, run: (x, a) => x.bgpRemoteAs(a[1], Number(a[3])) },
+    { p: `no neighbor ${NB}`, run: (x, a) => x.bgpNoNeighbor(a[2]) },
+    { p: `no neighbor ${NB} remote-as`, run: (x, a) => x.bgpNoNeighbor(a[2]) },
+    { p: `no neighbor ${NB} remote-as <1-4294967295:AS of remote neighbor>`, run: (x, a) => x.bgpNoNeighbor(a[2]) },
+    { p: `neighbor ${NB} description <LINE:Up to 80 characters describing this neighbor>`, run: (x, a) => x.bgpNbr(a[1], (n) => void (n.description = a[3].trim().slice(0, 80))) },
+    { p: `no neighbor ${NB} description`, run: (x, a) => x.bgpNbr(a[2], (n) => void delete n.description) },
+    { p: `neighbor ${NB} password <LINE:The password>`, run: (x, a) => x.bgpNbr(a[1], (n) => void (n.password = a[3].trim())) },
+    { p: `no neighbor ${NB} password`, run: (x, a) => x.bgpNbr(a[2], (n) => void delete n.password) },
+    { p: `neighbor ${NB} ebgp-multihop`, run: (x, a) => x.bgpNbr(a[1], (n) => void (n.ebgpMultihop = 255)) },
+    { p: `neighbor ${NB} ebgp-multihop <1-255:maximum hop count>`, run: (x, a) => x.bgpNbr(a[1], (n) => void (n.ebgpMultihop = Number(a[3]))) },
+    { p: `no neighbor ${NB} ebgp-multihop`, run: (x, a) => x.bgpNbr(a[2], (n) => void delete n.ebgpMultihop) },
+    {
+      p: `neighbor ${NB} update-source <if>`,
+      run: (x, a) => x.bgpNbr(a[1], (n) => void (n.updateSource = x.resolveName(a[3], a[4], 3))),
+      ifTypes: EIGRP_IFS
+    },
+    { p: `no neighbor ${NB} update-source`, run: (x, a) => x.bgpNbr(a[2], (n) => void delete n.updateSource) },
+    { p: `neighbor ${NB} shutdown`, run: (x, a) => x.bgpNbr(a[1], (n) => void (n.shutdown = true)) },
+    { p: `no neighbor ${NB} shutdown`, run: (x, a) => x.bgpNbr(a[2], (n) => void delete n.shutdown) },
+    { p: `neighbor ${NB} weight <0-65535:default weight>`, run: (x, a) => x.bgpNbr(a[1], (n) => void (n.weight = Number(a[3]))) },
+    { p: `no neighbor ${NB} weight`, run: (x, a) => x.bgpNbr(a[2], (n) => void delete n.weight) }
+  ];
   var keyChainPatterns = [
     ...commonSub,
     { p: "key <0-2147483647:Key identifier>", run: (x, a) => x.enterKey(Number(a[1])) },
@@ -5741,6 +6352,7 @@ var AgLabSim = (() => {
         ipslaEcho: buildTrie(ipSlaEchoPatterns),
         mst: buildTrie(mstPatterns),
         eigrp: buildTrie(eigrpPatterns),
+        bgp: buildTrie(bgpPatterns),
         keychain: buildTrie(keyChainPatterns),
         keychainKey: buildTrie(keyChainKeyPatterns)
       };
@@ -5805,6 +6417,7 @@ var AgLabSim = (() => {
         case "mst":
           return h + "(config-mst)#";
         case "eigrp":
+        case "bgp":
           return h + "(config-router)#";
         case "keychain":
           return h + "(config-keychain)#";
@@ -5815,7 +6428,7 @@ var AgLabSim = (() => {
       }
     }
     get inConfig() {
-      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho" || this.mode === "mst" || this.mode === "eigrp" || this.mode === "keychain" || this.mode === "keychainKey";
+      return this.mode === "config" || this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho" || this.mode === "mst" || this.mode === "eigrp" || this.mode === "keychain" || this.mode === "keychainKey" || this.mode === "bgp";
     }
     trie() {
       const t = tries(this.def);
@@ -5858,7 +6471,7 @@ var AgLabSim = (() => {
     }
     run(cmd) {
       let r = parse(this.trie(), cmd);
-      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho" || this.mode === "eigrp" || this.mode === "keychain" || this.mode === "keychainKey") && r.err !== "empty") {
+      if (!r.ok && (this.mode === "if" || this.mode === "vlan" || this.mode === "router" || this.mode === "dhcp" || this.mode === "acl" || this.mode === "track" || this.mode === "ipsla" || this.mode === "ipslaEcho" || this.mode === "eigrp" || this.mode === "keychain" || this.mode === "keychainKey" || this.mode === "bgp") && r.err !== "empty") {
         const g = parse(tries(this.def).config, cmd);
         if (g.ok) {
           this.mode = "config";
@@ -6550,6 +7163,49 @@ var AgLabSim = (() => {
         list.splice(i, 1);
       }
       if (!list.length) delete this.cfg.dhcpExcluded;
+    }
+    // ---- BGP (eBGP, kademe 1) ----
+    get bgp() {
+      return this.cfg.bgp;
+    }
+    enterBgp(as) {
+      if (!this.cfg.ipRouting) return ["% IP routing not enabled"];
+      if (this.cfg.bgp && this.cfg.bgp.as !== as) return [`% BGP is already running; AS is ${this.cfg.bgp.as}`];
+      if (!this.cfg.bgp)
+        this.cfg.bgp = { as, routerId: null, logNeighborChanges: true, defaultLocalPref: null, networks: [], redistribute: {}, defaultMetric: null, neighbors: [] };
+      this.mode = "bgp";
+    }
+    /** `network <ağ> [mask <maske>]`: maske yoksa sınıflı maske (IOS). */
+    bgpNetwork(net, mask, add) {
+      const m = mask ?? prefixToMask(classful(net));
+      const len = maskToPrefix(m);
+      if (len === null) return ["% Invalid mask"];
+      if (networkOf(net, len) !== net) return ["% Inconsistent address and mask"];
+      const list = this.bgp.networks;
+      const i = list.findIndex((x) => x.net === net && x.mask === m);
+      if (add && i < 0) list.push({ net, mask: m });
+      if (!add && i >= 0) list.splice(i, 1);
+    }
+    bgpRemoteAs(ip2, as) {
+      if (this.ipIfs().some(([, x]) => x.addr === ip2)) return ["% Cannot configure the local system as neighbor"];
+      const n = this.bgp.neighbors.find((x) => x.ip === ip2);
+      if (n) n.remoteAs = as;
+      else this.bgp.neighbors.push({ ip: ip2, remoteAs: as });
+    }
+    bgpNoNeighbor(ip2) {
+      const i = this.bgp.neighbors.findIndex((x) => x.ip === ip2);
+      if (i < 0) return ["% Specify remote-as or peer-group commands first"];
+      this.bgp.neighbors.splice(i, 1);
+    }
+    /** Tanımlı komşuda bir ayar (IOS: önce remote-as gerekir). */
+    bgpNbr(ip2, fn) {
+      const n = this.bgp.neighbors.find((x) => x.ip === ip2);
+      if (!n) return ["% Specify remote-as or peer-group commands first"];
+      fn(n);
+    }
+    clearBgp(target, soft) {
+      if (!this.rt.derived.bgp?.[this.dev]) return ["% BGP not active"];
+      if (!this.rt.clearBgp(this.dev, target, soft)) return ["% No such neighbor or address family"];
     }
     // ---- EIGRP ----
     get eigrp() {
@@ -7608,6 +8264,23 @@ var AgLabSim = (() => {
         routes: s.routes
       };
     }
+    /**
+     * eBGP durumu: AS, router ID, oturumlar (state, reason, peerAs, pfxRcd), BGP tablosu (önek →
+     * yollar; en iyi önce, `decidedBy` seçimi belirleyen adım) ve tabloya aday rotalar; yoksa null.
+     */
+    bgp(dev) {
+      const s = this.d.bgp?.[dev];
+      if (!s) return null;
+      return { as: s.as, rid: s.rid, sessions: s.sessions, table: s.table, rib: s.rib, advertised: s.advertised, received: s.received, loopRejected: s.loopRejected };
+    }
+    /** eBGP oturumu (komşu adresiyle); yoksa null. */
+    bgpSession(dev, ip2) {
+      return this.d.bgp?.[dev]?.sessions.find((x) => x.ip === ip2) ?? null;
+    }
+    /** Bir önek için BGP yolları (en iyi önce) ya da null. */
+    bgpPaths(dev, net, prefix) {
+      return this.d.bgp?.[dev]?.table.find((e) => e.net === net && e.prefix === prefix)?.paths ?? null;
+    }
     /** EIGRP topoloji girdisi: FD, successor'lar ve feasible successor'lar (yollar: nh, ifname, metric, rd); yoksa null. */
     eigrpTopo(dev, net, prefix) {
       const t = this.d.eigrp[dev]?.topo.find((x) => x.net === net && x.prefix === prefix);
@@ -7667,8 +8340,8 @@ var AgLabSim = (() => {
         if (!best || e.prefix > best.prefix) best = e;
       }
       if (!best) return null;
-      const source = best.prefix === 0 ? "default" : best.code === "C" ? "C" : best.code === "S" ? "S" : best.code.startsWith("D") ? "D" : "O";
-      const ad = best.code === "C" ? 0 : best.code === "S" ? best.ad ?? 1 : best.code.startsWith("D") ? best.ad : OSPF_AD2;
+      const source = best.prefix === 0 ? "default" : best.code === "C" ? "C" : best.code === "S" ? "S" : best.code === "B" ? "B" : best.code.startsWith("D") ? "D" : "O";
+      const ad = best.code === "C" ? 0 : best.code === "S" ? best.ad ?? 1 : best.code === "B" || best.code.startsWith("D") ? best.ad : OSPF_AD2;
       return { ...best, prefix: `${best.net}/${best.prefix}`, prefixLength: best.prefix, nextHop: best.code === "C" ? null : best.nh, ad, source };
     }
     errDisabled(dev, port) {
@@ -7957,6 +8630,24 @@ var AgLabSim = (() => {
       if (this.hw.off.has(dev)) return;
       this.logs.push({ dev, text: `${this.timestamp()}: ${msg}`, seq: ++this.seq });
       if (this.logs.length > 400) this.logs.splice(0, this.logs.length - 400);
+    }
+    /**
+     * `clear ip bgp <*|komşu> [soft [in|out]]`: sert sıfırlama kurulu oturumu düşürür ve (yakınsama
+     * anlık olduğundan) hemen yeniden kurar; günlükte Down/Up görünür. Soft: oturum düşmez.
+     * Kademe 1'de politika (route-map/prefix-list) olmadığından soft sıfırlama tabloyu değiştirmez.
+     * Dönüş: eşleşen komşu sayısı (0: böyle komşu yok).
+     */
+    clearBgp(dev, target, soft) {
+      const st = this.derived.bgp?.[dev];
+      if (!st) return 0;
+      const list = st.sessions.filter((s) => target === "*" || s.ip === target);
+      const log = this.running[dev]?.bgp?.logNeighborChanges ?? true;
+      if (!soft && log)
+        for (const s of list.filter((x) => x.state === "Established")) {
+          this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${s.ip} Down User reset`);
+          this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${s.ip} Up `);
+        }
+      return list.length;
     }
     /** Recompute after a config change and log what changed. */
     commit() {
@@ -8455,6 +9146,29 @@ var AgLabSim = (() => {
           this.log(dev, `%DUAL-5-NBRCHANGE: ${tag}: Neighbor ${n.ip} (${n.ifname}) is down: ${ifUp ? "holding time expired" : "interface down"}`);
         }
       }
+      for (const dev of /* @__PURE__ */ new Set([...Object.keys(a.bgp ?? {}), ...Object.keys(b.bgp ?? {})])) {
+        const cfg = b.cfgs[dev]?.bgp;
+        const logChanges = cfg?.logNeighborChanges ?? true;
+        const old = new Map((a.bgp?.[dev]?.sessions ?? []).map((s) => [s.ip, s]));
+        const now = new Map((b.bgp?.[dev]?.sessions ?? []).map((s) => [s.ip, s]));
+        const DOWN = { admin: "Admin. shutdown", badas: "BGP Notification sent", peeradmin: "BGP Notification received", auth: "Peer closed the session" };
+        for (const [ip2, s] of now) {
+          const was = old.get(ip2);
+          if (s.state === "Established") {
+            if (was?.state !== "Established" && logChanges) this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${ip2} Up `);
+            continue;
+          }
+          if (was?.state === "Established" && logChanges) this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${ip2} Down ${DOWN[s.reason ?? ""] ?? "Peer closed the session"}`);
+          if (was && was.reason === s.reason && was.notification === s.notification && was.auth === s.auth) continue;
+          if (s.reason === "badas") {
+            if (s.notification === "sent") this.log(dev, `%BGP-3-NOTIFICATION: sent to neighbor ${ip2} 2/2 (peer in wrong AS) 2 bytes ${asHex(s.peerAs ?? 0)}`);
+            else this.log(dev, `%BGP-3-NOTIFICATION: received from neighbor ${ip2} 2/2 (peer in wrong AS) 2 bytes ${asHex(cfg?.as ?? 0)}`);
+          }
+          if (s.reason === "auth" && s.localIp && s.auth !== "unexpected")
+            this.log(dev, `%TCP-6-BADAUTH: ${s.auth === "invalid" ? "Invalid" : "No"} MD5 digest from ${ip2}(179) to ${s.localIp}(11000) tableid - 0`);
+        }
+        for (const [ip2, s] of old) if (!now.has(ip2) && s.state === "Established" && logChanges) this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${ip2} Down Neighbor deleted`);
+      }
       const dupKeys = (x) => new Map(
         x.dups.flatMap(
           (g) => g.owners.filter((o) => o.kind === "svi" || o.kind === "routed").map((o) => {
@@ -8508,9 +9222,9 @@ var AgLabSim = (() => {
     assertPowered(rt, dev);
     return rt.topo.devices[dev].kind === "pc" ? new VpcsSession(rt, dev) : new IosSession(rt, dev);
   }
-  function runScript(rt, dev, script, session) {
+  function runScript(rt, dev, script, session2) {
     assertPowered(rt, dev);
-    const s = session ?? new IosSession(rt, dev);
+    const s = session2 ?? new IosSession(rt, dev);
     if (s.mode === "user") s.mode = "priv";
     const out = [];
     for (const line of script.split("\n")) {
@@ -12680,7 +13394,9 @@ end
     natOverload: "NAT Labber'da yok (L5)",
     natTranslations: "NAT çeviri tablosu Labber'da yok (L5)",
     ospf: "Switch üzerinde OSPF AğLab modelinde yok",
-    bgp: "BGP Labber'da modellenmez (kapsam dışı)",
+    // eBGP Labber'da IOS yapılandırmasıyla (router bgp) çalışır; AğLab modelinin eski `bgp` alanı
+    // (eski motorun basit eBGP'si) Labber'a çevrilmez
+    bgp: "AğLab modelindeki bgp alanı Labber'a çevrilmez (eBGP Labber'da router bgp yapılandırmasıyla kurulur)",
     services: "Sunucu servisleri yalnız Server cihazında modellenir",
     startupConfig: "Eski kayıt (v23) startup-config alanı: kayıt açılırken Labber startup-config’ine taşınır, köprüye verilmez",
     portSecurity: "Port security Labber'da yok (L5)",
@@ -13595,6 +14311,7 @@ end
       if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail("Loopback");
       if (cfg.ospf) fail("OSPF");
       if (cfg.eigrp) fail("EIGRP yapılandırması (desteklenmiyor)");
+      if (cfg.bgp) fail("BGP yapılandırması (desteklenmiyor)");
       if (Object.keys(cfg.keyChains ?? {}).length) fail("key chain (desteklenmiyor)");
       if (cfg.routes.length) fail("statik rota");
       if (Object.keys(cfg.tracks ?? {}).length) fail("track (izlenen nesne; switch üzerinde desteklenmiyor)");
@@ -13715,6 +14432,8 @@ end
     }
     for (const n of Object.keys(cfg.ipSla ?? {})) fail(`IP SLA ${n} (desteklenmiyor)`);
     if (cfg.eigrp) fail(`EIGRP yapılandırması (router eigrp ${cfg.eigrp.as}; desteklenmiyor)`);
+    if (cfg.bgp) fail(`BGP yapılandırması (router bgp ${cfg.bgp.as}; desteklenmiyor)`);
+    for (const r of cfg.routes) if (r.nh === "Null0") fail(`Null0 statik rota ${r.net} ${r.mask} (desteklenmiyor)`);
     if (Object.keys(cfg.keyChains ?? {}).length) fail("key chain (desteklenmiyor)");
     {
       const ids = Object.keys(cfg.tracks ?? {}).map(Number).sort((a, b) => a - b);

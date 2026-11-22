@@ -1,6 +1,7 @@
 // OSPFv2 model: neighbours, DR/BDR, SPF per area, inter-area summaries, stub areas, external default.
 // Computed from config + derived L2/L3 state; nothing is scripted per lab.
 
+import { computeBgp, markRibFailures } from './bgp'
 import { computeEigrp } from './eigrp'
 import { derive, type Derived } from './engine'
 import { duplicateIps, ifBandwidth, l2Domain, l3Ifs, routeTable, type L3If, type RouteCode } from './net'
@@ -95,6 +96,9 @@ export function computeState(
   d.ospf = computeOspf(d)
   // EIGRP, OSPF'ten sonra: aynı önekte AD seçimi rota tablosunda (OSPF ↔ EIGRP aktarımı yok)
   d.eigrp = computeEigrp(d)
+  // eBGP en son: oturumlar ve network denetimi IGP/statik tabloya bakar; BGP rotaları AD 20 ile yarışır
+  d.bgp = computeBgp(d)
+  markRibFailures(d)
   d.dups = duplicateIps(d)
   return d
 }

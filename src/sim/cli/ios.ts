@@ -2,13 +2,14 @@
 
 import * as fhrp from '../fhrp'
 import * as tracking from '../track'
+import * as bgp from '../bgp'
 import * as eigrp from '../eigrp'
 import { defaultMst, mstOf } from '../mst'
 import { defaultSvi, defaultSwitchConfig, defaultVlanName, pickL2, RESERVED_VLANS } from '../config'
 import { arpMac, deliver, l3Ifs, ping, traceProbe } from '../net'
 import type { LabRuntime } from '../runtime'
-import type { ChannelMode, DhcpPool, EigrpConfig, EigrpSeedMetric, FhrpTrack, HsrpGroup, IpSlaConfig, MstConfig, TrackConfig, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
-import { canonIf, clone, ifNum, intToIp, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, shortIf } from '../util'
+import type { BgpConfig, BgpNeighborConfig, ChannelMode, DhcpPool, EigrpConfig, EigrpSeedMetric, FhrpTrack, HsrpGroup, IpSlaConfig, MstConfig, TrackConfig, NatRule, NatStatic, IpAddr, L2IfConfig, L3Opts, OspfConfig, PhysIfConfig, PortSecurityConfig, SubIfConfig, SwitchConfig, SwitchDef } from '../types'
+import { canonIf, clone, ifNum, intToIp, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, prefixToMask, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
 import * as disc from '../discovery'
@@ -21,7 +22,7 @@ const SLA = '<1-2147483647:Entry number>'
 /** MST örnek listesi (0-4094; ör. 0-3,5) */
 const MI = '<WORD:MST instance range, example: 0-3,5,7-9>'
 
-export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl' | 'track' | 'ipsla' | 'ipslaEcho' | 'mst' | 'eigrp' | 'keychain' | 'keychainKey'
+export type Mode = 'user' | 'priv' | 'config' | 'if' | 'vlan' | 'router' | 'dhcp' | 'acl' | 'track' | 'ipsla' | 'ipslaEcho' | 'mst' | 'eigrp' | 'keychain' | 'keychainKey' | 'bgp'
 
 type P = Pattern<IosSession>
 type Out = string[] | void
@@ -53,6 +54,18 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show ip route', run: (x) => show.showIpRoute(x.rt, x.dev) },
     { p: 'show ip route ospf', run: (x) => show.showIpRoute(x.rt, x.dev, 'O') },
     { p: 'show ip route eigrp', run: (x) => show.showIpRoute(x.rt, x.dev, 'D') },
+    { p: 'show ip route bgp', run: (x) => show.showIpRoute(x.rt, x.dev, 'B') },
+    { p: 'show ip bgp', run: (x) => bgp.showBgp(x.rt.derived, x.dev) },
+    { p: 'show ip bgp summary', run: (x) => bgp.showBgpSummary(x.rt.derived, x.dev) },
+    { p: 'show ip bgp neighbors', run: (x) => bgp.showBgpNeighbors(x.rt.derived, x.dev) },
+    { p: 'show ip bgp neighbors <A.B.C.D:Neighbor to display information about>', run: (x, a) => bgp.showBgpNeighbors(x.rt.derived, x.dev, a[4]!) },
+    {
+      p: 'show ip bgp neighbors <A.B.C.D:Neighbor to display information about> advertised-routes',
+      run: (x, a) => bgp.showBgpNeighborRoutes(x.rt.derived, x.dev, a[4]!, 'advertised'),
+    },
+    { p: 'show ip bgp neighbors <A.B.C.D:Neighbor to display information about> routes', run: (x, a) => bgp.showBgpNeighborRoutes(x.rt.derived, x.dev, a[4]!, 'received') },
+    { p: 'show ip bgp <A.B.C.D:Network in the BGP routing table to display>', run: (x, a) => bgp.showBgpPrefix(x.rt.derived, x.dev, a[3]!) },
+    { p: 'show ip bgp <A.B.C.D:Network in the BGP routing table to display> <A.B.C.D:Network mask>', run: (x, a) => bgp.showBgpPrefix(x.rt.derived, x.dev, a[3]!, a[4]!) },
     { p: 'show ip eigrp neighbors', run: (x) => eigrp.showEigrpNeighbors(x.rt.derived, x.dev, false) },
     { p: 'show ip eigrp neighbors detail', run: (x) => eigrp.showEigrpNeighbors(x.rt.derived, x.dev, true) },
     { p: 'show ip eigrp interfaces', run: (x) => eigrp.showEigrpInterfaces(x.rt.derived, x.dev, false) },
@@ -170,6 +183,14 @@ const privPatterns: P[] = [
   { p: 'erase startup-config', run: (x) => x.erase() },
   { p: 'reload', run: (x) => x.reload() },
   { p: 'clear ip nat translation *', run: (x) => x.clearNat() },
+  { p: 'clear ip bgp *', run: (x) => x.clearBgp('*', false) },
+  { p: 'clear ip bgp * soft', run: (x) => x.clearBgp('*', true) },
+  { p: 'clear ip bgp * soft in', run: (x) => x.clearBgp('*', true) },
+  { p: 'clear ip bgp * soft out', run: (x) => x.clearBgp('*', true) },
+  { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear>', run: (x, a) => x.clearBgp(a[3]!, false) },
+  { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft', run: (x, a) => x.clearBgp(a[3]!, true) },
+  { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft in', run: (x, a) => x.clearBgp(a[3]!, true) },
+  { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft out', run: (x, a) => x.clearBgp(a[3]!, true) },
   {
     p: 'clear access-list counters',
     run: (x) => {
@@ -336,6 +357,14 @@ const configPatterns = (def: SwitchDef): P[] => {
           x.cfg.ipRouting = false
           x.cfg.ospf = null
           x.cfg.eigrp = null
+          x.cfg.bgp = null
+        },
+      },
+      { p: 'router bgp <1-4294967295:Autonomous system number>', run: (x, a) => x.enterBgp(Number(a[2])) },
+      {
+        p: 'no router bgp <1-4294967295:Autonomous system number>',
+        run: (x, a) => {
+          if (x.cfg.bgp?.as === Number(a[3])) x.cfg.bgp = null
         },
       },
       { p: 'router ospf <1-65535:Process ID>', run: (x, a) => x.enterOspf(Number(a[2])) },
@@ -362,6 +391,12 @@ const configPatterns = (def: SwitchDef): P[] => {
         },
       },
       { p: 'ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router\'s address>', run: (x, a) => x.addRoute(a[2]!, a[3]!, a[4]!) },
+      // BGP network'ü için özet girdisi: çıkışı Null0 (eşleşen paket atılır)
+      { p: 'ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> Null0', run: (x, a) => x.addRoute(a[2]!, a[3]!, 'Null0') },
+      {
+        p: 'ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> Null0 <1-255:Distance metric for this route>',
+        run: (x, a) => x.addRoute(a[2]!, a[3]!, 'Null0', Number(a[5])),
+      },
       {
         p: 'ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router\'s address> <1-255:Distance metric for this route>',
         run: (x, a) => x.addRoute(a[2]!, a[3]!, a[4]!, Number(a[5])),
@@ -398,7 +433,7 @@ const configPatterns = (def: SwitchDef): P[] => {
       {
         p: 'no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> <A.B.C.D:Forwarding router\'s address> <1-255:Distance metric for this route>',
         run: (x, a) => x.removeRoute(a[3]!, a[4]!, a[5]!),
-      },
+      },      { p: 'no ip route <A.B.C.D:Destination prefix> <A.B.C.D:Destination prefix mask> Null0', run: (x, a) => x.removeRoute(a[3]!, a[4]!, 'Null0') },
     )
   }
   if (def.router) {
@@ -649,6 +684,51 @@ const eigrpPatterns: P[] = [
   { p: 'no redistribute connected', run: (x) => void delete x.eigrp.redistribute.connected },
   { p: `default-metric ${EM}`, run: (x, a) => void (x.eigrp.defaultMetric = seed(a, 1)) },
   { p: 'no default-metric', run: (x) => void (x.eigrp.defaultMetric = null) },
+]
+
+/** `router bgp <AS>` alt kipi (config-router): eBGP, IPv4 unicast (kademe 1). */
+const NB = '<A.B.C.D:Neighbor address>'
+const bgpPatterns: P[] = [
+  ...commonSub,
+  { p: 'bgp router-id <A.B.C.D:Manually configured router identifier>', run: (x, a) => void (x.bgp.routerId = a[2]!) },
+  { p: 'no bgp router-id', run: (x) => void (x.bgp.routerId = null) },
+  { p: 'bgp log-neighbor-changes', run: (x) => void (x.bgp.logNeighborChanges = true) },
+  { p: 'no bgp log-neighbor-changes', run: (x) => void (x.bgp.logNeighborChanges = false) },
+  { p: 'bgp default local-preference <0-4294967295:Local preference value>', run: (x, a) => void (x.bgp.defaultLocalPref = Number(a[3])) },
+  { p: 'no bgp default local-preference', run: (x) => void (x.bgp.defaultLocalPref = null) },
+  { p: 'network <A.B.C.D:Network number>', run: (x, a) => x.bgpNetwork(a[1]!, null, true) },
+  { p: 'network <A.B.C.D:Network number> mask <A.B.C.D:Network mask>', run: (x, a) => x.bgpNetwork(a[1]!, a[3]!, true) },
+  { p: 'no network <A.B.C.D:Network number>', run: (x, a) => x.bgpNetwork(a[2]!, null, false) },
+  { p: 'no network <A.B.C.D:Network number> mask <A.B.C.D:Network mask>', run: (x, a) => x.bgpNetwork(a[2]!, a[4]!, false) },
+  { p: 'redistribute static', run: (x) => void (x.bgp.redistribute.static = {}) },
+  { p: 'redistribute static metric <0-4294967295:Default metric>', run: (x, a) => void (x.bgp.redistribute.static = { metric: Number(a[3]) }) },
+  { p: 'no redistribute static', run: (x) => void delete x.bgp.redistribute.static },
+  { p: 'redistribute connected', run: (x) => void (x.bgp.redistribute.connected = {}) },
+  { p: 'redistribute connected metric <0-4294967295:Default metric>', run: (x, a) => void (x.bgp.redistribute.connected = { metric: Number(a[3]) }) },
+  { p: 'no redistribute connected', run: (x) => void delete x.bgp.redistribute.connected },
+  { p: 'default-metric <1-4294967295:Default metric>', run: (x, a) => void (x.bgp.defaultMetric = Number(a[1])) },
+  { p: 'no default-metric', run: (x) => void (x.bgp.defaultMetric = null) },
+  { p: `neighbor ${NB} remote-as <1-4294967295:AS of remote neighbor>`, run: (x, a) => x.bgpRemoteAs(a[1]!, Number(a[3])) },
+  { p: `no neighbor ${NB}`, run: (x, a) => x.bgpNoNeighbor(a[2]!) },
+  { p: `no neighbor ${NB} remote-as`, run: (x, a) => x.bgpNoNeighbor(a[2]!) },
+  { p: `no neighbor ${NB} remote-as <1-4294967295:AS of remote neighbor>`, run: (x, a) => x.bgpNoNeighbor(a[2]!) },
+  { p: `neighbor ${NB} description <LINE:Up to 80 characters describing this neighbor>`, run: (x, a) => x.bgpNbr(a[1]!, (n) => void (n.description = a[3]!.trim().slice(0, 80))) },
+  { p: `no neighbor ${NB} description`, run: (x, a) => x.bgpNbr(a[2]!, (n) => void delete n.description) },
+  { p: `neighbor ${NB} password <LINE:The password>`, run: (x, a) => x.bgpNbr(a[1]!, (n) => void (n.password = a[3]!.trim())) },
+  { p: `no neighbor ${NB} password`, run: (x, a) => x.bgpNbr(a[2]!, (n) => void delete n.password) },
+  { p: `neighbor ${NB} ebgp-multihop`, run: (x, a) => x.bgpNbr(a[1]!, (n) => void (n.ebgpMultihop = 255)) },
+  { p: `neighbor ${NB} ebgp-multihop <1-255:maximum hop count>`, run: (x, a) => x.bgpNbr(a[1]!, (n) => void (n.ebgpMultihop = Number(a[3]))) },
+  { p: `no neighbor ${NB} ebgp-multihop`, run: (x, a) => x.bgpNbr(a[2]!, (n) => void delete n.ebgpMultihop) },
+  {
+    p: `neighbor ${NB} update-source <if>`,
+    run: (x, a) => x.bgpNbr(a[1]!, (n) => void (n.updateSource = x.resolveName(a[3]!, a[4]!, 3))),
+    ifTypes: EIGRP_IFS,
+  },
+  { p: `no neighbor ${NB} update-source`, run: (x, a) => x.bgpNbr(a[2]!, (n) => void delete n.updateSource) },
+  { p: `neighbor ${NB} shutdown`, run: (x, a) => x.bgpNbr(a[1]!, (n) => void (n.shutdown = true)) },
+  { p: `no neighbor ${NB} shutdown`, run: (x, a) => x.bgpNbr(a[2]!, (n) => void delete n.shutdown) },
+  { p: `neighbor ${NB} weight <0-65535:default weight>`, run: (x, a) => x.bgpNbr(a[1]!, (n) => void (n.weight = Number(a[3]))) },
+  { p: `no neighbor ${NB} weight`, run: (x, a) => x.bgpNbr(a[2]!, (n) => void delete n.weight) },
 ]
 
 /** `key chain <ad>` alt kipi. */
@@ -903,6 +983,7 @@ function tries(def: SwitchDef) {
       ipslaEcho: buildTrie(ipSlaEchoPatterns),
       mst: buildTrie(mstPatterns),
       eigrp: buildTrie(eigrpPatterns),
+      bgp: buildTrie(bgpPatterns),
       keychain: buildTrie(keyChainPatterns),
       keychainKey: buildTrie(keyChainKeyPatterns),
     }
@@ -973,6 +1054,7 @@ export class IosSession {
       case 'mst':
         return h + '(config-mst)#'
       case 'eigrp':
+      case 'bgp':
         return h + '(config-router)#'
       case 'keychain':
         return h + '(config-keychain)#'
@@ -984,7 +1066,7 @@ export class IosSession {
   }
 
   get inConfig() {
-    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho' || this.mode === 'mst' || this.mode === 'eigrp' || this.mode === 'keychain' || this.mode === 'keychainKey'
+    return this.mode === 'config' || this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho' || this.mode === 'mst' || this.mode === 'eigrp' || this.mode === 'keychain' || this.mode === 'keychainKey' || this.mode === 'bgp'
   }
 
   private trie(): TrieNode<IosSession> {
@@ -1033,7 +1115,7 @@ export class IosSession {
   private run(cmd: string): string[] {
     let r = parse(this.trie(), cmd)
     // in a sub-mode, a global config command drops back to config mode (as IOS does)
-    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho' || this.mode === 'eigrp' || this.mode === 'keychain' || this.mode === 'keychainKey') && r.err !== 'empty') {
+    if (!r.ok && (this.mode === 'if' || this.mode === 'vlan' || this.mode === 'router' || this.mode === 'dhcp' || this.mode === 'acl' || this.mode === 'track' || this.mode === 'ipsla' || this.mode === 'ipslaEcho' || this.mode === 'eigrp' || this.mode === 'keychain' || this.mode === 'keychainKey' || this.mode === 'bgp') && r.err !== 'empty') {
       const g = parse(tries(this.def).config, cmd)
       if (g.ok) {
         this.mode = 'config'
@@ -1807,6 +1889,57 @@ export class IosSession {
       list.splice(i, 1)
     }
     if (!list.length) delete this.cfg.dhcpExcluded
+  }
+
+  // ---- BGP (eBGP, kademe 1) ----
+
+  get bgp(): BgpConfig {
+    return this.cfg.bgp!
+  }
+
+  enterBgp(as: number): Out {
+    if (!this.cfg.ipRouting) return ['% IP routing not enabled']
+    if (this.cfg.bgp && this.cfg.bgp.as !== as) return [`% BGP is already running; AS is ${this.cfg.bgp.as}`]
+    if (!this.cfg.bgp)
+      this.cfg.bgp = { as, routerId: null, logNeighborChanges: true, defaultLocalPref: null, networks: [], redistribute: {}, defaultMetric: null, neighbors: [] }
+    this.mode = 'bgp'
+  }
+
+  /** `network <ağ> [mask <maske>]`: maske yoksa sınıflı maske (IOS). */
+  bgpNetwork(net: string, mask: string | null, add: boolean): Out {
+    const m = mask ?? prefixToMask(bgp.classful(net))
+    const len = maskToPrefix(m)
+    if (len === null) return ['% Invalid mask']
+    if (networkOf(net, len) !== net) return ['% Inconsistent address and mask']
+    const list = this.bgp.networks
+    const i = list.findIndex((x) => x.net === net && x.mask === m)
+    if (add && i < 0) list.push({ net, mask: m })
+    if (!add && i >= 0) list.splice(i, 1)
+  }
+
+  bgpRemoteAs(ip: string, as: number): Out {
+    if (this.ipIfs().some(([, x]) => x.addr === ip)) return ['% Cannot configure the local system as neighbor']
+    const n = this.bgp.neighbors.find((x) => x.ip === ip)
+    if (n) n.remoteAs = as
+    else this.bgp.neighbors.push({ ip, remoteAs: as })
+  }
+
+  bgpNoNeighbor(ip: string): Out {
+    const i = this.bgp.neighbors.findIndex((x) => x.ip === ip)
+    if (i < 0) return ['% Specify remote-as or peer-group commands first']
+    this.bgp.neighbors.splice(i, 1)
+  }
+
+  /** Tanımlı komşuda bir ayar (IOS: önce remote-as gerekir). */
+  bgpNbr(ip: string, fn: (n: BgpNeighborConfig) => void): Out {
+    const n = this.bgp.neighbors.find((x) => x.ip === ip)
+    if (!n) return ['% Specify remote-as or peer-group commands first']
+    fn(n)
+  }
+
+  clearBgp(target: string, soft: boolean): Out {
+    if (!this.rt.derived.bgp?.[this.dev]) return ['% BGP not active']
+    if (!this.rt.clearBgp(this.dev, target, soft)) return ['% No such neighbor or address family']
   }
 
   // ---- EIGRP ----

@@ -19,7 +19,7 @@ export interface Packet {
 }
 
 /** Well-known port names IOS prints and accepts (tcp/udp). */
-const TCP_NAMES: Record<string, number> = { ftp: 21, telnet: 23, smtp: 25, www: 80, pop3: 110 }
+const TCP_NAMES: Record<string, number> = { ftp: 21, telnet: 23, smtp: 25, www: 80, pop3: 110, bgp: 179 }
 const UDP_NAMES: Record<string, number> = { domain: 53, bootps: 67, bootpc: 68, tftp: 69, snmp: 161 }
 const BOTH: Record<string, number> = { domain: 53 }
 export const ICMP_TYPES = ['echo', 'echo-reply', 'unreachable', 'time-exceeded'] as const

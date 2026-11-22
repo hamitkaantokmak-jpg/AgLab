@@ -10,6 +10,7 @@ import { aclConfigLines } from '../acl'
 import { natConfigLines } from '../nat'
 import { pk } from '../topology'
 import type { IpAddr, L2IfConfig, L3Opts, MstConfig, PhysIfConfig, SwitchConfig, SwitchDef } from '../types'
+import { bgpConfigLines, bgpProtocolLines } from '../bgp'
 import { eigrpConfigLines, eigrpIfLines, eigrpProtocolLines, keyChainLines } from '../eigrp'
 import { formatVlans, instanceIds, instanceOf, mstDigest as mstDigestOf, mstOf, vlansOf, type MstInstanceState } from '../mst'
 import { formatVlanList, ifType, intToIp, ipToInt, macAdd, maskToPrefix, pad, padL, prefixMaskInt, shortIf } from '../util'
@@ -168,6 +169,7 @@ function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   }
   o.push(...eigrpConfigLines(c))
   if (c.ospf) o.push(...ospfLines(c))
+  o.push(...bgpConfigLines(c))
   o.push('ip forward-protocol nd', 'no ip http server', '!')
   o.push(...natConfigLines(c))
   for (const r of c.routes) o.push(routeLine(r))
@@ -279,6 +281,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   }
   o.push(...eigrpConfigLines(c))
   if (c.ospf) o.push(...ospfLines(c))
+  o.push(...bgpConfigLines(c))
   if (c.defaultGateway) o.push('ip default-gateway ' + c.defaultGateway)
   o.push('ip forward-protocol nd', 'no ip http server', '!')
   for (const r of c.routes) o.push(routeLine(r))
@@ -468,7 +471,7 @@ export function showIpIntBrief(rt: LabRuntime, dev: string): string[] {
   return o
 }
 
-export function showIpRoute(rt: LabRuntime, dev: string, only?: 'O' | 'S' | 'C' | 'D'): string[] {
+export function showIpRoute(rt: LabRuntime, dev: string, only?: 'O' | 'S' | 'C' | 'D' | 'B'): string[] {
   const d = rt.derived
   const c = rt.running[dev]!
   const sw = rt.topo.devices[dev] as SwitchDef
@@ -492,7 +495,10 @@ export function showIpRoute(rt: LabRuntime, dev: string, only?: 'O' | 'S' | 'C' 
   const keep = (e: RouteEntry) => !only || (only === 'C' ? e.code === 'C' || e.code === 'L' : e.code.startsWith(only))
   const line = (e: RouteEntry, codeCol: string, width = 9) => {
     const head = `${codeCol.padEnd(width)}${e.net}/${e.prefix}`
+    if (e.code === 'S' && e.ifname === 'Null0') return [`${head} is directly connected, Null0`]
     if (e.code === 'S') return [`${head} [${e.ad ?? 1}/0] via ${e.nh}`]
+    // eBGP: next hop özyinelemeli çözülür; IOS satırında çıkış arayüzü yazılmaz
+    if (e.code === 'B') return [`${head} [${e.ad}/${e.metric ?? 0}] via ${e.nh}, 00:12:34`]
     if (e.code === 'C' || e.code === 'L') return [`${head} is directly connected, ${e.ifname}`]
     // EIGRP özeti (Null0)
     if (e.code.startsWith('D') && e.ifname === 'Null0') return [`${head} is a summary, 00:12:34, Null0`]
@@ -549,7 +555,18 @@ export function showIpRouteFor(rt: LabRuntime, dev: string, ip: string): string[
     return o
   }
   if (e.code === 'S') {
-    o.push(`  Known via "static", distance ${e.ad ?? 1}, metric 0` + (e.prefix === 0 ? ', candidate default path' : ''), '  Routing Descriptor Blocks:', `  * ${e.nh}`, '      Route metric is 0, traffic share count is 1')
+    o.push(`  Known via "static", distance ${e.ad ?? 1}, metric 0` + (e.prefix === 0 ? ', candidate default path' : ''), '  Routing Descriptor Blocks:', e.ifname === 'Null0' ? '  * directly connected, via Null0' : `  * ${e.nh}`, '      Route metric is 0, traffic share count is 1')
+    return o
+  }
+  if (e.code === 'B') {
+    const b = rt.derived.bgp?.[dev]
+    const p = b?.table.find((x) => x.net === e.net && x.prefix === e.prefix)?.paths.find((x) => x.best)
+    const tag = p?.asPath[0]
+    o.push(`  Known via "bgp ${b?.as ?? 0}", distance ${e.ad}, metric ${e.metric ?? 0}` + (e.prefix === 0 ? ', candidate default path' : ''))
+    if (tag !== undefined) o.push(`  Tag ${tag}, type external`)
+    o.push(`  Last update from ${e.nh} 00:12:34 ago`, '  Routing Descriptor Blocks:', `  * ${e.nh}, from ${e.nh}, 00:12:34 ago`, `      Route metric is ${e.metric ?? 0}, traffic share count is 1`)
+    if (p) o.push(`      AS Hops ${p.asPath.length}`)
+    if (tag !== undefined) o.push(`      Route tag ${tag}`)
     return o
   }
   if (e.code.startsWith('D')) {
@@ -687,7 +704,7 @@ export function showIpProtocols(rt: LabRuntime, dev: string): string[] {
   const head = ['*** IP Routing is NSF aware ***', '']
   // EIGRP bölümü (IOS: süreçler yapılandırma sırasıyla; burada EIGRP önce)
   const eigrp = eigrpProtocolLines(rt.derived, dev)
-  return [...head, ...eigrp, ...ospfProtocolLines(rt, dev)]
+  return [...head, ...eigrp, ...ospfProtocolLines(rt, dev), ...bgpProtocolLines(rt.derived, dev)]
 }
 
 function ospfProtocolLines(rt: LabRuntime, dev: string): string[] {

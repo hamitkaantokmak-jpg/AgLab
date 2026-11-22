@@ -11,6 +11,7 @@ import { apipaFor, dhcpDiscover, isApipa, type DhcpResult } from './dhcp'
 import { bpduViolations, type Derived } from './engine'
 import { l3Ifs, macTable, type Delivery, type Hop } from './net'
 import { candidateRid, computeState } from './ospf'
+import { asHex } from './bgp'
 import { eigrpTag } from './eigrp'
 import { LabQuery } from './query'
 import { buildTopo, pk, type Topo } from './topology'
@@ -206,6 +207,25 @@ export class LabRuntime {
     if (this.hw.off.has(dev)) return // a powered-off device prints nothing
     this.logs.push({ dev, text: `${this.timestamp()}: ${msg}`, seq: ++this.seq })
     if (this.logs.length > 400) this.logs.splice(0, this.logs.length - 400)
+  }
+
+  /**
+   * `clear ip bgp <*|komşu> [soft [in|out]]`: sert sıfırlama kurulu oturumu düşürür ve (yakınsama
+   * anlık olduğundan) hemen yeniden kurar; günlükte Down/Up görünür. Soft: oturum düşmez.
+   * Kademe 1'de politika (route-map/prefix-list) olmadığından soft sıfırlama tabloyu değiştirmez.
+   * Dönüş: eşleşen komşu sayısı (0: böyle komşu yok).
+   */
+  clearBgp(dev: string, target: string, soft: boolean): number {
+    const st = this.derived.bgp?.[dev]
+    if (!st) return 0
+    const list = st.sessions.filter((s) => target === '*' || s.ip === target)
+    const log = this.running[dev]?.bgp?.logNeighborChanges ?? true
+    if (!soft && log)
+      for (const s of list.filter((x) => x.state === 'Established')) {
+        this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${s.ip} Down User reset`)
+        this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${s.ip} Up `)
+      }
+    return list.length
   }
 
   /** Recompute after a config change and log what changed. */
@@ -761,6 +781,32 @@ export class LabRuntime {
         const ifUp = b.eigrp[dev]?.ifs.some((i) => i.name === n.ifname)
         this.log(dev, `%DUAL-5-NBRCHANGE: ${tag}: Neighbor ${n.ip} (${n.ifname}) is down: ${ifUp ? 'holding time expired' : 'interface down'}`)
       }
+    }
+    // eBGP oturumları (bgp log-neighbor-changes), OPEN reddi ve MD5 uyuşmazlığı
+    for (const dev of new Set([...Object.keys(a.bgp ?? {}), ...Object.keys(b.bgp ?? {})])) {
+      const cfg = b.cfgs[dev]?.bgp
+      const logChanges = cfg?.logNeighborChanges ?? true
+      const old = new Map((a.bgp?.[dev]?.sessions ?? []).map((s) => [s.ip, s]))
+      const now = new Map((b.bgp?.[dev]?.sessions ?? []).map((s) => [s.ip, s]))
+      const DOWN: Record<string, string> = { admin: 'Admin. shutdown', badas: 'BGP Notification sent', peeradmin: 'BGP Notification received', auth: 'Peer closed the session' }
+      for (const [ip, s] of now) {
+        const was = old.get(ip)
+        if (s.state === 'Established') {
+          if (was?.state !== 'Established' && logChanges) this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${ip} Up `)
+          continue
+        }
+        if (was?.state === 'Established' && logChanges) this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${ip} Down ${DOWN[s.reason ?? ''] ?? 'Peer closed the session'}`)
+        if (was && was.reason === s.reason && was.notification === s.notification && was.auth === s.auth) continue
+        if (s.reason === 'badas') {
+          // gönderen: karşının OPEN'ındaki AS bizim remote-as ile uyuşmuyor; alan: tersi
+          if (s.notification === 'sent') this.log(dev, `%BGP-3-NOTIFICATION: sent to neighbor ${ip} 2/2 (peer in wrong AS) 2 bytes ${asHex(s.peerAs ?? 0)}`)
+          else this.log(dev, `%BGP-3-NOTIFICATION: received from neighbor ${ip} 2/2 (peer in wrong AS) 2 bytes ${asHex(cfg?.as ?? 0)}`)
+        }
+        // parolası olan uç yazar: karşı başka parola kullanıyorsa Invalid, hiç kullanmıyorsa No
+        if (s.reason === 'auth' && s.localIp && s.auth !== 'unexpected')
+          this.log(dev, `%TCP-6-BADAUTH: ${s.auth === 'invalid' ? 'Invalid' : 'No'} MD5 digest from ${ip}(179) to ${s.localIp}(11000) tableid - 0`)
+      }
+      for (const [ip, s] of old) if (!now.has(ip) && s.state === 'Established' && logChanges) this.log(dev, `%BGP-5-ADJCHANGE: neighbor ${ip} Down Neighbor deleted`)
     }
     // duplicate addresses: a switch reports another device using its own address
     const dupKeys = (x: Derived) =>

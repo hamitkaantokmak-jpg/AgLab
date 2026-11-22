@@ -26,16 +26,19 @@ function lab(r1: string, sw1 = ''): LabDef {
 
 describe('hoşgörülü mod (createLab lenient)', () => {
   it('ilk hatada durmaz; her satırın sonucu raporlanır; zararsız ve modellenmeyen ayrılır', () => {
-    const text = ['!', 'version 15.1', 'hostname R1', 'interface GigabitEthernet0/0', 'ip address 10.0.0.1 255.255.255.0', 'duplex auto', 'ip ospf authentication message-digest', '!', 'router bgp 65001', 'neighbor 1.1.1.1 remote-as 2', '!', 'ip route 0.0.0.0 0.0.0.0 10.0.0.2', 'line con 0', 'password cisco', '!', 'end'].join('\n')
+    const text = ['!', 'version 15.1', 'hostname R1', 'interface GigabitEthernet0/0', 'ip address 10.0.0.1 255.255.255.0', 'duplex auto', 'ip ospf authentication message-digest', '!', 'router rip', 'network 10.0.0.0', '!', 'router bgp 65001', 'neighbor 1.1.1.1 remote-as 2', '!', 'ip route 0.0.0.0 0.0.0.0 10.0.0.2', 'line con 0', 'password cisco', '!', 'end'].join('\n')
     expect(() => createLab(lab(text))).toThrow()
     const rt = createLab(lab(text), { lenient: true })
     const st = Object.fromEntries(rt.configReport!.map((l) => [l.command, l.status]))
     expect(st).toMatchObject({
       'version 15.1': 'ignored', 'hostname R1': 'applied', 'ip address 10.0.0.1 255.255.255.0': 'applied', 'duplex auto': 'ignored',
-      'ip ospf authentication message-digest': 'unmodeled', 'router bgp 65001': 'unmodeled', 'neighbor 1.1.1.1 remote-as 2': 'unmodeled',
+      'ip ospf authentication message-digest': 'unmodeled', 'router rip': 'unmodeled', 'network 10.0.0.0': 'unmodeled',
+      // eBGP (kademe 1) Labber'da modellenir: router bgp bloğu uygulanır
+      'router bgp 65001': 'applied', 'neighbor 1.1.1.1 remote-as 2': 'applied',
       'ip route 0.0.0.0 0.0.0.0 10.0.0.2': 'applied', 'line con 0': 'ignored', 'password cisco': 'ignored', end: 'ignored',
     })
-    expect(rt.configReport!.find((l) => l.command.startsWith('neighbor'))!.reason).toContain('router bgp 65001')
+    expect(rt.configReport!.find((l) => l.command === 'network 10.0.0.0')!.reason).toContain('router rip')
+    expect(rt.running['R1']!.bgp).toMatchObject({ as: 65001, neighbors: [{ ip: '1.1.1.1', remoteAs: 2 }] })
     expect(rt.running['R1']!.hostname).toBe('R1')
     expect(rt.running['R1']!.routes).toHaveLength(1)
   })

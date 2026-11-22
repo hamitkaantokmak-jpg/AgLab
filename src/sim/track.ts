@@ -22,6 +22,7 @@
 //       `flapping` işaretini saklar (show track'te görünür). Yoklama hedefine birincil hattan
 //       giden bir host rotası (/32, track'siz) varsa yoklama yedek yola düşmez, dalgalanma olmaz.
 
+import { bgpUsesStatics, recomputeBgp } from './bgp'
 import { eigrpExternalsFromTable, recomputeEigrp } from './eigrp'
 import type { Derived } from './engine'
 import { l3Ifs, ping } from './net'
@@ -141,6 +142,12 @@ export function computeTrack(d: Derived): TrackState {
       d.cfgs[dev]!.routes.some((r) => r.track !== undefined && !objects[dev]?.[String(r.track)]?.up),
   )
   if (eigrpStale) recomputeEigrp(d)
+  // BGP de tabloyu okur (network tam eşleşme, redistribute static): Down rota çıkınca duyuru kalkar
+  const bgpStale =
+    ospfStale ||
+    eigrpStale ||
+    devs.some((dev) => bgpUsesStatics(d, dev) && d.cfgs[dev]!.routes.some((r) => r.track !== undefined && !objects[dev]?.[String(r.track)]?.up))
+  if (bgpStale && Object.keys(d.bgp ?? {}).length) recomputeBgp(d)
   // (d2) dalgalanma yoklaması: Down rotalar çıkmış (ve gerekirse OSPF yeniden hesaplanmış) tabloyla
   for (const dev of devs)
     for (const [n, r] of Object.entries(sla[dev]!)) {

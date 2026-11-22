@@ -101,7 +101,9 @@ const FEATURE_REASON: Record<string, string> = {
   natOverload: 'NAT Labber\'da yok (L5)',
   natTranslations: 'NAT çeviri tablosu Labber\'da yok (L5)',
   ospf: 'Switch üzerinde OSPF AğLab modelinde yok',
-  bgp: 'BGP Labber\'da modellenmez (kapsam dışı)',
+  // eBGP Labber'da IOS yapılandırmasıyla (router bgp) çalışır; AğLab modelinin eski `bgp` alanı
+  // (eski motorun basit eBGP'si) Labber'a çevrilmez
+  bgp: 'AğLab modelindeki bgp alanı Labber\'a çevrilmez (eBGP Labber\'da router bgp yapılandırmasıyla kurulur)',
   services: 'Sunucu servisleri yalnız Server cihazında modellenir',
   startupConfig: 'Eski kayıt (v23) startup-config alanı: kayıt açılırken Labber startup-config’ine taşınır, köprüye verilmez',
   portSecurity: 'Port security Labber\'da yok (L5)',
@@ -1081,6 +1083,7 @@ export function toAglab(
     if (cfg.loopbacks && Object.keys(cfg.loopbacks).length) fail('Loopback')
     if (cfg.ospf) fail('OSPF')
     if (cfg.eigrp) fail('EIGRP yapılandırması (desteklenmiyor)')
+    if (cfg.bgp) fail('BGP yapılandırması (desteklenmiyor)')
     if (Object.keys(cfg.keyChains ?? {}).length) fail('key chain (desteklenmiyor)')
     if (cfg.routes.length) fail('statik rota')
     if (Object.keys(cfg.tracks ?? {}).length) fail('track (izlenen nesne; switch üzerinde desteklenmiyor)')
@@ -1227,6 +1230,9 @@ function routerToAglab(d: AglabDevice, cfg: SwitchConfig, back: Record<string, s
   for (const n of Object.keys(cfg.ipSla ?? {})) fail(`IP SLA ${n} (desteklenmiyor)`)
   // EIGRP ve key chain AğLab modelinde yok: sessizce düşürülmez, raporlanır
   if (cfg.eigrp) fail(`EIGRP yapılandırması (router eigrp ${cfg.eigrp.as}; desteklenmiyor)`)
+  // eBGP ve Null0 statik rota AğLab modelinde yok: sessizce düşürülmez, raporlanır
+  if (cfg.bgp) fail(`BGP yapılandırması (router bgp ${cfg.bgp.as}; desteklenmiyor)`)
+  for (const r of cfg.routes) if (r.nh === 'Null0') fail(`Null0 statik rota ${r.net} ${r.mask} (desteklenmiyor)`)
   if (Object.keys(cfg.keyChains ?? {}).length) fail('key chain (desteklenmiyor)')
   {
     const ids = Object.keys(cfg.tracks ?? {}).map(Number).sort((a, b) => a - b)
