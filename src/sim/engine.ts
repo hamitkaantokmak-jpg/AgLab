@@ -8,6 +8,7 @@ import { l2Signature } from './config'
 import { ifType, macAdd } from './util'
 import { pk, type Topo } from './topology'
 import { computeMst, mstComponents } from './mst'
+import { evaluateLink, linkKey, type L1End } from './phys'
 
 export type EcFlag = 'P' | 's' | 'I' | 'D'
 
@@ -21,6 +22,8 @@ export interface PhysState {
   errDisabled: boolean
   up: boolean
   ec?: { id: number; mode: ChannelMode; flag: EcFlag }
+  /** Katman 1: yalnız `phys` tanımlı bağlantılarda (phys.ts evaluateLink) */
+  l1?: L1End
 }
 
 export interface LPort {
@@ -209,6 +212,17 @@ export function derive(
     }
     return false
   }
+  // Katman 1: `phys` tanımlı bağlantılar kablo/SFP/optik güçten değerlendirilir (phys.ts);
+  // tanımsız bağlantıda l1 yoktur ve link eskisi gibi yalnız takılı/kopuk/güç/shutdown'dur.
+  const l1Of = (key: string, peer: { dev: string; port: string } | null): L1End | undefined => {
+    if (!peer || !hw.phys?.size) return undefined
+    const peerKey = pk(peer.dev, peer.port)
+    const spec = hw.phys.get(linkKey(key, peerKey))
+    if (!spec) return undefined
+    const [dev, port] = key.split('|') as [string, string]
+    const r = evaluateLink(spec, { key, port, pc: topo.devices[dev]?.kind === 'pc' }, { key: peerKey, port: peer.port, pc: topo.devices[peer.dev]?.kind === 'pc' })
+    return r.a
+  }
   for (const sw of topo.switches) {
     for (const port of sw.ports) {
       const key = pk(sw.id, port)
@@ -218,8 +232,9 @@ export function derive(
       const err = errdis.has(key)
       const peerUp =
         !!peer && endPowered(peer.dev, peer.port) && (peerIsPc || (!adminDown(peer.dev, peer.port) && !errdis.has(pk(peer.dev, peer.port))))
-      const up = !down && !err && endPowered(sw.id, port) && peerUp
-      phys[key] = { dev: sw.id, port, peer, peerIsPc, adminDown: down, errDisabled: err, up }
+      const l1 = l1Of(key, peer)
+      const up = !down && !err && endPowered(sw.id, port) && peerUp && (!l1 || l1.link)
+      phys[key] = { dev: sw.id, port, peer, peerIsPc, adminDown: down, errDisabled: err, up, ...(l1 ? { l1 } : {}) }
     }
   }
 
@@ -274,7 +289,8 @@ export function derive(
   const lportByName: Record<string, LPort> = {}
   const lportOfPhys: Record<string, LPort> = {}
   const ec: Record<string, EcGroup[]> = {}
-  const speedOf = (port: string) => ifType(port)?.speed ?? 100
+  // Katman 1 tanımlı portta hız anlaşmadan gelir (ör. Fa ⇄ Gi bakır: 100)
+  const speedOf = (port: string, dev?: string) => (dev ? phys[pk(dev, port)]?.l1?.speed : undefined) ?? ifType(port)?.speed ?? 100
   const portIndex = (sw: SwitchDef, port: string) => sw.ports.indexOf(port) + 1
 
   for (const sw of topo.switches) {
@@ -315,8 +331,8 @@ export function derive(
         peerIsPc: false,
         opMode: 'access',
         inactive: false,
-        cost: speedCost(bundled.reduce((s, p) => s + speedOf(p), 0)),
-        speed: bundled.reduce((s, p) => s + speedOf(p), 0),
+        cost: speedCost(bundled.reduce((s, p) => s + speedOf(p, sw.id), 0)),
+        speed: bundled.reduce((s, p) => s + speedOf(p, sw.id), 0),
         portNum: 64 + id,
         status: poCfg.shutdown ? 'disabled' : bundled.length ? 'connected' : 'notconnect',
       }
@@ -340,8 +356,8 @@ export function derive(
         peerIsPc: ps.peerIsPc,
         opMode: 'access',
         inactive: false,
-        cost: speedCost(speedOf(port)),
-        speed: speedOf(port),
+        cost: speedCost(speedOf(port, sw.id)),
+        speed: speedOf(port, sw.id),
         portNum: portIndex(sw, port),
         status: ps.adminDown ? 'disabled' : ps.errDisabled ? 'err-disabled' : suspended ? 'suspended' : ps.up ? 'connected' : 'notconnect',
       }

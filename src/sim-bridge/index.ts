@@ -23,3 +23,9 @@ export type { AglabDevice, AglabInterface, AglabLink, AglabTopology } from './ag
 export { cliImport, importReportWithCli, modeledDiffs, modeledProjection } from './cli-import'
 export type { CliImport, ModeledDiff } from './cli-import'
 export type { ConfigLine, LineStatus } from '../sim/config-text'
+// Katman 1 (fiziksel katman): uyumluluk tablosu, değerlendirme ve doğrulama. Teknisyen eylemleri
+// LabRuntime'dadır (createRuntime/createLab sonucu): replaceCable, cleanConnector, replaceSfp,
+// flipFiber, setLink, physLink, backgroundTraffic, counters, clearCounters.
+export { BOOT_FRAMES, evaluateLink, linkKey, OPTICS, validatePhysSpec } from '../sim/phys'
+export type { L1End, L1Fault, PortCounters } from '../sim/phys'
+export type { LabRuntime, SavedState } from '../sim/runtime'

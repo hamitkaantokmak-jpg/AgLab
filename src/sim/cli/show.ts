@@ -14,6 +14,7 @@ import { bgpConfigLines, bgpProtocolLines } from '../bgp'
 import { prefixListLines, routeMapLines } from '../bgp-policy'
 import { eigrpConfigLines, eigrpIfLines, eigrpProtocolLines, keyChainLines } from '../eigrp'
 import { formatVlans, instanceIds, instanceOf, mstDigest as mstDigestOf, mstOf, vlansOf, type MstInstanceState } from '../mst'
+import { MARGIN_DB, OPTICS } from '../phys'
 import { formatVlanList, ifType, intToIp, ipToInt, macAdd, maskToPrefix, pad, padL, prefixMaskInt, shortIf } from '../util'
 
 const sortIfs = (sw: SwitchDef, names: string[]) =>
@@ -358,6 +359,11 @@ export function showIntStatus(rt: LabRuntime, dev: string): string[] {
     if (ps.ec?.flag === 's') status = 'suspended'
     else if (lp && !lp.isPo && lp.status === 'inactive') status = 'inactive'
     const vlan = cfg.routed ? 'routed' : lp && ps.up ? vlanCol(lp) : cfg.mode === 'trunk' ? 'trunk' : String(cfg.accessVlan)
+    // Katman 1: hız anlaşmadan, Type takılı modülden (phys tanımsız portta eskisi gibi sabit)
+    if (ps.l1) {
+      o.push(row(p, cfg.description, status, vlan, 'a-' + ps.l1.speed, ps.l1.type, ps.up))
+      continue
+    }
     const fast = ifType(p)?.speed === 100
     o.push(row(p, cfg.description, status, vlan, fast ? 'a-100' : 'a-1000', fast ? '10/100BaseTX' : '10/100/1000BaseTX', ps.up))
   }
@@ -1066,7 +1072,7 @@ export function showInterface(rt: LabRuntime, dev: string, name: string): string
   const proto = isPo ? lp!.active : ps!.up && ps!.ec?.flag !== 's'
   const idx = isPo ? 60 + Number(name.slice(12)) : sw.ports.indexOf(name) + 1
   const mac = macAdd(sw.mac, idx)
-  const speed = isPo ? (lp!.members.length * 1000 || 1000) * 1000 : (ifType(name)?.speed ?? 100) * 1000
+  const speed = isPo ? (lp!.members.length * 1000 || 1000) * 1000 : (ps?.l1?.speed ?? ifType(name)?.speed ?? 100) * 1000
   const out = [
     `${name} is ${admin ? 'administratively down' : up ? 'up' : 'down'}, line protocol is ${proto ? 'up (connected)' : admin ? 'down (disabled)' : ps?.errDisabled ? 'down (err-disabled)' : ps?.ec?.flag === 's' ? 'down (suspended)' : 'down (notconnect)'}`,
     `  Hardware is ${isPo ? 'EtherChannel' : ifType(name)?.speed === 100 ? 'Fast Ethernet' : 'Gigabit Ethernet'}, address is ${mac} (bia ${mac})`,
@@ -1076,9 +1082,92 @@ export function showInterface(rt: LabRuntime, dev: string, name: string): string
   const rip = !isPo ? rt.running[dev]!.ifaces[name]?.ip : null
   if (rip && rt.running[dev]!.ifaces[name]?.routed) out.push(`  Internet address is ${rip.addr}/${maskToPrefix(rip.mask)}`)
   out.push(`  MTU 1500 bytes, BW ${speed} Kbit/sec, DLY 100 usec,`, '     reliability 255/255, txload 1/255, rxload 1/255', '  Encapsulation ARPA, loopback not set')
+  const l1 = !isPo ? ps?.l1 : undefined
+  if (l1) out.push(ps!.up ? `  Full-duplex, ${l1.speed}Mb/s, link type is auto, media type is ${l1.type}` : `  Auto-duplex, Auto-speed, link type is auto, media type is ${l1.type}`)
   if (isPo) out.push(`  Members in this channel: ${lp!.members.map(shortIf).join(' ') || 'none'}`)
   else if (ps?.ec) out.push(`  Member of Port-channel${ps.ec.id} (${ps.ec.flag})`)
+  // Katman 1: sayaçlar yalnız phys tanımlı portta (bayt = çerçeve × 64; diğer sayaçlar 0)
+  if (l1) {
+    const c = rt.counters(dev, name)
+    out.push(
+      `     ${c.rx} packets input, ${c.rx * 64} bytes, 0 no buffer`,
+      `     ${c.inErr} input errors, ${c.crc} CRC, 0 frame, 0 overrun, 0 ignored`,
+      `     ${c.tx} packets output, ${c.tx * 64} bytes, 0 underruns`,
+      '     0 output errors, 0 collisions, 0 interface resets',
+    )
+  }
   return out
+}
+
+// ---- Katman 1: hata sayaçları ve optik modül (DOM) ----
+
+export function showIntCountersErrors(rt: LabRuntime, dev: string): string[] {
+  const sw = rt.topo.devices[dev] as SwitchDef
+  const o = ['', 'Port        Align-Err     FCS-Err    Xmit-Err     Rcv-Err  UnderSize  OutDiscards']
+  for (const p of sw.ports) {
+    const c = rt.counters(dev, p)
+    o.push(pad(shortIf(p), 12) + padL(0, 9) + padL(c.crc, 12) + padL(0, 12) + padL(c.inErr, 12) + padL(0, 11) + padL(0, 13))
+  }
+  o.push('', 'Port      Single-Col  Multi-Col   Late-Col  Excess-Col  Carri-Sen      Runts     Giants')
+  for (const p of sw.ports) o.push(pad(shortIf(p), 10) + padL(0, 10) + padL(0, 11) + padL(0, 11) + padL(0, 12) + padL(0, 11) + padL(0, 11) + padL(0, 11))
+  return o
+}
+
+/** Optik modüllü portlar (DOM okunabilen: canlı SX/LX/ZX). */
+function opticPorts(rt: LabRuntime, dev: string) {
+  const sw = rt.topo.devices[dev] as SwitchDef
+  return sw.ports.flatMap((p) => {
+    const l1 = rt.derived.phys[pk(dev, p)]?.l1
+    const t = l1?.sfp?.type
+    return l1 && t && t in OPTICS ? [{ port: p, l1, opt: OPTICS[t as keyof typeof OPTICS] }] : []
+  })
+}
+
+const dbm = (x: number | null) => (x === null ? 'N/A' : x.toFixed(1))
+
+/**
+ * `show interfaces transceiver [detail]`: TX/RX gücü (dBm). Eşikler modelin değerleridir
+ * (RX: doyma/duyarlılık; TX: nominal ±), gerçek modülün EEPROM eşikleri değildir. Sıcaklık,
+ * voltaj ve akım modellenmez.
+ */
+export function showTransceiver(rt: LabRuntime, dev: string, detail: boolean): string[] {
+  const list = opticPorts(rt, dev)
+  if (!list.length) return ['']
+  if (!detail) {
+    const o = [
+      'If device is externally calibrated, only calibrated values are printed.',
+      'NA or N/A: not applicable, Tx: transmit, Rx: receive.',
+      'dBm: decibels (milliwatts). Temperature, voltage and current: not modelled.',
+      '',
+      '           Optical   Optical',
+      '           Tx Power  Rx Power',
+      'Port       (dBm)     (dBm)',
+      '---------  --------  --------',
+    ]
+    for (const x of list) o.push(pad(shortIf(x.port), 11) + padL(dbm(x.l1.txDbm), 8) + padL(dbm(x.l1.rxDbm), 10))
+    return o
+  }
+  const flag = (v: number | null, ha: number, hw: number, lw: number, la: number) =>
+    v === null ? '' : v > ha ? '++' : v > hw ? '+' : v < la ? '--' : v < lw ? '-' : ''
+  const row = (port: string, v: number | null, th: [number, number, number, number]) =>
+    pad(shortIf(port), 11) + pad(padL(dbm(v), 6) + ' ' + flag(v, ...th), 19) + th.map((t, i) => padL(t.toFixed(1), i ? 11 : 10)).join('')
+  const head = (what: string) => [
+    '',
+    '                              High Alarm  High Warn  Low Warn   Low Alarm',
+    `           ${pad(what, 19)}Threshold   Threshold  Threshold  Threshold`,
+    'Port       (dBm)              (dBm)       (dBm)      (dBm)      (dBm)',
+    '---------  -----------------  ----------  ---------  ---------  ---------',
+  ]
+  const o = [
+    'mA: milliamperes, dBm: decibels (milliwatts), NA or N/A: not applicable.',
+    '++ : high alarm, +  : high warning, -  : low warning, -- : low alarm.',
+    'Temperature, voltage and current: not modelled.',
+    ...head('Transmit Power'),
+  ]
+  for (const x of list) o.push(row(x.port, x.l1.txDbm, [x.opt.txDbm + 3, x.opt.txDbm + 2, x.opt.txDbm - 3, x.opt.txDbm - 4]))
+  o.push(...head('Receive Power'))
+  for (const x of list) o.push(row(x.port, x.l1.rxDbm, [x.opt.overloadDbm + 1, x.opt.overloadDbm, x.opt.sensDbm + MARGIN_DB, x.opt.sensDbm]))
+  return o
 }
 
 // ---- DHCP server (L5-b) ----

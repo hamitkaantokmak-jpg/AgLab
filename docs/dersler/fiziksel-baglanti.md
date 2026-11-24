@@ -1,8 +1,10 @@
 # AğLab Konu #4: Fiziksel bağlantı ve kablolama
 
 > Uygulamadaki `physical` dersi bu belgeye göre yazıldı. Senaryolar Sorun Çöz'de `phy-*`
-> kimlikleriyle Labber'da çalışır. Pratik türü: Motor + okuma (kablo türleri, PoE, hız/duplex ve
-> hata sayaçları okuma). Şemalar: `docs/dersler/gorseller/fiziksel-baglanti.py`.
+> kimlikleriyle Labber'da çalışır. Pratik türü: Motor + okuma. Kablo türü/uzunluğu, SFP, fiber
+> (optik güç, kirli konnektör, TX/RX yönü) ve hata sayaçları Labber'ın Katman 1 modelinde vardır
+> (bağlantıda `phys` tanımlıysa); PoE, güç bütçesi ve duplex uyuşmazlığı okuma konusudur.
+> Şemalar: `docs/dersler/gorseller/fiziksel-baglanti.py`.
 
 Bu konu bittiğinde öğrenci bir portun durumunu (connected, notconnect, disabled, err-disabled) ve `show interfaces` satırlarını yorumlar. Kapalı portu, kopuk kabloyu, yanlış porta takılmış kabloyu ve kapalı cihazı birbirinden ayırır. Bir bağlantının iki ucunu birlikte kontrol etmeyi alışkanlık edinir. Kablo türlerini, PoE'yi ve etiketlemenin neden önemli olduğunu bilir. Seviye 1, süre yaklaşık 65 dakika (ders 20, lab 15, senaryolar 20, sınav 10).
 
@@ -71,7 +73,7 @@ IP telefon, erişim noktası (AP) ve kamera gibi cihazlar gücü ağ kablosundan
 
 ![PoE güç bütçesi örneği](gorseller/fiziksel-baglanti/g5.svg)
 
-> **Simülatörde yok:** Kablo türü, PoE ve güç bütçesi Labber'da modellenmez; okuma konusudur.
+> **Simülatörde:** Kablo türü ve uzunluğu, SFP modülü ve fiber arızaları Labber'ın Katman 1 modelinde vardır (2.7). PoE ve güç bütçesi modellenmez; okuma konusudur.
 
 ### 2.6 Hız ve duplex
 
@@ -80,6 +82,20 @@ IP telefon, erişim noktası (AP) ve kamera gibi cihazlar gücü ağ kablosundan
 ![Duplex uyuşmazlığı: çalışıyor ama yavaş](gorseller/fiziksel-baglanti/g6.svg)
 
 > **Sahada:** "Ping gidiyor ama dosya kopyalamak sonsuza kadar sürüyor" şikâyeti çoğu zaman duplex uyuşmazlığı ya da bozuk bir kablodur. Sayaçları `clear counters` ile sıfırlayıp birkaç dakika sonra tekrar oku; yalnız **artan** sayaç bir sorun gösterir.
+
+> **Simülatörde:** `speed` / `duplex` komutları ve duplex uyuşmazlığı (late collision) modellenmez. Hata sayaçları (CRC, input errors) Katman 1 tanımlı bağlantıda kablo ve optik durumundan türetilir (2.7).
+
+### 2.7 Fiber ve SFP: ışık var mı, yeterli mi?
+
+> **Benzetme:** Fiber bir el fenerinin hortumdan geçen ışığıdır. Fener (verici) zayıfsa, hortum uzunsa, ağzı kirliyse ya da hortum sıkı bükülmüşse öbür uçtaki göz (alıcı) ışığı ya hiç görmez ya da seçemez. İki fenerin rengi de aynı olmalı: kırmızı fener ile mavi ışığa ayarlı göz anlaşamaz.
+
+- **SFP modülü** portun ışık ya da bakır "ağzıdır". İki uç **aynı tipte** olmalı: 1000BASE-SX (850 nm, çok modlu fiber, ~550 m), 1000BASE-LX (1310 nm, tek modlu fiber, ~10 km), 1000BASE-ZX (1550 nm, tek modlu, ~70 km). SX ↔ LX link kurmaz.
+- **Kablo ve modül uyumlu olmalı:** SX tek modlu kabloda çalışmaz; LX çok modlu kabloda (mod koşullandırma kablosu olmadan) zayıf ve hatalı çalışır.
+- **Güç bütçesi:** alıcı gücü = karşı verici gücü − fiber kaybı − konnektör kayıpları. **Kirli konnektör** ve **aşırı bükülme** ek kayıptır. Alıcı gücü duyarlılığın altındaysa link yok (notconnect); eşiğe çok yakınsa link up ama **CRC** artar. Çok kısa bir hatta güçlü modül (ZX) alıcıyı **doyurur**; yine hata.
+- **TX/RX ters:** fiber çiftinin uçları çaprazlanmalıdır; ters takılırsa iki alıcı da ışık görmez.
+- **Desteklenmeyen modül:** Cisco switch üçüncü parti SFP'yi tanımazsa portu **err-disabled** yapar (`gbic-invalid`). Modül değiştirildikten sonra port `shutdown` / `no shutdown` ile açılır.
+
+> **Simülatörde:** Bu kurallar Labber'ın Katman 1 modelinde vardır (bağlantıda `phys` tanımlıysa). Teknisyen eylemleri (kabloyu değiştir, konnektörü temizle, SFP değiştir, fiber çevir) motorda vardır; arayüzdeki karşılıkları ayrı iştir. Güç değerleri öğretim amaçlı tipik değerlerdir; gerçek modülün eşikleri, sıcaklık/voltaj, OTDR ve uzaktan kablo testi modellenmez.
 
 ## 3. Çıktı okuma
 
@@ -112,7 +128,29 @@ FastEthernet0/2 is down, line protocol is down (notconnect)
 ```
 
 - **İlk satır:** Katman 1 ("is down") ve katman 2 ("line protocol is down") durumu, parantez içinde nedeni.
-- **Hata sayaçları** (gerçek cihazda; simülatörde yok, okuma): CRC ve input errors artıyorsa kablo ya da konnektör bozuktur, ya da duplex uyuşmazlığı vardır. **late collision**, duplex uyuşmazlığının tipik izidir. Sayaçlar `clear counters` ile sıfırlanıp bir süre sonra tekrar okunur; yalnız **artan** sayaç bir sorun gösterir.
+- **Hata sayaçları** (simülatörde Katman 1 tanımlı portta; late collision ve duplex uyuşmazlığı modellenmez): CRC ve input errors artıyorsa kablo ya da konnektör bozuktur, ya da duplex uyuşmazlığı vardır. **late collision**, duplex uyuşmazlığının tipik izidir. Sayaçlar `clear counters` ile sıfırlanıp bir süre sonra tekrar okunur; yalnız **artan** sayaç bir sorun gösterir.
+
+### show interfaces counters errors ve transceiver
+
+```
+SW1#show interfaces counters errors
+
+Port        Align-Err     FCS-Err    Xmit-Err     Rcv-Err  UnderSize  OutDiscards
+Fa0/1               0           0           0           0          0            0
+Gi0/1               0          33           0          33          0            0
+...
+SW1#show interfaces transceiver detail
+...
+                              High Alarm  High Warn  Low Warn   Low Alarm
+           Receive Power      Threshold   Threshold  Threshold  Threshold
+Port       (dBm)              (dBm)       (dBm)      (dBm)      (dBm)
+---------  -----------------  ----------  ---------  ---------  ---------
+Gi0/1       -16.0 -                  1.0        0.0      -14.0      -17.0
+```
+
+- **FCS-Err / Rcv-Err:** bu portun **aldığı** hatalı çerçeveler. Sorun bu uca gelen yöndedir: kablo, karşı vericinin gücü ya da bu ucun konnektörü.
+- **Receive Power:** `-` düşük uyarı, `--` düşük alarm (ışık yok ya da duyarlılığın altında). Örnekte güç düşük uyarı eşiğinin (-14) altında, alarmın (-17) üstünde: link up ama marjinal; CRC'nin nedeni budur. Önce bu ucun konnektörünü temizle, sonra tekrar oku.
+- Karşı ucun RX gücü normal ve CRC'si 0 ise sorun yalnız bir yöndedir; iki ucu birlikte oku.
 
 ## 4. Yönlendirmeli lab
 
@@ -138,6 +176,9 @@ Topoloji: SW1'e PC-1 (Fa0/1) ve PC-2 (Fa0/2) bağlı. SW2 (yazıcı ve PC-3) SW1
 | E3 | Kablo yanlış porta takılmış | Taşınan cihaz bağlanmıyor; belgedeki port notconnect | Belgedeki port notconnect, başka bir port disabled ya da yanlış VLAN'da | Doğru portu yapılandır ya da kabloyu taşı; `description` güncelle |
 | E4 | Cihaz kapalı | Bir switch'e bağlı her şey birden gitti | Uplink notconnect; cihazın yönetim adresine ping yok; güç ışığı sönük | Gücü kontrol et, cihazı aç |
 | E5 | Bozuk kablo ya da duplex uyuşmazlığı | Bağlantı var ama yavaş ya da kesik kesik | CRC, input errors, late collision sayaçları artıyor; bir uç sabit, öbürü auto | Kabloyu değiştir; iki ucu da auto ya da ikisini de aynı değere sabitle |
+| E6 | Kirli fiber konnektör | Bağlantı up ama yavaş; bir uçta CRC artıyor | `show interfaces transceiver detail`: o ucun RX gücü düşük uyarıda; `counters errors`'ta FCS-Err artıyor | Konnektörü temizle, `clear counters`, tekrar oku |
+| E7 | SFP/kablo uyumsuz ya da TX/RX ters | Yeni fiber hat hiç gelmiyor; iki uç notconnect | `show interfaces status` Type sütununda farklı modüller (SX/LX) ya da RX gücü -40 (ışık yok) | Aynı tip modül ve uygun kablo; ters ise fiber çiftini çaprazla |
+| E8 | Desteklenmeyen SFP | Yeni modül takıldı, port hemen kapandı | `show interfaces status err-disabled`: Reason `gbic-invalid` | Desteklenen modül tak, `shutdown` / `no shutdown` |
 
 > **Akılda kalsın:** E1 ile E2'yi ayıran şey hangi uca baktığındır. E3'te kablo sağlamdır, yanlış yerdedir. E5 bağlantıyı koparmaz, bozar; bu yüzden ping "çalışıyor" ama kullanıcı "çok yavaş" der.
 
@@ -263,7 +304,9 @@ Karşı switch'in kendisi: kapalı mı (güç), uplink portu kapalı mı? Karş�
 | `show interfaces <port>` | Tek portun ayrıntısı: ilk satır (katman 1/2) ve sayaçlar |
 | `shutdown` / `no shutdown` | Portu kapatır / açar |
 | `description <metin>` | Portu belgeler (Name sütunu) |
-| `clear counters` | Sayaçları sıfırlar; sonra artışı izle (gerçek cihazda) |
+| `clear counters` | Sayaçları sıfırlar; sonra artışı izle |
+| `show interfaces counters errors` | Port başına hata sayaçları (FCS-Err, Rcv-Err) |
+| `show interfaces transceiver [detail]` | SFP'nin TX/RX gücü (dBm) ve uyarı eşikleri |
 | `device power on\|off` (AğLab) | Cihazın gücünü değiştirir |
 
 **Unutma:**
@@ -297,6 +340,10 @@ Lab'ın otomatik değerlendirmesi: `q.linkUp('PC-2')`; `q.ping('PC-1', '192.168.
 - [ ] `description` Labber'da çalışıyor ama AğLab modeline yazılamıyor ("Labber durumu AğLab görünümüne yazılamadı" uyarısı); kayıt ve dışa aktarma içermiyor
 - [x] Cihaz gücü (`device power on|off`), kablo durumu — L2-B
 - [x] Beş senaryo başta başarısız, terminalden çözümle başarılı
-- [ ] `speed` / `duplex` komutları yok; duplex uyuşmazlığı ve hata sayaçları modellenmiyor (okuma)
-- [ ] `show interfaces counters errors` ve `clear counters` yok
-- [ ] Kablo türü (düz/çapraz/fiber), PoE ve güç bütçesi modellenmiyor (okuma)
+- [x] Katman 1 modeli (bağlantıda `phys`): kablo türü/uzunluğu (UTP, DAC, çok/tek modlu fiber), SFP tipi (1000BASE-T/SX/LX/ZX, DAC), ölü ve desteklenmeyen modül (`gbic-invalid` err-disable), kirli konnektör, aşırı bükülme, fiber TX/RX ters; hız (Fa ⇄ Gi: 100) ve `show interfaces status` Type sütunu buradan
+- [x] Hata sayaçları (CRC, input errors) deterministik: `show interfaces <port>`, `show interfaces counters errors`, `clear counters`; `show interfaces transceiver [detail]` (TX/RX dBm)
+- [x] Teknisyen eylemleri motorda (`replaceCable`, `cleanConnector`, `replaceSfp`, `flipFiber`, `setLink`); arayüz düğmeleri yok
+- [ ] `speed` / `duplex` komutları yok; duplex uyuşmazlığı ve late collision modellenmiyor (okuma)
+- [ ] Düz/çapraz kablo ayrımı yok (Auto-MDIX varsayılır); PoE ve güç bütçesi modellenmiyor (okuma)
+- [ ] Gerçek DOM eşikleri, sıcaklık/voltaj/akım, OTDR, uzaktan kablo testi (TDR), CRC'li çerçevenin ping kaybına yansıması modellenmiyor
+- [ ] Bu konunun Simülatör labı ve `phy-*` senaryoları Katman 1 kullanmıyor (Katman 1 labı/senaryosu ayrı pratik işi)

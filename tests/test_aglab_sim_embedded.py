@@ -128,10 +128,13 @@ class SimEmbeddedTests(unittest.TestCase):
         # L3-a terminal oturum sınıfları (IosSession/VpcsSession) + L3-b olay adaptörü
         # (pingTrace) + L5-h PKT IOS metin yolu (cliImport, importReportWithCli, modeledDiffs,
         # modeledProjection). Arayüz PR 2: LABBER_HINT_TIERS (Labber lab hedeflerinin kademeli
-        # ipuçlarının ilk iki basamağı; veri, motor davranışı değil).
+        # ipuçlarının ilk iki basamağı; veri, motor davranışı değil). Katman 1: BOOT_FRAMES,
+        # OPTICS, evaluateLink, linkKey, validatePhysSpec (fiziksel katman modeli; eylemler
+        # LabRuntime yöntemleridir).
         self.assertEqual(
             result["api"],
             [
+                "BOOT_FRAMES",
                 "BridgeError",
                 "IosSession",
                 "LABBER_HINT_TIERS",
@@ -139,13 +142,16 @@ class SimEmbeddedTests(unittest.TestCase):
                 "LabQuery",
                 "MODEL_L2",
                 "MODEL_L3",
+                "OPTICS",
                 "VpcsSession",
                 "canonPort",
                 "cliImport",
                 "createLab",
                 "createRuntime",
                 "createSession",
+                "evaluateLink",
                 "importReportWithCli",
+                "linkKey",
                 "modeledDiffs",
                 "modeledProjection",
                 "needsEncapFor",
@@ -153,6 +159,7 @@ class SimEmbeddedTests(unittest.TestCase):
                 "runScript",
                 "toAglab",
                 "toLabber",
+                "validatePhysSpec",
             ],
         )
         self.assertFalse(result["before"], "farklı VLAN'daki PC başta erişememeli")

@@ -9,14 +9,16 @@ import { activePs, secureCount } from './portsec'
 import { defaultSwitchConfig } from './config'
 import { apipaFor, dhcpDiscover, isApipa, type DhcpResult } from './dhcp'
 import { bpduViolations, type Derived } from './engine'
-import { l3Ifs, macTable, type Delivery, type Hop } from './net'
+import { BOOT_FRAMES, linkKey, normalizePhys, receive, zeroCounters, type PortCounters } from './phys'
+import { l3Ifs, macTable, physicalPath, type Delivery, type Hop } from './net'
+import { fhrpOwns, fhrpTarget } from './fhrp'
 import { candidateRid, computeState } from './ospf'
 import { asHex } from './bgp'
 import { resolvePolicy, type BgpPolicy } from './bgp-policy'
 import { eigrpTag } from './eigrp'
 import { LabQuery } from './query'
 import { buildTopo, pk, type Topo } from './topology'
-import { noHardwareFaults, type DhcpBinding, type Hardware, type LabDef, type ObjectiveResult, type PcConfig, type SwitchConfig } from './types'
+import { noHardwareFaults, type CableSpec, type LinkPhys, type SfpSpec, type DhcpBinding, type Hardware, type LabDef, type ObjectiveResult, type PcConfig, type SwitchConfig } from './types'
 import { clone, shortIf } from './util'
 
 export interface LogLine {
@@ -44,7 +46,9 @@ export interface SavedState {
   arpIncomplete?: string[]
   errdis?: string[]
   /** cut cables ('dev|port', both ends), powered-off devices, PCs with a disabled NIC */
-  hw?: { cut: string[]; off: string[]; nicDown: string[] }
+  hw?: { cut: string[]; off: string[]; nicDown: string[]; phys?: [string, LinkPhys][] }
+  /** Katman 1: phys portlarının hata sayaçları (yalnız phys tanımlı labda yazılır) */
+  physCounters?: [string, PortCounters][]
   /** L5-b: DHCP leases */
   dhcp?: DhcpBinding[]
   /** L5-e: err-disable cause per port, dynamic secure MACs, violation counters, last source */
@@ -111,6 +115,12 @@ export class LabRuntime {
   errdis = new Set<string>()
   /** cut cables, powered-off devices, disabled PC NICs (see Hardware) */
   hw: Hardware = noHardwareFaults()
+  /**
+   * Katman 1: `phys` tanımlı bağlantılardaki switch portlarının sayaçları ('dev|port'). Lab
+   * açılışında BOOT_FRAMES arka plan çerçevesi, sonra gerçek trafik (countFrames) ve
+   * backgroundTraffic ile deterministik artar; `clear counters` sıfırlar.
+   */
+  physCounters = new Map<string, PortCounters>()
   /** L5-b: DHCP leases handed out by the lab's servers (kept in RAM: lost on reload) */
   dhcp: DhcpBinding[] = []
   /** L5-e: why a port is err-disabled ('bpduguard' | 'psecure-violation'); missing = bpduguard */
@@ -172,6 +182,7 @@ export class LabRuntime {
     this.hw = noHardwareFaults()
     for (const l of this.def.links)
       if (l.up === false) for (const [dev, port] of [l.a, l.b]) this.hw.cut.add(pk(dev, port))
+    this.initPhys()
     for (const dv of this.def.devices) {
       if (dv.off) this.hw.off.add(dv.id)
       if (dv.kind === 'pc' && dv.nicDown) this.hw.nicDown.add(dv.id)
@@ -189,8 +200,86 @@ export class LabRuntime {
     this.clearedOn.clear()
     this.arp.clear()
     this.arpIncomplete.clear()
+    this.physCounters.clear()
+    this.backgroundTraffic(BOOT_FRAMES, false)
     this.logs = []
     this.emit()
+  }
+
+  // ---- Katman 1: hata sayaçları ----
+
+  private counterOf(key: string): PortCounters {
+    let c = this.physCounters.get(key)
+    if (!c) this.physCounters.set(key, (c = zeroCounters()))
+    return c
+  }
+
+  /** Bir phys switch portundan çerçeve çıkar / girer (PC ucu sayılmaz). */
+  private frame(n: number, from: string, out: string, to: string, inn: string) {
+    const tx = this.derived.phys[pk(from, out)]
+    if (tx?.l1) this.counterOf(pk(from, out)).tx += n
+    const rx = this.derived.phys[pk(to, inn)]
+    if (rx?.l1) receive(this.counterOf(pk(to, inn)), n, rx.l1.errPer10k)
+  }
+
+  /**
+   * Arka plan trafiği (CDP, STP, keepalive): up olan her phys linkinde iki yönde `frames`
+   * çerçeve. Lab açılışı BOOT_FRAMES sayar; oyun/arayüz zaman geçişini bununla gösterebilir.
+   */
+  backgroundTraffic(frames: number, notify = true) {
+    if (!this.hw.phys?.size) return
+    for (const ps of Object.values(this.derived.phys)) {
+      if (!ps.l1 || !ps.up || !ps.peer) continue
+      this.frame(frames, ps.peer.dev, ps.peer.port, ps.dev, ps.port)
+      if (ps.peerIsPc) this.counterOf(pk(ps.dev, ps.port)).tx += frames
+    }
+    if (notify) this.emit()
+  }
+
+  /**
+   * Gerçek trafik (ping, curl): teslimatın her atlamasında geçilen fiziksel kablolar sayılır;
+   * `packets` çerçeve başına. Alıcı uçta hata oranına göre CRC artar. Atlamanın çıkış
+   * arayüzü (Hop.outIf) göndereni verir. Hatalı çerçevenin düşmesi ping sonucuna yansımaz.
+   */
+  countFrames(packets: number, forward?: Delivery, back?: Delivery) {
+    if (!this.hw.phys?.size || packets <= 0) return
+    const d = this.derived
+    for (const del of [forward, back])
+      for (const h of del?.hops ?? []) {
+        const target = l3Ifs(d, h.dev).find((x) => x.ip === h.ip) ?? (fhrpOwns(d, h.dev, h.ip) ? fhrpTarget(d, h.ip, () => true) : null)
+        if (!target) continue
+        for (const st of physicalPath(d, h.outIf, target) ?? []) this.frame(packets, st.from, st.out, st.to, st.in)
+      }
+  }
+
+  /** `clear counters [<if>]`: switch'in (ya da tek portun) sayaçları sıfırlanır. */
+  clearCounters(dev: string, port?: string) {
+    for (const k of [...this.physCounters.keys()]) if (port ? k === pk(dev, port) : k.startsWith(dev + '|')) this.physCounters.set(k, zeroCounters())
+    this.log(dev, `%CLEAR-5-COUNTERS: Clear counter on ${port ? 'interface ' + port : 'all interfaces'} by console`)
+    this.emit()
+  }
+
+  /** Bir portun sayaçları (phys tanımsız portta sıfır). */
+  counters(dev: string, port: string): PortCounters {
+    return this.physCounters.get(pk(dev, port)) ?? zeroCounters()
+  }
+
+  /**
+   * Katman 1: LinkDef.phys → hw.phys (yalnız phys tanımlı bağlantılar). SFP yalnız
+   * GigabitEthernet portuna takılabilir (Fa portunda SFP yuvası yok: lab yazım hatası).
+   */
+  private initPhys() {
+    for (const l of this.def.links) {
+      if (!l.phys) continue
+      for (const [side, [dev, port]] of [['a', l.a], ['b', l.b]] as const) {
+        const sfp = l.phys.ends?.[side]?.sfp
+        if (sfp && this.topo.devices[dev]?.kind === 'switch' && !port.startsWith('GigabitEthernet'))
+          throw new Error(`${dev} ${port}: SFP yalnız GigabitEthernet portuna takılabilir`)
+      }
+      const ka = pk(l.a[0], l.a[1])
+      const kb = pk(l.b[0], l.b[1])
+      ;(this.hw.phys ??= new Map()).set(linkKey(ka, kb), normalizePhys(l.phys, ka, kb))
+    }
   }
 
   onChange(fn: () => void) {
@@ -267,6 +356,16 @@ export class LabRuntime {
           this.errCause.delete(k)
           changed = true
         }
+      }
+      // Katman 1: desteklenmeyen (third-party) modül → gbic-invalid err-disable (IOS: modül
+      // takılıyken port açık olduğu sürece; shutdown / no shutdown ile yeniden denetlenir)
+      for (const [k, ps] of Object.entries(d.phys)) {
+        if (!ps.l1?.unsupported || ps.adminDown || this.errdis.has(k) || this.hw.off.has(ps.dev)) continue
+        this.errdis.add(k)
+        this.errCause.set(k, 'gbic-invalid')
+        this.log(ps.dev, `%PHY-4-UNSUPPORTED_TRANSCEIVER: Unsupported transceiver found in ${shortIf(ps.port)}`)
+        this.log(ps.dev, `%PM-4-ERR_DISABLE: gbic-invalid error detected on ${shortIf(ps.port)}, putting ${shortIf(ps.port)} in err-disable state`)
+        changed = true
       }
       const viol = new Set(bpduViolations(d))
       for (const k of viol) {
@@ -477,6 +576,19 @@ export class LabRuntime {
     this.def = { ...this.def, links }
     this.topo = buildTopo(this.def)
     if (this.hw.cut.delete(pk(fromDev, fromPort))) this.hw.cut.add(pk(toDev, toPort))
+    // Katman 1: kablonun fiziksel durumu kabloyla gider; taşınan uçtaki modül kabloyla değil
+    // porttadır ama modelde uç özelliği kablo ucuna bağlıdır (bkz. UYUMLULUK_MATRISI "Katman 1")
+    const peerKey = pk(peer.dev, peer.port)
+    const oldKey = linkKey(pk(fromDev, fromPort), peerKey)
+    const ph = this.hw.phys?.get(oldKey)
+    if (ph) {
+      this.hw.phys!.delete(oldKey)
+      const ends = { ...ph.ends }
+      const moved = ends[pk(fromDev, fromPort)]
+      delete ends[pk(fromDev, fromPort)]
+      if (moved) ends[pk(toDev, toPort)] = moved
+      this.hw.phys!.set(linkKey(pk(toDev, toPort), peerKey), { ...ph, ends })
+    }
     this.commit()
     return true
   }
@@ -542,6 +654,80 @@ export class LabRuntime {
     const m = Math.floor(ms / 60_000) % 60
     const two = (n: number) => String(n).padStart(2, '0')
     return `Mar 02 1993 ${two(h % 12 === 0 ? 12 : h % 12)}:${two(m)} ${h < 12 ? 'AM' : 'PM'}`
+  }
+
+  // ---- Katman 1: teknisyen eylemleri ----
+
+  /** Bu porttaki kablonun fiziksel tanımı (yoksa null). `phys.ends` 'dev|port' anahtarlıdır. */
+  physLink(dev: string, port: string): { key: string; here: string; peer: string; phys: LinkPhys } | null {
+    const peer = this.topo.peer[pk(dev, port)]
+    if (!peer) return null
+    const here = pk(dev, port)
+    const there = pk(peer.dev, peer.port)
+    const key = linkKey(here, there)
+    const phys = this.hw.phys?.get(key)
+    return phys ? { key, here, peer: there, phys } : null
+  }
+
+  private physChange(dev: string, port: string, fn: (p: LinkPhys, here: string) => void): boolean {
+    const l = this.physLink(dev, port)
+    if (!l) return false
+    fn(l.phys, l.here)
+    this.commit()
+    return true
+  }
+
+  /**
+   * Kabloyu yenisiyle değiştir (tür/uzunluk; varsayılan sağlam). Yeni kablo takılı gelir,
+   * iki ucun konnektörü temizdir ve fiber çifti doğru yöndedir; uçlardaki modüller kalır.
+   * phys tanımsız bağlantıda bağlantı fiziksel modele alınır.
+   */
+  replaceCable(dev: string, port: string, cable: CableSpec): boolean {
+    const peer = this.topo.peer[pk(dev, port)]
+    if (!peer) return false
+    const here = pk(dev, port)
+    const there = pk(peer.dev, peer.port)
+    const key = linkKey(here, there)
+    const old = this.hw.phys?.get(key)
+    const ends: LinkPhys['ends'] = {}
+    for (const k of [here, there]) {
+      const sfp = old?.ends[k]?.sfp
+      if (sfp) ends[k] = { sfp: { ...sfp } }
+    }
+    ;(this.hw.phys ??= new Map()).set(key, { cable: { kind: cable.kind, lengthM: cable.lengthM, ...(cable.damaged ? { damaged: true } : {}), ...(cable.bent ? { bent: true } : {}) }, ends })
+    this.hw.cut.delete(here)
+    this.hw.cut.delete(there)
+    this.commit()
+    return true
+  }
+
+  /** Bu uçtaki konnektörü temizle (fiber alıcısının ek kaybı kalkar). */
+  cleanConnector(dev: string, port: string): boolean {
+    return this.physChange(dev, port, (p, here) => {
+      if (p.ends[here]) delete p.ends[here]!.connectorDirty
+    })
+  }
+
+  /**
+   * SFP'yi değiştir / tak (`sfp`) ya da çıkar (`null`). Yalnız switch'in GigabitEthernet
+   * portunda. gbic-invalid err-disable kendiliğinden kalkmaz (IOS): shutdown / no shutdown.
+   */
+  replaceSfp(dev: string, port: string, sfp: SfpSpec | null): boolean {
+    if (this.topo.devices[dev]?.kind !== 'switch' || !port.startsWith('GigabitEthernet')) return false
+    return this.physChange(dev, port, (p, here) => {
+      const end = (p.ends[here] ??= {})
+      if (sfp) end.sfp = { ...sfp }
+      else delete end.sfp
+      // modül değişince ferrule yeniden takılır; konnektörün kendisi kirli kalır
+    })
+  }
+
+  /** Fiber çiftinin TX/RX uçlarını bu uçta çaprazla (ters takılı ise düzelir, düzse bozulur). */
+  flipFiber(dev: string, port: string): boolean {
+    return this.physChange(dev, port, (p) => {
+      if (p.txRxSwapped) delete p.txRxSwapped
+      else p.txRxSwapped = true
+    })
   }
 
   /** Cable on this port is plugged in and intact (says nothing about the far device). */
@@ -693,9 +879,10 @@ export class LabRuntime {
       nat: clone(this.natTable),
       natHits: this.natHits,
       natMisses: this.natMisses,
-      hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
+      hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown], ...(this.hw.phys?.size ? { phys: clone([...this.hw.phys]) } : {}) },
       dhcp: clone(this.dhcp),
       bgpApplied: clone(this.bgpApplied),
+      ...(this.physCounters.size ? { physCounters: clone([...this.physCounters]) } : {}),
     }
   }
 
@@ -721,9 +908,14 @@ export class LabRuntime {
     this.natTable = clone(s.nat ?? [])
     this.natHits = s.natHits ?? 0
     this.natMisses = s.natMisses ?? 0
-    if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) }
+    // Katman 1: kayıtta fiziksel durum yoksa labın tanımındaki (reset) korunur
+    if (s.hw) {
+      const phys = s.hw.phys ? new Map(clone(s.hw.phys)) : this.hw.phys
+      this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown), ...(phys ? { phys } : {}) }
+    }
     this.dhcp = clone(s.dhcp ?? [])
     this.bgpApplied = clone(s.bgpApplied ?? {})
+    this.physCounters = new Map(clone(s.physCounters ?? []))
     // FHRP: kayıttan açılış bütün üyelerin birlikte açılışıdır (en yüksek öncelik); log yazılmaz
     this.fhrpActive.clear()
     this.fhrpStates.clear()

@@ -14,7 +14,7 @@
 
 import { allows } from '../sim/engine'
 import { fhrpOwns, fhrpTarget } from '../sim/fhrp'
-import { deliver, l2Domain, l3Ifs, nodeVlan, ping, sourceIp, type Hop, type L3If, type Node } from '../sim/net'
+import { deliver, l3Ifs, nodeVlan, physicalPath, ping, sourceIp, type Hop, type L3If } from '../sim/net'
 import type { LabRuntime } from '../sim/runtime'
 import { pk } from '../sim/topology'
 
@@ -54,71 +54,13 @@ export interface PingTrace {
   records: TraceRecord[]
 }
 
-const nk = (n: Node) => `${n.dev}|${n.vlan}`
 const colon = (mac: string) => {
   const h = mac.replace(/[^0-9a-f]/gi, '').toLowerCase()
   return h.length === 12 ? h.match(/../g)!.join(':') : mac
 }
 
-interface Step {
-  from: string
-  out: string
-  to: string
-  in: string
-  vlan: number
-}
-
 /** İki L3 arayüzü arasındaki fiziksel kablolar (kanonik port adlarıyla) ya da null. */
-function l2Path(rt: LabRuntime, a: L3If, b: L3If): Step[] | null {
-  const d = rt.derived
-  if (!a.node || !b.node) return null
-  const dom = l2Domain(d, a.node)
-  const chain: { from: string; out: string; to: Node; in: string }[] = []
-  let cur = dom.nodes.get(nk(b.node))
-  if (!cur) return null
-  while (cur.via) {
-    const prev = dom.nodes.get(cur.via.from)
-    if (!prev) return null
-    chain.unshift({ from: prev.node.dev, out: cur.via.out, to: cur.node, in: cur.via.in })
-    cur = prev
-  }
-  const steps: Step[] = []
-  // Mantıksal port (Port-channel dahil) → aynı iki cihaz arasındaki fiziksel kablo.
-  for (const c of chain) {
-    const link = rt.def.links.find((l) =>
-      (
-        [
-          [l.a, l.b],
-          [l.b, l.a],
-        ] as const
-      ).some(
-        ([x, y]) =>
-          x[0] === c.from &&
-          y[0] === c.to.dev &&
-          d.lportOfPhys[pk(x[0], x[1])]?.name === c.out &&
-          d.lportOfPhys[pk(y[0], y[1])]?.name === c.in &&
-          rt.cableIntact(x[0], x[1]),
-      ),
-    )
-    if (!link) return null
-    const fwd = link.a[0] === c.from && d.lportOfPhys[pk(link.a[0], link.a[1])]?.name === c.out
-    const [x, y] = fwd ? [link.a, link.b] : [link.b, link.a]
-    steps.push({ from: x[0], out: x[1], to: y[0], in: y[1], vlan: nodeVlan(c.to) })
-  }
-  // PC uçları: PC ↔ erişim portu kablosu
-  for (const [ifc, atStart] of [
-    [a, true],
-    [b, false],
-  ] as const) {
-    if (ifc.kind !== 'pc') continue
-    const at = rt.topo.pcAttach[ifc.dev]
-    if (!at || !rt.cableIntact(ifc.dev, 'eth0')) return null
-    const vlan = nodeVlan(ifc.node!)
-    if (atStart) steps.unshift({ from: ifc.dev, out: 'eth0', to: at.dev, in: at.port, vlan })
-    else steps.push({ from: at.dev, out: at.port, to: ifc.dev, in: 'eth0', vlan })
-  }
-  return steps
-}
+const l2Path = (rt: LabRuntime, a: L3If, b: L3If) => physicalPath(rt.derived, a, b)
 
 /**
  * I-1: başarısız ping için açıklama (Paket Dedektifi "adaptörden türetilmiş tanı"; gerçek paket
