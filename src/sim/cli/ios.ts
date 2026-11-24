@@ -49,6 +49,9 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show interfaces status', run: (x) => show.showIntStatus(x.rt, x.dev) },
     { p: 'show interfaces trunk', run: (x) => show.showIntTrunk(x.rt, x.dev) },
     { p: 'show interfaces switchport', run: (x) => show.showIntSwitchport(x.rt, x.dev) },
+    { p: 'show interfaces counters errors', run: (x) => show.showIntCountersErrors(x.rt, x.dev) },
+    { p: 'show interfaces transceiver', run: (x) => show.showTransceiver(x.rt, x.dev, false) },
+    { p: 'show interfaces transceiver detail', run: (x) => show.showTransceiver(x.rt, x.dev, true) },
     { p: 'show interfaces <if>', run: (x, a) => x.showOneIf(a, false) },
     { p: 'show interfaces <if> switchport', run: (x, a) => x.showOneIf(a, true), ifTypes: ['FastEthernet', 'GigabitEthernet', 'Port-channel'] },
     { p: 'show ip interface brief', run: (x) => show.showIpIntBrief(x.rt, x.dev) },
@@ -196,6 +199,28 @@ const privPatterns: P[] = [
   { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft', run: (x, a) => x.clearBgp(a[3]!, 'soft') },
   { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft in', run: (x, a) => x.clearBgp(a[3]!, 'in') },
   { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft out', run: (x, a) => x.clearBgp(a[3]!, 'out') },
+  // Katman 1: arayüz sayaçları (IOS onay sorar; boş satır ya da y onaylar)
+  {
+    p: 'clear counters',
+    run: (x) =>
+      x.ask('Clear "show interface" counters on all interfaces [confirm]', (ans) => {
+        if (ans.trim() && !/^y/i.test(ans.trim())) return []
+        x.rt.clearCounters(x.dev)
+        return []
+      }),
+  },
+  {
+    p: 'clear counters <if>',
+    ifTypes: ['FastEthernet', 'GigabitEthernet'],
+    run: (x, a) => {
+      const port = x.physName(a[2]!, a[3]!, 2)
+      return x.ask('Clear "show interface" counters on this interface [confirm]', (ans) => {
+        if (ans.trim() && !/^y/i.test(ans.trim())) return []
+        x.rt.clearCounters(x.dev, port)
+        return []
+      })
+    },
+  },
   {
     p: 'clear access-list counters',
     run: (x) => {
@@ -2446,6 +2471,7 @@ export class IosSession {
     const coldArp = (r.forward?.hops.length ?? 0) > 0 && !this.rt.arp.has(firstKey)
     this.rt.markExchange(this.dev, r.forward, r.back)
     this.rt.countAcl(repeat, r.forward, r.back)
+    this.rt.countFrames(repeat, r.forward, r.back)
     this.rt.recordNat(repeat, r.forward, r.back)
     const head = ['Type escape sequence to abort.', `Sending ${repeat}, ${o.size ?? 100}-byte ICMP Echos to ${ip}, timeout is ${o.timeout ?? 2} seconds:`]
     if (o.src) head.push(`Packet sent with a source address of ${o.src} `)

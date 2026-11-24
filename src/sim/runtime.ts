@@ -9,8 +9,9 @@ import { activePs, secureCount } from './portsec'
 import { defaultSwitchConfig } from './config'
 import { apipaFor, dhcpDiscover, isApipa, type DhcpResult } from './dhcp'
 import { bpduViolations, type Derived } from './engine'
-import { linkKey, normalizePhys } from './phys'
-import { l3Ifs, macTable, type Delivery, type Hop } from './net'
+import { BOOT_FRAMES, linkKey, normalizePhys, receive, zeroCounters, type PortCounters } from './phys'
+import { l3Ifs, macTable, physicalPath, type Delivery, type Hop } from './net'
+import { fhrpOwns, fhrpTarget } from './fhrp'
 import { candidateRid, computeState } from './ospf'
 import { asHex } from './bgp'
 import { resolvePolicy, type BgpPolicy } from './bgp-policy'
@@ -46,6 +47,8 @@ export interface SavedState {
   errdis?: string[]
   /** cut cables ('dev|port', both ends), powered-off devices, PCs with a disabled NIC */
   hw?: { cut: string[]; off: string[]; nicDown: string[] }
+  /** Katman 1: phys portlarının hata sayaçları (yalnız phys tanımlı labda yazılır) */
+  physCounters?: [string, PortCounters][]
   /** L5-b: DHCP leases */
   dhcp?: DhcpBinding[]
   /** L5-e: err-disable cause per port, dynamic secure MACs, violation counters, last source */
@@ -112,6 +115,12 @@ export class LabRuntime {
   errdis = new Set<string>()
   /** cut cables, powered-off devices, disabled PC NICs (see Hardware) */
   hw: Hardware = noHardwareFaults()
+  /**
+   * Katman 1: `phys` tanımlı bağlantılardaki switch portlarının sayaçları ('dev|port'). Lab
+   * açılışında BOOT_FRAMES arka plan çerçevesi, sonra gerçek trafik (countFrames) ve
+   * backgroundTraffic ile deterministik artar; `clear counters` sıfırlar.
+   */
+  physCounters = new Map<string, PortCounters>()
   /** L5-b: DHCP leases handed out by the lab's servers (kept in RAM: lost on reload) */
   dhcp: DhcpBinding[] = []
   /** L5-e: why a port is err-disabled ('bpduguard' | 'psecure-violation'); missing = bpduguard */
@@ -191,8 +200,68 @@ export class LabRuntime {
     this.clearedOn.clear()
     this.arp.clear()
     this.arpIncomplete.clear()
+    this.physCounters.clear()
+    this.backgroundTraffic(BOOT_FRAMES, false)
     this.logs = []
     this.emit()
+  }
+
+  // ---- Katman 1: hata sayaçları ----
+
+  private counterOf(key: string): PortCounters {
+    let c = this.physCounters.get(key)
+    if (!c) this.physCounters.set(key, (c = zeroCounters()))
+    return c
+  }
+
+  /** Bir phys switch portundan çerçeve çıkar / girer (PC ucu sayılmaz). */
+  private frame(n: number, from: string, out: string, to: string, inn: string) {
+    const tx = this.derived.phys[pk(from, out)]
+    if (tx?.l1) this.counterOf(pk(from, out)).tx += n
+    const rx = this.derived.phys[pk(to, inn)]
+    if (rx?.l1) receive(this.counterOf(pk(to, inn)), n, rx.l1.errPer10k)
+  }
+
+  /**
+   * Arka plan trafiği (CDP, STP, keepalive): up olan her phys linkinde iki yönde `frames`
+   * çerçeve. Lab açılışı BOOT_FRAMES sayar; oyun/arayüz zaman geçişini bununla gösterebilir.
+   */
+  backgroundTraffic(frames: number, notify = true) {
+    if (!this.hw.phys?.size) return
+    for (const ps of Object.values(this.derived.phys)) {
+      if (!ps.l1 || !ps.up || !ps.peer) continue
+      this.frame(frames, ps.peer.dev, ps.peer.port, ps.dev, ps.port)
+      if (ps.peerIsPc) this.counterOf(pk(ps.dev, ps.port)).tx += frames
+    }
+    if (notify) this.emit()
+  }
+
+  /**
+   * Gerçek trafik (ping, curl): teslimatın her atlamasında geçilen fiziksel kablolar sayılır;
+   * `packets` çerçeve başına. Alıcı uçta hata oranına göre CRC artar. Atlamanın çıkış
+   * arayüzü (Hop.outIf) göndereni verir. Hatalı çerçevenin düşmesi ping sonucuna yansımaz.
+   */
+  countFrames(packets: number, forward?: Delivery, back?: Delivery) {
+    if (!this.hw.phys?.size || packets <= 0) return
+    const d = this.derived
+    for (const del of [forward, back])
+      for (const h of del?.hops ?? []) {
+        const target = l3Ifs(d, h.dev).find((x) => x.ip === h.ip) ?? (fhrpOwns(d, h.dev, h.ip) ? fhrpTarget(d, h.ip, () => true) : null)
+        if (!target) continue
+        for (const st of physicalPath(d, h.outIf, target) ?? []) this.frame(packets, st.from, st.out, st.to, st.in)
+      }
+  }
+
+  /** `clear counters [<if>]`: switch'in (ya da tek portun) sayaçları sıfırlanır. */
+  clearCounters(dev: string, port?: string) {
+    for (const k of [...this.physCounters.keys()]) if (port ? k === pk(dev, port) : k.startsWith(dev + '|')) this.physCounters.set(k, zeroCounters())
+    this.log(dev, `%CLEAR-5-COUNTERS: Clear counter on ${port ? 'interface ' + port : 'all interfaces'} by console`)
+    this.emit()
+  }
+
+  /** Bir portun sayaçları (phys tanımsız portta sıfır). */
+  counters(dev: string, port: string): PortCounters {
+    return this.physCounters.get(pk(dev, port)) ?? zeroCounters()
   }
 
   /**
@@ -739,6 +808,7 @@ export class LabRuntime {
       hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
       dhcp: clone(this.dhcp),
       bgpApplied: clone(this.bgpApplied),
+      ...(this.physCounters.size ? { physCounters: clone([...this.physCounters]) } : {}),
     }
   }
 
@@ -764,9 +834,11 @@ export class LabRuntime {
     this.natTable = clone(s.nat ?? [])
     this.natHits = s.natHits ?? 0
     this.natMisses = s.natMisses ?? 0
-    if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown) }
+    // Katman 1: kayıtta fiziksel durum yoksa labın tanımındaki (reset) korunur
+    if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown), ...(this.hw.phys ? { phys: this.hw.phys } : {}) }
     this.dhcp = clone(s.dhcp ?? [])
     this.bgpApplied = clone(s.bgpApplied ?? {})
+    this.physCounters = new Map(clone(s.physCounters ?? []))
     // FHRP: kayıttan açılış bütün üyelerin birlikte açılışıdır (en yüksek öncelik); log yazılmaz
     this.fhrpActive.clear()
     this.fhrpStates.clear()

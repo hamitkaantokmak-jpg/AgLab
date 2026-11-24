@@ -102,6 +102,71 @@ export function l2Domain(d: Derived, start: Node): Domain {
   return { nodes }
 }
 
+/** Bir L2 yolunun tek kablosu: (from, out) → (to, in). */
+export interface PathStep {
+  from: string
+  out: string
+  to: string
+  in: string
+  vlan: number
+}
+
+/**
+ * İki L3 arayüzü arasındaki fiziksel kablolar (kanonik port adlarıyla, gidiş sırasıyla) ya da
+ * null. l2Domain BFS ağacından çıkarılır; mantıksal port (Port-channel dahil) aynı iki cihaz
+ * arasındaki fiziksel kabloya eşlenir. Simulation Mode (sim-bridge/events.ts) ve Katman 1 hata
+ * sayaçları (runtime countFrames) kullanır.
+ */
+export function physicalPath(d: Derived, a: L3If, b: L3If): PathStep[] | null {
+  if (!a.node || !b.node) return null
+  const intact = (dev: string, port: string) => !!d.topo.peer[pk(dev, port)] && !d.hw.cut.has(pk(dev, port))
+  const dom = l2Domain(d, a.node)
+  const chain: { from: string; out: string; to: Node; in: string }[] = []
+  let cur = dom.nodes.get(nk(b.node))
+  if (!cur) return null
+  while (cur.via) {
+    const prev = dom.nodes.get(cur.via.from)
+    if (!prev) return null
+    chain.unshift({ from: prev.node.dev, out: cur.via.out, to: cur.node, in: cur.via.in })
+    cur = prev
+  }
+  const steps: PathStep[] = []
+  for (const c of chain) {
+    const link = d.topo.lab.links.find((l) =>
+      (
+        [
+          [l.a, l.b],
+          [l.b, l.a],
+        ] as const
+      ).some(
+        ([x, y]) =>
+          x[0] === c.from &&
+          y[0] === c.to.dev &&
+          d.lportOfPhys[pk(x[0], x[1])]?.name === c.out &&
+          d.lportOfPhys[pk(y[0], y[1])]?.name === c.in &&
+          intact(x[0], x[1]),
+      ),
+    )
+    if (!link) return null
+    const fwd = link.a[0] === c.from && d.lportOfPhys[pk(link.a[0], link.a[1])]?.name === c.out
+    const [x, y] = fwd ? [link.a, link.b] : [link.b, link.a]
+    steps.push({ from: x[0], out: x[1], to: y[0], in: y[1], vlan: nodeVlan(c.to) })
+  }
+  // PC uçları: PC ↔ erişim portu kablosu
+  for (const [ifc, atStart] of [
+    [a, true],
+    [b, false],
+  ] as const) {
+    if (ifc.kind !== 'pc') continue
+    const at = d.topo.pcAttach[ifc.dev]
+    if (!at || !intact(ifc.dev, 'eth0')) return null
+    const vlan = nodeVlan(ifc.node!)
+    if (atStart) steps.unshift({ from: ifc.dev, out: 'eth0', to: at.dev, in: at.port, vlan })
+    else steps.push({ from: at.dev, out: at.port, to: ifc.dev, in: 'eth0', vlan })
+  }
+  return steps
+}
+
 /** Segment a PC lands in through its access port. */
 export function pcNode(d: Derived, pc: string): Node | null {
   const at = d.topo.pcAttach[pc]
