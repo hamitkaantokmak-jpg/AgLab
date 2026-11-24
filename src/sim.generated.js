@@ -692,6 +692,182 @@ var AgLabSim = (() => {
     return parts.join(",");
   }
 
+  // src/sim/phys.ts
+  var OPTICS = {
+    "1000base-sx": { label: "1000BaseSX SFP", wavelengthNm: 850, txDbm: -5, sensDbm: -17, overloadDbm: 0, fiber: { "fiber-mm": { reachM: 550, penaltyDb: 0 }, "fiber-sm": { reachM: 550, penaltyDb: 20 } } },
+    "1000base-lx": { label: "1000BaseLX SFP", wavelengthNm: 1310, txDbm: -6, sensDbm: -19, overloadDbm: -3, fiber: { "fiber-sm": { reachM: 1e4, penaltyDb: 0 }, "fiber-mm": { reachM: 550, penaltyDb: 11 } } },
+    "1000base-zx": { label: "1000BaseZX SFP", wavelengthNm: 1550, txDbm: 2, sensDbm: -23, overloadDbm: -3, fiber: { "fiber-sm": { reachM: 7e4, penaltyDb: 0 }, "fiber-mm": { reachM: 550, penaltyDb: 20 } } }
+  };
+  var FIBER_DB_PER_KM = {
+    "fiber-mm": { 850: 3.5, 1310: 1.5, 1550: 1.5 },
+    "fiber-sm": { 850: 3.5, 1310: 0.4, 1550: 0.25 }
+  };
+  var CONNECTOR_DB = 0.5;
+  var DIRTY_DB = 9;
+  var BEND_DB = 5;
+  var MARGIN_DB = 3;
+  var NO_LIGHT_DBM = -40;
+  var UTP_MAX_M = 100;
+  var COPPER_MAX_M = 150;
+  var DAC_MAX_M = 7;
+  var DAMAGED_ERR = 200;
+  var COPPER_ERR_PER_M = 6;
+  var OPTIC_ERR_MAX = 500;
+  var isFiber = (k) => k === "fiber-mm" || k === "fiber-sm";
+  var isOptic = (t) => t in OPTICS;
+  var r1 = (x) => Math.round(x * 10) / 10;
+  var linkKey = (a, b) => a < b ? `${a}~${b}` : `${b}~${a}`;
+  function endMedia(end, spec) {
+    const sfp = end.pc ? void 0 : spec?.sfp;
+    if (!sfp) return { kind: "rj45", speed: end.pc ? 1e3 : ifType(end.port)?.speed ?? 100 };
+    if (sfp.type === "dac") return { kind: "dac", speed: 1e3 };
+    if (sfp.type === "1000base-t") return { kind: "tsfp", speed: 1e3 };
+    return { kind: "optic", speed: 1e3 };
+  }
+  function typeLabel(end, spec, cable) {
+    const sfp = end.pc ? void 0 : spec?.sfp;
+    if (sfp) {
+      if (isOptic(sfp.type)) return OPTICS[sfp.type].label;
+      if (sfp.type === "1000base-t") return "10/100/1000BaseTX SFP";
+      return "1000BaseCX SFP";
+    }
+    if (isFiber(cable.kind) || cable.kind === "dac") return "Not Present";
+    return (ifType(end.port)?.speed ?? 1e3) === 100 ? "10/100BaseTX" : "10/100/1000BaseTX";
+  }
+  function fits(cable, m) {
+    if (isFiber(cable)) return m === "optic";
+    if (cable === "dac") return m === "dac";
+    return m === "rj45" || m === "tsfp";
+  }
+  var SEVERITY = ["media", "sfp-dead", "type-mismatch", "swapped", "los", "length", "remote", "overload", "marginal", "errors", "none"];
+  var worse = (x, y) => SEVERITY.indexOf(x) <= SEVERITY.indexOf(y) ? x : y;
+  function evaluateLink(phys, a, b) {
+    const cable = phys.cable;
+    const specA = phys.ends[a.key];
+    const specB = phys.ends[b.key];
+    const mA = endMedia(a, specA);
+    const mB = endMedia(b, specB);
+    const sfpA = a.pc ? null : specA?.sfp ?? null;
+    const sfpB = b.pc ? null : specB?.sfp ?? null;
+    const speed = Math.min(mA.speed, mB.speed);
+    const fiber = isFiber(cable.kind);
+    const base3 = (end, spec, sfp) => ({
+      link: false,
+      fault: "none",
+      speed,
+      type: typeLabel(end, spec, cable),
+      media: fiber ? "fiber" : "copper",
+      sfp,
+      unsupported: !!sfp && sfp.vendor === "third-party",
+      txDbm: null,
+      rxDbm: null,
+      errPer10k: 0
+    });
+    const A = base3(a, specA, sfpA);
+    const B = base3(b, specB, sfpB);
+    const both = (f, err = 0) => {
+      A.fault = worse(A.fault, f);
+      B.fault = worse(B.fault, f);
+      A.errPer10k = Math.max(A.errPer10k, err);
+      B.errPer10k = Math.max(B.errPer10k, err);
+    };
+    let blocked = false;
+    for (const [E, m, sfp] of [
+      [A, mA, sfpA],
+      [B, mB, sfpB]
+    ]) {
+      if (!fits(cable.kind, m.kind)) {
+        E.fault = "media";
+        blocked = true;
+      } else if (sfp?.dead) {
+        E.fault = "sfp-dead";
+        blocked = true;
+      }
+    }
+    if (!fiber) {
+      if (blocked) return finish(A, B, false);
+      const max = cable.kind === "dac" ? DAC_MAX_M : COPPER_MAX_M;
+      if (cable.lengthM > max) {
+        both("length");
+        return finish(A, B, false);
+      }
+      if (cable.kind !== "dac" && cable.lengthM > UTP_MAX_M) both("length", Math.round((cable.lengthM - UTP_MAX_M) * COPPER_ERR_PER_M));
+      if (cable.damaged) both("errors", DAMAGED_ERR);
+      return finish(A, B, true);
+    }
+    const optA = sfpA && isOptic(sfpA.type) ? OPTICS[sfpA.type] : null;
+    const optB = sfpB && isOptic(sfpB.type) ? OPTICS[sfpB.type] : null;
+    if (optA && !sfpA.dead) A.txDbm = optA.txDbm;
+    if (optB && !sfpB.dead) B.txDbm = optB.txDbm;
+    if (blocked || !optA || !optB) {
+      if (optA && !sfpA.dead) A.rxDbm = NO_LIGHT_DBM;
+      if (optB && !sfpB.dead) B.rxDbm = NO_LIGHT_DBM;
+      if (A.fault === "none") A.fault = "los";
+      if (B.fault === "none") B.fault = "los";
+      return finish(A, B, false);
+    }
+    if (optA !== optB) {
+      A.rxDbm = NO_LIGHT_DBM;
+      B.rxDbm = NO_LIGHT_DBM;
+      both("type-mismatch");
+      return finish(A, B, false);
+    }
+    if (phys.txRxSwapped || cable.damaged) {
+      A.rxDbm = NO_LIGHT_DBM;
+      B.rxDbm = NO_LIGHT_DBM;
+      both(phys.txRxSwapped ? "swapped" : "los");
+      return finish(A, B, false);
+    }
+    const opt = optA;
+    const fk = cable.kind;
+    const fit = opt.fiber[fk];
+    const pathLoss = cable.lengthM / 1e3 * FIBER_DB_PER_KM[fk][opt.wavelengthNm] + 2 * CONNECTOR_DB + (cable.bent ? BEND_DB : 0) + fit.penaltyDb;
+    let ok = true;
+    for (const [E, spec, peerTx] of [
+      [A, specA, optB.txDbm],
+      [B, specB, optA.txDbm]
+    ]) {
+      const rx = r1(peerTx - pathLoss - (spec?.connectorDirty ? DIRTY_DB : 0));
+      E.rxDbm = rx;
+      if (rx < opt.sensDbm) {
+        E.fault = "los";
+        ok = false;
+      } else if (rx > opt.overloadDbm) {
+        E.fault = "overload";
+        E.errPer10k = Math.min(OPTIC_ERR_MAX, Math.round((rx - opt.overloadDbm) * 100) + 50);
+      } else if (rx < opt.sensDbm + MARGIN_DB) {
+        E.fault = "marginal";
+        E.errPer10k = Math.round((opt.sensDbm + MARGIN_DB - rx) / MARGIN_DB * OPTIC_ERR_MAX);
+      }
+    }
+    if (!ok) {
+      for (const E of [A, B]) if (E.fault !== "los") E.fault = "remote";
+      return finish(A, B, false);
+    }
+    if (cable.lengthM > fit.reachM * 1.2) {
+      both("length");
+      return finish(A, B, false);
+    }
+    if (cable.lengthM > fit.reachM) both("length", Math.round((cable.lengthM - fit.reachM) / fit.reachM * 2 * OPTIC_ERR_MAX));
+    return finish(A, B, true);
+  }
+  function finish(A, B, link) {
+    A.link = link;
+    B.link = link;
+    if (!link) {
+      A.errPer10k = 0;
+      B.errPer10k = 0;
+    }
+    return { a: A, b: B };
+  }
+  function normalizePhys(spec, aKey, bKey) {
+    const ends = {};
+    if (spec.ends?.a) ends[aKey] = structuredCopy(spec.ends.a);
+    if (spec.ends?.b) ends[bKey] = structuredCopy(spec.ends.b);
+    return { cable: { ...spec.cable }, ends, ...spec.txRxSwapped ? { txRxSwapped: true } : {} };
+  }
+  var structuredCopy = (x) => JSON.parse(JSON.stringify(x));
+
   // src/sim/engine.ts
   var protoOf = (m) => m === "on" ? "-" : m === "active" || m === "passive" ? "LACP" : "PAgP";
   function negotiate(local, peer) {
@@ -731,6 +907,15 @@ var AgLabSim = (() => {
       }
       return false;
     };
+    const l1Of = (key, peer) => {
+      if (!peer || !hw.phys?.size) return void 0;
+      const peerKey = pk(peer.dev, peer.port);
+      const spec = hw.phys.get(linkKey(key, peerKey));
+      if (!spec) return void 0;
+      const [dev, port] = key.split("|");
+      const r = evaluateLink(spec, { key, port, pc: topo.devices[dev]?.kind === "pc" }, { key: peerKey, port: peer.port, pc: topo.devices[peer.dev]?.kind === "pc" });
+      return r.a;
+    };
     for (const sw2 of topo.switches) {
       for (const port of sw2.ports) {
         const key = pk(sw2.id, port);
@@ -739,8 +924,9 @@ var AgLabSim = (() => {
         const down = adminDown(sw2.id, port);
         const err = errdis.has(key);
         const peerUp = !!peer && endPowered(peer.dev, peer.port) && (peerIsPc || !adminDown(peer.dev, peer.port) && !errdis.has(pk(peer.dev, peer.port)));
-        const up = !down && !err && endPowered(sw2.id, port) && peerUp;
-        phys[key] = { dev: sw2.id, port, peer, peerIsPc, adminDown: down, errDisabled: err, up };
+        const l1 = l1Of(key, peer);
+        const up = !down && !err && endPowered(sw2.id, port) && peerUp && (!l1 || l1.link);
+        phys[key] = { dev: sw2.id, port, peer, peerIsPc, adminDown: down, errDisabled: err, up, ...l1 ? { l1 } : {} };
       }
     }
     const chanOf = (dev, port) => isRoutedPort(cfgs, dev, port) ? null : cfgs[dev]?.ifaces[port]?.channel ?? null;
@@ -790,7 +976,7 @@ var AgLabSim = (() => {
     const lportByName = {};
     const lportOfPhys = {};
     const ec = {};
-    const speedOf = (port) => ifType(port)?.speed ?? 100;
+    const speedOf = (port, dev) => (dev ? phys[pk(dev, port)]?.l1?.speed : void 0) ?? ifType(port)?.speed ?? 100;
     const portIndex = (sw2, port) => sw2.ports.indexOf(port) + 1;
     for (const sw2 of topo.switches) {
       const cfg = cfgs[sw2.id];
@@ -830,8 +1016,8 @@ var AgLabSim = (() => {
           peerIsPc: false,
           opMode: "access",
           inactive: false,
-          cost: speedCost(bundled.reduce((s, p) => s + speedOf(p), 0)),
-          speed: bundled.reduce((s, p) => s + speedOf(p), 0),
+          cost: speedCost(bundled.reduce((s, p) => s + speedOf(p, sw2.id), 0)),
+          speed: bundled.reduce((s, p) => s + speedOf(p, sw2.id), 0),
           portNum: 64 + id,
           status: poCfg.shutdown ? "disabled" : bundled.length ? "connected" : "notconnect"
         };
@@ -855,8 +1041,8 @@ var AgLabSim = (() => {
           peerIsPc: ps.peerIsPc,
           opMode: "access",
           inactive: false,
-          cost: speedCost(speedOf(port)),
-          speed: speedOf(port),
+          cost: speedCost(speedOf(port, sw2.id)),
+          speed: speedOf(port, sw2.id),
           portNum: portIndex(sw2, port),
           status: ps.adminDown ? "disabled" : ps.errDisabled ? "err-disabled" : suspended ? "suspended" : ps.up ? "connected" : "notconnect"
         };
@@ -8889,6 +9075,7 @@ var AgLabSim = (() => {
       this.hw = noHardwareFaults();
       for (const l of this.def.links)
         if (l.up === false) for (const [dev, port] of [l.a, l.b]) this.hw.cut.add(pk(dev, port));
+      this.initPhys();
       for (const dv of this.def.devices) {
         if (dv.off) this.hw.off.add(dv.id);
         if (dv.kind === "pc" && dv.nicDown) this.hw.nicDown.add(dv.id);
@@ -8905,6 +9092,24 @@ var AgLabSim = (() => {
       this.arpIncomplete.clear();
       this.logs = [];
       this.emit();
+    }
+    /**
+     * Katman 1: LinkDef.phys → hw.phys (yalnız phys tanımlı bağlantılar). SFP yalnız
+     * GigabitEthernet portuna takılabilir (Fa portunda SFP yuvası yok: lab yazım hatası).
+     */
+    initPhys() {
+      var _a;
+      for (const l of this.def.links) {
+        if (!l.phys) continue;
+        for (const [side, [dev, port]] of [["a", l.a], ["b", l.b]]) {
+          const sfp = l.phys.ends?.[side]?.sfp;
+          if (sfp && this.topo.devices[dev]?.kind === "switch" && !port.startsWith("GigabitEthernet"))
+            throw new Error(`${dev} ${port}: SFP yalnız GigabitEthernet portuna takılabilir`);
+        }
+        const ka = pk(l.a[0], l.a[1]);
+        const kb = pk(l.b[0], l.b[1]);
+        ((_a = this.hw).phys ?? (_a.phys = /* @__PURE__ */ new Map())).set(linkKey(ka, kb), normalizePhys(l.phys, ka, kb));
+      }
     }
     onChange(fn) {
       this.listeners.add(fn);
@@ -8973,6 +9178,14 @@ var AgLabSim = (() => {
             this.errCause.delete(k);
             changed = true;
           }
+        }
+        for (const [k, ps] of Object.entries(d.phys)) {
+          if (!ps.l1?.unsupported || ps.adminDown || this.errdis.has(k) || this.hw.off.has(ps.dev)) continue;
+          this.errdis.add(k);
+          this.errCause.set(k, "gbic-invalid");
+          this.log(ps.dev, `%PHY-4-UNSUPPORTED_TRANSCEIVER: Unsupported transceiver found in ${shortIf(ps.port)}`);
+          this.log(ps.dev, `%PM-4-ERR_DISABLE: gbic-invalid error detected on ${shortIf(ps.port)}, putting ${shortIf(ps.port)} in err-disable state`);
+          changed = true;
         }
         const viol = new Set(bpduViolations(d));
         for (const k of viol) {
@@ -9158,6 +9371,17 @@ var AgLabSim = (() => {
       this.def = { ...this.def, links };
       this.topo = buildTopo(this.def);
       if (this.hw.cut.delete(pk(fromDev, fromPort))) this.hw.cut.add(pk(toDev, toPort));
+      const peerKey = pk(peer.dev, peer.port);
+      const oldKey = linkKey(pk(fromDev, fromPort), peerKey);
+      const ph = this.hw.phys?.get(oldKey);
+      if (ph) {
+        this.hw.phys.delete(oldKey);
+        const ends = { ...ph.ends };
+        const moved = ends[pk(fromDev, fromPort)];
+        delete ends[pk(fromDev, fromPort)];
+        if (moved) ends[pk(toDev, toPort)] = moved;
+        this.hw.phys.set(linkKey(pk(toDev, toPort), peerKey), { ...ph, ends });
+      }
       this.commit();
       return true;
     }

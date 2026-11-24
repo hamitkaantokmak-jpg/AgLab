@@ -9,6 +9,7 @@ import { activePs, secureCount } from './portsec'
 import { defaultSwitchConfig } from './config'
 import { apipaFor, dhcpDiscover, isApipa, type DhcpResult } from './dhcp'
 import { bpduViolations, type Derived } from './engine'
+import { linkKey, normalizePhys } from './phys'
 import { l3Ifs, macTable, type Delivery, type Hop } from './net'
 import { candidateRid, computeState } from './ospf'
 import { asHex } from './bgp'
@@ -172,6 +173,7 @@ export class LabRuntime {
     this.hw = noHardwareFaults()
     for (const l of this.def.links)
       if (l.up === false) for (const [dev, port] of [l.a, l.b]) this.hw.cut.add(pk(dev, port))
+    this.initPhys()
     for (const dv of this.def.devices) {
       if (dv.off) this.hw.off.add(dv.id)
       if (dv.kind === 'pc' && dv.nicDown) this.hw.nicDown.add(dv.id)
@@ -191,6 +193,24 @@ export class LabRuntime {
     this.arpIncomplete.clear()
     this.logs = []
     this.emit()
+  }
+
+  /**
+   * Katman 1: LinkDef.phys → hw.phys (yalnız phys tanımlı bağlantılar). SFP yalnız
+   * GigabitEthernet portuna takılabilir (Fa portunda SFP yuvası yok: lab yazım hatası).
+   */
+  private initPhys() {
+    for (const l of this.def.links) {
+      if (!l.phys) continue
+      for (const [side, [dev, port]] of [['a', l.a], ['b', l.b]] as const) {
+        const sfp = l.phys.ends?.[side]?.sfp
+        if (sfp && this.topo.devices[dev]?.kind === 'switch' && !port.startsWith('GigabitEthernet'))
+          throw new Error(`${dev} ${port}: SFP yalnız GigabitEthernet portuna takılabilir`)
+      }
+      const ka = pk(l.a[0], l.a[1])
+      const kb = pk(l.b[0], l.b[1])
+      ;(this.hw.phys ??= new Map()).set(linkKey(ka, kb), normalizePhys(l.phys, ka, kb))
+    }
   }
 
   onChange(fn: () => void) {
@@ -267,6 +287,16 @@ export class LabRuntime {
           this.errCause.delete(k)
           changed = true
         }
+      }
+      // Katman 1: desteklenmeyen (third-party) modül → gbic-invalid err-disable (IOS: modül
+      // takılıyken port açık olduğu sürece; shutdown / no shutdown ile yeniden denetlenir)
+      for (const [k, ps] of Object.entries(d.phys)) {
+        if (!ps.l1?.unsupported || ps.adminDown || this.errdis.has(k) || this.hw.off.has(ps.dev)) continue
+        this.errdis.add(k)
+        this.errCause.set(k, 'gbic-invalid')
+        this.log(ps.dev, `%PHY-4-UNSUPPORTED_TRANSCEIVER: Unsupported transceiver found in ${shortIf(ps.port)}`)
+        this.log(ps.dev, `%PM-4-ERR_DISABLE: gbic-invalid error detected on ${shortIf(ps.port)}, putting ${shortIf(ps.port)} in err-disable state`)
+        changed = true
       }
       const viol = new Set(bpduViolations(d))
       for (const k of viol) {
@@ -477,6 +507,19 @@ export class LabRuntime {
     this.def = { ...this.def, links }
     this.topo = buildTopo(this.def)
     if (this.hw.cut.delete(pk(fromDev, fromPort))) this.hw.cut.add(pk(toDev, toPort))
+    // Katman 1: kablonun fiziksel durumu kabloyla gider; taşınan uçtaki modül kabloyla değil
+    // porttadır ama modelde uç özelliği kablo ucuna bağlıdır (bkz. UYUMLULUK_MATRISI "Katman 1")
+    const peerKey = pk(peer.dev, peer.port)
+    const oldKey = linkKey(pk(fromDev, fromPort), peerKey)
+    const ph = this.hw.phys?.get(oldKey)
+    if (ph) {
+      this.hw.phys!.delete(oldKey)
+      const ends = { ...ph.ends }
+      const moved = ends[pk(fromDev, fromPort)]
+      delete ends[pk(fromDev, fromPort)]
+      if (moved) ends[pk(toDev, toPort)] = moved
+      this.hw.phys!.set(linkKey(pk(toDev, toPort), peerKey), { ...ph, ends })
+    }
     this.commit()
     return true
   }
