@@ -18,7 +18,7 @@ import { resolvePolicy, type BgpPolicy } from './bgp-policy'
 import { eigrpTag } from './eigrp'
 import { LabQuery } from './query'
 import { buildTopo, pk, type Topo } from './topology'
-import { noHardwareFaults, type DhcpBinding, type Hardware, type LabDef, type ObjectiveResult, type PcConfig, type SwitchConfig } from './types'
+import { noHardwareFaults, type CableSpec, type LinkPhys, type SfpSpec, type DhcpBinding, type Hardware, type LabDef, type ObjectiveResult, type PcConfig, type SwitchConfig } from './types'
 import { clone, shortIf } from './util'
 
 export interface LogLine {
@@ -46,7 +46,7 @@ export interface SavedState {
   arpIncomplete?: string[]
   errdis?: string[]
   /** cut cables ('dev|port', both ends), powered-off devices, PCs with a disabled NIC */
-  hw?: { cut: string[]; off: string[]; nicDown: string[] }
+  hw?: { cut: string[]; off: string[]; nicDown: string[]; phys?: [string, LinkPhys][] }
   /** Katman 1: phys portlarının hata sayaçları (yalnız phys tanımlı labda yazılır) */
   physCounters?: [string, PortCounters][]
   /** L5-b: DHCP leases */
@@ -656,6 +656,80 @@ export class LabRuntime {
     return `Mar 02 1993 ${two(h % 12 === 0 ? 12 : h % 12)}:${two(m)} ${h < 12 ? 'AM' : 'PM'}`
   }
 
+  // ---- Katman 1: teknisyen eylemleri ----
+
+  /** Bu porttaki kablonun fiziksel tanımı (yoksa null). `phys.ends` 'dev|port' anahtarlıdır. */
+  physLink(dev: string, port: string): { key: string; here: string; peer: string; phys: LinkPhys } | null {
+    const peer = this.topo.peer[pk(dev, port)]
+    if (!peer) return null
+    const here = pk(dev, port)
+    const there = pk(peer.dev, peer.port)
+    const key = linkKey(here, there)
+    const phys = this.hw.phys?.get(key)
+    return phys ? { key, here, peer: there, phys } : null
+  }
+
+  private physChange(dev: string, port: string, fn: (p: LinkPhys, here: string) => void): boolean {
+    const l = this.physLink(dev, port)
+    if (!l) return false
+    fn(l.phys, l.here)
+    this.commit()
+    return true
+  }
+
+  /**
+   * Kabloyu yenisiyle değiştir (tür/uzunluk; varsayılan sağlam). Yeni kablo takılı gelir,
+   * iki ucun konnektörü temizdir ve fiber çifti doğru yöndedir; uçlardaki modüller kalır.
+   * phys tanımsız bağlantıda bağlantı fiziksel modele alınır.
+   */
+  replaceCable(dev: string, port: string, cable: CableSpec): boolean {
+    const peer = this.topo.peer[pk(dev, port)]
+    if (!peer) return false
+    const here = pk(dev, port)
+    const there = pk(peer.dev, peer.port)
+    const key = linkKey(here, there)
+    const old = this.hw.phys?.get(key)
+    const ends: LinkPhys['ends'] = {}
+    for (const k of [here, there]) {
+      const sfp = old?.ends[k]?.sfp
+      if (sfp) ends[k] = { sfp: { ...sfp } }
+    }
+    ;(this.hw.phys ??= new Map()).set(key, { cable: { kind: cable.kind, lengthM: cable.lengthM, ...(cable.damaged ? { damaged: true } : {}), ...(cable.bent ? { bent: true } : {}) }, ends })
+    this.hw.cut.delete(here)
+    this.hw.cut.delete(there)
+    this.commit()
+    return true
+  }
+
+  /** Bu uçtaki konnektörü temizle (fiber alıcısının ek kaybı kalkar). */
+  cleanConnector(dev: string, port: string): boolean {
+    return this.physChange(dev, port, (p, here) => {
+      if (p.ends[here]) delete p.ends[here]!.connectorDirty
+    })
+  }
+
+  /**
+   * SFP'yi değiştir / tak (`sfp`) ya da çıkar (`null`). Yalnız switch'in GigabitEthernet
+   * portunda. gbic-invalid err-disable kendiliğinden kalkmaz (IOS): shutdown / no shutdown.
+   */
+  replaceSfp(dev: string, port: string, sfp: SfpSpec | null): boolean {
+    if (this.topo.devices[dev]?.kind !== 'switch' || !port.startsWith('GigabitEthernet')) return false
+    return this.physChange(dev, port, (p, here) => {
+      const end = (p.ends[here] ??= {})
+      if (sfp) end.sfp = { ...sfp }
+      else delete end.sfp
+      // modül değişince ferrule yeniden takılır; konnektörün kendisi kirli kalır
+    })
+  }
+
+  /** Fiber çiftinin TX/RX uçlarını bu uçta çaprazla (ters takılı ise düzelir, düzse bozulur). */
+  flipFiber(dev: string, port: string): boolean {
+    return this.physChange(dev, port, (p) => {
+      if (p.txRxSwapped) delete p.txRxSwapped
+      else p.txRxSwapped = true
+    })
+  }
+
   /** Cable on this port is plugged in and intact (says nothing about the far device). */
   cableIntact(dev: string, port: string): boolean {
     return !!this.topo.peer[pk(dev, port)] && !this.hw.cut.has(pk(dev, port))
@@ -805,7 +879,7 @@ export class LabRuntime {
       nat: clone(this.natTable),
       natHits: this.natHits,
       natMisses: this.natMisses,
-      hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
+      hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown], ...(this.hw.phys?.size ? { phys: clone([...this.hw.phys]) } : {}) },
       dhcp: clone(this.dhcp),
       bgpApplied: clone(this.bgpApplied),
       ...(this.physCounters.size ? { physCounters: clone([...this.physCounters]) } : {}),
@@ -835,7 +909,10 @@ export class LabRuntime {
     this.natHits = s.natHits ?? 0
     this.natMisses = s.natMisses ?? 0
     // Katman 1: kayıtta fiziksel durum yoksa labın tanımındaki (reset) korunur
-    if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown), ...(this.hw.phys ? { phys: this.hw.phys } : {}) }
+    if (s.hw) {
+      const phys = s.hw.phys ? new Map(clone(s.hw.phys)) : this.hw.phys
+      this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown), ...(phys ? { phys } : {}) }
+    }
     this.dhcp = clone(s.dhcp ?? [])
     this.bgpApplied = clone(s.bgpApplied ?? {})
     this.physCounters = new Map(clone(s.physCounters ?? []))

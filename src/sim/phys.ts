@@ -329,3 +329,61 @@ export function receive(c: PortCounters, n: number, errPer10k: number) {
 
 /** Lab açılışında her up phys portu için sayılan arka plan çerçevesi (CDP/STP/keepalive). */
 export const BOOT_FRAMES = 1000
+
+// ---- doğrulama (köprü: AgLab JSON'undan gelen phys) ----
+
+const CABLE_KINDS: CableKind[] = ['utp-cat5e', 'utp-cat6', 'dac', 'fiber-mm', 'fiber-sm']
+const SFP_TYPES: SfpType[] = ['1000base-t', '1000base-sx', '1000base-lx', '1000base-zx', 'dac']
+
+/**
+ * LinkDef.phys biçimini doğrular; hata metni ya da null. `gigabit(side)`: o uç SFP alabilir mi
+ * (switch'in GigabitEthernet portu). Yalnız bilinen alanlar kabul edilir.
+ */
+export function validatePhysSpec(x: unknown, gigabit: (side: 'a' | 'b') => boolean): string | null {
+  const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+  const only = (o: Record<string, unknown>, keys: string[], where: string) => {
+    const extra = Object.keys(o).filter((k) => !keys.includes(k))
+    return extra.length ? `${where}: bilinmeyen alan ${extra.join(', ')}` : null
+  }
+  if (!obj(x)) return 'phys bir nesne olmalı'
+  let e = only(x, ['cable', 'ends', 'txRxSwapped'], 'phys')
+  if (e) return e
+  const c = x['cable']
+  if (!obj(c)) return 'phys.cable gerekli'
+  if ((e = only(c, ['kind', 'lengthM', 'damaged', 'bent'], 'phys.cable'))) return e
+  if (!CABLE_KINDS.includes(c['kind'] as CableKind)) return `kablo türü ${String(c['kind'])} bilinmiyor`
+  if (typeof c['lengthM'] !== 'number' || !(c['lengthM'] >= 0)) return 'kablo uzunluğu (lengthM) sayı olmalı'
+  for (const f of ['damaged', 'bent']) if (c[f] !== undefined && typeof c[f] !== 'boolean') return `phys.cable.${f} boolean olmalı`
+  if (x['txRxSwapped'] !== undefined && typeof x['txRxSwapped'] !== 'boolean') return 'phys.txRxSwapped boolean olmalı'
+  const ends = x['ends']
+  if (ends === undefined) return null
+  if (!obj(ends)) return 'phys.ends nesne olmalı'
+  if ((e = only(ends, ['a', 'b'], 'phys.ends'))) return e
+  for (const side of ['a', 'b'] as const) {
+    const end = ends[side]
+    if (end === undefined) continue
+    if (!obj(end)) return `phys.ends.${side} nesne olmalı`
+    if ((e = only(end, ['sfp', 'connectorDirty'], `phys.ends.${side}`))) return e
+    if (end['connectorDirty'] !== undefined && typeof end['connectorDirty'] !== 'boolean') return `phys.ends.${side}.connectorDirty boolean olmalı`
+    const sfp = end['sfp']
+    if (sfp === undefined) continue
+    if (!obj(sfp)) return `phys.ends.${side}.sfp nesne olmalı`
+    if ((e = only(sfp, ['type', 'vendor', 'dead'], `phys.ends.${side}.sfp`))) return e
+    if (!SFP_TYPES.includes(sfp['type'] as SfpType)) return `SFP tipi ${String(sfp['type'])} bilinmiyor`
+    if (sfp['vendor'] !== undefined && sfp['vendor'] !== 'cisco' && sfp['vendor'] !== 'third-party') return 'SFP vendor cisco ya da third-party olmalı'
+    if (sfp['dead'] !== undefined && typeof sfp['dead'] !== 'boolean') return 'SFP dead boolean olmalı'
+    if (!gigabit(side)) return `phys.ends.${side}: SFP yalnız switch'in GigabitEthernet portuna takılabilir`
+  }
+  return null
+}
+
+/** Çalışma anı biçimi → LinkDef.phys (a/b sırası verilen uçlarla). */
+export function physSpecOf(p: LinkPhys, aKey: string, bKey: string): { cable: CableSpec; ends?: { a?: PhysEndSpec; b?: PhysEndSpec }; txRxSwapped?: boolean } {
+  const ends: { a?: PhysEndSpec; b?: PhysEndSpec } = {}
+  const clean = (e: PhysEndSpec | undefined) => (e && (e.sfp || e.connectorDirty) ? structuredCopy(e) : undefined)
+  const a = clean(p.ends[aKey])
+  const b = clean(p.ends[bKey])
+  if (a) ends.a = a
+  if (b) ends.b = b
+  return { cable: { ...p.cable }, ...(a || b ? { ends } : {}), ...(p.txRxSwapped ? { txRxSwapped: true } : {}) }
+}

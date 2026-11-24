@@ -90,6 +90,7 @@ var AgLabSim = (() => {
   // src/sim-bridge/index.ts
   var index_exports = {};
   __export(index_exports, {
+    BOOT_FRAMES: () => BOOT_FRAMES,
     BridgeError: () => BridgeError,
     IosSession: () => IosSession,
     LABBER_HINT_TIERS: () => HINT_TIERS,
@@ -97,20 +98,24 @@ var AgLabSim = (() => {
     LabQuery: () => LabQuery,
     MODEL_L2: () => MODEL_L2,
     MODEL_L3: () => MODEL_L3,
+    OPTICS: () => OPTICS,
     VpcsSession: () => VpcsSession,
     canonPort: () => canonPort,
     cliImport: () => cliImport,
     createLab: () => createLab,
     createRuntime: () => createRuntime,
     createSession: () => createSession,
+    evaluateLink: () => evaluateLink,
     importReportWithCli: () => importReportWithCli,
+    linkKey: () => linkKey,
     modeledDiffs: () => modeledDiffs,
     modeledProjection: () => modeledProjection,
     needsEncapFor: () => needsEncapFor,
     pingTrace: () => pingTrace,
     runScript: () => runScript,
     toAglab: () => toAglab,
-    toLabber: () => toLabber
+    toLabber: () => toLabber,
+    validatePhysSpec: () => validatePhysSpec
   });
 
   // src/sim/types.ts
@@ -878,6 +883,54 @@ var AgLabSim = (() => {
     c.crc += e;
   }
   var BOOT_FRAMES = 1e3;
+  var CABLE_KINDS = ["utp-cat5e", "utp-cat6", "dac", "fiber-mm", "fiber-sm"];
+  var SFP_TYPES = ["1000base-t", "1000base-sx", "1000base-lx", "1000base-zx", "dac"];
+  function validatePhysSpec(x, gigabit) {
+    const obj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+    const only = (o, keys, where) => {
+      const extra = Object.keys(o).filter((k) => !keys.includes(k));
+      return extra.length ? `${where}: bilinmeyen alan ${extra.join(", ")}` : null;
+    };
+    if (!obj(x)) return "phys bir nesne olmalı";
+    let e = only(x, ["cable", "ends", "txRxSwapped"], "phys");
+    if (e) return e;
+    const c = x["cable"];
+    if (!obj(c)) return "phys.cable gerekli";
+    if (e = only(c, ["kind", "lengthM", "damaged", "bent"], "phys.cable")) return e;
+    if (!CABLE_KINDS.includes(c["kind"])) return `kablo türü ${String(c["kind"])} bilinmiyor`;
+    if (typeof c["lengthM"] !== "number" || !(c["lengthM"] >= 0)) return "kablo uzunluğu (lengthM) sayı olmalı";
+    for (const f of ["damaged", "bent"]) if (c[f] !== void 0 && typeof c[f] !== "boolean") return `phys.cable.${f} boolean olmalı`;
+    if (x["txRxSwapped"] !== void 0 && typeof x["txRxSwapped"] !== "boolean") return "phys.txRxSwapped boolean olmalı";
+    const ends = x["ends"];
+    if (ends === void 0) return null;
+    if (!obj(ends)) return "phys.ends nesne olmalı";
+    if (e = only(ends, ["a", "b"], "phys.ends")) return e;
+    for (const side of ["a", "b"]) {
+      const end = ends[side];
+      if (end === void 0) continue;
+      if (!obj(end)) return `phys.ends.${side} nesne olmalı`;
+      if (e = only(end, ["sfp", "connectorDirty"], `phys.ends.${side}`)) return e;
+      if (end["connectorDirty"] !== void 0 && typeof end["connectorDirty"] !== "boolean") return `phys.ends.${side}.connectorDirty boolean olmalı`;
+      const sfp = end["sfp"];
+      if (sfp === void 0) continue;
+      if (!obj(sfp)) return `phys.ends.${side}.sfp nesne olmalı`;
+      if (e = only(sfp, ["type", "vendor", "dead"], `phys.ends.${side}.sfp`)) return e;
+      if (!SFP_TYPES.includes(sfp["type"])) return `SFP tipi ${String(sfp["type"])} bilinmiyor`;
+      if (sfp["vendor"] !== void 0 && sfp["vendor"] !== "cisco" && sfp["vendor"] !== "third-party") return "SFP vendor cisco ya da third-party olmalı";
+      if (sfp["dead"] !== void 0 && typeof sfp["dead"] !== "boolean") return "SFP dead boolean olmalı";
+      if (!gigabit(side)) return `phys.ends.${side}: SFP yalnız switch'in GigabitEthernet portuna takılabilir`;
+    }
+    return null;
+  }
+  function physSpecOf(p, aKey, bKey) {
+    const ends = {};
+    const clean = (e) => e && (e.sfp || e.connectorDirty) ? structuredCopy(e) : void 0;
+    const a = clean(p.ends[aKey]);
+    const b = clean(p.ends[bKey]);
+    if (a) ends.a = a;
+    if (b) ends.b = b;
+    return { cable: { ...p.cable }, ...a || b ? { ends } : {}, ...p.txRxSwapped ? { txRxSwapped: true } : {} };
+  }
 
   // src/sim/engine.ts
   var protoOf = (m) => m === "on" ? "-" : m === "active" || m === "passive" ? "LACP" : "PAgP";
@@ -5628,10 +5681,10 @@ var AgLabSim = (() => {
     const o = ["", "Port        Align-Err     FCS-Err    Xmit-Err     Rcv-Err  UnderSize  OutDiscards"];
     for (const p of sw2.ports) {
       const c = rt.counters(dev, p);
-      o.push(pad(shortIf(p), 9) + padL(0, 10) + padL(c.crc, 12) + padL(0, 12) + padL(c.inErr, 12) + padL(0, 11) + padL(0, 13));
+      o.push(pad(shortIf(p), 12) + padL(0, 9) + padL(c.crc, 12) + padL(0, 12) + padL(c.inErr, 12) + padL(0, 11) + padL(0, 13));
     }
     o.push("", "Port      Single-Col  Multi-Col   Late-Col  Excess-Col  Carri-Sen      Runts     Giants");
-    for (const p of sw2.ports) o.push(pad(shortIf(p), 9) + padL(0, 11) + padL(0, 11) + padL(0, 11) + padL(0, 12) + padL(0, 11) + padL(0, 11) + padL(0, 11));
+    for (const p of sw2.ports) o.push(pad(shortIf(p), 10) + padL(0, 10) + padL(0, 11) + padL(0, 11) + padL(0, 12) + padL(0, 11) + padL(0, 11) + padL(0, 11));
     return o;
   }
   function opticPorts(rt, dev) {
@@ -5657,11 +5710,11 @@ var AgLabSim = (() => {
         "Port       (dBm)     (dBm)",
         "---------  --------  --------"
       ];
-      for (const x of list) o2.push(pad(shortIf(x.port), 11) + padL(dbm(x.l1.txDbm), 6) + padL(dbm(x.l1.rxDbm), 10));
+      for (const x of list) o2.push(pad(shortIf(x.port), 11) + padL(dbm(x.l1.txDbm), 8) + padL(dbm(x.l1.rxDbm), 10));
       return o2;
     }
     const flag = (v, ha, hw, lw, la) => v === null ? "" : v > ha ? "++" : v > hw ? "+" : v < la ? "--" : v < lw ? "-" : "";
-    const row = (port, v, th) => pad(shortIf(port), 11) + pad(dbm(v), 7) + " " + pad(flag(v, ...th), 3) + th.map((t, i) => padL(t.toFixed(1), i ? 11 : 8)).join("");
+    const row = (port, v, th) => pad(shortIf(port), 11) + pad(padL(dbm(v), 6) + " " + flag(v, ...th), 19) + th.map((t, i) => padL(t.toFixed(1), i ? 11 : 10)).join("");
     const head = (what) => [
       "",
       "                              High Alarm  High Warn  Low Warn   Low Alarm",
@@ -9654,6 +9707,75 @@ var AgLabSim = (() => {
       const two = (n) => String(n).padStart(2, "0");
       return `Mar 02 1993 ${two(h % 12 === 0 ? 12 : h % 12)}:${two(m)} ${h < 12 ? "AM" : "PM"}`;
     }
+    // ---- Katman 1: teknisyen eylemleri ----
+    /** Bu porttaki kablonun fiziksel tanımı (yoksa null). `phys.ends` 'dev|port' anahtarlıdır. */
+    physLink(dev, port) {
+      const peer = this.topo.peer[pk(dev, port)];
+      if (!peer) return null;
+      const here = pk(dev, port);
+      const there = pk(peer.dev, peer.port);
+      const key = linkKey(here, there);
+      const phys = this.hw.phys?.get(key);
+      return phys ? { key, here, peer: there, phys } : null;
+    }
+    physChange(dev, port, fn) {
+      const l = this.physLink(dev, port);
+      if (!l) return false;
+      fn(l.phys, l.here);
+      this.commit();
+      return true;
+    }
+    /**
+     * Kabloyu yenisiyle değiştir (tür/uzunluk; varsayılan sağlam). Yeni kablo takılı gelir,
+     * iki ucun konnektörü temizdir ve fiber çifti doğru yöndedir; uçlardaki modüller kalır.
+     * phys tanımsız bağlantıda bağlantı fiziksel modele alınır.
+     */
+    replaceCable(dev, port, cable) {
+      var _a;
+      const peer = this.topo.peer[pk(dev, port)];
+      if (!peer) return false;
+      const here = pk(dev, port);
+      const there = pk(peer.dev, peer.port);
+      const key = linkKey(here, there);
+      const old = this.hw.phys?.get(key);
+      const ends = {};
+      for (const k of [here, there]) {
+        const sfp = old?.ends[k]?.sfp;
+        if (sfp) ends[k] = { sfp: { ...sfp } };
+      }
+      ;
+      ((_a = this.hw).phys ?? (_a.phys = /* @__PURE__ */ new Map())).set(key, { cable: { kind: cable.kind, lengthM: cable.lengthM, ...cable.damaged ? { damaged: true } : {}, ...cable.bent ? { bent: true } : {} }, ends });
+      this.hw.cut.delete(here);
+      this.hw.cut.delete(there);
+      this.commit();
+      return true;
+    }
+    /** Bu uçtaki konnektörü temizle (fiber alıcısının ek kaybı kalkar). */
+    cleanConnector(dev, port) {
+      return this.physChange(dev, port, (p, here) => {
+        if (p.ends[here]) delete p.ends[here].connectorDirty;
+      });
+    }
+    /**
+     * SFP'yi değiştir / tak (`sfp`) ya da çıkar (`null`). Yalnız switch'in GigabitEthernet
+     * portunda. gbic-invalid err-disable kendiliğinden kalkmaz (IOS): shutdown / no shutdown.
+     */
+    replaceSfp(dev, port, sfp) {
+      if (this.topo.devices[dev]?.kind !== "switch" || !port.startsWith("GigabitEthernet")) return false;
+      return this.physChange(dev, port, (p, here) => {
+        var _a;
+        const end = (_a = p.ends)[here] ?? (_a[here] = {});
+        if (sfp) end.sfp = { ...sfp };
+        else delete end.sfp;
+      });
+    }
+    /** Fiber çiftinin TX/RX uçlarını bu uçta çaprazla (ters takılı ise düzelir, düzse bozulur). */
+    flipFiber(dev, port) {
+      return this.physChange(dev, port, (p) => {
+        if (p.txRxSwapped) delete p.txRxSwapped;
+        else p.txRxSwapped = true;
+      });
+    }
     /** Cable on this port is plugged in and intact (says nothing about the far device). */
     cableIntact(dev, port) {
       return !!this.topo.peer[pk(dev, port)] && !this.hw.cut.has(pk(dev, port));
@@ -9786,7 +9908,7 @@ var AgLabSim = (() => {
         nat: clone(this.natTable),
         natHits: this.natHits,
         natMisses: this.natMisses,
-        hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown] },
+        hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown], ...this.hw.phys?.size ? { phys: clone([...this.hw.phys]) } : {} },
         dhcp: clone(this.dhcp),
         bgpApplied: clone(this.bgpApplied),
         ...this.physCounters.size ? { physCounters: clone([...this.physCounters]) } : {}
@@ -9813,7 +9935,10 @@ var AgLabSim = (() => {
       this.natTable = clone(s.nat ?? []);
       this.natHits = s.natHits ?? 0;
       this.natMisses = s.natMisses ?? 0;
-      if (s.hw) this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown), ...this.hw.phys ? { phys: this.hw.phys } : {} };
+      if (s.hw) {
+        const phys = s.hw.phys ? new Map(clone(s.hw.phys)) : this.hw.phys;
+        this.hw = { cut: new Set(s.hw.cut), off: new Set(s.hw.off), nicDown: new Set(s.hw.nicDown), ...phys ? { phys } : {} };
+      }
       this.dhcp = clone(s.dhcp ?? []);
       this.bgpApplied = clone(s.bgpApplied ?? {});
       this.physCounters = new Map(clone(s.physCounters ?? []));
@@ -14933,7 +15058,7 @@ end
     links.forEach((l, index) => {
       const tag = `links[${index}]`;
       for (const key of Object.keys(l))
-        if (!["a", "portA", "b", "portB", "up"].includes(key)) unsupported(tag, key, "Labber'da karşılığı olmayan bağlantı alanı");
+        if (!["a", "portA", "b", "portB", "up", "phys"].includes(key)) unsupported(tag, key, "Labber'da karşılığı olmayan bağlantı alanı");
       const end = (dev, port) => {
         if (!ids.has(dev)) {
           reject(tag, `${dev}:${port}`, "Bağlantı bilinmeyen cihaza gidiyor");
@@ -14959,7 +15084,20 @@ end
       };
       const a = end(String(l.a), String(l.portA));
       const b = end(String(l.b), String(l.portB));
-      if (a && b) def.links.push(l.up === false ? { a, b, up: false } : { a, b });
+      let phys;
+      if (a && b && l["phys"] !== void 0) {
+        const gig = (side) => {
+          const [dev, port] = side === "a" ? a : b;
+          return def.devices.find((x) => x.id === dev)?.kind === "switch" && port.startsWith("GigabitEthernet");
+        };
+        const err = validatePhysSpec(l["phys"], gig);
+        if (err) {
+          reject(tag, "phys", "Katman 1 tanımı geçersiz: " + err);
+          return;
+        }
+        phys = clone(l["phys"]);
+      }
+      if (a && b) def.links.push({ a, b, ...l.up === false ? { up: false } : {}, ...phys ? { phys } : {} });
     });
     const reasons = /* @__PURE__ */ new Set();
     for (const u of report.unsupported) reasons.add(u.reason);
@@ -14998,6 +15136,13 @@ end
           l[side] = dev;
           l[portKey] = name;
         }
+      });
+    if (rt.hw?.phys?.size && rt.def && rt.def.links.length === outLinks.length)
+      rt.def.links.forEach((dl, i) => {
+        const ka = `${dl.a[0]}|${dl.a[1]}`;
+        const kb = `${dl.b[0]}|${dl.b[1]}`;
+        const p = rt.hw.phys.get(linkKey(ka, kb));
+        if (p) outLinks[i]["phys"] = physSpecOf(p, ka, kb);
       });
     if (rt.hw)
       for (const l of out.links ?? []) {

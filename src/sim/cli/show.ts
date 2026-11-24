@@ -1106,10 +1106,10 @@ export function showIntCountersErrors(rt: LabRuntime, dev: string): string[] {
   const o = ['', 'Port        Align-Err     FCS-Err    Xmit-Err     Rcv-Err  UnderSize  OutDiscards']
   for (const p of sw.ports) {
     const c = rt.counters(dev, p)
-    o.push(pad(shortIf(p), 9) + padL(0, 10) + padL(c.crc, 12) + padL(0, 12) + padL(c.inErr, 12) + padL(0, 11) + padL(0, 13))
+    o.push(pad(shortIf(p), 12) + padL(0, 9) + padL(c.crc, 12) + padL(0, 12) + padL(c.inErr, 12) + padL(0, 11) + padL(0, 13))
   }
   o.push('', 'Port      Single-Col  Multi-Col   Late-Col  Excess-Col  Carri-Sen      Runts     Giants')
-  for (const p of sw.ports) o.push(pad(shortIf(p), 9) + padL(0, 11) + padL(0, 11) + padL(0, 11) + padL(0, 12) + padL(0, 11) + padL(0, 11) + padL(0, 11))
+  for (const p of sw.ports) o.push(pad(shortIf(p), 10) + padL(0, 10) + padL(0, 11) + padL(0, 11) + padL(0, 12) + padL(0, 11) + padL(0, 11) + padL(0, 11))
   return o
 }
 
@@ -1144,13 +1144,13 @@ export function showTransceiver(rt: LabRuntime, dev: string, detail: boolean): s
       'Port       (dBm)     (dBm)',
       '---------  --------  --------',
     ]
-    for (const x of list) o.push(pad(shortIf(x.port), 11) + padL(dbm(x.l1.txDbm), 6) + padL(dbm(x.l1.rxDbm), 10))
+    for (const x of list) o.push(pad(shortIf(x.port), 11) + padL(dbm(x.l1.txDbm), 8) + padL(dbm(x.l1.rxDbm), 10))
     return o
   }
   const flag = (v: number | null, ha: number, hw: number, lw: number, la: number) =>
     v === null ? '' : v > ha ? '++' : v > hw ? '+' : v < la ? '--' : v < lw ? '-' : ''
   const row = (port: string, v: number | null, th: [number, number, number, number]) =>
-    pad(shortIf(port), 11) + pad(dbm(v), 7) + ' ' + pad(flag(v, ...th), 3) + th.map((t, i) => padL(t.toFixed(1), i ? 11 : 8)).join('')
+    pad(shortIf(port), 11) + pad(padL(dbm(v), 6) + ' ' + flag(v, ...th), 19) + th.map((t, i) => padL(t.toFixed(1), i ? 11 : 10)).join('')
   const head = (what: string) => [
     '',
     '                              High Alarm  High Warn  Low Warn   Low Alarm',
