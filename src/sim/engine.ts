@@ -199,7 +199,7 @@ export function derive(
   // 0. hardware: a cable end carries signal only if the cable is intact, the device is
   //    powered and (for a PC) its NIC is enabled
   const endPowered = (dev: string, port: string): boolean =>
-    !hw.off.has(dev) && !hw.cut.has(pk(dev, port)) && !(topo.devices[dev]?.kind === 'pc' && hw.nicDown.has(dev))
+    !hw.off.has(dev) && !hw.cut.has(pk(dev, port)) && !hw.flapDown?.has(pk(dev, port)) && !(topo.devices[dev]?.kind === 'pc' && hw.nicDown.has(dev))
 
   // 1. physical links (a shut port-channel takes its members down)
   const adminDown = (dev: string, port: string): boolean => {

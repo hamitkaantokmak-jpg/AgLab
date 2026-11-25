@@ -10,6 +10,7 @@ import { defaultSwitchConfig } from './config'
 import { apipaFor, dhcpDiscover, isApipa, type DhcpResult } from './dhcp'
 import { bpduViolations, type Derived } from './engine'
 import { formatStamp, parseMessage, trimBuffer, type LogEntry } from './syslog'
+import { BACKGROUND_FPS, flapUp, nextFlapEdge, roundT, validFlap, type FlapSpec, type ScheduledAction, type ScheduledEvent } from './clock'
 import { BOOT_FRAMES, linkKey, normalizePhys, receive, zeroCounters, type PortCounters } from './phys'
 import { l3Ifs, macTable, physicalPath, type Delivery, type Hop } from './net'
 import { fhrpOwns, fhrpTarget } from './fhrp'
@@ -64,6 +65,17 @@ export interface SavedState {
   natMisses?: number
   /** eBGP: komşu başına dondurulmuş politika (soft clear bekleyen değişiklik kayıttan sonra da bekler) */
   bgpApplied?: Record<string, { in?: BgpPolicy; out?: BgpPolicy }>
+  /** sanal zaman (yalnız zamanlı kipte yazılır) */
+  time?: {
+    clock: number
+    bgAcc: number
+    flaps: [string, FlapSpec][]
+    sched: ScheduledEvent[]
+    schedSeq: number
+    booting: [string, number][]
+    errSince: [string, number][]
+    okSince: [string, number | null][]
+  }
   /** syslog tamponu: cihaz başına satırlar, toplam yazılan, damga sayacı (yalnız satır varsa) */
   syslog?: { buf: [string, LogEntry[]][]; logged: [string, number][]; n: number }
 }
@@ -77,8 +89,10 @@ export const MAC_AGING_SECONDS = 300
  */
 export class AgingSet extends Set<string> {
   private at = new Map<string, number>()
+  /** milisaniye saati: zamanlı kipte runtime sanal saate bağlar (rebase) */
+  now: () => number = () => Date.now()
   override add(mac: string): this {
-    this.at?.set(mac, Date.now())
+    this.at?.set(mac, this.now?.() ?? Date.now())
     return super.add(mac)
   }
   override delete(mac: string): boolean {
@@ -90,7 +104,11 @@ export class AgingSet extends Set<string> {
     super.clear()
   }
   /** Süresi dolan dinamik girdileri siler (okunurken: show mac, değerlendirme). */
-  expire(now = Date.now()): void {
+  /** Bütün girdilerin yaşını `now`dan başlatır (saat kaynağı değişince). */
+  rebase(now: number) {
+    for (const mac of this) this.at.set(mac, now)
+  }
+  expire(now = this.now()): void {
     for (const mac of [...this]) {
       const t = this.at.get(mac)
       // kayıttan yüklenen girdinin zamanı yok: yükleme anından sayılır
@@ -130,6 +148,31 @@ export class LabRuntime {
   logLogged = new Map<string, number>()
   /** syslog: zaman damgası sayacı (aynı ana düşen satırlar sırayla ms alır) */
   private logN = 0
+  /** syslog: logN'in ait olduğu saat değeri */
+  private logAt = 0
+
+  // ---- sanal zaman (aşama 2) ----
+  /** sanal saat (saniye); LabDef.clock.start ya da 0 */
+  clock = 0
+  /**
+   * Zamanlı kip: LabDef.clock verilmişse ya da tick/setFlap/schedule/powerOn(bootS) bir kez
+   * kullanılmışsa true. Kapalıyken davranış zaman öncesiyle aynıdır (errdisable kurtarması anlık,
+   * konsol damgası ve MAC yaşlanması eski kaynaktan).
+   */
+  timed = false
+  /** flap eden linkler ('dev|port' verilen uç) */
+  flaps = new Map<string, FlapSpec>()
+  /** zamanlanmış olaylar (at, id sırasıyla) */
+  private sched: ScheduledEvent[] = []
+  private schedSeq = 0
+  /** açılış süresindeki cihazlar → hazır olma saati */
+  private booting = new Map<string, number>()
+  /** err-disable olduğu saat (zamanlı kurtarma) */
+  private errSince = new Map<string, number>()
+  /** arka plan trafiği kesir birikimi (çerçeve) */
+  private bgAcc = 0
+  /** hedef id → OK olduğu saat (null: şu an OK değil) */
+  private okState = new Map<string, number | null>()
   /** L5-b: DHCP leases handed out by the lab's servers (kept in RAM: lost on reload) */
   dhcp: DhcpBinding[] = []
   /** L5-e: why a port is err-disabled ('bpduguard' | 'psecure-violation'); missing = bpduguard */
@@ -189,6 +232,16 @@ export class LabRuntime {
     this.fhrpActive.clear()
     this.fhrpStates.clear()
     this.hw = noHardwareFaults()
+    this.clock = roundT(this.def.clock?.start ?? 0)
+    this.timed = !!this.def.clock
+    this.flaps.clear()
+    this.sched = []
+    this.schedSeq = 0
+    this.booting.clear()
+    this.errSince.clear()
+    this.bgAcc = 0
+    this.okState.clear()
+    this.seen.now = () => (this.timed ? this.clock * 1000 : Date.now())
     for (const l of this.def.links)
       if (l.up === false) for (const [dev, port] of [l.a, l.b]) this.hw.cut.add(pk(dev, port))
     this.initPhys()
@@ -215,6 +268,7 @@ export class LabRuntime {
     this.logBuf.clear()
     this.logLogged.clear()
     this.logN = 0
+    this.logAt = this.clock
     this.emit()
   }
 
@@ -304,6 +358,7 @@ export class LabRuntime {
   }
 
   timestamp(): string {
+    if (this.timed) return this.stampAt(this.clock).stamp
     const ms = Date.now() - this.t0 + 3_723_000
     const h = Math.floor(ms / 3_600_000)
     const m = Math.floor(ms / 60_000) % 60
@@ -337,11 +392,23 @@ export class LabRuntime {
     this.logLogged.set(dev, (this.logLogged.get(dev) ?? 0) + 1)
   }
 
-  /** Sanal zaman damgası: aşama 1'de sıra numarasından (her 1000 satır bir saniye). */
+  /**
+   * Sanal zaman damgası: saat + aynı ana düşen satırların sırası (ms). Saniyenin kesri ms'e
+   * eklenir; 999'da durur. Gerçek saat kullanılmaz.
+   */
   private logStamp(): { t: number; stamp: string } {
-    const n = this.logN++
-    const t = Math.floor(n / 1000)
-    return { t, stamp: formatStamp(t, n % 1000) }
+    const r = this.stampAt(this.clock)
+    this.logN++
+    return r
+  }
+
+  private stampAt(t: number): { t: number; stamp: string } {
+    if (t !== this.logAt) {
+      this.logAt = t
+      this.logN = 0
+    }
+    const sec = Math.floor(t)
+    return { t, stamp: formatStamp(sec, Math.floor(roundT(t - sec) * 1000) + this.logN) }
   }
 
   /** `clear logging`: cihazın tamponunu boşaltır (yazılan sayacı da sıfırlanır). */
@@ -422,7 +489,9 @@ export class LabRuntime {
       }
       for (const k of [...this.errdis]) {
         const [dev, port] = k.split('|') as [string, string]
-        // only bpduguard recovery is modelled (`errdisable recovery cause bpduguard`)
+        // zaman kullanılmayan labda: bpduguard kurtarması anlık (eski davranış); zamanlı kipte
+        // süre dolunca tick() kurtarır (recoverExpired)
+        if (this.timed) continue
         if (viol.has(k) || !this.running[dev]?.errRecoveryBpdu || (this.errCause.get(k) ?? 'bpduguard') !== 'bpduguard') continue
         this.errdis.delete(k)
         this.errCause.delete(k)
@@ -448,6 +517,9 @@ export class LabRuntime {
       if (!changed) break
       d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw, this.bgpApplied)
     }
+    // zamanlı kurtarma için err-disable anı
+    for (const k of this.errdis) if (!this.errSince.has(k)) this.errSince.set(k, this.clock)
+    for (const k of [...this.errSince.keys()]) if (!this.errdis.has(k)) this.errSince.delete(k)
     d.natTable = this.natTable
     d.arpCache = this.arp
     this.freezeBgpPolicy(d)
@@ -692,7 +764,7 @@ export class LabRuntime {
 
   /** Default lease is one day: expiration on the lab clock (starts on Mar 1). */
   private leaseExpiry(): string {
-    const ms = Date.now() - this.t0 + 3_723_000
+    const ms = this.timed ? Math.floor(this.clock * 1000) : Date.now() - this.t0 + 3_723_000
     const h = Math.floor(ms / 3_600_000) % 24
     const m = Math.floor(ms / 60_000) % 60
     const two = (n: number) => String(n).padStart(2, '0')
@@ -785,6 +857,8 @@ export class LabRuntime {
    */
   setPower(dev: string, on: boolean) {
     const def = this.topo.devices[dev]
+    // açılış süresindeki cihaz: kapatma açılışı iptal eder; açma açılışı hemen bitirir
+    if (this.booting.delete(dev) && !on) return void this.commit()
     if (!def || on === !this.hw.off.has(dev)) return
     if (!on) {
       this.hw.off.add(dev)
@@ -894,7 +968,7 @@ export class LabRuntime {
 
   objectives(): ObjectiveStatus[] {
     const q = this.query()
-    return this.def.objectives.map((o) => {
+    const out = this.def.objectives.map((o) => {
       let r: boolean | ObjectiveResult
       try {
         r = o.check(q)
@@ -904,6 +978,240 @@ export class LabRuntime {
       const res = typeof r === 'boolean' ? { ok: r } : r
       return { id: o.id, title: o.title, hint: o.hint, ok: res.ok, detail: res.detail }
     })
+    // SLA verisi: OK serisinin başladığı sanal an
+    for (const o of out) {
+      if (!o.ok) this.okState.set(o.id, null)
+      else if ((this.okState.get(o.id) ?? null) === null) this.okState.set(o.id, this.clock)
+    }
+    return out
+  }
+
+  /**
+   * Hedef şu an OK ise OK olduğu andan beri kesintisiz geçen sürenin başladığı sanal saat
+   * (saniye); OK değilse ya da böyle hedef yoksa null. Değerlendirme tick başında/sonunda, tick
+   * içindeki her olaydan sonra ve objectives() çağrısında yapılır (skor oyunun işidir).
+   */
+  okSince(id: string): number | null {
+    if (!this.def.objectives.some((o) => o.id === id)) return null
+    if (!this.okState.has(id)) this.objectives()
+    return this.okState.get(id) ?? null
+  }
+
+  // ---- sanal zaman: tick, flap, zamanlanmış olaylar, açılış ----
+
+  private enterTimed() {
+    if (this.timed) return
+    this.timed = true
+    this.seen.rebase(this.clock * 1000)
+    this.logAt = this.clock
+    this.logN = 0
+  }
+
+  /**
+   * Saati `seconds` ilerletir. Aradaki olaylar (zamanlanmış eylemler, flap geçişleri, errdisable
+   * kurtarma süreleri, açılış bitişleri) zaman sırasıyla, tam anlarında işlenir; arka plan trafiği
+   * (Katman 1 sayaçları) geçen süreyle orantılı sayılır. Hedefler her olaydan sonra değerlendirilir.
+   */
+  tick(seconds: number) {
+    if (!(seconds >= 0) || !Number.isFinite(seconds)) throw new Error('tick: süre negatif olmayan bir sayı olmalı')
+    this.enterTimed()
+    const end = roundT(this.clock + seconds)
+    this.evalObjectives()
+    for (let guard = 0; guard < 100000; guard++) {
+      const next = this.nextEventAt(end)
+      const t = next ?? end
+      this.advanceTraffic(t - this.clock)
+      this.clock = t
+      if (this.runDue()) this.evalObjectives()
+      if (next === null) break
+    }
+    this.evalObjectives()
+    this.emit()
+  }
+
+  private evalObjectives() {
+    if (this.def.objectives.length) this.objectives()
+  }
+
+  private advanceTraffic(dt: number) {
+    if (dt <= 0 || !this.hw.phys?.size) return
+    this.bgAcc += dt * BACKGROUND_FPS
+    const n = Math.floor(this.bgAcc + 1e-9)
+    this.bgAcc = roundT(this.bgAcc - n)
+    if (n > 0) this.backgroundTraffic(n, false)
+  }
+
+  /** Vadesi gelmiş iş varsa şimdiki an; yoksa (clock, end] aralığındaki ilk olay anı; yoksa null. */
+  private nextEventAt(end: number): number | null {
+    if (this.dueNow()) return this.clock
+    let best: number | null = null
+    const take = (t: number | null) => {
+      if (t !== null && t > this.clock && t <= end && (best === null || t < best)) best = t
+    }
+    for (const e of this.sched) take(e.at)
+    for (const t of this.booting.values()) take(t)
+    for (const f of this.flaps.values()) take(nextFlapEdge(f, this.clock))
+    for (const [k, since] of this.errSince) take(this.recoveryAt(k, since))
+    return best
+  }
+
+  private dueNow(): boolean {
+    const now = this.clock + 1e-9
+    if (this.sched.some((e) => e.at <= now)) return true
+    if ([...this.booting.values()].some((t) => t <= now)) return true
+    for (const [k, since] of this.errSince) {
+      const t = this.recoveryAt(k, since)
+      if (t !== null && t <= now) return true
+    }
+    return this.flapMismatch()
+  }
+
+  private flapMismatch(): boolean {
+    for (const [k, f] of this.flaps) {
+      const want = !flapUp(f, this.clock)
+      if (want !== !!this.hw.flapDown?.has(k)) return true
+    }
+    return false
+  }
+
+  /** Kurtarma anı: neden kurtarılabilirse err-disable anı + aralık; değilse null. */
+  private recoveryAt(k: string, since: number): number | null {
+    const dev = k.slice(0, k.indexOf('|'))
+    const c = this.running[dev]
+    const cause = this.errCause.get(k) ?? 'bpduguard'
+    const on = (cause === 'bpduguard' && c?.errRecoveryBpdu) || (cause === 'psecure-violation' && c?.errRecoveryPsecure)
+    return on ? roundT(since + (c!.errRecoveryInterval ?? 300)) : null
+  }
+
+  /** Vadesi gelen her şeyi işler; değişiklik olduysa true. */
+  private runDue(): boolean {
+    let did = false
+    const now = this.clock + 1e-9
+    // 1. açılışı biten cihazlar
+    for (const [dev, t] of [...this.booting].sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))) {
+      if (t > now) continue
+      this.booting.delete(dev)
+      this.setPower(dev, true)
+      did = true
+    }
+    // 2. zamanlanmış olaylar (at, id sırası)
+    const due = this.sched.filter((e) => e.at <= now)
+    if (due.length) {
+      this.sched = this.sched.filter((e) => e.at > now)
+      for (const e of due) this.apply(e.action)
+      did = true
+    }
+    // 3. errdisable kurtarma süreleri
+    for (const [k, since] of [...this.errSince]) {
+      const t = this.recoveryAt(k, since)
+      if (t === null || t > now || !this.errdis.has(k)) continue
+      const [dev, port] = k.split('|') as [string, string]
+      const cause = this.errCause.get(k) ?? 'bpduguard'
+      this.errdis.delete(k)
+      this.errCause.delete(k)
+      this.errSince.delete(k)
+      this.log(dev, `%PM-4-ERR_RECOVER: Attempting to recover from ${cause} err-disable state on ${shortIf(port)}`)
+      this.commit()
+      did = true
+    }
+    // 4. flap fazı
+    if (this.flapMismatch()) {
+      this.syncFlaps()
+      this.commit()
+      did = true
+    }
+    return did
+  }
+
+  private apply(a: ScheduledAction) {
+    switch (a.type) {
+      case 'link':
+        return void this.setLink(a.dev, a.port, a.up)
+      case 'power':
+        return a.on ? this.powerOn(a.dev, a.bootS ? { bootS: a.bootS } : {}) : this.setPower(a.dev, false)
+      case 'flap':
+        return void this.setFlap(a.dev, a.port, a.flap)
+      case 'sfp':
+        return void this.replaceSfp(a.dev, a.port, a.sfp)
+      case 'cable':
+        return void this.replaceCable(a.dev, a.port, a.cable)
+    }
+  }
+
+  /** flapDown kümesini saatin fazına göre kurar (iki uç). */
+  private syncFlaps() {
+    const down = new Set<string>()
+    for (const [k, f] of this.flaps) {
+      if (flapUp(f, this.clock)) continue
+      const [dev, port] = k.split('|') as [string, string]
+      const peer = this.topo.peer[k]
+      down.add(pk(dev, port))
+      if (peer) down.add(pk(peer.dev, peer.port))
+    }
+    if (down.size) this.hw.flapDown = down
+    else delete this.hw.flapDown
+    // flapDown'ı yalnız flap eden uç anahtarıyla karşılaştırırız (flapMismatch)
+  }
+
+  /**
+   * Linki periyodik olarak düşür (`flap`) ya da durdur (null). Faz saatten gelir: her periyodun
+   * ilk `upS` saniyesi up. Kablo yoksa false.
+   */
+  setFlap(dev: string, port: string, flap: FlapSpec | null): boolean {
+    const k = pk(dev, port)
+    const peer = this.topo.peer[k]
+    if (!peer) return false
+    if (flap && !validFlap(flap)) throw new Error('setFlap: 0 < periodS, 0 ≤ upS ≤ periodS olmalı')
+    this.enterTimed()
+    this.flaps.delete(k)
+    this.flaps.delete(pk(peer.dev, peer.port))
+    if (flap) this.flaps.set(k, { periodS: flap.periodS, upS: flap.upS })
+    this.syncFlaps()
+    this.commit()
+    return true
+  }
+
+  /** Belirtilen sanal anda bir eylem kur (kaos olayı). Geçmiş an: bir sonraki tick'te çalışır. */
+  schedule(at: number, action: ScheduledAction): string {
+    if (!Number.isFinite(at)) throw new Error('schedule: geçersiz zaman')
+    this.enterTimed()
+    const id = 'e' + ++this.schedSeq
+    this.sched.push({ id, at: roundT(at), action: JSON.parse(JSON.stringify(action)) as ScheduledAction })
+    this.sched.sort((a, b) => a.at - b.at || Number(a.id.slice(1)) - Number(b.id.slice(1)))
+    return id
+  }
+
+  /** Bekleyen zamanlanmış olaylar (kopya, sıralı). */
+  scheduled(): ScheduledEvent[] {
+    return JSON.parse(JSON.stringify(this.sched)) as ScheduledEvent[]
+  }
+
+  unschedule(id: string): boolean {
+    const n = this.sched.length
+    this.sched = this.sched.filter((e) => e.id !== id)
+    return this.sched.length < n
+  }
+
+  /**
+   * Cihazı aç. `bootS` verilirse açılış o kadar sürer: cihaz bu sürede kapalı sayılır (konsol
+   * cevap vermez, link yok), süre bitince setPower(dev, true) gibi açılır.
+   */
+  powerOn(dev: string, opts: { bootS?: number } = {}) {
+    if (!this.topo.devices[dev]) return
+    if (!opts.bootS || opts.bootS <= 0) return this.setPower(dev, true)
+    if (!this.hw.off.has(dev) || this.booting.has(dev)) return
+    this.enterTimed()
+    this.booting.set(dev, roundT(this.clock + opts.bootS))
+    this.emit()
+  }
+
+  /** Portun err-disable olduğu sanal an (zamanlı kurtarma; yoksa null). */
+  errDisabledAt(dev: string, port: string): number | null {
+    return this.errSince.get(pk(dev, port)) ?? null
+  }
+
+  isBooting(dev: string): boolean {
+    return this.booting.has(dev)
   }
 
   save(): SavedState {
@@ -928,6 +1236,20 @@ export class LabRuntime {
       dhcp: clone(this.dhcp),
       bgpApplied: clone(this.bgpApplied),
       ...(this.physCounters.size ? { physCounters: clone([...this.physCounters]) } : {}),
+      ...(this.timed
+        ? {
+            time: {
+              clock: this.clock,
+              bgAcc: this.bgAcc,
+              flaps: [...this.flaps],
+              sched: clone(this.sched),
+              schedSeq: this.schedSeq,
+              booting: [...this.booting],
+              errSince: [...this.errSince],
+              okSince: [...this.okState],
+            },
+          }
+        : {}),
       ...(this.logBuf.size ? { syslog: { buf: clone([...this.logBuf]), logged: [...this.logLogged], n: this.logN } } : {}),
     }
   }
@@ -965,6 +1287,22 @@ export class LabRuntime {
     this.logBuf = new Map(clone(s.syslog?.buf ?? []))
     this.logLogged = new Map(s.syslog?.logged ?? [])
     this.logN = s.syslog?.n ?? 0
+    // damga sayacı (n) en son yazılan satırın anına aittir
+    this.logAt = Math.max(this.clock, ...[...this.logBuf.values()].flatMap((b) => (b.length ? [b[b.length - 1]!.t] : [])))
+    this.seen.now = () => (this.timed ? this.clock * 1000 : Date.now())
+    if (s.time) {
+      this.timed = true
+      this.clock = s.time.clock
+      this.bgAcc = s.time.bgAcc
+      this.flaps = new Map(s.time.flaps)
+      this.sched = clone(s.time.sched)
+      this.schedSeq = s.time.schedSeq
+      this.booting = new Map(s.time.booting)
+      this.errSince = new Map(s.time.errSince)
+      this.okState = new Map(s.time.okSince)
+      this.seen.rebase(this.clock * 1000)
+      this.syncFlaps()
+    }
     // FHRP: kayıttan açılış bütün üyelerin birlikte açılışıdır (en yüksek öncelik); log yazılmaz
     this.fhrpActive.clear()
     this.fhrpStates.clear()

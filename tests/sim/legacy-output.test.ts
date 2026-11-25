@@ -19,7 +19,7 @@ import { createLab, createSession, runScript } from '../../src/sim/index'
 const FIXTURE = join(__dirname, 'fixtures', 'legacy-output.json')
 const FIXTURE_V2 = join(__dirname, 'fixtures', 'legacy-output-v2.json')
 /** Katman 1 öncesinde olmayan, yalnız kullanılınca yazılan rt.save() anahtarları */
-const NEW_SAVE_KEYS = ['syslog']
+const NEW_SAVE_KEYS = ['syslog', 'time']
 const SWITCH_CMDS = [
   'show interfaces status',
   'show interfaces',

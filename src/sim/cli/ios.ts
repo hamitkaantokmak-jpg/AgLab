@@ -387,6 +387,8 @@ const configPatterns = (def: SwitchDef): P[] => {
     { p: 'no spanning-tree portfast bpduguard default', run: (x) => void (x.cfg.bpduguardDefault = false) },
     { p: 'no spanning-tree portfast bpduguard', run: (x) => void (x.cfg.bpduguardDefault = false) },
     { p: 'errdisable recovery cause bpduguard', run: (x) => void (x.cfg.errRecoveryBpdu = true) },
+    { p: 'errdisable recovery cause psecure-violation', run: (x) => void (x.cfg.errRecoveryPsecure = true) },
+    { p: 'no errdisable recovery cause psecure-violation', run: (x) => void delete x.cfg.errRecoveryPsecure },
     { p: 'logging buffered <4096-2147483647:Logging buffer size>', run: (x, a) => void (x.cfg.logBufferBytes = Number(a[2])) },
     { p: 'no logging buffered', run: (x) => void delete x.cfg.logBufferBytes },
     { p: 'no errdisable recovery cause bpduguard', run: (x) => void (x.cfg.errRecoveryBpdu = false) },

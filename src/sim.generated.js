@@ -960,7 +960,7 @@ var AgLabSim = (() => {
   var isRoutedPort = (cfgs, dev, port) => !!cfgs[dev]?.ifaces[port]?.routed;
   function derive(topo, cfgs, pcs, errdis = /* @__PURE__ */ new Set(), hw = noHardwareFaults()) {
     const phys = {};
-    const endPowered = (dev, port) => !hw.off.has(dev) && !hw.cut.has(pk(dev, port)) && !(topo.devices[dev]?.kind === "pc" && hw.nicDown.has(dev));
+    const endPowered = (dev, port) => !hw.off.has(dev) && !hw.cut.has(pk(dev, port)) && !hw.flapDown?.has(pk(dev, port)) && !(topo.devices[dev]?.kind === "pc" && hw.nicDown.has(dev));
     const adminDown = (dev, port) => {
       const c = cfgs[dev]?.ifaces[port];
       if (!c) return false;
@@ -4902,6 +4902,7 @@ var AgLabSim = (() => {
     o.push(...mstRunningLines(c));
     if (c.bpduguardDefault) o.push("spanning-tree portfast bpduguard default");
     if (c.errRecoveryBpdu) o.push("errdisable recovery cause bpduguard");
+    if (c.errRecoveryPsecure) o.push("errdisable recovery cause psecure-violation");
     if (c.errRecoveryInterval) o.push("errdisable recovery interval " + c.errRecoveryInterval);
     o.push("!", "vlan internal allocation policy ascending", "!");
     for (const v of Object.keys(c.vlans).map(Number).sort((a, b) => a - b)) {
@@ -5377,13 +5378,18 @@ var AgLabSim = (() => {
     const sw2 = rt.topo.devices[dev];
     const o = ["ErrDisable Reason            Timer Status", "-----------------            --------------"];
     for (const r of ["arp-inspection", "bpduguard", "channel-misconfig (STP)", "dhcp-rate-limit", "link-flap", "psecure-violation", "udld"])
-      o.push(pad(r, 29) + (r === "bpduguard" && c.errRecoveryBpdu ? "Enabled" : "Disabled"));
+      o.push(pad(r, 29) + (r === "bpduguard" && c.errRecoveryBpdu || r === "psecure-violation" && c.errRecoveryPsecure ? "Enabled" : "Disabled"));
     o.push("", `Timer interval: ${c.errRecoveryInterval ?? 300} seconds`, "", "Interfaces that will be enabled at the next timeout:", "");
-    if (c.errRecoveryBpdu) {
-      const ports2 = sw2.ports.filter((p) => rt.derived.phys[pk(dev, p)]?.errDisabled);
+    const causeOf = (p) => rt.errCause.get(pk(dev, p)) ?? "bpduguard";
+    const enabled = (cause) => cause === "bpduguard" && c.errRecoveryBpdu || rt.timed && cause === "psecure-violation" && c.errRecoveryPsecure;
+    if (c.errRecoveryBpdu || rt.timed && c.errRecoveryPsecure) {
+      const ports2 = sw2.ports.filter((p) => rt.derived.phys[pk(dev, p)]?.errDisabled && (rt.timed ? enabled(causeOf(p)) : true));
       if (ports2.length) {
         o.push("Interface       Errdisable reason       Time left(sec)", "---------       -----------------       --------------");
-        for (const p of ports2) o.push(pad(shortIf(p), 16) + pad("bpduguard", 24) + (c.errRecoveryInterval ?? 300));
+        for (const p of ports2) {
+          const left = rt.timed ? Math.max(0, Math.ceil((rt.errDisabledAt(dev, p) ?? rt.clock) + (c.errRecoveryInterval ?? 300) - rt.clock - 1e-9)) : c.errRecoveryInterval ?? 300;
+          o.push(pad(shortIf(p), 16) + pad(rt.timed ? causeOf(p) : "bpduguard", 24) + left);
+        }
       }
     }
     void bpduGuardOn;
@@ -6401,6 +6407,8 @@ var AgLabSim = (() => {
       { p: "no spanning-tree portfast bpduguard default", run: (x) => void (x.cfg.bpduguardDefault = false) },
       { p: "no spanning-tree portfast bpduguard", run: (x) => void (x.cfg.bpduguardDefault = false) },
       { p: "errdisable recovery cause bpduguard", run: (x) => void (x.cfg.errRecoveryBpdu = true) },
+      { p: "errdisable recovery cause psecure-violation", run: (x) => void (x.cfg.errRecoveryPsecure = true) },
+      { p: "no errdisable recovery cause psecure-violation", run: (x) => void delete x.cfg.errRecoveryPsecure },
       { p: "logging buffered <4096-2147483647:Logging buffer size>", run: (x, a) => void (x.cfg.logBufferBytes = Number(a[2])) },
       { p: "no logging buffered", run: (x) => void delete x.cfg.logBufferBytes },
       { p: "no errdisable recovery cause bpduguard", run: (x) => void (x.cfg.errRecoveryBpdu = false) },
@@ -8941,6 +8949,24 @@ var AgLabSim = (() => {
     }
   };
 
+  // src/sim/clock.ts
+  var BACKGROUND_FPS = 10;
+  var roundT = (t) => Math.round(t * 1e6) / 1e6;
+  var EPS = 1e-9;
+  function validFlap(f) {
+    return Number.isFinite(f.periodS) && f.periodS > 0 && Number.isFinite(f.upS) && f.upS >= 0 && f.upS <= f.periodS;
+  }
+  function flapUp(f, t) {
+    const phase = roundT((t % f.periodS + f.periodS) % f.periodS);
+    return phase < f.upS - EPS;
+  }
+  function nextFlapEdge(f, t) {
+    if (f.upS <= 0 || f.upS >= f.periodS) return null;
+    const base3 = roundT(t - (t % f.periodS + f.periodS) % f.periodS);
+    for (const c of [base3 + f.upS, base3 + f.periodS, base3 + f.periodS + f.upS]) if (roundT(c) > t + EPS) return roundT(c);
+    return null;
+  }
+
   // src/sim/query.ts
   var OSPF_AD2 = 110;
   var LabQuery = class {
@@ -9250,9 +9276,11 @@ var AgLabSim = (() => {
     constructor() {
       super(...arguments);
       __publicField(this, "at", /* @__PURE__ */ new Map());
+      /** milisaniye saati: zamanlı kipte runtime sanal saate bağlar (rebase) */
+      __publicField(this, "now", () => Date.now());
     }
     add(mac) {
-      this.at?.set(mac, Date.now());
+      this.at?.set(mac, this.now?.() ?? Date.now());
       return super.add(mac);
     }
     delete(mac) {
@@ -9264,7 +9292,11 @@ var AgLabSim = (() => {
       super.clear();
     }
     /** Süresi dolan dinamik girdileri siler (okunurken: show mac, değerlendirme). */
-    expire(now = Date.now()) {
+    /** Bütün girdilerin yaşını `now`dan başlatır (saat kaynağı değişince). */
+    rebase(now) {
+      for (const mac of this) this.at.set(mac, now);
+    }
+    expire(now = this.now()) {
       for (const mac of [...this]) {
         const t = this.at.get(mac);
         if (t === void 0) this.at.set(mac, now);
@@ -9305,6 +9337,30 @@ var AgLabSim = (() => {
       __publicField(this, "logLogged", /* @__PURE__ */ new Map());
       /** syslog: zaman damgası sayacı (aynı ana düşen satırlar sırayla ms alır) */
       __publicField(this, "logN", 0);
+      /** syslog: logN'in ait olduğu saat değeri */
+      __publicField(this, "logAt", 0);
+      // ---- sanal zaman (aşama 2) ----
+      /** sanal saat (saniye); LabDef.clock.start ya da 0 */
+      __publicField(this, "clock", 0);
+      /**
+       * Zamanlı kip: LabDef.clock verilmişse ya da tick/setFlap/schedule/powerOn(bootS) bir kez
+       * kullanılmışsa true. Kapalıyken davranış zaman öncesiyle aynıdır (errdisable kurtarması anlık,
+       * konsol damgası ve MAC yaşlanması eski kaynaktan).
+       */
+      __publicField(this, "timed", false);
+      /** flap eden linkler ('dev|port' verilen uç) */
+      __publicField(this, "flaps", /* @__PURE__ */ new Map());
+      /** zamanlanmış olaylar (at, id sırasıyla) */
+      __publicField(this, "sched", []);
+      __publicField(this, "schedSeq", 0);
+      /** açılış süresindeki cihazlar → hazır olma saati */
+      __publicField(this, "booting", /* @__PURE__ */ new Map());
+      /** err-disable olduğu saat (zamanlı kurtarma) */
+      __publicField(this, "errSince", /* @__PURE__ */ new Map());
+      /** arka plan trafiği kesir birikimi (çerçeve) */
+      __publicField(this, "bgAcc", 0);
+      /** hedef id → OK olduğu saat (null: şu an OK değil) */
+      __publicField(this, "okState", /* @__PURE__ */ new Map());
       /** L5-b: DHCP leases handed out by the lab's servers (kept in RAM: lost on reload) */
       __publicField(this, "dhcp", []);
       /** L5-e: why a port is err-disabled ('bpduguard' | 'psecure-violation'); missing = bpduguard */
@@ -9368,6 +9424,16 @@ var AgLabSim = (() => {
       this.fhrpActive.clear();
       this.fhrpStates.clear();
       this.hw = noHardwareFaults();
+      this.clock = roundT(this.def.clock?.start ?? 0);
+      this.timed = !!this.def.clock;
+      this.flaps.clear();
+      this.sched = [];
+      this.schedSeq = 0;
+      this.booting.clear();
+      this.errSince.clear();
+      this.bgAcc = 0;
+      this.okState.clear();
+      this.seen.now = () => this.timed ? this.clock * 1e3 : Date.now();
       for (const l of this.def.links)
         if (l.up === false) for (const [dev, port] of [l.a, l.b]) this.hw.cut.add(pk(dev, port));
       this.initPhys();
@@ -9391,6 +9457,7 @@ var AgLabSim = (() => {
       this.logBuf.clear();
       this.logLogged.clear();
       this.logN = 0;
+      this.logAt = this.clock;
       this.emit();
     }
     // ---- Katman 1: hata sayaçları ----
@@ -9470,6 +9537,7 @@ var AgLabSim = (() => {
       for (const fn of this.listeners) fn();
     }
     timestamp() {
+      if (this.timed) return this.stampAt(this.clock).stamp;
       const ms = Date.now() - this.t0 + 3723e3;
       const h = Math.floor(ms / 36e5);
       const m = Math.floor(ms / 6e4) % 60;
@@ -9494,11 +9562,22 @@ var AgLabSim = (() => {
       this.logBuf.set(dev, buf);
       this.logLogged.set(dev, (this.logLogged.get(dev) ?? 0) + 1);
     }
-    /** Sanal zaman damgası: aşama 1'de sıra numarasından (her 1000 satır bir saniye). */
+    /**
+     * Sanal zaman damgası: saat + aynı ana düşen satırların sırası (ms). Saniyenin kesri ms'e
+     * eklenir; 999'da durur. Gerçek saat kullanılmaz.
+     */
     logStamp() {
-      const n = this.logN++;
-      const t = Math.floor(n / 1e3);
-      return { t, stamp: formatStamp(t, n % 1e3) };
+      const r = this.stampAt(this.clock);
+      this.logN++;
+      return r;
+    }
+    stampAt(t) {
+      if (t !== this.logAt) {
+        this.logAt = t;
+        this.logN = 0;
+      }
+      const sec = Math.floor(t);
+      return { t, stamp: formatStamp(sec, Math.floor(roundT(t - sec) * 1e3) + this.logN) };
     }
     /** `clear logging`: cihazın tamponunu boşaltır (yazılan sayacı da sıfırlanır). */
     clearLog(dev) {
@@ -9572,6 +9651,7 @@ var AgLabSim = (() => {
         }
         for (const k of [...this.errdis]) {
           const [dev, port] = k.split("|");
+          if (this.timed) continue;
           if (viol.has(k) || !this.running[dev]?.errRecoveryBpdu || (this.errCause.get(k) ?? "bpduguard") !== "bpduguard") continue;
           this.errdis.delete(k);
           this.errCause.delete(k);
@@ -9595,6 +9675,8 @@ var AgLabSim = (() => {
         if (!changed) break;
         d = computeState(this.topo, this.running, this.pcs, this.errdis, this.hw, this.bgpApplied);
       }
+      for (const k of this.errdis) if (!this.errSince.has(k)) this.errSince.set(k, this.clock);
+      for (const k of [...this.errSince.keys()]) if (!this.errdis.has(k)) this.errSince.delete(k);
       d.natTable = this.natTable;
       d.arpCache = this.arp;
       this.freezeBgpPolicy(d);
@@ -9808,7 +9890,7 @@ var AgLabSim = (() => {
     }
     /** Default lease is one day: expiration on the lab clock (starts on Mar 1). */
     leaseExpiry() {
-      const ms = Date.now() - this.t0 + 3723e3;
+      const ms = this.timed ? Math.floor(this.clock * 1e3) : Date.now() - this.t0 + 3723e3;
       const h = Math.floor(ms / 36e5) % 24;
       const m = Math.floor(ms / 6e4) % 60;
       const two2 = (n) => String(n).padStart(2, "0");
@@ -9894,6 +9976,7 @@ var AgLabSim = (() => {
      */
     setPower(dev, on) {
       const def = this.topo.devices[dev];
+      if (this.booting.delete(dev) && !on) return void this.commit();
       if (!def || on === !this.hw.off.has(dev)) return;
       if (!on) {
         this.hw.off.add(dev);
@@ -9987,7 +10070,7 @@ var AgLabSim = (() => {
     }
     objectives() {
       const q = this.query();
-      return this.def.objectives.map((o) => {
+      const out = this.def.objectives.map((o) => {
         let r;
         try {
           r = o.check(q);
@@ -9997,6 +10080,214 @@ var AgLabSim = (() => {
         const res = typeof r === "boolean" ? { ok: r } : r;
         return { id: o.id, title: o.title, hint: o.hint, ok: res.ok, detail: res.detail };
       });
+      for (const o of out) {
+        if (!o.ok) this.okState.set(o.id, null);
+        else if ((this.okState.get(o.id) ?? null) === null) this.okState.set(o.id, this.clock);
+      }
+      return out;
+    }
+    /**
+     * Hedef şu an OK ise OK olduğu andan beri kesintisiz geçen sürenin başladığı sanal saat
+     * (saniye); OK değilse ya da böyle hedef yoksa null. Değerlendirme tick başında/sonunda, tick
+     * içindeki her olaydan sonra ve objectives() çağrısında yapılır (skor oyunun işidir).
+     */
+    okSince(id) {
+      if (!this.def.objectives.some((o) => o.id === id)) return null;
+      if (!this.okState.has(id)) this.objectives();
+      return this.okState.get(id) ?? null;
+    }
+    // ---- sanal zaman: tick, flap, zamanlanmış olaylar, açılış ----
+    enterTimed() {
+      if (this.timed) return;
+      this.timed = true;
+      this.seen.rebase(this.clock * 1e3);
+      this.logAt = this.clock;
+      this.logN = 0;
+    }
+    /**
+     * Saati `seconds` ilerletir. Aradaki olaylar (zamanlanmış eylemler, flap geçişleri, errdisable
+     * kurtarma süreleri, açılış bitişleri) zaman sırasıyla, tam anlarında işlenir; arka plan trafiği
+     * (Katman 1 sayaçları) geçen süreyle orantılı sayılır. Hedefler her olaydan sonra değerlendirilir.
+     */
+    tick(seconds) {
+      if (!(seconds >= 0) || !Number.isFinite(seconds)) throw new Error("tick: süre negatif olmayan bir sayı olmalı");
+      this.enterTimed();
+      const end = roundT(this.clock + seconds);
+      this.evalObjectives();
+      for (let guard = 0; guard < 1e5; guard++) {
+        const next = this.nextEventAt(end);
+        const t = next ?? end;
+        this.advanceTraffic(t - this.clock);
+        this.clock = t;
+        if (this.runDue()) this.evalObjectives();
+        if (next === null) break;
+      }
+      this.evalObjectives();
+      this.emit();
+    }
+    evalObjectives() {
+      if (this.def.objectives.length) this.objectives();
+    }
+    advanceTraffic(dt) {
+      if (dt <= 0 || !this.hw.phys?.size) return;
+      this.bgAcc += dt * BACKGROUND_FPS;
+      const n = Math.floor(this.bgAcc + 1e-9);
+      this.bgAcc = roundT(this.bgAcc - n);
+      if (n > 0) this.backgroundTraffic(n, false);
+    }
+    /** Vadesi gelmiş iş varsa şimdiki an; yoksa (clock, end] aralığındaki ilk olay anı; yoksa null. */
+    nextEventAt(end) {
+      if (this.dueNow()) return this.clock;
+      let best = null;
+      const take = (t) => {
+        if (t !== null && t > this.clock && t <= end && (best === null || t < best)) best = t;
+      };
+      for (const e of this.sched) take(e.at);
+      for (const t of this.booting.values()) take(t);
+      for (const f of this.flaps.values()) take(nextFlapEdge(f, this.clock));
+      for (const [k, since] of this.errSince) take(this.recoveryAt(k, since));
+      return best;
+    }
+    dueNow() {
+      const now = this.clock + 1e-9;
+      if (this.sched.some((e) => e.at <= now)) return true;
+      if ([...this.booting.values()].some((t) => t <= now)) return true;
+      for (const [k, since] of this.errSince) {
+        const t = this.recoveryAt(k, since);
+        if (t !== null && t <= now) return true;
+      }
+      return this.flapMismatch();
+    }
+    flapMismatch() {
+      for (const [k, f] of this.flaps) {
+        const want = !flapUp(f, this.clock);
+        if (want !== !!this.hw.flapDown?.has(k)) return true;
+      }
+      return false;
+    }
+    /** Kurtarma anı: neden kurtarılabilirse err-disable anı + aralık; değilse null. */
+    recoveryAt(k, since) {
+      const dev = k.slice(0, k.indexOf("|"));
+      const c = this.running[dev];
+      const cause = this.errCause.get(k) ?? "bpduguard";
+      const on = cause === "bpduguard" && c?.errRecoveryBpdu || cause === "psecure-violation" && c?.errRecoveryPsecure;
+      return on ? roundT(since + (c.errRecoveryInterval ?? 300)) : null;
+    }
+    /** Vadesi gelen her şeyi işler; değişiklik olduysa true. */
+    runDue() {
+      let did = false;
+      const now = this.clock + 1e-9;
+      for (const [dev, t] of [...this.booting].sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))) {
+        if (t > now) continue;
+        this.booting.delete(dev);
+        this.setPower(dev, true);
+        did = true;
+      }
+      const due = this.sched.filter((e) => e.at <= now);
+      if (due.length) {
+        this.sched = this.sched.filter((e) => e.at > now);
+        for (const e of due) this.apply(e.action);
+        did = true;
+      }
+      for (const [k, since] of [...this.errSince]) {
+        const t = this.recoveryAt(k, since);
+        if (t === null || t > now || !this.errdis.has(k)) continue;
+        const [dev, port] = k.split("|");
+        const cause = this.errCause.get(k) ?? "bpduguard";
+        this.errdis.delete(k);
+        this.errCause.delete(k);
+        this.errSince.delete(k);
+        this.log(dev, `%PM-4-ERR_RECOVER: Attempting to recover from ${cause} err-disable state on ${shortIf(port)}`);
+        this.commit();
+        did = true;
+      }
+      if (this.flapMismatch()) {
+        this.syncFlaps();
+        this.commit();
+        did = true;
+      }
+      return did;
+    }
+    apply(a) {
+      switch (a.type) {
+        case "link":
+          return void this.setLink(a.dev, a.port, a.up);
+        case "power":
+          return a.on ? this.powerOn(a.dev, a.bootS ? { bootS: a.bootS } : {}) : this.setPower(a.dev, false);
+        case "flap":
+          return void this.setFlap(a.dev, a.port, a.flap);
+        case "sfp":
+          return void this.replaceSfp(a.dev, a.port, a.sfp);
+        case "cable":
+          return void this.replaceCable(a.dev, a.port, a.cable);
+      }
+    }
+    /** flapDown kümesini saatin fazına göre kurar (iki uç). */
+    syncFlaps() {
+      const down = /* @__PURE__ */ new Set();
+      for (const [k, f] of this.flaps) {
+        if (flapUp(f, this.clock)) continue;
+        const [dev, port] = k.split("|");
+        const peer = this.topo.peer[k];
+        down.add(pk(dev, port));
+        if (peer) down.add(pk(peer.dev, peer.port));
+      }
+      if (down.size) this.hw.flapDown = down;
+      else delete this.hw.flapDown;
+    }
+    /**
+     * Linki periyodik olarak düşür (`flap`) ya da durdur (null). Faz saatten gelir: her periyodun
+     * ilk `upS` saniyesi up. Kablo yoksa false.
+     */
+    setFlap(dev, port, flap) {
+      const k = pk(dev, port);
+      const peer = this.topo.peer[k];
+      if (!peer) return false;
+      if (flap && !validFlap(flap)) throw new Error("setFlap: 0 < periodS, 0 ≤ upS ≤ periodS olmalı");
+      this.enterTimed();
+      this.flaps.delete(k);
+      this.flaps.delete(pk(peer.dev, peer.port));
+      if (flap) this.flaps.set(k, { periodS: flap.periodS, upS: flap.upS });
+      this.syncFlaps();
+      this.commit();
+      return true;
+    }
+    /** Belirtilen sanal anda bir eylem kur (kaos olayı). Geçmiş an: bir sonraki tick'te çalışır. */
+    schedule(at, action) {
+      if (!Number.isFinite(at)) throw new Error("schedule: geçersiz zaman");
+      this.enterTimed();
+      const id = "e" + ++this.schedSeq;
+      this.sched.push({ id, at: roundT(at), action: JSON.parse(JSON.stringify(action)) });
+      this.sched.sort((a, b) => a.at - b.at || Number(a.id.slice(1)) - Number(b.id.slice(1)));
+      return id;
+    }
+    /** Bekleyen zamanlanmış olaylar (kopya, sıralı). */
+    scheduled() {
+      return JSON.parse(JSON.stringify(this.sched));
+    }
+    unschedule(id) {
+      const n = this.sched.length;
+      this.sched = this.sched.filter((e) => e.id !== id);
+      return this.sched.length < n;
+    }
+    /**
+     * Cihazı aç. `bootS` verilirse açılış o kadar sürer: cihaz bu sürede kapalı sayılır (konsol
+     * cevap vermez, link yok), süre bitince setPower(dev, true) gibi açılır.
+     */
+    powerOn(dev, opts = {}) {
+      if (!this.topo.devices[dev]) return;
+      if (!opts.bootS || opts.bootS <= 0) return this.setPower(dev, true);
+      if (!this.hw.off.has(dev) || this.booting.has(dev)) return;
+      this.enterTimed();
+      this.booting.set(dev, roundT(this.clock + opts.bootS));
+      this.emit();
+    }
+    /** Portun err-disable olduğu sanal an (zamanlı kurtarma; yoksa null). */
+    errDisabledAt(dev, port) {
+      return this.errSince.get(pk(dev, port)) ?? null;
+    }
+    isBooting(dev) {
+      return this.booting.has(dev);
     }
     save() {
       return {
@@ -10020,6 +10311,18 @@ var AgLabSim = (() => {
         dhcp: clone(this.dhcp),
         bgpApplied: clone(this.bgpApplied),
         ...this.physCounters.size ? { physCounters: clone([...this.physCounters]) } : {},
+        ...this.timed ? {
+          time: {
+            clock: this.clock,
+            bgAcc: this.bgAcc,
+            flaps: [...this.flaps],
+            sched: clone(this.sched),
+            schedSeq: this.schedSeq,
+            booting: [...this.booting],
+            errSince: [...this.errSince],
+            okSince: [...this.okState]
+          }
+        } : {},
         ...this.logBuf.size ? { syslog: { buf: clone([...this.logBuf]), logged: [...this.logLogged], n: this.logN } } : {}
       };
     }
@@ -10054,6 +10357,21 @@ var AgLabSim = (() => {
       this.logBuf = new Map(clone(s.syslog?.buf ?? []));
       this.logLogged = new Map(s.syslog?.logged ?? []);
       this.logN = s.syslog?.n ?? 0;
+      this.logAt = Math.max(this.clock, ...[...this.logBuf.values()].flatMap((b) => b.length ? [b[b.length - 1].t] : []));
+      this.seen.now = () => this.timed ? this.clock * 1e3 : Date.now();
+      if (s.time) {
+        this.timed = true;
+        this.clock = s.time.clock;
+        this.bgAcc = s.time.bgAcc;
+        this.flaps = new Map(s.time.flaps);
+        this.sched = clone(s.time.sched);
+        this.schedSeq = s.time.schedSeq;
+        this.booting = new Map(s.time.booting);
+        this.errSince = new Map(s.time.errSince);
+        this.okState = new Map(s.time.okSince);
+        this.seen.rebase(this.clock * 1e3);
+        this.syncFlaps();
+      }
       this.fhrpActive.clear();
       this.fhrpStates.clear();
       this.fhrpQuiet = true;

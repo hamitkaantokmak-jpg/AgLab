@@ -236,6 +236,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   o.push(...mstRunningLines(c))
   if (c.bpduguardDefault) o.push('spanning-tree portfast bpduguard default')
   if (c.errRecoveryBpdu) o.push('errdisable recovery cause bpduguard')
+  if (c.errRecoveryPsecure) o.push('errdisable recovery cause psecure-violation')
   if (c.errRecoveryInterval) o.push('errdisable recovery interval ' + c.errRecoveryInterval)
   o.push('!', 'vlan internal allocation policy ascending', '!')
   for (const v of Object.keys(c.vlans).map(Number).sort((a, b) => a - b)) {
@@ -763,13 +764,20 @@ export function showErrRecovery(rt: LabRuntime, dev: string): string[] {
   const sw = rt.topo.devices[dev] as SwitchDef
   const o = ['ErrDisable Reason            Timer Status', '-----------------            --------------']
   for (const r of ['arp-inspection', 'bpduguard', 'channel-misconfig (STP)', 'dhcp-rate-limit', 'link-flap', 'psecure-violation', 'udld'])
-    o.push(pad(r, 29) + (r === 'bpduguard' && c.errRecoveryBpdu ? 'Enabled' : 'Disabled'))
+    o.push(pad(r, 29) + ((r === 'bpduguard' && c.errRecoveryBpdu) || (r === 'psecure-violation' && c.errRecoveryPsecure) ? 'Enabled' : 'Disabled'))
   o.push('', `Timer interval: ${c.errRecoveryInterval ?? 300} seconds`, '', 'Interfaces that will be enabled at the next timeout:', '')
-  if (c.errRecoveryBpdu) {
-    const ports = sw.ports.filter((p) => rt.derived.phys[pk(dev, p)]?.errDisabled)
+  // zaman kullanılmayan lab: yalnız bpduguard, kalan süre = aralık (eski çıktı); zamanlı kipte
+  // kurtarılabilir her neden ve sanal saatten kalan süre
+  const causeOf = (p: string) => rt.errCause.get(pk(dev, p)) ?? 'bpduguard'
+  const enabled = (cause: string) => (cause === 'bpduguard' && c.errRecoveryBpdu) || (rt.timed && cause === 'psecure-violation' && c.errRecoveryPsecure)
+  if (c.errRecoveryBpdu || (rt.timed && c.errRecoveryPsecure)) {
+    const ports = sw.ports.filter((p) => rt.derived.phys[pk(dev, p)]?.errDisabled && (rt.timed ? enabled(causeOf(p)) : true))
     if (ports.length) {
       o.push('Interface       Errdisable reason       Time left(sec)', '---------       -----------------       --------------')
-      for (const p of ports) o.push(pad(shortIf(p), 16) + pad('bpduguard', 24) + (c.errRecoveryInterval ?? 300))
+      for (const p of ports) {
+        const left = rt.timed ? Math.max(0, Math.ceil((rt.errDisabledAt(dev, p) ?? rt.clock) + (c.errRecoveryInterval ?? 300) - rt.clock - 1e-9)) : (c.errRecoveryInterval ?? 300)
+        o.push(pad(shortIf(p), 16) + pad(rt.timed ? causeOf(p) : 'bpduguard', 24) + left)
+      }
     }
   }
   void bpduGuardOn

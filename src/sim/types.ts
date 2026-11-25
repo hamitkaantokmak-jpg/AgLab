@@ -452,6 +452,8 @@ export interface SwitchConfig {
   bpduguardDefault?: boolean
   /** `errdisable recovery cause bpduguard` */
   errRecoveryBpdu?: boolean
+  /** `errdisable recovery cause psecure-violation` (zamanlı kipte süre dolunca kurtarılır) */
+  errRecoveryPsecure?: boolean
   /** `errdisable recovery interval` (seconds) */
   errRecoveryInterval?: number
   /** L5-b: `ip dhcp pool <name>` (configuration order) */
@@ -594,6 +596,8 @@ export interface Hardware {
    * sıralı 'dev|port' anahtarları). Yok ya da boşsa hiçbir link fiziksel modelle değerlendirilmez.
    */
   phys?: Map<string, LinkPhys>
+  /** sanal zaman: flap eden linkin down fazındaki uçlar ('dev|port', iki uç) */
+  flapDown?: Set<string>
 }
 
 export const noHardwareFaults = (): Hardware => ({ cut: new Set(), off: new Set(), nicDown: new Set() })
@@ -629,4 +633,9 @@ export interface LabDef {
   solution: Record<string, string>
   /** SVG viewBox size */
   view: { w: number; h: number }
+  /**
+   * Sanal zaman (isteğe bağlı). Verilirse runtime baştan "zamanlı kip"tedir: errdisable
+   * kurtarması süreye bağlıdır, günlük damgaları sanal saattendir. `start`: başlangıç saati (s).
+   */
+  clock?: { start?: number }
 }
