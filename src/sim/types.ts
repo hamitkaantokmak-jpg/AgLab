@@ -462,6 +462,8 @@ export interface SwitchConfig {
   tracks?: Record<string, TrackConfig>
   /** IP SLA işlemleri (`ip sla <n>`) */
   ipSla?: Record<string, IpSlaConfig>
+  /** `logging buffered <bayt>`: günlük tamponunun bayt sınırı (yoksa LOG_BUFFER_DEFAULT satır) */
+  logBufferBytes?: number
 }
 
 export interface PcConfig {

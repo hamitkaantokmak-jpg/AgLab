@@ -10474,6 +10474,9 @@ var AgLabSim = (() => {
     counters: "Show or clear interface counters",
     errors: "Show interface error counters",
     transceiver: "Show interface transceiver",
+    logging: "Modify message logging facilities",
+    buffered: "Set buffered logging parameters",
+    monitor: "Copy debug output to the current terminal line",
     trunk: "Show interface trunk information",
     switchport: "Show interface switchport information",
     ip: "IP information",
@@ -11088,7 +11091,7 @@ var AgLabSim = (() => {
   function routerRunningConfig(sw2, c) {
     const o = [];
     o.push("!", "version 15.4", "service timestamps debug datetime msec", "service timestamps log datetime msec", "no service password-encryption", "!");
-    o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", "no aaa new-model");
+    o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", ...c.logBufferBytes ? ["logging buffered " + c.logBufferBytes] : [], "no aaa new-model");
     if (!c.ipRouting) o.push("no ip routing");
     o.push("!", ...dhcpLines(c), "!", ...trackLines(c), ...keyChainLines(c));
     for (const n of Object.keys(c.loopbacks ?? {}).map(Number).sort((a, b) => a - b)) {
@@ -11163,7 +11166,7 @@ var AgLabSim = (() => {
     if (sw2.router) return routerRunningConfig(sw2, c);
     const o = [];
     o.push("!", "version 15.2", "no service pad", "service timestamps debug datetime msec", "service timestamps log datetime msec", "no service password-encryption", "!");
-    o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", "no aaa new-model");
+    o.push("hostname " + c.hostname, "!", "boot-start-marker", "boot-end-marker", "!", ...c.logBufferBytes ? ["logging buffered " + c.logBufferBytes] : [], "no aaa new-model");
     o.push("system mtu routing 1500");
     if (c.ipRouting) o.push("ip routing");
     o.push("!", ...dhcpLines(c), "!", ...trackLines(c), ...keyChainLines(c), "vtp mode transparent", "!");
@@ -12095,6 +12098,50 @@ var AgLabSim = (() => {
     return o;
   }
 
+  // src/sim/syslog.ts
+  var LOG_BUFFER_DEFAULT = 1e3;
+  var MSG = /^%([A-Z0-9_]+)-(\d)-([A-Z0-9_]+): ?(.*)$/;
+  function parseMessage(msg) {
+    const m = MSG.exec(msg);
+    if (!m) return { facility: "SYS", sev: 6, mnemonic: "LOG", text: msg };
+    return { facility: m[1], sev: Number(m[2]), mnemonic: m[3], text: m[4] };
+  }
+  var two = (n) => String(n).padStart(2, "0");
+  function formatStamp(seconds, ms) {
+    const s = Math.floor(seconds);
+    const day = 1 + Math.floor(s / 86400);
+    const h = Math.floor(s / 3600) % 24;
+    const m = Math.floor(s / 60) % 60;
+    return `*Mar ${String(day).padStart(2, " ")} ${two(h)}:${two(m)}:${two(s % 60)}.${String(Math.min(999, Math.max(0, ms))).padStart(3, "0")}`;
+  }
+  function trimBuffer(buf, bytes) {
+    if (!bytes) {
+      if (buf.length > LOG_BUFFER_DEFAULT) buf.splice(0, buf.length - LOG_BUFFER_DEFAULT);
+      return;
+    }
+    let total = buf.reduce((n, e) => n + e.line.length + 1, 0);
+    let drop = 0;
+    while (total > bytes && drop < buf.length) total -= buf[drop++].line.length + 1;
+    if (drop) buf.splice(0, drop);
+  }
+  function showLogging(entries, logged, bytes) {
+    return [
+      "Syslog logging: enabled (0 messages dropped, 0 messages rate-limited, 0 flushes, 0 overruns, xml disabled, filtering disabled)",
+      "",
+      `    Console logging: level debugging, ${logged} messages logged, xml disabled,`,
+      "                     filtering disabled",
+      "    Monitor logging: level debugging, 0 messages logged, xml disabled,",
+      "                     filtering disabled",
+      `    Buffer logging:  level debugging, ${logged} messages logged, xml disabled,`,
+      "                    filtering disabled",
+      "    Trap logging: level informational, 0 message lines logged",
+      "",
+      bytes ? `Log Buffer (${bytes} bytes):` : `Log Buffer (${LOG_BUFFER_DEFAULT} messages):`,
+      "",
+      ...entries.map((e) => e.line)
+    ];
+  }
+
   // src/sim/discovery.ts
   var CDP_HOLDTIME = 180;
   var LLDP_HOLDTIME = 120;
@@ -12398,7 +12445,8 @@ var AgLabSim = (() => {
       s.push(
         { p: "show running-config", run: (x) => showRun(x.rt, x.dev, "running") },
         { p: "show running-config interface <if>", run: (x, a) => x.showRunIf(a) },
-        { p: "show startup-config", run: (x) => showRun(x.rt, x.dev, "startup") }
+        { p: "show startup-config", run: (x) => showRun(x.rt, x.dev, "startup") },
+        { p: "show logging", run: (x) => showLogging(x.rt.log(x.dev), x.rt.logLogged.get(x.dev) ?? 0, x.cfg.logBufferBytes) }
       );
     }
     return s;
@@ -12413,6 +12461,11 @@ var AgLabSim = (() => {
     { p: "ping", run: (x) => x.extendedPing() },
     { p: "traceroute <A.B.C.D:Trace route to destination address>", run: (x, a) => x.traceroute(a[1]) },
     { p: "terminal length <0-512:Number of lines on screen (0 for no pausing)>", run: () => {
+    } },
+    // syslog: konsol oturumu zaten satırları gösterir; izleme (vty) ayrımı modellenmez
+    { p: "terminal monitor", run: () => {
+    } },
+    { p: "terminal no monitor", run: () => {
     } },
     ...showPatterns(false)
   ];
@@ -12447,6 +12500,14 @@ var AgLabSim = (() => {
     { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft", run: (x, a) => x.clearBgp(a[3], "soft") },
     { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft in", run: (x, a) => x.clearBgp(a[3], "in") },
     { p: "clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft out", run: (x, a) => x.clearBgp(a[3], "out") },
+    {
+      p: "clear logging",
+      run: (x) => x.ask("Clear logging buffer [confirm]", (ans) => {
+        if (ans.trim() && !/^y/i.test(ans.trim())) return [];
+        x.rt.clearLog(x.dev);
+        return [];
+      })
+    },
     // Katman 1: arayüz sayaçları (IOS onay sorar; boş satır ya da y onaylar)
     {
       p: "clear counters",
@@ -12615,6 +12676,8 @@ var AgLabSim = (() => {
       { p: "no spanning-tree portfast bpduguard default", run: (x) => void (x.cfg.bpduguardDefault = false) },
       { p: "no spanning-tree portfast bpduguard", run: (x) => void (x.cfg.bpduguardDefault = false) },
       { p: "errdisable recovery cause bpduguard", run: (x) => void (x.cfg.errRecoveryBpdu = true) },
+      { p: "logging buffered <4096-2147483647:Logging buffer size>", run: (x, a) => void (x.cfg.logBufferBytes = Number(a[2])) },
+      { p: "no logging buffered", run: (x) => void delete x.cfg.logBufferBytes },
       { p: "no errdisable recovery cause bpduguard", run: (x) => void (x.cfg.errRecoveryBpdu = false) },
       { p: "errdisable recovery interval <30-86400:timer-interval(sec)>", run: (x, a) => void (x.cfg.errRecoveryInterval = Number(a[3])) },
       { p: "no errdisable recovery interval", run: (x) => void delete x.cfg.errRecoveryInterval }
@@ -14483,6 +14546,7 @@ var AgLabSim = (() => {
       this.rt.running[this.dev] = start ? clone(start) : fresh;
       const o = this.rt.running[this.dev].ospf;
       if (o) o.activeRid = null;
+      this.rt.clearLog(this.dev);
       this.mode = "user";
       this.ifs = [];
       for (const k of [...this.rt.arp]) if (k.startsWith(this.dev + ">")) this.rt.arp.delete(k);
@@ -15155,11 +15219,23 @@ var AgLabSim = (() => {
   // src/sim/query.ts
   var OSPF_AD2 = 110;
   var LabQuery = class {
-    constructor(d, startup = {}, learned = /* @__PURE__ */ new Set(), leases = []) {
+    constructor(d, startup = {}, learned = /* @__PURE__ */ new Set(), leases = [], logs = /* @__PURE__ */ new Map()) {
       this.d = d;
       this.startup = startup;
       this.learned = learned;
       this.leases = leases;
+      this.logs = logs;
+    }
+    /**
+     * Cihazın günlük tamponunda anahtar var mı. `mnemonic`: yalnız anahtar (`UPDOWN`) ya da
+     * tesis-seviye-anahtar (`LINK-3-UPDOWN`).
+     */
+    logHas(dev, mnemonic) {
+      return this.logCount(dev, mnemonic) > 0;
+    }
+    logCount(dev, mnemonic) {
+      const m = mnemonic.replace(/^%/, "");
+      return (this.logs.get(dev) ?? []).filter((e) => e.mnemonic === m || `${e.facility}-${e.sev}-${e.mnemonic}` === m).length;
     }
     /** L5-b: the lease the PC currently uses ({server, pool, ip, …}), or null. */
     dhcpLease(pc) {
@@ -15498,6 +15574,12 @@ var AgLabSim = (() => {
        * backgroundTraffic ile deterministik artar; `clear counters` sıfırlar.
        */
       __publicField(this, "physCounters", /* @__PURE__ */ new Map());
+      /** syslog: cihaz başına günlük tamponu (`show logging`); PC'de yok */
+      __publicField(this, "logBuf", /* @__PURE__ */ new Map());
+      /** syslog: cihaz başına yazılan satır sayısı (tampondan düşenler dahil; `show logging`) */
+      __publicField(this, "logLogged", /* @__PURE__ */ new Map());
+      /** syslog: zaman damgası sayacı (aynı ana düşen satırlar sırayla ms alır) */
+      __publicField(this, "logN", 0);
       /** L5-b: DHCP leases handed out by the lab's servers (kept in RAM: lost on reload) */
       __publicField(this, "dhcp", []);
       /** L5-e: why a port is err-disabled ('bpduguard' | 'psecure-violation'); missing = bpduguard */
@@ -15581,6 +15663,9 @@ var AgLabSim = (() => {
       this.physCounters.clear();
       this.backgroundTraffic(BOOT_FRAMES, false);
       this.logs = [];
+      this.logBuf.clear();
+      this.logLogged.clear();
+      this.logN = 0;
       this.emit();
     }
     // ---- Katman 1: hata sayaçları ----
@@ -15665,13 +15750,35 @@ var AgLabSim = (() => {
       const m = Math.floor(ms / 6e4) % 60;
       const s = Math.floor(ms / 1e3) % 60;
       const f = ms % 1e3;
-      const two = (n) => String(n).padStart(2, "0");
-      return `*Mar  1 ${two(h)}:${two(m)}:${two(s)}.${String(f).padStart(3, "0")}`;
+      const two2 = (n) => String(n).padStart(2, "0");
+      return `*Mar  1 ${two2(h)}:${two2(m)}:${two2(s)}.${String(f).padStart(3, "0")}`;
     }
-    log(dev, msg) {
+    log(dev, msg, toConsole = true) {
+      if (msg === void 0) return [...this.logBuf.get(dev) ?? []];
       if (this.hw.off.has(dev)) return;
-      this.logs.push({ dev, text: `${this.timestamp()}: ${msg}`, seq: ++this.seq });
-      if (this.logs.length > 400) this.logs.splice(0, this.logs.length - 400);
+      if (toConsole) {
+        this.logs.push({ dev, text: `${this.timestamp()}: ${msg}`, seq: ++this.seq });
+        if (this.logs.length > 400) this.logs.splice(0, this.logs.length - 400);
+      }
+      if (this.topo.devices[dev]?.kind !== "switch") return;
+      const p = parseMessage(msg);
+      const { t, stamp } = this.logStamp();
+      const buf = this.logBuf.get(dev) ?? [];
+      buf.push({ t, ...p, line: `${stamp}: ${msg}` });
+      trimBuffer(buf, this.running[dev]?.logBufferBytes);
+      this.logBuf.set(dev, buf);
+      this.logLogged.set(dev, (this.logLogged.get(dev) ?? 0) + 1);
+    }
+    /** Sanal zaman damgası: aşama 1'de sıra numarasından (her 1000 satır bir saniye). */
+    logStamp() {
+      const n = this.logN++;
+      const t = Math.floor(n / 1e3);
+      return { t, stamp: formatStamp(t, n % 1e3) };
+    }
+    /** `clear logging`: cihazın tamponunu boşaltır (yazılan sayacı da sıfırlanır). */
+    clearLog(dev) {
+      this.logBuf.delete(dev);
+      this.logLogged.delete(dev);
     }
     /**
      * `clear ip bgp <*|komşu> [soft [in|out]]`: sert sıfırlama kurulu oturumu düşürür ve (yakınsama
@@ -15929,7 +16036,7 @@ var AgLabSim = (() => {
     /** Read-only queries on the current state, including learned MAC addresses. */
     query() {
       this.seen.expire();
-      return new LabQuery(this.derived, this.startup, this.seen, this.dhcp);
+      return new LabQuery(this.derived, this.startup, this.seen, this.dhcp, this.logBuf);
     }
     /**
      * L5-b: the PC asks for an address (DHCP DISCOVER … ACK). On success its address, mask,
@@ -15979,8 +16086,8 @@ var AgLabSim = (() => {
       const ms = Date.now() - this.t0 + 3723e3;
       const h = Math.floor(ms / 36e5) % 24;
       const m = Math.floor(ms / 6e4) % 60;
-      const two = (n) => String(n).padStart(2, "0");
-      return `Mar 02 1993 ${two(h % 12 === 0 ? 12 : h % 12)}:${two(m)} ${h < 12 ? "AM" : "PM"}`;
+      const two2 = (n) => String(n).padStart(2, "0");
+      return `Mar 02 1993 ${two2(h % 12 === 0 ? 12 : h % 12)}:${two2(m)} ${h < 12 ? "AM" : "PM"}`;
     }
     // ---- Katman 1: teknisyen eylemleri ----
     /** Bu porttaki kablonun fiziksel tanımı (yoksa null). `phys.ends` 'dev|port' anahtarlıdır. */
@@ -16077,6 +16184,7 @@ var AgLabSim = (() => {
           for (const k of [...this.arpIncomplete]) if (k.startsWith(dev + ">")) this.arpIncomplete.delete(k);
         }
         this.dhcpClear(dev);
+        this.clearLog(dev);
       }
       this.commit();
     }
@@ -16186,7 +16294,8 @@ var AgLabSim = (() => {
         hw: { cut: [...this.hw.cut], off: [...this.hw.off], nicDown: [...this.hw.nicDown], ...this.hw.phys?.size ? { phys: clone([...this.hw.phys]) } : {} },
         dhcp: clone(this.dhcp),
         bgpApplied: clone(this.bgpApplied),
-        ...this.physCounters.size ? { physCounters: clone([...this.physCounters]) } : {}
+        ...this.physCounters.size ? { physCounters: clone([...this.physCounters]) } : {},
+        ...this.logBuf.size ? { syslog: { buf: clone([...this.logBuf]), logged: [...this.logLogged], n: this.logN } } : {}
       };
     }
     load(s) {
@@ -16217,6 +16326,9 @@ var AgLabSim = (() => {
       this.dhcp = clone(s.dhcp ?? []);
       this.bgpApplied = clone(s.bgpApplied ?? {});
       this.physCounters = new Map(clone(s.physCounters ?? []));
+      this.logBuf = new Map(clone(s.syslog?.buf ?? []));
+      this.logLogged = new Map(s.syslog?.logged ?? []);
+      this.logN = s.syslog?.n ?? 0;
       this.fhrpActive.clear();
       this.fhrpStates.clear();
       this.fhrpQuiet = true;
@@ -16261,6 +16373,12 @@ var AgLabSim = (() => {
           }
         }
       }
+      const stpSig = (br) => `${br.rootMac}|${br.rootPort}|${Object.entries(br.ports).filter(([, p]) => p.state === "BLK").map(([n]) => n).sort().join(",")}`;
+      for (const [vs, bridges] of Object.entries(b.stp))
+        for (const [dev, br] of Object.entries(bridges)) {
+          const old = a.stp[Number(vs)]?.[dev];
+          if (old && stpSig(old) !== stpSig(br)) this.log(dev, `%SPANTREE-5-TOPOTRAP: Topology Change Trap for vlan ${vs}`, false);
+        }
       const mm = (x) => `${x.dev}|${x.port}`;
       const oldMm = new Set(a.nativeMismatch.map(mm));
       for (const m of b.nativeMismatch) {

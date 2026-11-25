@@ -142,7 +142,7 @@ function discoveryIfLines(c: PhysIfConfig): string[] {
 function routerRunningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   const o: string[] = []
   o.push('!', 'version 15.4', 'service timestamps debug datetime msec', 'service timestamps log datetime msec', 'no service password-encryption', '!')
-  o.push('hostname ' + c.hostname, '!', 'boot-start-marker', 'boot-end-marker', '!', 'no aaa new-model')
+  o.push('hostname ' + c.hostname, '!', 'boot-start-marker', 'boot-end-marker', '!', ...(c.logBufferBytes ? ['logging buffered ' + c.logBufferBytes] : []), 'no aaa new-model')
   if (!c.ipRouting) o.push('no ip routing')
   o.push('!', ...dhcpLines(c), '!', ...trackLines(c), ...keyChainLines(c))
   for (const n of Object.keys(c.loopbacks ?? {}).map(Number).sort((a, b) => a - b)) {
@@ -225,7 +225,7 @@ export function runningConfig(sw: SwitchDef, c: SwitchConfig): string[] {
   if (sw.router) return routerRunningConfig(sw, c)
   const o: string[] = []
   o.push('!', 'version 15.2', 'no service pad', 'service timestamps debug datetime msec', 'service timestamps log datetime msec', 'no service password-encryption', '!')
-  o.push('hostname ' + c.hostname, '!', 'boot-start-marker', 'boot-end-marker', '!', 'no aaa new-model')
+  o.push('hostname ' + c.hostname, '!', 'boot-start-marker', 'boot-end-marker', '!', ...(c.logBufferBytes ? ['logging buffered ' + c.logBufferBytes] : []), 'no aaa new-model')
   o.push('system mtu routing 1500')
   if (c.ipRouting) o.push('ip routing')
   o.push('!', ...dhcpLines(c), '!', ...trackLines(c), ...keyChainLines(c), 'vtp mode transparent', '!')

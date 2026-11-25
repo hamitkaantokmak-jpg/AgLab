@@ -9,6 +9,7 @@ import { activePs, secureCount } from './portsec'
 import { defaultSwitchConfig } from './config'
 import { apipaFor, dhcpDiscover, isApipa, type DhcpResult } from './dhcp'
 import { bpduViolations, type Derived } from './engine'
+import { formatStamp, parseMessage, trimBuffer, type LogEntry } from './syslog'
 import { BOOT_FRAMES, linkKey, normalizePhys, receive, zeroCounters, type PortCounters } from './phys'
 import { l3Ifs, macTable, physicalPath, type Delivery, type Hop } from './net'
 import { fhrpOwns, fhrpTarget } from './fhrp'
@@ -63,6 +64,8 @@ export interface SavedState {
   natMisses?: number
   /** eBGP: komşu başına dondurulmuş politika (soft clear bekleyen değişiklik kayıttan sonra da bekler) */
   bgpApplied?: Record<string, { in?: BgpPolicy; out?: BgpPolicy }>
+  /** syslog tamponu: cihaz başına satırlar, toplam yazılan, damga sayacı (yalnız satır varsa) */
+  syslog?: { buf: [string, LogEntry[]][]; logged: [string, number][]; n: number }
 }
 
 /** IOS `mac address-table aging-time` varsayılanı (saniye). */
@@ -121,6 +124,12 @@ export class LabRuntime {
    * backgroundTraffic ile deterministik artar; `clear counters` sıfırlar.
    */
   physCounters = new Map<string, PortCounters>()
+  /** syslog: cihaz başına günlük tamponu (`show logging`); PC'de yok */
+  logBuf = new Map<string, LogEntry[]>()
+  /** syslog: cihaz başına yazılan satır sayısı (tampondan düşenler dahil; `show logging`) */
+  logLogged = new Map<string, number>()
+  /** syslog: zaman damgası sayacı (aynı ana düşen satırlar sırayla ms alır) */
+  private logN = 0
   /** L5-b: DHCP leases handed out by the lab's servers (kept in RAM: lost on reload) */
   dhcp: DhcpBinding[] = []
   /** L5-e: why a port is err-disabled ('bpduguard' | 'psecure-violation'); missing = bpduguard */
@@ -203,6 +212,9 @@ export class LabRuntime {
     this.physCounters.clear()
     this.backgroundTraffic(BOOT_FRAMES, false)
     this.logs = []
+    this.logBuf.clear()
+    this.logLogged.clear()
+    this.logN = 0
     this.emit()
   }
 
@@ -301,10 +313,41 @@ export class LabRuntime {
     return `*Mar  1 ${two(h)}:${two(m)}:${two(s)}.${String(f).padStart(3, '0')}`
   }
 
-  log(dev: string, msg: string) {
+  /**
+   * `log(dev)`: cihazın günlük tamponu (eskiden yeniye, kopya). `log(dev, msg)`: bir syslog
+   * satırı yazar: konsol akışına (`rt.logs`, `toConsole` false değilse) ve switch/router'ın
+   * tamponuna. Kapalı cihaz yazmaz.
+   */
+  log(dev: string): LogEntry[]
+  log(dev: string, msg: string, toConsole?: boolean): void
+  log(dev: string, msg?: string, toConsole = true): LogEntry[] | void {
+    if (msg === undefined) return [...(this.logBuf.get(dev) ?? [])]
     if (this.hw.off.has(dev)) return // a powered-off device prints nothing
-    this.logs.push({ dev, text: `${this.timestamp()}: ${msg}`, seq: ++this.seq })
-    if (this.logs.length > 400) this.logs.splice(0, this.logs.length - 400)
+    if (toConsole) {
+      this.logs.push({ dev, text: `${this.timestamp()}: ${msg}`, seq: ++this.seq })
+      if (this.logs.length > 400) this.logs.splice(0, this.logs.length - 400)
+    }
+    if (this.topo.devices[dev]?.kind !== 'switch') return
+    const p = parseMessage(msg)
+    const { t, stamp } = this.logStamp()
+    const buf = this.logBuf.get(dev) ?? []
+    buf.push({ t, ...p, line: `${stamp}: ${msg}` })
+    trimBuffer(buf, this.running[dev]?.logBufferBytes)
+    this.logBuf.set(dev, buf)
+    this.logLogged.set(dev, (this.logLogged.get(dev) ?? 0) + 1)
+  }
+
+  /** Sanal zaman damgası: aşama 1'de sıra numarasından (her 1000 satır bir saniye). */
+  private logStamp(): { t: number; stamp: string } {
+    const n = this.logN++
+    const t = Math.floor(n / 1000)
+    return { t, stamp: formatStamp(t, n % 1000) }
+  }
+
+  /** `clear logging`: cihazın tamponunu boşaltır (yazılan sayacı da sıfırlanır). */
+  clearLog(dev: string) {
+    this.logBuf.delete(dev)
+    this.logLogged.delete(dev)
   }
 
   /**
@@ -596,7 +639,7 @@ export class LabRuntime {
   /** Read-only queries on the current state, including learned MAC addresses. */
   query(): LabQuery {
     this.seen.expire()
-    return new LabQuery(this.derived, this.startup, this.seen, this.dhcp)
+    return new LabQuery(this.derived, this.startup, this.seen, this.dhcp, this.logBuf)
   }
 
   /**
@@ -759,6 +802,8 @@ export class LabRuntime {
       }
       // DHCP bindings live in RAM: a restarted server has none
       this.dhcpClear(dev)
+      // yeniden başlayan cihazın günlük tamponu RAM'dedir: boşalır
+      this.clearLog(dev)
     }
     this.commit()
   }
@@ -883,6 +928,7 @@ export class LabRuntime {
       dhcp: clone(this.dhcp),
       bgpApplied: clone(this.bgpApplied),
       ...(this.physCounters.size ? { physCounters: clone([...this.physCounters]) } : {}),
+      ...(this.logBuf.size ? { syslog: { buf: clone([...this.logBuf]), logged: [...this.logLogged], n: this.logN } } : {}),
     }
   }
 
@@ -916,6 +962,9 @@ export class LabRuntime {
     this.dhcp = clone(s.dhcp ?? [])
     this.bgpApplied = clone(s.bgpApplied ?? {})
     this.physCounters = new Map(clone(s.physCounters ?? []))
+    this.logBuf = new Map(clone(s.syslog?.buf ?? []))
+    this.logLogged = new Map(s.syslog?.logged ?? [])
+    this.logN = s.syslog?.n ?? 0
     // FHRP: kayıttan açılış bütün üyelerin birlikte açılışıdır (en yüksek öncelik); log yazılmaz
     this.fhrpActive.clear()
     this.fhrpStates.clear()
@@ -962,6 +1011,15 @@ export class LabRuntime {
         }
       }
     }
+    // STP yeniden yakınsaması (kök, kök portu ya da bloklu portlar değişti): yalnız tampona
+    // (konsol akışı eskisi gibi kalır). Yeni görünen VLAN/köprü olay sayılmaz.
+    const stpSig = (br: { rootMac: string; rootPort: string | null; ports: Record<string, { state: string }> }) =>
+      `${br.rootMac}|${br.rootPort}|${Object.entries(br.ports).filter(([, p]) => p.state === 'BLK').map(([n]) => n).sort().join(',')}`
+    for (const [vs, bridges] of Object.entries(b.stp))
+      for (const [dev, br] of Object.entries(bridges)) {
+        const old = a.stp[Number(vs)]?.[dev]
+        if (old && stpSig(old) !== stpSig(br)) this.log(dev, `%SPANTREE-5-TOPOTRAP: Topology Change Trap for vlan ${vs}`, false)
+      }
     const mm = (x: { dev: string; port: string }) => `${x.dev}|${x.port}`
     const oldMm = new Set(a.nativeMismatch.map(mm))
     for (const m of b.nativeMismatch) {
