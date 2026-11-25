@@ -1,7 +1,9 @@
 # AğLab Konu #23: Ağ servisleri: NTP, Syslog ve SNMP
 
-> Uygulamadaki `services` dersi bu belgeyle uyumludur. **Okuma dersi:** NTP, Syslog ve SNMP Labber'da
-> modellenmez; vakalar kâğıt üstünde, beklenen çıktılarla çözülür. Ön koşul: cihaz yönetimi (Konu #11),
+> Uygulamadaki `services` dersi bu belgeyle uyumludur. **Okuma dersi:** NTP, syslog hedefleri
+> (`logging host`, `logging trap`) ve SNMP Labber'da modellenmez; vakalar kâğıt üstünde, beklenen
+> çıktılarla çözülür. Cihazın kendi günlük tamponu (`show logging`, `logging buffered`,
+> `clear logging`) Labber'da vardır (2.3). Ön koşul: cihaz yönetimi (Konu #11),
 > ACL (Konu #19). Şemalar: `docs/dersler/gorseller/ag-servisleri.py`.
 
 Bu konu bittiğinde öğrenci bütün cihazların saatini NTP ile tek kaynağa bağlar ve `show ntp status` çıktısından senkron olup olmadığını okur. Syslog önem seviyelerini sıralar, kayıtların konsola, belleğe ve uzak sunucuya hangi seviyeden gideceğini ayarlar ve bir log satırını parçalarına ayırır. SNMP'de yönetici ile ajanın rolünü, get/set/trap farkını ve v2c ile v3'ün güvenlik farkını açıklar. Seviye 2 (CCNA), süre yaklaşık 50 dakika.
@@ -61,6 +63,8 @@ Bir log satırının parçaları:
 - `logging buffered 16384 6`: cihazın belleğine; `show logging` ile okunur, yeniden başlatmada silinir.
 - `terminal monitor`: SSH oturumunda kayıtları göster (oturum başına).
 - `logging host 192.168.99.60` + `logging trap 5`: uzak sunucuya.
+
+> **Simülatörde:** Labber'da her switch/router'ın günlük tamponu vardır: `show logging` başlık ve satırları, `logging buffered <4096-…>` bayt sınırı (verilmezse 1000 satır), `clear logging` (onaylı), `terminal monitor` kabul edilir. Arayüz up/down, err-disable, OSPF/HSRP durum değişimi, STP topoloji değişimi ve `Configured from console` satırları durum değiştiği anda bir kez yazılır; zaman damgası sanal saattendir (`*Mar  1 …`, saat ayarlanmamış cihaz gibi). Seviye süzgeci (`logging buffered 6`, `logging console 5`), `logging host`/`logging trap`, `service timestamps` biçim seçenekleri ve NTP modellenmez; lab açılışında tampon boştur.
 
 > **Sahada:** Debug çalıştırırken konsola seviye 7 basmak yavaş bir cihazı kilitleyebilir; debug çıktısını belleğe yönlendir (`logging buffered 7`) ve konsolu düşük tut.
 
@@ -280,4 +284,5 @@ Kaynaklar: INET CCNA 200-301 v1.1 ve INE ENCOR (NTP, Syslog, SNMP bölümleri, y
 
 **Motor gereksinimleri**
 
-- [ ] NTP, syslog hedefleri ve SNMP Labber'da yok (motor işi). Hazır olunca S1–S4 `svc-*` kimlikleriyle Sorun Çöz'e eklenir.
+- [x] Günlük tamponu: `show logging`, `logging buffered <bayt>`, `clear logging`, `terminal monitor` (seviye süzgeci yok); olaylar durum değişince bir kez, sanal saat damgası
+- [ ] NTP, syslog hedefleri (`logging host`, `logging trap`), seviye süzgeci ve SNMP Labber'da yok (motor işi). Hazır olunca S1–S4 `svc-*` kimlikleriyle Sorun Çöz'e eklenir.

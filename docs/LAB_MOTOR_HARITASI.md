@@ -263,6 +263,29 @@ BGP öğeleri (Sorun Çöz `bgp`, protokol atölyesindeki üç BGP durumu) kavra
 | Protokol atölyesi | `bgp-next-hop` | 5 · BGP: prefix ilan ediliyor ama hedefe ulaşılamıyor (kavramsal) | 3 · Kavramsal alıştırma (motor yok) |
 | Rota atölyesi | `diagnostic` | İleri uygulama · Uçtan uca erişim teşhisi | 3 · Kavramsal alıştırma (motor yok) |
 
+## Katman 1 (fiziksel katman)
+
+Labber bağlantıda isteğe bağlı `phys` alanıyla kablo türü/uzunluğu, SFP, fiber optik
+güç, kirli konnektör, TX/RX yönü ve desteklenmeyen modülü modeller; port durumu,
+hız, `show interfaces status` Type sütunu, hata sayaçları (`show interfaces counters
+errors`, `clear counters`) ve `show interfaces transceiver` buradan türetilir. Teknisyen
+eylemleri motordadır (kablo/SFP değiştir, konnektör temizle, fiber çevir). Kurallar ve
+modellenmeyenler: UYUMLULUK_MATRISI.md "Katman 1". `phys` tanımlamayan içerik eskisi
+gibidir.
+
+Katman 1 kullanan Labber labı: yok. Akademi labları ve ortak senaryolar `phys` tanımlamaz (AğLab modelinde alan yok;
+köprü kabul eder ve geri yazar).
+
+## Syslog, sanal zaman ve yapılandırma karşılaştırması
+
+Labber'da her switch/router'ın günlük tamponu (`show logging`, `logging buffered`,
+`clear logging`), sanal saat (`rt.tick`; flap, zamanlanmış olay, açılış süresi,
+zamana bağlı errdisable kurtarması, `rt.okSince`) ve yapılandırma karşılaştırması
+(`rt.configSnapshot`/`configDiff`, `q.changedDevices`) vardır. Hepsi isteğe bağlıdır:
+zaman kullanmayan ve bu API'leri çağırmayan içerik eskisi gibi çalışır. Lab açılışında
+günlük tamponu boştur. Kurallar ve modellenmeyenler: UYUMLULUK_MATRISI.md "Syslog,
+sanal zaman ve yapılandırma karşılaştırması".
+
 ## Labber özeti
 
 `Labber`, içeriğin bütün alanlarının Labber'a eşlendiği anlamına gelir (köprünün

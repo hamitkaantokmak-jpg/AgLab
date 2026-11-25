@@ -10,9 +10,11 @@
 import AgLabMacAddress from '../../simulator/mac-address.js'
 import { defaultL2, defaultPhys, defaultSvi, defaultSwitchConfig, defaultVlanName, RESERVED_VLANS } from '../sim/config'
 import { LabRuntime } from '../sim/runtime'
+import { linkKey, physSpecOf, validatePhysSpec } from '../sim/phys'
 import { isApipa } from '../sim/dhcp'
 import { aclKind, normAddr } from '../sim/acl'
 import { emptyNat, type NatEntry } from '../sim/nat'
+import type { LinkPhysSpec } from '../sim/types'
 import type { Acl, AclAddr, AclEntry, DhcpPool, FhrpTrack, Hardware, HsrpGroup, L3Opts, LabDef, OspfConfig, PcConfig, PcDef, StaticRoute, SubIfConfig, SwitchConfig, SwitchDef } from '../sim/types'
 import { canonIf, clone, ipToInt, isIp, maskToPrefix, networkOf, normalizeMac, ports as expandPorts, prefixToMask } from '../sim/util'
 import type { AglabDevice, AglabInterface, AglabLink, AglabStaticRoute, AglabTopology } from './aglab'
@@ -918,7 +920,7 @@ export function toLabber(input: AglabTopology): BridgeResult {
   links.forEach((l: AglabLink, index) => {
     const tag = `links[${index}]`
     for (const key of Object.keys(l))
-      if (!['a', 'portA', 'b', 'portB', 'up'].includes(key)) unsupported(tag, key, 'Labber\'da karşılığı olmayan bağlantı alanı')
+      if (!['a', 'portA', 'b', 'portB', 'up', 'phys'].includes(key)) unsupported(tag, key, 'Labber\'da karşılığı olmayan bağlantı alanı')
     const end = (dev: string, port: string): [string, string] | null => {
       if (!ids.has(dev)) {
         reject(tag, `${dev}:${port}`, 'Bağlantı bilinmeyen cihaza gidiyor')
@@ -944,8 +946,22 @@ export function toLabber(input: AglabTopology): BridgeResult {
     }
     const a = end(String(l.a), String(l.portA))
     const b = end(String(l.b), String(l.portB))
+    // Katman 1: isteğe bağlı fiziksel model (kablo, SFP, konnektör); geçersizse bağlantı reddedilir
+    let phys: LinkPhysSpec | undefined
+    if (a && b && l['phys'] !== undefined) {
+      const gig = (side: 'a' | 'b') => {
+        const [dev, port] = side === 'a' ? a : b
+        return def.devices.find((x) => x.id === dev)?.kind === 'switch' && port.startsWith('GigabitEthernet')
+      }
+      const err = validatePhysSpec(l['phys'], gig)
+      if (err) {
+        reject(tag, 'phys', 'Katman 1 tanımı geçersiz: ' + err)
+        return
+      }
+      phys = clone(l['phys']) as LinkPhysSpec
+    }
     // Kablo: yalnız açık `up: false` kopuktur (eksik alan takılı sayılır).
-    if (a && b) def.links.push(l.up === false ? { a, b, up: false } : { a, b })
+    if (a && b) def.links.push({ a, b, ...(l.up === false ? { up: false } : {}), ...(phys ? { phys } : {}) })
   })
 
   const reasons = new Set<string>()
@@ -1001,6 +1017,14 @@ export function toAglab(
         l[side] = dev
         l[portKey] = name
       }
+    })
+  // Katman 1: fiziksel durum yalnız phys tanımlı bağlantılara yazılır (diğerleri özgün kalır)
+  if (rt.hw?.phys?.size && rt.def && rt.def.links.length === outLinks.length)
+    rt.def.links.forEach((dl, i) => {
+      const ka = `${dl.a[0]}|${dl.a[1]}`
+      const kb = `${dl.b[0]}|${dl.b[1]}`
+      const p = rt.hw!.phys!.get(linkKey(ka, kb))
+      if (p) outLinks[i]!['phys'] = physSpecOf(p, ka, kb)
     })
   if (rt.hw)
     for (const l of out.links ?? []) {

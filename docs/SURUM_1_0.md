@@ -57,8 +57,8 @@ sunmaz.
 - SSH, kullanıcı/parola ve AAA (#11): komutlar modellenmedi; ders okuma olarak anlatır.
 - DNS kayıtları (#10): DNS sunucusu ağdaki cihazları kendi adlarıyla tanır; elle kayıt, kayıt
   türleri ve alan adları yok.
-- Günlük: lab açılışında temizlenir, `show logging` yok; belirtiler show çıktısı, ping ve
-  istemci komutlarıyla görülür.
+- Günlük: lab açılışında temizlenir; `show logging` cihazın tamponunu gösterir ama yalnız lab
+  açıldıktan sonraki olayları içerir; belirtiler show çıktısı, ping ve istemci komutlarıyla görülür.
 - Simülatör gerçek IOS değildir: komut sözdizimi eğitim amaçlı taklittir, çıktıların bazı
   alanları sabittir.
 

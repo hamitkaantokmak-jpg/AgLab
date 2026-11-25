@@ -23,6 +23,14 @@ Aşağıdaki bölümler yazıldıkları günün notlarıdır; durum satırları 
 - **Repo düzeni** (#110–#112): betikler `tools/`, belgeler `docs/` (eski raporlar
   `docs/arsiv/`), PKT örnekleri `tests/fixtures/pkt/`; hat `python tools/run_pipeline.py`.
 - **Sıradaki:** `SONRAKI_ISLER.md` 5. adım, Şube sürümü 1.0.
+- **Katman 1 (fiziksel katman)** motoru (`motor/fiziksel-katman`): `LinkDef.phys` (kablo, SFP,
+  fiber, konnektör), `src/sim/phys.ts`, sayaçlar, `show interfaces counters errors` /
+  `transceiver`, `clear counters`, teknisyen eylemleri (`rt.replaceCable` …). Kararlar
+  UYUMLULUK_MATRISI "Katman 1". Bunu kullanan lab/senaryo yok (ayrı pratik PR'ı).
+- **Syslog, sanal zaman, configDiff** (`motor/syslog-zaman-diff`, #121'in üstünde): `show logging`
+  tamponu, `rt.tick`/`setFlap`/`schedule`/`powerOn(bootS)`/`okSince`, `rt.configSnapshot`/
+  `configDiff`, `q.logHas`/`changedDevices`. Kararlar UYUMLULUK_MATRISI "Syslog, sanal zaman ve
+  yapılandırma karşılaştırması". Oyunun ortak zemini; kullanan lab yok.
 
 ## Arayüz yenilemesi (L7'den sonra)
 

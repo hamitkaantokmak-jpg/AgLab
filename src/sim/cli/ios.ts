@@ -13,6 +13,7 @@ import type { BgpConfig, BgpNeighborConfig, RouteMapEntry, ChannelMode, DhcpPool
 import { canonIf, clone, ifNum, intToIp, ipToInt, maskToPrefix, networkOf, normalizeMac, parseVlanList, prefixMaskInt, prefixToMask, shortIf } from '../util'
 import { buildTrie, complete, help, parse, type Pattern, type TrieNode } from './parser'
 import * as show from './show'
+import { showLogging } from '../syslog'
 import * as disc from '../discovery'
 import * as psec from '../portsec'
 import * as acl from '../acl'
@@ -49,6 +50,9 @@ const showPatterns = (privOnly: boolean): P[] => {
     { p: 'show interfaces status', run: (x) => show.showIntStatus(x.rt, x.dev) },
     { p: 'show interfaces trunk', run: (x) => show.showIntTrunk(x.rt, x.dev) },
     { p: 'show interfaces switchport', run: (x) => show.showIntSwitchport(x.rt, x.dev) },
+    { p: 'show interfaces counters errors', run: (x) => show.showIntCountersErrors(x.rt, x.dev) },
+    { p: 'show interfaces transceiver', run: (x) => show.showTransceiver(x.rt, x.dev, false) },
+    { p: 'show interfaces transceiver detail', run: (x) => show.showTransceiver(x.rt, x.dev, true) },
     { p: 'show interfaces <if>', run: (x, a) => x.showOneIf(a, false) },
     { p: 'show interfaces <if> switchport', run: (x, a) => x.showOneIf(a, true), ifTypes: ['FastEthernet', 'GigabitEthernet', 'Port-channel'] },
     { p: 'show ip interface brief', run: (x) => show.showIpIntBrief(x.rt, x.dev) },
@@ -148,6 +152,7 @@ const showPatterns = (privOnly: boolean): P[] => {
       { p: 'show running-config', run: (x) => show.showRun(x.rt, x.dev, 'running') },
       { p: 'show running-config interface <if>', run: (x, a) => x.showRunIf(a) },
       { p: 'show startup-config', run: (x) => show.showRun(x.rt, x.dev, 'startup') },
+      { p: 'show logging', run: (x) => showLogging(x.rt.log(x.dev), x.rt.logLogged.get(x.dev) ?? 0, x.cfg.logBufferBytes) },
     )
   }
   return s
@@ -163,6 +168,9 @@ const userPatterns: P[] = [
   { p: 'ping', run: (x) => x.extendedPing() },
   { p: 'traceroute <A.B.C.D:Trace route to destination address>', run: (x, a) => x.traceroute(a[1]!) },
   { p: 'terminal length <0-512:Number of lines on screen (0 for no pausing)>', run: () => {} },
+  // syslog: konsol oturumu zaten satırları gösterir; izleme (vty) ayrımı modellenmez
+  { p: 'terminal monitor', run: () => {} },
+  { p: 'terminal no monitor', run: () => {} },
   ...showPatterns(false),
 ]
 
@@ -196,6 +204,37 @@ const privPatterns: P[] = [
   { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft', run: (x, a) => x.clearBgp(a[3]!, 'soft') },
   { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft in', run: (x, a) => x.clearBgp(a[3]!, 'in') },
   { p: 'clear ip bgp <A.B.C.D:BGP neighbor address to clear> soft out', run: (x, a) => x.clearBgp(a[3]!, 'out') },
+  {
+    p: 'clear logging',
+    run: (x) =>
+      x.ask('Clear logging buffer [confirm]', (ans) => {
+        if (ans.trim() && !/^y/i.test(ans.trim())) return []
+        x.rt.clearLog(x.dev)
+        return []
+      }),
+  },
+  // Katman 1: arayüz sayaçları (IOS onay sorar; boş satır ya da y onaylar)
+  {
+    p: 'clear counters',
+    run: (x) =>
+      x.ask('Clear "show interface" counters on all interfaces [confirm]', (ans) => {
+        if (ans.trim() && !/^y/i.test(ans.trim())) return []
+        x.rt.clearCounters(x.dev)
+        return []
+      }),
+  },
+  {
+    p: 'clear counters <if>',
+    ifTypes: ['FastEthernet', 'GigabitEthernet'],
+    run: (x, a) => {
+      const port = x.physName(a[2]!, a[3]!, 2)
+      return x.ask('Clear "show interface" counters on this interface [confirm]', (ans) => {
+        if (ans.trim() && !/^y/i.test(ans.trim())) return []
+        x.rt.clearCounters(x.dev, port)
+        return []
+      })
+    },
+  },
   {
     p: 'clear access-list counters',
     run: (x) => {
@@ -348,6 +387,10 @@ const configPatterns = (def: SwitchDef): P[] => {
     { p: 'no spanning-tree portfast bpduguard default', run: (x) => void (x.cfg.bpduguardDefault = false) },
     { p: 'no spanning-tree portfast bpduguard', run: (x) => void (x.cfg.bpduguardDefault = false) },
     { p: 'errdisable recovery cause bpduguard', run: (x) => void (x.cfg.errRecoveryBpdu = true) },
+    { p: 'errdisable recovery cause psecure-violation', run: (x) => void (x.cfg.errRecoveryPsecure = true) },
+    { p: 'no errdisable recovery cause psecure-violation', run: (x) => void delete x.cfg.errRecoveryPsecure },
+    { p: 'logging buffered <4096-2147483647:Logging buffer size>', run: (x, a) => void (x.cfg.logBufferBytes = Number(a[2])) },
+    { p: 'no logging buffered', run: (x) => void delete x.cfg.logBufferBytes },
     { p: 'no errdisable recovery cause bpduguard', run: (x) => void (x.cfg.errRecoveryBpdu = false) },
     { p: 'errdisable recovery interval <30-86400:timer-interval(sec)>', run: (x, a) => void (x.cfg.errRecoveryInterval = Number(a[3])) },
     { p: 'no errdisable recovery interval', run: (x) => void delete x.cfg.errRecoveryInterval },
@@ -2420,6 +2463,8 @@ export class IosSession {
     this.rt.running[this.dev] = start ? clone(start) : fresh
     const o = this.rt.running[this.dev]!.ospf
     if (o) o.activeRid = null
+    // günlük tamponu RAM'dedir
+    this.rt.clearLog(this.dev)
     this.mode = 'user'
     this.ifs = []
     for (const k of [...this.rt.arp]) if (k.startsWith(this.dev + '>')) this.rt.arp.delete(k)
@@ -2446,6 +2491,7 @@ export class IosSession {
     const coldArp = (r.forward?.hops.length ?? 0) > 0 && !this.rt.arp.has(firstKey)
     this.rt.markExchange(this.dev, r.forward, r.back)
     this.rt.countAcl(repeat, r.forward, r.back)
+    this.rt.countFrames(repeat, r.forward, r.back)
     this.rt.recordNat(repeat, r.forward, r.back)
     const head = ['Type escape sequence to abort.', `Sending ${repeat}, ${o.size ?? 100}-byte ICMP Echos to ${ip}, timeout is ${o.timeout ?? 2} seconds:`]
     if (o.src) head.push(`Packet sent with a source address of ${o.src} `)

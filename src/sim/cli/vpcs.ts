@@ -195,6 +195,7 @@ export class VpcsSession {
     const r = httpGet(this.rt.derived, this.dev, host, port)
     this.rt.markExchange(this.dev, r.forward, r.back)
     this.rt.countAcl(1, r.forward, r.back)
+    this.rt.countFrames(1, r.forward, r.back)
     this.rt.recordNat(1, r.forward, r.back)
     this.rt.emit()
     if (r.ok) {
@@ -291,6 +292,7 @@ export class VpcsSession {
     const r = ping(d, this.dev, dst, { ttl: ttlOut ?? 64 })
     this.rt.markExchange(this.dev, r.forward, r.back)
     this.rt.countAcl(count, r.forward, r.back)
+    this.rt.countFrames(count, r.forward, r.back)
     this.rt.recordNat(count, r.forward, r.back)
     // the first hop answered ARP (target on-link, else the gateway)
     if (r.firstHopArp) this.rt.arp.add(`${this.dev}>${r.firstHopArp.ip}`)

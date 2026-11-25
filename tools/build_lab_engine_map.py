@@ -40,7 +40,7 @@ def bridge_decisions(browser):
     labber_labs = page.evaluate(
         "() => AgLabSim.LABBER_LABS.map((l) => ({ id: l.id, title: l.title, level: l.level,"
         " devices: l.devices.length, links: l.links.length, objectives: l.objectives.length,"
-        " tags: l.tags }))"
+        " tags: l.tags, phys: l.links.filter((k) => k.phys).length }))"
     )
     # L6: motor kullanmayan eski içerik. Yol ürünün kendisinden okunur: Sorun Çöz görev listesi,
     # "Hazır deneyler" bağlantıları ve atölyelerde her seçeneğin açtığı görünüm.
@@ -233,8 +233,33 @@ def render(browser):
     )
     a_lab, a_leg = count(list(decisions["academy"].values()))
     s_lab, s_leg = count([r for _, _, r in scen])
+    phys_labs = [l["id"] for l in labber_labs if l.get("phys")]
     lines.extend(
         [
+            "",
+            "## Katman 1 (fiziksel katman)",
+            "",
+            "Labber bağlantıda isteğe bağlı `phys` alanıyla kablo türü/uzunluğu, SFP, fiber optik",
+            "güç, kirli konnektör, TX/RX yönü ve desteklenmeyen modülü modeller; port durumu,",
+            "hız, `show interfaces status` Type sütunu, hata sayaçları (`show interfaces counters",
+            "errors`, `clear counters`) ve `show interfaces transceiver` buradan türetilir. Teknisyen",
+            "eylemleri motordadır (kablo/SFP değiştir, konnektör temizle, fiber çevir). Kurallar ve",
+            'modellenmeyenler: UYUMLULUK_MATRISI.md "Katman 1". `phys` tanımlamayan içerik eskisi',
+            "gibidir.",
+            "",
+            f"Katman 1 kullanan Labber labı: {', '.join(f'`{x}`' for x in phys_labs) if phys_labs else 'yok'}."
+            " Akademi labları ve ortak senaryolar `phys` tanımlamaz (AğLab modelinde alan yok;",
+            "köprü kabul eder ve geri yazar).",
+            "",
+            "## Syslog, sanal zaman ve yapılandırma karşılaştırması",
+            "",
+            "Labber'da her switch/router'ın günlük tamponu (`show logging`, `logging buffered`,",
+            "`clear logging`), sanal saat (`rt.tick`; flap, zamanlanmış olay, açılış süresi,",
+            "zamana bağlı errdisable kurtarması, `rt.okSince`) ve yapılandırma karşılaştırması",
+            "(`rt.configSnapshot`/`configDiff`, `q.changedDevices`) vardır. Hepsi isteğe bağlıdır:",
+            "zaman kullanmayan ve bu API'leri çağırmayan içerik eskisi gibi çalışır. Lab açılışında",
+            'günlük tamponu boştur. Kurallar ve modellenmeyenler: UYUMLULUK_MATRISI.md "Syslog,',
+            'sanal zaman ve yapılandırma karşılaştırması".',
             "",
             "## Labber özeti",
             "",

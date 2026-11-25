@@ -16,7 +16,7 @@ Güncel plan `docs/SONRAKI_ISLER.md` (iş sırası), `docs/YENIDEN_YAPILANMA.md`
 - Motor işi (`motor/<konu>`) ve pratik işi (`pratik/<konu>`: lab, arıza senaryosu, ipucu) ayrı PR'lardır. Motor PR'ı `src/labs`'a lab eklemez; pratik PR'ı motoru değiştirmez.
 - Motora yeni özellik eklenince aynı iş kapsamında ilgili ders (`docs/dersler/`), `docs/MUFREDAT.md`, `docs/UYUMLULUK_MATRISI.md` ve `docs/LAB_MOTOR_HARITASI.md` birlikte güncellenir; "motorda yok" diyen eski ifade bırakılmaz.
 - Modellenmeyen davranış (ör. zamanlayıcılar, sorgu/yanıt, sabit show alanları) belgede ve PR açıklamasında açıkça yazılır.
-- Lab brief'inde ve ipuçlarında anılan her belirti lab başlangıcında gerçekten görülebilmeli. Lab açılışında günlük (`rt.logs`) temizlenir ve `show logging` yoktur: yalnız bir geçişte üretilen log'a dayanan belirti yazılmaz ya da nasıl üretileceği söylenir; bunu bir testle doğrula.
+- Lab brief'inde ve ipuçlarında anılan her belirti lab başlangıcında gerçekten görülebilmeli. Lab açılışında günlük (`rt.logs` ve `show logging` tamponu) temizlenir: yalnız bir geçişte üretilen log'a dayanan belirti yazılmaz ya da nasıl üretileceği söylenir (ör. zamanlanmış olay ya da `tick` ile); bunu bir testle doğrula.
 
 ## Kaynak kuralı
 - `AgLab_Final_PKT_Import.html` derleme çıktısıdır; doğrudan düzenleme. Değişikliği `src/`, `simulator/` veya `academy/` altında yap, sonra `python tools/build_html.py` çalıştırıp HTML ve `html-build.sha256` dosyasını birlikte commit et.

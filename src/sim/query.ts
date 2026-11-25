@@ -5,6 +5,8 @@ import { egress, portForwards, vlanExists, type Derived, type LPort } from './en
 import { dnsLookup, isApipa, type DnsResult } from './dhcp'
 import { macTable, ping, pcNode, routeTable, type MacEntry, type PingResult, type RouteEntry } from './net'
 import type { DhcpBinding, SwitchConfig } from './types'
+import type { LogEntry } from './syslog'
+import { changedDevicesOf, diffSnapshots, type ConfigSnapshot } from './configdiff'
 import { pk } from './topology'
 import { objectUp } from './track'
 import { instanceOf, mstDigest, mstOf } from './mst'
@@ -29,7 +31,33 @@ export class LabQuery {
     private learned: Set<string> = new Set(),
     /** L5-b: DHCP leases (see LabRuntime.query()) */
     private leases: DhcpBinding[] = [],
+    /** syslog tamponları (bkz. LabRuntime.query()) */
+    private logs: Map<string, LogEntry[]> = new Map(),
+    /** şimdiki yapılandırmanın anlık görüntüsü (bkz. LabRuntime.configSnapshot) */
+    private configNow?: (devs: string[]) => ConfigSnapshot,
   ) {}
+
+  /**
+   * `before` anlık görüntüsünden beri yapılandırması ya da fiziksel parçası (SFP, kablo,
+   * konnektör) değişen cihazlar (sıralı). Yalnız `before`daki cihazlar karşılaştırılır.
+   */
+  changedDevices(before: ConfigSnapshot): string[] {
+    if (!this.configNow) return []
+    return changedDevicesOf(diffSnapshots(before, this.configNow(Object.keys(before.devices))))
+  }
+
+  /**
+   * Cihazın günlük tamponunda anahtar var mı. `mnemonic`: yalnız anahtar (`UPDOWN`) ya da
+   * tesis-seviye-anahtar (`LINK-3-UPDOWN`).
+   */
+  logHas(dev: string, mnemonic: string): boolean {
+    return this.logCount(dev, mnemonic) > 0
+  }
+
+  logCount(dev: string, mnemonic: string): number {
+    const m = mnemonic.replace(/^%/, '')
+    return (this.logs.get(dev) ?? []).filter((e) => e.mnemonic === m || `${e.facility}-${e.sev}-${e.mnemonic}` === m).length
+  }
 
   /** L5-b: the lease the PC currently uses ({server, pool, ip, …}), or null. */
   dhcpLease(pc: string): DhcpBinding | null {

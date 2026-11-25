@@ -452,6 +452,8 @@ export interface SwitchConfig {
   bpduguardDefault?: boolean
   /** `errdisable recovery cause bpduguard` */
   errRecoveryBpdu?: boolean
+  /** `errdisable recovery cause psecure-violation` (zamanlı kipte süre dolunca kurtarılır) */
+  errRecoveryPsecure?: boolean
   /** `errdisable recovery interval` (seconds) */
   errRecoveryInterval?: number
   /** L5-b: `ip dhcp pool <name>` (configuration order) */
@@ -462,6 +464,8 @@ export interface SwitchConfig {
   tracks?: Record<string, TrackConfig>
   /** IP SLA işlemleri (`ip sla <n>`) */
   ipSla?: Record<string, IpSlaConfig>
+  /** `logging buffered <bayt>`: günlük tamponunun bayt sınırı (yoksa LOG_BUFFER_DEFAULT satır) */
+  logBufferBytes?: number
 }
 
 export interface PcConfig {
@@ -526,6 +530,54 @@ export interface LinkDef {
   b: [string, string]
   /** false: cable unplugged / cut at lab start */
   up?: boolean
+  /**
+   * Katman 1 modeli (isteğe bağlı): kablo, iki ucun SFP'si, konnektör, fiber yönü. Verilmezse
+   * link eskisi gibi yalnız takılı/kopuk olarak değerlendirilir (bkz. phys.ts).
+   */
+  phys?: LinkPhysSpec
+}
+
+// ---- Katman 1 (fiziksel katman; phys.ts) ----
+
+export type CableKind = 'utp-cat5e' | 'utp-cat6' | 'dac' | 'fiber-mm' | 'fiber-sm'
+export type SfpType = '1000base-t' | '1000base-sx' | '1000base-lx' | '1000base-zx' | 'dac'
+
+export interface CableSpec {
+  kind: CableKind
+  lengthM: number
+  /** ezilmiş/kesilmiş damar: bakırda hata; fiberde kırık (ışık geçmez) */
+  damaged?: boolean
+  /** bükülme yarıçapının altında: fiberde ek kayıp (bakırda modellenmez) */
+  bent?: boolean
+}
+
+export interface SfpSpec {
+  type: SfpType
+  /** 'third-party': IOS desteklenmeyen modül sayar (port err-disabled, gbic-invalid) */
+  vendor?: 'cisco' | 'third-party'
+  /** arızalı modül: ışık/sinyal üretmez */
+  dead?: boolean
+}
+
+export interface PhysEndSpec {
+  sfp?: SfpSpec
+  /** kirli konnektör: bu ucun alıcısına gelen ışığa ek kayıp (yalnız fiber) */
+  connectorDirty?: boolean
+}
+
+/** Lab yazarının LinkDef.phys alanı: uçlar LinkDef'in a/b sırasıyla. */
+export interface LinkPhysSpec {
+  cable: CableSpec
+  ends?: { a?: PhysEndSpec; b?: PhysEndSpec }
+  /** fiber çiftinin TX/RX'i ters takılmış (bakırda Auto-MDIX: etkisiz) */
+  txRxSwapped?: boolean
+}
+
+/** Çalışma anındaki biçim: uçlar 'dev|port' anahtarıyla (kablo taşınsa da yön karışmaz). */
+export interface LinkPhys {
+  cable: CableSpec
+  ends: Record<string, PhysEndSpec>
+  txRxSwapped?: boolean
 }
 
 /**
@@ -539,6 +591,13 @@ export interface Hardware {
   off: Set<string>
   /** PCs whose NIC is disabled */
   nicDown: Set<string>
+  /**
+   * Katman 1: `phys` tanımlı bağlantıların güncel fiziksel durumu (anahtar: linkKey, iki ucun
+   * sıralı 'dev|port' anahtarları). Yok ya da boşsa hiçbir link fiziksel modelle değerlendirilmez.
+   */
+  phys?: Map<string, LinkPhys>
+  /** sanal zaman: flap eden linkin down fazındaki uçlar ('dev|port', iki uç) */
+  flapDown?: Set<string>
 }
 
 export const noHardwareFaults = (): Hardware => ({ cut: new Set(), off: new Set(), nicDown: new Set() })
@@ -574,4 +633,9 @@ export interface LabDef {
   solution: Record<string, string>
   /** SVG viewBox size */
   view: { w: number; h: number }
+  /**
+   * Sanal zaman (isteğe bağlı). Verilirse runtime baştan "zamanlı kip"tedir: errdisable
+   * kurtarması süreye bağlıdır, günlük damgaları sanal saattendir. `start`: başlangıç saati (s).
+   */
+  clock?: { start?: number }
 }
