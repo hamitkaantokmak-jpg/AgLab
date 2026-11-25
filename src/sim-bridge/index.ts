@@ -29,3 +29,13 @@ export type { ConfigLine, LineStatus } from '../sim/config-text'
 export { BOOT_FRAMES, evaluateLink, linkKey, OPTICS, validatePhysSpec } from '../sim/phys'
 export type { L1End, L1Fault, PortCounters } from '../sim/phys'
 export type { LabRuntime, SavedState } from '../sim/runtime'
+// Syslog / sanal zaman / yapılandırma karşılaştırması (motor/syslog-zaman-diff). Çalışma anı
+// API'si LabRuntime'dadır: rt.log, rt.clearLog, rt.clock, rt.tick, rt.setFlap, rt.schedule,
+// rt.scheduled, rt.unschedule, rt.powerOn, rt.isBooting, rt.okSince, rt.configSnapshot,
+// rt.configDiff, rt.unsavedChanges; LabQuery: logHas, logCount, changedDevices.
+export { LOG_BUFFER_DEFAULT } from '../sim/syslog'
+export type { LogEntry } from '../sim/syslog'
+export { BACKGROUND_FPS } from '../sim/clock'
+export type { FlapSpec, ScheduledAction, ScheduledEvent } from '../sim/clock'
+export { canonicalConfig, diffSnapshots } from '../sim/configdiff'
+export type { ConfigDiff, ConfigSnapshot, DeviceDiff, PhysChange } from '../sim/configdiff'

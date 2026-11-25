@@ -90,21 +90,25 @@ var AgLabSim = (() => {
   // src/sim-bridge/index.ts
   var index_exports = {};
   __export(index_exports, {
+    BACKGROUND_FPS: () => BACKGROUND_FPS,
     BOOT_FRAMES: () => BOOT_FRAMES,
     BridgeError: () => BridgeError,
     IosSession: () => IosSession,
     LABBER_HINT_TIERS: () => HINT_TIERS,
     LABBER_LABS: () => LABS,
+    LOG_BUFFER_DEFAULT: () => LOG_BUFFER_DEFAULT,
     LabQuery: () => LabQuery,
     MODEL_L2: () => MODEL_L2,
     MODEL_L3: () => MODEL_L3,
     OPTICS: () => OPTICS,
     VpcsSession: () => VpcsSession,
     canonPort: () => canonPort,
+    canonicalConfig: () => canonicalConfig,
     cliImport: () => cliImport,
     createLab: () => createLab,
     createRuntime: () => createRuntime,
     createSession: () => createSession,
+    diffSnapshots: () => diffSnapshots,
     evaluateLink: () => evaluateLink,
     importReportWithCli: () => importReportWithCli,
     linkKey: () => linkKey,
@@ -8949,6 +8953,79 @@ var AgLabSim = (() => {
     }
   };
 
+  // src/sim/configdiff.ts
+  var SEP = " > ";
+  var GLOBAL = "(global)";
+  function canonicalConfig(text) {
+    const out = [];
+    let header = null;
+    for (const raw of text) {
+      if (!raw.trim() || raw.trim() === "!" || raw.trim() === "end") {
+        if (raw.trim() === "!") header = null;
+        continue;
+      }
+      const line = raw.trim().replace(/\s+/g, " ");
+      if (/^\s/.test(raw) && header) out.push(header + SEP + line);
+      else {
+        header = line;
+        out.push(line);
+      }
+    }
+    return out.sort();
+  }
+  function sectionOf(line, headers) {
+    const i = line.indexOf(SEP);
+    if (i >= 0) return line.slice(0, i);
+    return headers.has(line) ? line : GLOBAL;
+  }
+  function minus(a, b) {
+    const n = /* @__PURE__ */ new Map();
+    for (const x of b) n.set(x, (n.get(x) ?? 0) + 1);
+    const out = [];
+    for (const x of a) {
+      const c = n.get(x) ?? 0;
+      if (c) n.set(x, c - 1);
+      else out.push(x);
+    }
+    return out;
+  }
+  function diffSnapshots(before, after) {
+    const devices = {};
+    for (const dev of Object.keys(before.devices).sort()) {
+      const a = before.devices[dev].lines;
+      const b = after.devices[dev]?.lines ?? [];
+      const added = minus(b, a);
+      const removed = minus(a, b);
+      const headers = new Set([...a, ...b].filter((l) => l.includes(SEP)).map((l) => l.slice(0, l.indexOf(SEP))));
+      const changedSections = [...new Set([...added, ...removed].map((l) => sectionOf(l, headers)))].sort();
+      devices[dev] = { added, removed, changedSections, unsaved: !(after.devices[dev]?.saved ?? before.devices[dev].saved) };
+    }
+    const phys = [];
+    for (const link of [.../* @__PURE__ */ new Set([...Object.keys(before.phys), ...Object.keys(after.phys)])].sort()) {
+      const x = before.phys[link] ?? null;
+      const y = after.phys[link] ?? null;
+      if (canonJson(x) !== canonJson(y)) phys.push({ link, before: x, after: y });
+    }
+    return { devices, phys };
+  }
+  function canonJson(x) {
+    if (x === null || typeof x !== "object") return JSON.stringify(x);
+    if (Array.isArray(x)) return "[" + x.map(canonJson).join(",") + "]";
+    const o = x;
+    return "{" + Object.keys(o).filter((k) => o[k] !== void 0).sort().map((k) => JSON.stringify(k) + ":" + canonJson(o[k])).join(",") + "}";
+  }
+  function changedDevicesOf(d) {
+    const out = /* @__PURE__ */ new Set();
+    for (const [dev, x] of Object.entries(d.devices)) if (x.added.length || x.removed.length) out.add(dev);
+    for (const p of d.phys) {
+      const ends = p.link.split("~");
+      const devOf = (k) => k.slice(0, k.indexOf("|"));
+      const cableChanged = !p.before || !p.after || canonJson(p.before.cable) !== canonJson(p.after.cable) || !!p.before.txRxSwapped !== !!p.after.txRxSwapped;
+      for (const k of ends) if (cableChanged || canonJson(p.before?.ends[k] ?? null) !== canonJson(p.after?.ends[k] ?? null)) out.add(devOf(k));
+    }
+    return [...out].sort();
+  }
+
   // src/sim/clock.ts
   var BACKGROUND_FPS = 10;
   var roundT = (t) => Math.round(t * 1e6) / 1e6;
@@ -8970,12 +9047,21 @@ var AgLabSim = (() => {
   // src/sim/query.ts
   var OSPF_AD2 = 110;
   var LabQuery = class {
-    constructor(d, startup = {}, learned = /* @__PURE__ */ new Set(), leases = [], logs = /* @__PURE__ */ new Map()) {
+    constructor(d, startup = {}, learned = /* @__PURE__ */ new Set(), leases = [], logs = /* @__PURE__ */ new Map(), configNow) {
       this.d = d;
       this.startup = startup;
       this.learned = learned;
       this.leases = leases;
       this.logs = logs;
+      this.configNow = configNow;
+    }
+    /**
+     * `before` anlık görüntüsünden beri yapılandırması ya da fiziksel parçası (SFP, kablo,
+     * konnektör) değişen cihazlar (sıralı). Yalnız `before`daki cihazlar karşılaştırılır.
+     */
+    changedDevices(before) {
+      if (!this.configNow) return [];
+      return changedDevicesOf(diffSnapshots(before, this.configNow(Object.keys(before.devices))));
     }
     /**
      * Cihazın günlük tamponunda anahtar var mı. `mnemonic`: yalnız anahtar (`UPDOWN`) ya da
@@ -9843,7 +9929,7 @@ var AgLabSim = (() => {
     /** Read-only queries on the current state, including learned MAC addresses. */
     query() {
       this.seen.expire();
-      return new LabQuery(this.derived, this.startup, this.seen, this.dhcp, this.logBuf);
+      return new LabQuery(this.derived, this.startup, this.seen, this.dhcp, this.logBuf, (devs) => this.configSnapshot(devs));
     }
     /**
      * L5-b: the PC asks for an address (DHCP DISCOVER … ACK). On success its address, mask,
@@ -10281,6 +10367,36 @@ var AgLabSim = (() => {
       this.enterTimed();
       this.booting.set(dev, roundT(this.clock + opts.bootS));
       this.emit();
+    }
+    // ---- yapılandırma karşılaştırması (aşama 3) ----
+    /**
+     * Verilen (ya da bütün) switch/router'ların kanonik running-config'i, kayıt durumu ve Katman 1
+     * durumu. Sonuç bağımsız bir kopyadır (JSON'a yazılabilir). Bilinmeyen cihaz: hata.
+     */
+    configSnapshot(devs) {
+      const ids = devs ?? this.topo.switches.map((s) => s.id);
+      const devices = {};
+      for (const id of ids) {
+        const def = this.topo.devices[id];
+        if (def?.kind !== "switch") throw new Error(`configSnapshot: ${id} bir switch/router değil`);
+        devices[id] = { lines: canonicalConfig(runningConfig(def, this.running[id])), saved: !this.unsavedChanges(id) };
+      }
+      const phys = {};
+      for (const [k, p] of this.hw.phys ?? []) {
+        const c = clone(p);
+        for (const [e, v] of Object.entries(c.ends)) if (!Object.keys(v).length) delete c.ends[e];
+        phys[k] = c;
+      }
+      return { clock: this.clock, devices, phys };
+    }
+    /** `before` ile `after` (verilmezse şimdiki durum, aynı cihazlar) arasındaki fark. */
+    configDiff(before, after) {
+      return diffSnapshots(before, after ?? this.configSnapshot(Object.keys(before.devices)));
+    }
+    /** running-config startup-config'ten farklı mı (LabQuery.saved'in tersi; startup yoksa true). */
+    unsavedChanges(dev) {
+      const s = this.startup[dev];
+      return !s || JSON.stringify(s) !== JSON.stringify(this.running[dev]);
     }
     /** Portun err-disable olduğu sanal an (zamanlı kurtarma; yoksa null). */
     errDisabledAt(dev, port) {

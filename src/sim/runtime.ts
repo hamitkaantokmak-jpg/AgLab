@@ -10,6 +10,9 @@ import { defaultSwitchConfig } from './config'
 import { apipaFor, dhcpDiscover, isApipa, type DhcpResult } from './dhcp'
 import { bpduViolations, type Derived } from './engine'
 import { formatStamp, parseMessage, trimBuffer, type LogEntry } from './syslog'
+import { canonicalConfig, diffSnapshots, type ConfigDiff, type ConfigSnapshot } from './configdiff'
+import { runningConfig } from './cli/show'
+import type { SwitchDef } from './types'
 import { BACKGROUND_FPS, flapUp, nextFlapEdge, roundT, validFlap, type FlapSpec, type ScheduledAction, type ScheduledEvent } from './clock'
 import { BOOT_FRAMES, linkKey, normalizePhys, receive, zeroCounters, type PortCounters } from './phys'
 import { l3Ifs, macTable, physicalPath, type Delivery, type Hop } from './net'
@@ -711,7 +714,7 @@ export class LabRuntime {
   /** Read-only queries on the current state, including learned MAC addresses. */
   query(): LabQuery {
     this.seen.expire()
-    return new LabQuery(this.derived, this.startup, this.seen, this.dhcp, this.logBuf)
+    return new LabQuery(this.derived, this.startup, this.seen, this.dhcp, this.logBuf, (devs) => this.configSnapshot(devs))
   }
 
   /**
@@ -1203,6 +1206,40 @@ export class LabRuntime {
     this.enterTimed()
     this.booting.set(dev, roundT(this.clock + opts.bootS))
     this.emit()
+  }
+
+  // ---- yapılandırma karşılaştırması (aşama 3) ----
+
+  /**
+   * Verilen (ya da bütün) switch/router'ların kanonik running-config'i, kayıt durumu ve Katman 1
+   * durumu. Sonuç bağımsız bir kopyadır (JSON'a yazılabilir). Bilinmeyen cihaz: hata.
+   */
+  configSnapshot(devs?: string[]): ConfigSnapshot {
+    const ids = devs ?? this.topo.switches.map((s) => s.id)
+    const devices: ConfigSnapshot['devices'] = {}
+    for (const id of ids) {
+      const def = this.topo.devices[id]
+      if (def?.kind !== 'switch') throw new Error(`configSnapshot: ${id} bir switch/router değil`)
+      devices[id] = { lines: canonicalConfig(runningConfig(def as SwitchDef, this.running[id]!)), saved: !this.unsavedChanges(id) }
+    }
+    const phys: ConfigSnapshot['phys'] = {}
+    for (const [k, p] of this.hw.phys ?? []) {
+      const c = clone(p)
+      for (const [e, v] of Object.entries(c.ends)) if (!Object.keys(v).length) delete c.ends[e]
+      phys[k] = c
+    }
+    return { clock: this.clock, devices, phys }
+  }
+
+  /** `before` ile `after` (verilmezse şimdiki durum, aynı cihazlar) arasındaki fark. */
+  configDiff(before: ConfigSnapshot, after?: ConfigSnapshot): ConfigDiff {
+    return diffSnapshots(before, after ?? this.configSnapshot(Object.keys(before.devices)))
+  }
+
+  /** running-config startup-config'ten farklı mı (LabQuery.saved'in tersi; startup yoksa true). */
+  unsavedChanges(dev: string): boolean {
+    const s = this.startup[dev]
+    return !s || JSON.stringify(s) !== JSON.stringify(this.running[dev])
   }
 
   /** Portun err-disable olduğu sanal an (zamanlı kurtarma; yoksa null). */

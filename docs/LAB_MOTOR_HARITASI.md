@@ -276,6 +276,16 @@ gibidir.
 Katman 1 kullanan Labber labı: yok. Akademi labları ve ortak senaryolar `phys` tanımlamaz (AğLab modelinde alan yok;
 köprü kabul eder ve geri yazar).
 
+## Syslog, sanal zaman ve yapılandırma karşılaştırması
+
+Labber'da her switch/router'ın günlük tamponu (`show logging`, `logging buffered`,
+`clear logging`), sanal saat (`rt.tick`; flap, zamanlanmış olay, açılış süresi,
+zamana bağlı errdisable kurtarması, `rt.okSince`) ve yapılandırma karşılaştırması
+(`rt.configSnapshot`/`configDiff`, `q.changedDevices`) vardır. Hepsi isteğe bağlıdır:
+zaman kullanmayan ve bu API'leri çağırmayan içerik eskisi gibi çalışır. Lab açılışında
+günlük tamponu boştur. Kurallar ve modellenmeyenler: UYUMLULUK_MATRISI.md "Syslog,
+sanal zaman ve yapılandırma karşılaştırması".
+
 ## Labber özeti
 
 `Labber`, içeriğin bütün alanlarının Labber'a eşlendiği anlamına gelir (köprünün

@@ -27,6 +27,10 @@ Aşağıdaki bölümler yazıldıkları günün notlarıdır; durum satırları 
   fiber, konnektör), `src/sim/phys.ts`, sayaçlar, `show interfaces counters errors` /
   `transceiver`, `clear counters`, teknisyen eylemleri (`rt.replaceCable` …). Kararlar
   UYUMLULUK_MATRISI "Katman 1". Bunu kullanan lab/senaryo yok (ayrı pratik PR'ı).
+- **Syslog, sanal zaman, configDiff** (`motor/syslog-zaman-diff`, #121'in üstünde): `show logging`
+  tamponu, `rt.tick`/`setFlap`/`schedule`/`powerOn(bootS)`/`okSince`, `rt.configSnapshot`/
+  `configDiff`, `q.logHas`/`changedDevices`. Kararlar UYUMLULUK_MATRISI "Syslog, sanal zaman ve
+  yapılandırma karşılaştırması". Oyunun ortak zemini; kullanan lab yok.
 
 ## Arayüz yenilemesi (L7'den sonra)
 

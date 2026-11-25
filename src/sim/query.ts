@@ -6,6 +6,7 @@ import { dnsLookup, isApipa, type DnsResult } from './dhcp'
 import { macTable, ping, pcNode, routeTable, type MacEntry, type PingResult, type RouteEntry } from './net'
 import type { DhcpBinding, SwitchConfig } from './types'
 import type { LogEntry } from './syslog'
+import { changedDevicesOf, diffSnapshots, type ConfigSnapshot } from './configdiff'
 import { pk } from './topology'
 import { objectUp } from './track'
 import { instanceOf, mstDigest, mstOf } from './mst'
@@ -32,7 +33,18 @@ export class LabQuery {
     private leases: DhcpBinding[] = [],
     /** syslog tamponları (bkz. LabRuntime.query()) */
     private logs: Map<string, LogEntry[]> = new Map(),
+    /** şimdiki yapılandırmanın anlık görüntüsü (bkz. LabRuntime.configSnapshot) */
+    private configNow?: (devs: string[]) => ConfigSnapshot,
   ) {}
+
+  /**
+   * `before` anlık görüntüsünden beri yapılandırması ya da fiziksel parçası (SFP, kablo,
+   * konnektör) değişen cihazlar (sıralı). Yalnız `before`daki cihazlar karşılaştırılır.
+   */
+  changedDevices(before: ConfigSnapshot): string[] {
+    if (!this.configNow) return []
+    return changedDevicesOf(diffSnapshots(before, this.configNow(Object.keys(before.devices))))
+  }
 
   /**
    * Cihazın günlük tamponunda anahtar var mı. `mnemonic`: yalnız anahtar (`UPDOWN`) ya da

@@ -75,7 +75,7 @@ CCNA v2.0 beş alana sahip: Ağ altyapısı ve bağlantı %25, Switching ve ağ 
 | 20 | NAT/PAT | Servisler | Motor | Labber'da var (L5-d; modelde yalnız PAT). Detaylı ders ve 5 senaryo var (`docs/dersler/nat-pat.md`, `nat-*`) | P1 |
 | 21 | L2 güvenlik: port security, DHCP snooping, DAI, storm control, RA guard | Switching / güvenlik | Motor | Port security var (dinamik adres sayımı hatalı); diğerleri yok. Detaylı ders ve 5 senaryo var (`docs/dersler/l2-guvenlik.md`, `psec-*`) | P1 |
 | 22 | Cihaz erişim güvenliği: SSH, AAA, SFTP/SCP | Güvenlik | Motor + okuma | Yok. Okuma dersi var (`docs/dersler/erisim-guvenligi.md`, `aaa`; 7 şema, 4 kâğıt üstü vaka) | P2 |
-| 23 | Ağ servisleri: DNS kayıt türleri, NTP, Syslog, SNMP | Servisler / operasyon | Okuma + motor (Syslog) | Kısmi. Okuma dersi var (`docs/dersler/ag-servisleri.md`, `services`; 7 şema, 4 kâğıt üstü vaka) | P2 |
+| 23 | Ağ servisleri: DNS kayıt türleri, NTP, Syslog, SNMP | Servisler / operasyon | Okuma + motor (Syslog) | Kısmi. Labber'da cihaz günlük tamponu (`show logging`, `logging buffered`, `clear logging`; sanal saat damgası); syslog hedefleri, seviye süzgeci, NTP, SNMP yok. Okuma dersi var (`docs/dersler/ag-servisleri.md`, `services`; 7 şema, 4 kâğıt üstü vaka) | P2 |
 | 24 | Teşhis araçları: extended ping, traceroute, paket yakalama | Operasyon | Motor | Labber'da var (ping, extended ping, `source`, traceroute; Paket Dedektifi). Detaylı ders ve 5 senaryo var (`docs/dersler/teshis-araclari.md`, `diag-*`) | P1 |
 | 25 | Kablosuz ağ temelleri | Altyapı | Okuma | Yok (motor kapsamı dışı). Okuma dersi var (`docs/dersler/kablosuz.md`, `wireless`; 7 şema, 4 kâğıt üstü vaka) | P2 |
 | 26 | Otomasyon ve yapay zekâ: IaC, Ansible, ajan tabanlı yapay zekâ, prompt seçimi | Yapay zekâ ve operasyon | Okuma | Yok. Okuma dersi var (`docs/dersler/otomasyon.md`, `automation`; 7 şema, 4 kâğıt üstü vaka) | P2 |
@@ -116,7 +116,7 @@ Kaynak karşılaştırmasıyla eklenen: **#49 Multicast** (IGMP, PIM, RP kavraml
 | 45 | PBR ve VRF-lite | Gerçek Lab | FRR destekler. VRF-lite #33'te; PBR okuma dersi var (`docs/dersler/pbr.md`, `pbr`; 7 şema, 5 kâğıt üstü vaka) | P2 |
 | 46 | DMVPN | Okuma | Yok. Okuma dersi var (`docs/dersler/dmvpn.md`, `dmvpn`; 7 şema, 5 kâğıt üstü vaka) | P3 |
 | 47 | IPv6 ileri: DHCPv6, IPv6 ACL, first-hop security | Motor + okuma | 16. konuya bağlı. Okuma dersi var (`docs/dersler/ipv6-ileri.md`, `ipv6adv`; 7 şema, 5 kâğıt üstü vaka) | P3 |
-| 48 | Altyapı servisleri sorun giderme: DHCP, NTP, SNMP, Syslog, IP SLA | Motor + okuma | DHCP, IP SLA ve track Labber'da (#103); NTP, SNMP ve Syslog yok. Okuma dersi (`docs/dersler/servis-sorun-giderme.md`, `svctshoot`; 7 şema, 5 kâğıt üstü vaka) ve Simülatör labı **statik-yedek** (#104) var | P2 |
+| 48 | Altyapı servisleri sorun giderme: DHCP, NTP, SNMP, Syslog, IP SLA | Motor + okuma | DHCP, IP SLA ve track Labber'da (#103); günlük tamponu (`show logging`) var; NTP, SNMP ve syslog hedefleri (`logging host`/`trap`) yok. Okuma dersi (`docs/dersler/servis-sorun-giderme.md`, `svctshoot`; 7 şema, 5 kâğıt üstü vaka) ve Simülatör labı **statik-yedek** (#104) var | P2 |
 
 Bu seviyede 23 konunun 8'i Gerçek Lab'a, yaklaşık yarısı ağırlıkla okumaya dayanıyor. CCNP hedefi ciddiyse Gerçek Lab'ı çok kullanıcılı ve kolay kurulur hale getirmek motor geliştirmesi kadar önemlidir.
 
